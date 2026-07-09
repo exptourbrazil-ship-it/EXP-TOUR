@@ -15,9 +15,6 @@ function getRefreshToken(): string | undefined {
   }
 }
 
-// Obtem um access token novo a partir do refresh token salvo nas variaveis de
-// ambiente. Os parametros vao no corpo (application/x-www-form-urlencoded),
-// conforme especificacao OAuth 2.0, e nao na query string.
 async function getAccessToken(): Promise<string> {
   const clientId = process.env.ZOHO_CLIENT_ID;
   const clientSecret = process.env.ZOHO_CLIENT_SECRET;
@@ -26,6 +23,15 @@ async function getAccessToken(): Promise<string> {
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error("Credenciais do Zoho ausentes (ZOHO_CLIENT_ID/ZOHO_CLIENT_SECRET/ZOHO_REFRESH_TOKEN ou ZOHO_TOKEN_RESPONSE)");
   }
+
+  // DEBUG TEMPORARIO: comprimentos (nunca valores) para detectar corrupcao.
+  console.log("Zoho credential lengths debug", {
+    clientIdLength: clientId.length,
+    clientIdPrefix: clientId.slice(0, 6),
+    clientSecretLength: clientSecret.length,
+    refreshTokenLength: refreshToken.length,
+    refreshTokenPrefix: refreshToken.slice(0, 6),
+  });
 
   const params = new URLSearchParams({
     grant_type: "refresh_token",
@@ -36,12 +42,23 @@ async function getAccessToken(): Promise<string> {
 
   const res = await fetch(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
     body: params.toString(),
   });
 
   const contentType = res.headers.get("content-type") || "";
   const bodyText = await res.text();
+
+  console.log("Zoho token endpoint response debug", {
+    status: res.status,
+    finalUrl: res.url,
+    redirected: res.redirected,
+    contentType,
+    bodyPreview: bodyText.slice(0, 150),
+  });
 
   let data: any;
   try {
@@ -57,7 +74,6 @@ async function getAccessToken(): Promise<string> {
   return data.access_token as string;
 }
 
-// Busca um registro especifico de um modulo do Zoho CRM (ex: Contacts, Products).
 export async function getZohoRecord(zohoModule: string, id: string): Promise<any> {
   const accessToken = await getAccessToken();
 
