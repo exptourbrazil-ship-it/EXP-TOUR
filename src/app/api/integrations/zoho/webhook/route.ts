@@ -70,10 +70,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao buscar produto no Zoho" }, { status: 502 });
   }
 
-  const valorTotal = Number(produto.Unit_Price || 0);
   const numeroParcelas = Number(produto.Numero_de_Parcelas || 0);
   const valorEntrada = Number(produto.Valor_de_Entrada || 0);
   const nomeProduto = produto.Product_Name || "Viagem EXP Tour";
+
+  // A opcao "BRL" da lista Moeda_do_Produto reaproveitou uma opcao padrao do
+  // Zoho cujo valor interno antigo ainda e "Opção 1"; por isso aceitamos os
+  // dois valores possiveis para nao quebrar produtos precificados em BRL.
+  const moedaProduto = String(produto.Moeda_do_Produto || "BRL");
+  const produtoEmBRL =
+    !produto.Moeda_do_Produto || moedaProduto === "BRL" || moedaProduto === "Opção 1";
+
+  let valorTotal: number;
+
+  if (produtoEmBRL) {
+    valorTotal = Number(produto.Unit_Price || 0);
+  } else {
+    // Produto precificado em moeda estrangeira (USD/CAD/EUR): o valor do
+    // contrato em BRL e calculado a partir do preco original na moeda e da
+    // cotacao VET aplicada, informada manualmente no Contato (a mesma
+    // cotacao que a equipe consulta na Confidencecambio no momento do
+    // cadastro do cliente).
+    const precoMoedaOriginal = Number(produto.Preco_na_Moeda_Original || 0);
+    const cotacaoAplicada = Number(contato.Cotacao_Aplicada_VET || 0);
+
+    if (!precoMoedaOriginal || !cotacaoAplicada) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Produto precificado em ${moedaProduto}, mas falta o preco na moeda original e/ou a cotacao VET aplicada (preencha o campo "Cotacao Aplicada VET" no Contato no Zoho CRM)`,
+        },
+        { status: 422 }
+      );
+    }
+
+    valorTotal = Math.round(precoMoedaOriginal * cotacaoAplicada * 100) / 100;
+  }
 
   if (!valorTotal || !numeroParcelas) {
     return NextResponse.json(
@@ -98,9 +130,9 @@ export async function POST(request: Request) {
     });
   }
 
-  // OBS: moeda fixada em BRL pois e a moeda configurada na organizacao do
-  // Zoho CRM. Os contratos importados anteriormente da planilha usam CAD;
-  // reconciliar quando a precificacao real (multi-moeda) estiver definida.
+  // O valor do contrato e sempre salvo em BRL: se o produto estiver em BRL,
+  // usamos o Preco Unitario; se estiver em moeda estrangeira, o valor ja foi
+  // convertido para BRL acima usando a cotacao VET aplicada no Contato.
   const { data: contrato, error: contratoError } = await supabase
     .from("contratos")
     .insert({
