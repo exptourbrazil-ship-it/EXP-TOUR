@@ -15,6 +15,9 @@ function getRefreshToken(): string | undefined {
   }
 }
 
+// Obtem um access token novo a partir do refresh token salvo nas variaveis de
+// ambiente. Os parametros vao no corpo (application/x-www-form-urlencoded),
+// conforme especificacao OAuth 2.0, e nao na query string.
 async function getAccessToken(): Promise<string> {
   const clientId = process.env.ZOHO_CLIENT_ID;
   const clientSecret = process.env.ZOHO_CLIENT_SECRET;
@@ -31,20 +34,14 @@ async function getAccessToken(): Promise<string> {
     refresh_token: refreshToken,
   });
 
-  const res = await fetch(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token?${params.toString()}`, {
+  const res = await fetch(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
     method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
   });
 
   const contentType = res.headers.get("content-type") || "";
   const bodyText = await res.text();
-
-  // DEBUG TEMPORARIO: loga apenas metadados da resposta (status, tipo, inicio
-  // do corpo), nunca dados sensiveis, para diagnosticar respostas inesperadas.
-  console.log("Zoho token endpoint response debug", {
-    status: res.status,
-    contentType,
-    bodyPreview: bodyText.slice(0, 200),
-  });
 
   let data: any;
   try {
@@ -60,6 +57,7 @@ async function getAccessToken(): Promise<string> {
   return data.access_token as string;
 }
 
+// Busca um registro especifico de um modulo do Zoho CRM (ex: Contacts, Products).
 export async function getZohoRecord(zohoModule: string, id: string): Promise<any> {
   const accessToken = await getAccessToken();
 
