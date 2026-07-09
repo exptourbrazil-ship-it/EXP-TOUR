@@ -13,7 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 // a cobranca Pix (rota gerar-cobranca), e nao aqui, pois ela e um valor
 // fixo por transacao e nao por unidade de moeda.
 
-const MOEDAS_SUPORTADAS: string[] = ["USD", "CAD", "EUR"];
+const MOEDAS_SUPORTADAS: string[] = ["USD", "CAD", "EUR", "GBP", "AUD", "NZD"];
 
 function formatarDataBCB(date: Date): string {
   const mm = String(date.getMonth() + 1).padStart(2, "0");
