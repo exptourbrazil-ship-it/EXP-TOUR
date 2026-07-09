@@ -12,6 +12,13 @@ import { createClient } from "@supabase/supabase-js";
 // A taxa administrativa fixa e somada separadamente no momento de gerar
 // a cobranca Pix (rota gerar-cobranca), e nao aqui, pois ela e um valor
 // fixo por transacao e nao por unidade de moeda.
+//
+// O BCB nao publica cotacao PTAX para NZD (Dolar da Nova Zelandia). Para
+// essa moeda, aproximamos o cambio comercial por uma conversao cruzada,
+// usando a taxa NZD/USD publicada diariamente e gratuitamente pelo
+// Reserve Bank of New Zealand (fonte oficial, sem autenticacao) e a
+// cotacao USD/BRL do proprio BCB: NZD/BRL = (NZD/USD do RBNZ) x (USD/BRL do BCB).
+// Essa camada extra de aproximacao deve ser levada em conta ao validar o NZD.
 
 const MOEDAS_SUPORTADAS: string[] = ["USD", "CAD", "EUR", "GBP", "AUD", "NZD"];
 
@@ -42,6 +49,42 @@ async function buscarCambioComercialBCB(moeda: string): Promise<number | null> {
   return null;
 }
 
+// Busca a taxa NZD/USD (quantos USD equivalem a 1 NZD) na tabela diaria
+// publicada pelo Reserve Bank of New Zealand (pagina publica, sem
+// autenticacao). A tabela mostra as ultimas datas em colunas; usamos a
+// ultima coluna (data mais recente publicada).
+async function buscarTaxaNZDUSDRBNZ(): Promise<number | null> {
+  try {
+    const res = await fetch(
+      "https://www.rbnz.govt.nz/statistics/series/exchange-and-interest-rates/exchange-rates-and-the-trade-weighted-index"
+    );
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const linhaMatch = html.match(/<tr>\s*<td>United States dollar<\/td>([\s\S]*?)<\/tr>/);
+    if (!linhaMatch) return null;
+
+    const valores = Array.from(linhaMatch[1].matchAll(/<td[^>]*>([\d.,]+)<\/td>/g)).map((m) =>
+      Number(m[1].replace(",", "."))
+    );
+    if (valores.length === 0) return null;
+
+    return valores[valores.length - 1];
+  } catch {
+    return null;
+  }
+}
+
+async function buscarCambioComercial(moeda: string): Promise<number | null> {
+  if (moeda === "NZD") {
+    const cambioUSD = await buscarCambioComercialBCB("USD");
+    const taxaNzdUsd = await buscarTaxaNZDUSDRBNZ();
+    if (cambioUSD === null || taxaNzdUsd === null) return null;
+    return cambioUSD * taxaNzdUsd;
+  }
+  return buscarCambioComercialBCB(moeda);
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
@@ -60,10 +103,10 @@ export async function GET(request: Request) {
   const resultados: Record<string, number | string> = {};
 
   for (const moeda of MOEDAS_SUPORTADAS) {
-    const cambioComercial = await buscarCambioComercialBCB(moeda);
+    const cambioComercial = await buscarCambioComercial(moeda);
 
     if (cambioComercial === null) {
-      resultados[moeda] = "sem cotacao disponivel no BCB";
+      resultados[moeda] = "sem cotacao disponivel";
       continue;
     }
 
