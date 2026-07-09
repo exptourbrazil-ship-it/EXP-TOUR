@@ -9,8 +9,22 @@ function getRefreshToken(): string | undefined {
 
   try {
     const parsed = JSON.parse(raw);
+    // DEBUG TEMPORARIO: mostra apenas metadados nao sensiveis do JSON salvo.
+    console.log("Zoho token response debug", {
+      rawLength: raw.length,
+      rawPrefix: raw.slice(0, 15),
+      rawSuffix: raw.slice(-15),
+      parsedKeys: Object.keys(parsed),
+      hasRefreshTokenField: !!parsed.refresh_token,
+    });
     return parsed.refresh_token as string | undefined;
-  } catch {
+  } catch (e) {
+    console.log("Zoho token response JSON.parse falhou", {
+      rawLength: raw.length,
+      rawPrefix: raw.slice(0, 15),
+      rawSuffix: raw.slice(-15),
+      errorMessage: (e as Error).message,
+    });
     return undefined;
   }
 }
@@ -19,16 +33,6 @@ async function getAccessToken(): Promise<string> {
   const clientId = process.env.ZOHO_CLIENT_ID;
   const clientSecret = process.env.ZOHO_CLIENT_SECRET;
   const refreshToken = getRefreshToken();
-
-  // DEBUG TEMPORARIO: loga apenas presenca (true/false) de cada credencial,
-  // nunca o valor, para diagnosticar variaveis de ambiente ausentes.
-  console.log("Zoho env check", {
-    hasClientId: !!clientId,
-    hasClientSecret: !!clientSecret,
-    hasRefreshTokenVar: !!process.env.ZOHO_REFRESH_TOKEN,
-    hasTokenResponseVar: !!process.env.ZOHO_TOKEN_RESPONSE,
-    resolvedRefreshToken: !!refreshToken,
-  });
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error("Credenciais do Zoho ausentes (ZOHO_CLIENT_ID/ZOHO_CLIENT_SECRET/ZOHO_REFRESH_TOKEN ou ZOHO_TOKEN_RESPONSE)");
