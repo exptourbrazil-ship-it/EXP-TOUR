@@ -11,6 +11,12 @@ import { getZohoRecord } from "@/lib/zoho";
 // -> se houver Produto Adquirido, busca o Produto -> cria contrato + parcelas
 // (entrada + parcelas mensais no dia 15) caso ainda nao existam para esse
 // titular + produto.
+//
+// IMPORTANTE: o contrato e as parcelas sao salvos na MOEDA DO PRODUTO (ex:
+// CAD, USD, EUR), sem conversao para BRL neste momento. A conversao para
+// BRL acontece depois, parcela por parcela, no dia em que o Pix e gerado
+// (ver /api/parcelas/[id]/gerar-cobranca), usando a cotacao VET do dia
+// cadastrada manualmente pela equipe na tabela "cotacoes_cambio".
 export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
   const contactId = searchParams.get("contactId");
@@ -75,41 +81,26 @@ export async function POST(request: Request) {
   const nomeProduto = produto.Product_Name || "Viagem EXP Tour";
 
   // A opcao "BRL" da lista Moeda_do_Produto reaproveitou uma opcao padrao do
-  // Zoho cujo valor interno antigo ainda e "Opção 1"; por isso aceitamos os
-  // dois valores possiveis para nao quebrar produtos precificados em BRL.
-  const moedaProduto = String(produto.Moeda_do_Produto || "BRL");
-  const produtoEmBRL =
-    !produto.Moeda_do_Produto || moedaProduto === "BRL" || moedaProduto === "Opção 1";
-
-  let valorTotal: number;
-
-  if (produtoEmBRL) {
-    valorTotal = Number(produto.Unit_Price || 0);
-  } else {
-    // Produto precificado em moeda estrangeira (USD/CAD/EUR): o valor do
-    // contrato em BRL e calculado a partir do preco original na moeda e da
-    // cotacao VET aplicada, informada manualmente no Contato (a mesma
-    // cotacao que a equipe consulta na Confidencecambio no momento do
-    // cadastro do cliente).
-    const precoMoedaOriginal = Number(produto.Preco_na_Moeda_Original || 0);
-    const cotacaoAplicada = Number(contato.Cotacao_Aplicada_VET || 0);
-
-    if (!precoMoedaOriginal || !cotacaoAplicada) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Produto precificado em ${moedaProduto}, mas falta o preco na moeda original e/ou a cotacao VET aplicada (preencha o campo "Cotacao Aplicada VET" no Contato no Zoho CRM)`,
-        },
-        { status: 422 }
-      );
-    }
-
-    valorTotal = Math.round(precoMoedaOriginal * cotacaoAplicada * 100) / 100;
+  // Zoho cujo valor interno antigo ainda e "Opção 1" (e "USD" e "Opção 2");
+  // por isso normalizamos os dois valores possiveis para cada moeda.
+  function normalizarMoeda(raw: string): string {
+    if (!raw || raw === "-None-") return "BRL";
+    if (raw === "Opção 1") return "BRL";
+    if (raw === "Opção 2") return "USD";
+    return raw;
   }
+
+  const moeda = normalizarMoeda(String(produto.Moeda_do_Produto || ""));
+
+  // Valor do contrato sempre na moeda do produto: se for BRL usamos o Preco
+  // Unitario normal; se for moeda estrangeira usamos o Preco na Moeda
+  // Original. A conversao para BRL NAO acontece aqui.
+  const valorTotal =
+    moeda === "BRL" ? Number(produto.Unit_Price || 0) : Number(produto.Preco_na_Moeda_Original || 0);
 
   if (!valorTotal || !numeroParcelas) {
     return NextResponse.json(
-      { ok: false, error: "Produto no Zoho sem preco ou numero de parcelas configurados" },
+      { ok: false, error: "Produto no Zoho sem preco (na moeda correta) ou numero de parcelas configurados" },
       { status: 422 }
     );
   }
@@ -130,16 +121,13 @@ export async function POST(request: Request) {
     });
   }
 
-  // O valor do contrato e sempre salvo em BRL: se o produto estiver em BRL,
-  // usamos o Preco Unitario; se estiver em moeda estrangeira, o valor ja foi
-  // convertido para BRL acima usando a cotacao VET aplicada no Contato.
   const { data: contrato, error: contratoError } = await supabase
     .from("contratos")
     .insert({
       titular_id: titular.id,
       nome: nomeProduto,
       valor_total: valorTotal,
-      moeda: "BRL",
+      moeda,
       zoho_product_id: produtoLookup.id,
     })
     .select()
