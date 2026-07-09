@@ -1,9 +1,6 @@
 const ZOHO_ACCOUNTS_URL = "https://accounts.zoho.com";
 const ZOHO_API_DOMAIN = process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.com";
 
-// Le o refresh token da variavel dedicada ZOHO_REFRESH_TOKEN, ou, se ela nao
-// existir, extrai do JSON bruto salvo em ZOHO_TOKEN_RESPONSE (resposta
-// original da troca do grant code, que contem access_token e refresh_token).
 function getRefreshToken(): string | undefined {
   if (process.env.ZOHO_REFRESH_TOKEN) return process.env.ZOHO_REFRESH_TOKEN;
 
@@ -18,13 +15,20 @@ function getRefreshToken(): string | undefined {
   }
 }
 
-// Obtem um access token novo a partir do refresh token salvo nas variaveis de
-// ambiente. O Self Client do Zoho nao usa fluxo de redirect, entao o refresh
-// token e valido por tempo indeterminado ate ser revogado manualmente.
 async function getAccessToken(): Promise<string> {
   const clientId = process.env.ZOHO_CLIENT_ID;
   const clientSecret = process.env.ZOHO_CLIENT_SECRET;
   const refreshToken = getRefreshToken();
+
+  // DEBUG TEMPORARIO: loga apenas presenca (true/false) de cada credencial,
+  // nunca o valor, para diagnosticar variaveis de ambiente ausentes.
+  console.log("Zoho env check", {
+    hasClientId: !!clientId,
+    hasClientSecret: !!clientSecret,
+    hasRefreshTokenVar: !!process.env.ZOHO_REFRESH_TOKEN,
+    hasTokenResponseVar: !!process.env.ZOHO_TOKEN_RESPONSE,
+    resolvedRefreshToken: !!refreshToken,
+  });
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error("Credenciais do Zoho ausentes (ZOHO_CLIENT_ID/ZOHO_CLIENT_SECRET/ZOHO_REFRESH_TOKEN ou ZOHO_TOKEN_RESPONSE)");
@@ -49,7 +53,6 @@ async function getAccessToken(): Promise<string> {
   return data.access_token as string;
 }
 
-// Busca um registro especifico de um modulo do Zoho CRM (ex: Contacts, Products).
 export async function getZohoRecord(zohoModule: string, id: string): Promise<any> {
   const accessToken = await getAccessToken();
 
