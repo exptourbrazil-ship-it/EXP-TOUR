@@ -3,9 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 
 // Busca automaticamente, uma vez por dia, a cotacao comercial oficial do
 // Banco Central do Brasil (PTAX, olinda.bcb.gov.br - fonte publica e sem
-// autenticacao) para cada moeda usada nos produtos, e aplica a mesma
-// formula que a Confidence Cambio usa publicamente para "moeda em especie"
-// (IOF sobre o cambio comercial) para aproximar a cotacao VET do dia.
+// autenticacao) para cada moeda usada nos produtos, e aplica um spread
+// (SPREAD_CAMBIO_PERCENTUAL) para simular a diferenca entre o cambio
+// comercial/interbancario (PTAX) e o cambio de moeda em especie (papel
+// moeda) cobrado por casas de cambio como a Confidence Cambio, e em
+// seguida aplica o IOF (IOF_CAMBIO_PERCENTUAL) sobre esse valor, assim
+// aproximando a cotacao VET do dia.
 // A taxa administrativa fixa e somada separadamente no momento de gerar
 // a cobranca Pix (rota gerar-cobranca), e nao aqui, pois ela e um valor
 // fixo por transacao e nao por unidade de moeda.
@@ -50,6 +53,7 @@ export async function GET(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  const spreadPercentual = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.066");
   const iofPercentual = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
   const hojeISO = new Date().toISOString().slice(0, 10);
 
@@ -63,7 +67,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const cotacaoVet = Math.round(cambioComercial * (1 + iofPercentual) * 1e6) / 1e6;
+    const cotacaoVet = Math.round(cambioComercial * (1 + spreadPercentual) * (1 + iofPercentual) * 1e6) / 1e6;
 
     const { error } = await supabase
       .from("cotacoes_cambio")
