@@ -52,37 +52,47 @@ async function buscarCambioComercialBCB(moeda: string): Promise<number | null> {
 // Busca a taxa NZD/USD (quantos USD equivalem a 1 NZD) na tabela diaria
 // publicada pelo Reserve Bank of New Zealand (pagina publica, sem
 // autenticacao). A tabela mostra as ultimas datas em colunas; usamos a
-// ultima coluna (data mais recente publicada).
-async function buscarTaxaNZDUSDRBNZ(): Promise<number | null> {
+// ultima coluna (data mais recente publicada). Retorna tambem informacao
+// de diagnostico em caso de falha, para facilitar depuracao.
+async function buscarTaxaNZDUSDRBNZ(): Promise<{ valor: number | null; diagnostico: string }> {
   try {
     const res = await fetch(
-      "https://www.rbnz.govt.nz/statistics/series/exchange-and-interest-rates/exchange-rates-and-the-trade-weighted-index"
+      "https://www.rbnz.govt.nz/statistics/series/exchange-and-interest-rates/exchange-rates-and-the-trade-weighted-index",
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+      }
     );
-    if (!res.ok) return null;
+    if (!res.ok) return { valor: null, diagnostico: `http ${res.status}` };
     const html = await res.text();
 
     const linhaMatch = html.match(/<tr>\s*<td>United States dollar<\/td>([\s\S]*?)<\/tr>/);
-    if (!linhaMatch) return null;
+    if (!linhaMatch) return { valor: null, diagnostico: `linha nao encontrada (html len ${html.length})` };
 
     const valores = Array.from(linhaMatch[1].matchAll(/<td[^>]*>([\d.,]+)<\/td>/g)).map((m) =>
       Number(m[1].replace(",", "."))
     );
-    if (valores.length === 0) return null;
+    if (valores.length === 0) return { valor: null, diagnostico: "sem valores na linha" };
 
-    return valores[valores.length - 1];
-  } catch {
-    return null;
+    return { valor: valores[valores.length - 1], diagnostico: "ok" };
+  } catch (e: any) {
+    return { valor: null, diagnostico: `exception: ${e?.message || e}` };
   }
 }
 
-async function buscarCambioComercial(moeda: string): Promise<number | null> {
+async function buscarCambioComercial(moeda: string): Promise<{ valor: number | null; diagnostico?: string }> {
   if (moeda === "NZD") {
     const cambioUSD = await buscarCambioComercialBCB("USD");
-    const taxaNzdUsd = await buscarTaxaNZDUSDRBNZ();
-    if (cambioUSD === null || taxaNzdUsd === null) return null;
-    return cambioUSD * taxaNzdUsd;
+    const { valor: taxaNzdUsd, diagnostico } = await buscarTaxaNZDUSDRBNZ();
+    if (cambioUSD === null) return { valor: null, diagnostico: "USD do BCB indisponivel" };
+    if (taxaNzdUsd === null) return { valor: null, diagnostico: `RBNZ: ${diagnostico}` };
+    return { valor: cambioUSD * taxaNzdUsd };
   }
-  return buscarCambioComercialBCB(moeda);
+  const valor = await buscarCambioComercialBCB(moeda);
+  return { valor };
 }
 
 export async function GET(request: Request) {
@@ -103,10 +113,10 @@ export async function GET(request: Request) {
   const resultados: Record<string, number | string> = {};
 
   for (const moeda of MOEDAS_SUPORTADAS) {
-    const cambioComercial = await buscarCambioComercial(moeda);
+    const { valor: cambioComercial, diagnostico } = await buscarCambioComercial(moeda);
 
     if (cambioComercial === null) {
-      resultados[moeda] = "sem cotacao disponivel";
+      resultados[moeda] = `sem cotacao disponivel${diagnostico ? " (" + diagnostico + ")" : ""}`;
       continue;
     }
 
