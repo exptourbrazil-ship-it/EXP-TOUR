@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
+import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
 
 // Webhook do Zoho CRM: disparado por uma Workflow Rule no modulo Contatos
 // quando um contato e criado/atualizado com um Produto Adquirido vinculado.
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
     console.error(titularError);
     return NextResponse.json({ ok: false, error: "Falha ao salvar titular no Supabase" }, { status: 500 });
   }
+    try { const anexos = await getZohoAttachments("Contacts", contactId); for (const anexo of anexos) { const nomeArquivo = anexo.File_Name || "documento"; const tipoDocumento = categorizarNomeArquivo(nomeArquivo); if (tipoDocumento) { await supabase.from("documentos").upsert({ titular_id: titular.id, tipo_documento: tipoDocumento, nome_arquivo: nomeArquivo, origem: "zoho", zoho_module: "Contacts", zoho_record_id: contactId, zoho_attachment_id: anexo.id, tamanho_bytes: anexo.Size || null }, { onConflict: "titular_id,zoho_attachment_id" }); } } } catch (err) { console.error("Falha ao sincronizar documentos do Zoho", err); }
 
   if (!produtoLookup?.id) {
     return NextResponse.json({ ok: true, titular_id: titular.id, contrato: null });
