@@ -18,12 +18,31 @@ import { getZohoRecord } from "@/lib/zoho";
 // (ver /api/parcelas/[id]/gerar-cobranca), usando a cotacao VET do dia
 // cadastrada manualmente pela equipe na tabela "cotacoes_cambio".
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const contactId = searchParams.get("contactId");
+    const { searchParams } = new URL(request.url);
+    let contactId = searchParams.get("contactId");
 
-  if (!contactId) {
-    return NextResponse.json({ ok: false, error: "contactId ausente" }, { status: 400 });
-  }
+    // Fallback: a Workflow Rule do Zoho envia o contactId no corpo da
+    // requisicao (Formulario-Dados) quando o metodo e POST, em vez de
+    // como query string na URL. Tentamos ler dos dois lugares.
+    if (!contactId) {
+          try {
+                  const contentType = request.headers.get("content-type") || "";
+                  if (contentType.includes("application/json")) {
+                            const body = await request.clone().json();
+                            contactId = body?.contactId ?? null;
+                  } else {
+                            const form = await request.clone().formData();
+                            const value = form.get("contactId");
+                            contactId = typeof value === "string" ? value : null;
+                  }
+          } catch (err) {
+                  console.error("Falha ao ler corpo da requisicao do webhook", err);
+          }
+    }
+
+    if (!contactId) {
+          return NextResponse.json({ ok: false, error: "contactId ausente" }, { status: 400 });
+    }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
