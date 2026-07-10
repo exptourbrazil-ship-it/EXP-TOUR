@@ -46,5 +46,7 @@ export default async function ParcelasPage() {
       }));
   }
 
-  return createElement(ParcelasClient, { parcelas });
+    const { data: documentos } = await supabase.from("documentos").select("*").eq("titular_id", sessao.titularId).order("created_at", { ascending: false });
+
+  return createElement(ParcelasClient, { parcelas, documentos: documentos || [] });
 }
