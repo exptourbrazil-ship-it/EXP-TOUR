@@ -80,3 +80,27 @@ export async function getZohoRecord(zohoModule: string, id: string): Promise<any
 }
 export async function getZohoAttachments(zohoModule: string, recordId: string): Promise<any[]> { const accessToken = await getAccessToken(); const res = await fetch(`${ZOHO_API_DOMAIN}/crm/v2/${zohoModule}/${recordId}/Attachments`, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }); if (res.status === 204) return []; const data = await res.json(); if (!res.ok) throw new Error(`Falha ao buscar anexos no Zoho CRM: ${JSON.stringify(data)}`); return data?.data || []; }
 export async function getZohoAttachmentContent(zohoModule: string, recordId: string, attachmentId: string): Promise<{ buffer: ArrayBuffer; contentType: string | null }> { const accessToken = await getAccessToken(); const res = await fetch(`${ZOHO_API_DOMAIN}/crm/v2/${zohoModule}/${recordId}/Attachments/${attachmentId}`, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }); if (!res.ok) throw new Error(`Falha ao baixar anexo do Zoho CRM (status ${res.status})`); const buffer = await res.arrayBuffer(); return { buffer, contentType: res.headers.get("content-type") }; }
+
+
+// Envia um novo anexo para um registro do Zoho CRM (usado como backup dos
+// documentos enviados pelo titular na area do cliente).
+export async function uploadZohoAttachment(zohoModule: string, recordId: string, fileName: string, fileBuffer: ArrayBuffer, mimeType?: string): Promise<any> {
+  const accessToken = await getAccessToken();
+
+const form = new FormData();
+  const blob = new Blob([fileBuffer], { type: mimeType || "application/octet-stream" });
+  form.append("file", blob, fileName);
+
+const res = await fetch(`${ZOHO_API_DOMAIN}/crm/v2/${zohoModule}/${recordId}/Attachments`, {
+  method: "POST",
+  headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+  body: form,
+});
+
+const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Falha ao enviar anexo para o Zoho CRM: ${JSON.stringify(data)}`);
+  }
+
+return data;
+}
