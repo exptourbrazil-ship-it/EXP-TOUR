@@ -2,19 +2,73 @@
 import { createElement, useState } from "react";
 import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, labelDoTipoDocumento } from "@/lib/documentos";
 
+const STATUS_LABEL: Record<string, string> = {
+  pendente: "Pendente",
+  aprovado: "Aprovado",
+  rejeitado: "Rejeitado",
+};
+
+const STATUS_COR: Record<string, string> = {
+  pendente: "#b45309",
+  aprovado: "#15803d",
+  rejeitado: "#b91c1c",
+};
+
+function StatusBadge(status: string) {
+  const chave = status || "pendente";
+  const label = STATUS_LABEL[chave] || STATUS_LABEL.pendente;
+  const cor = STATUS_COR[chave] || STATUS_COR.pendente;
+  return createElement(
+    "span",
+    { style: { fontSize: 11, fontWeight: 600, color: cor, border: `1px solid ${cor}`, borderRadius: 4, padding: "1px 6px", marginLeft: 8, whiteSpace: "nowrap" } },
+    label
+    );
+}
+
 export default function DocumentosClient({ documentos }: { documentos: any[] }) {
   const [abaAtiva, setAbaAtiva] = useState("estudante");
-  if (!documentos || documentos.length === 0) return null;
+  const [documentosState, setDocumentosState] = useState(documentos || []);
+  const [tipoUpload, setTipoUpload] = useState({} as Record<string, string>);
+  const [enviando, setEnviando] = useState(null as string | null);
+  const [mensagem, setMensagem] = useState({} as Record<string, string>);
 
 const abas = CATEGORIAS_DOCUMENTO.map((cat) => {
-  const tipos = TIPOS_DOCUMENTO.filter((t) => t.categoria === cat.valor).map((t) => t.valor);
-  const grupos = tipos.map((tipo) => ({ tipo, itens: documentos.filter((d) => d.tipo_documento === tipo) })).filter((g) => g.itens.length > 0);
-  return { ...cat, grupos };
-}).filter((a) => a.grupos.length > 0);
-
-if (abas.length === 0) return null;
+  const tipos = TIPOS_DOCUMENTO.filter((t) => t.categoria === cat.valor);
+  const grupos = tipos
+  .map((tipo) => ({ tipo: tipo.valor, itens: documentosState.filter((d) => d.tipo_documento === tipo.valor) }))
+  .filter((g) => g.itens.length > 0);
+  return { ...cat, tipos, grupos };
+});
 
 const abaSelecionada = abas.find((a) => a.valor === abaAtiva) || abas[0];
+
+async function enviarArquivo(categoria: string, tipos: any[], e: any) {
+  const arquivo: File | null = e.target.files?.[0] || null;
+  e.target.value = "";
+  if (!arquivo) return;
+  const tipoDocumento = tipoUpload[categoria] || tipos[0]?.valor;
+  if (!tipoDocumento) return;
+
+  setEnviando(categoria);
+  setMensagem((m) => ({ ...m, [categoria]: "" }));
+  try {
+    const formData = new FormData();
+    formData.append("tipoDocumento", tipoDocumento);
+    formData.append("arquivo", arquivo);
+    const res = await fetch("/api/documentos/upload", { method: "POST", body: formData });
+    const json = await res.json();
+    if (!res.ok) {
+      setMensagem((m) => ({ ...m, [categoria]: `Erro: ${json.error || "falha desconhecida"}` }));
+    } else {
+      setDocumentosState((docs) => [...docs, json.documento]);
+      setMensagem((m) => ({ ...m, [categoria]: "Documento enviado com sucesso! Ele ficara pendente de aprovacao." }));
+    }
+  } catch (err: any) {
+    setMensagem((m) => ({ ...m, [categoria]: `Erro: ${err.message}` }));
+  } finally {
+    setEnviando(null);
+  }
+}
 
 return createElement(
   "div",
@@ -42,32 +96,60 @@ return createElement(
         },
         aba.label
         )
-                ),
-    )
-  ,
+                )
+    ),
   createElement(
     "div",
     { style: { display: "flex", flexDirection: "column", gap: 10 } },
-    ...abaSelecionada.grupos.map((grupo) =>
+    abaSelecionada.grupos.length === 0
+    ? createElement("p", { style: { fontSize: 13, color: "#999" } }, "Nenhum documento enviado nesta categoria ainda.")
+    : null,
+    ...abaSelecionada.grupos.map((grupo: any) =>
       createElement(
         "div",
         { key: grupo.tipo },
         createElement("div", { style: { fontSize: 13, color: "#666", marginBottom: 4 } }, labelDoTipoDocumento(grupo.tipo)),
         ...grupo.itens.map((doc: any) =>
           createElement(
-            "a",
-            {
-              key: doc.id,
-              href: `/api/documentos/${doc.id}/download`,
-              target: "_blank",
-              rel: "noreferrer",
-              style: { display: "block", fontSize: 14, color: "#2563eb", textDecoration: "underline", marginBottom: 2 },
-            },
-            doc.nome_arquivo
+            "div",
+            { key: doc.id, style: { display: "flex", alignItems: "center", marginBottom: 2 } },
+            createElement(
+              "a",
+              {
+                href: `/api/documentos/${doc.id}/download`,
+                target: "_blank",
+                rel: "noreferrer",
+                style: { fontSize: 14, color: "#2563eb", textDecoration: "underline" },
+              },
+              doc.nome_arquivo
+              ),
+            StatusBadge(doc.status)
             )
                            )
         )
-                                 )
+                                 ),
+    createElement(
+      "div",
+      { style: { marginTop: 12, padding: 12, border: "1px dashed #ccc", borderRadius: 6 } },
+      createElement("div", { style: { fontSize: 13, fontWeight: 500, marginBottom: 8 } }, "Enviar novo documento"),
+      createElement(
+        "select",
+        {
+          value: tipoUpload[abaSelecionada.valor] || abaSelecionada.tipos[0]?.valor,
+          onChange: (e: any) => setTipoUpload((t) => ({ ...t, [abaSelecionada.valor]: e.target.value })),
+          style: { display: "block", width: "100%", padding: 8, marginBottom: 8 },
+        },
+        ...abaSelecionada.tipos.map((t: any) => createElement("option", { key: t.valor, value: t.valor }, t.label))
+        ),
+      createElement("input", {
+        type: "file",
+        disabled: enviando === abaSelecionada.valor,
+        onChange: (e: any) => enviarArquivo(abaSelecionada.valor, abaSelecionada.tipos, e),
+        style: { display: "block", width: "100%" },
+      }),
+      enviando === abaSelecionada.valor ? createElement("p", { style: { fontSize: 12, color: "#666", marginTop: 6 } }, "Enviando...") : null,
+      mensagem[abaSelecionada.valor] ? createElement("p", { style: { fontSize: 12, marginTop: 6 } }, mensagem[abaSelecionada.valor]) : null
+      )
     )
-    );
+  );
 }
