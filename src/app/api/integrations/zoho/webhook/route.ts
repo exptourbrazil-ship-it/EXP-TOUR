@@ -61,6 +61,7 @@ export async function POST(request: Request) {
   const nomeCompleto =
     contato.Full_Name || `${contato.First_Name || ""} ${contato.Last_Name || ""}`.trim();
   const telefone = contato.Phone || contato.Mobile || null;
+    const email = contato.Email || null;
   const produtoLookup = contato.Produto_Adquirido;
 
   if (!cpf || !nomeCompleto) {
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
   const { data: titular, error: titularError } = await supabase
     .from("titulares")
     .upsert(
-      { cpf, nome_completo: nomeCompleto, telefone, zoho_contact_id: contactId },
+        { cpf, nome_completo: nomeCompleto, telefone, email, zoho_contact_id: contactId },
       { onConflict: "cpf" }
     )
     .select()
