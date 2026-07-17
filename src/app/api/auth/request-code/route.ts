@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { enviarCodigoAcesso } from "@/lib/whatsapp";
+import { enviarCodigoAcessoEmail } from "@/lib/email";
 
 function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
@@ -23,8 +23,8 @@ function normalizarTelefone(telefone: string): string {
 }
 
 // Recebe um CPF, verifica se existe um titular cadastrado com esse CPF e,
-// se existir e tiver telefone, gera um codigo de acesso de 6 digitos, grava
-// na tabela codigos_acesso (valido por 10 minutos) e envia por WhatsApp.
+// se existir e tiver email, gera um codigo de acesso de 6 digitos, grava
+// na tabela codigos_acesso (valido por 10 minutos) e envia por e-mail (Resend).
 // A resposta e sempre generica (nao revela se o CPF existe ou nao), para
 // evitar que alguem descubra quais CPFs estao cadastrados.
 export async function POST(request: Request) {
@@ -43,11 +43,11 @@ export async function POST(request: Request) {
 
   const { data: titular } = await supabase
       .from("titulares")
-      .select("id, telefone")
+              .select("id, nome_completo, email")
       .eq("cpf", cpfLimpo)
       .maybeSingle();
 
-  if (!titular || !titular.telefone) {
+      if (!titular || !titular.email) {
         return NextResponse.json({ success: true });
   }
 
@@ -61,9 +61,9 @@ export async function POST(request: Request) {
   });
 
   try {
-        await enviarCodigoAcesso(normalizarTelefone(titular.telefone), codigo);
+                await enviarCodigoAcessoEmail(titular.email, titular.nome_completo, codigo);
   } catch (err) {
-        console.error("Falha ao enviar codigo via WhatsApp", err);
+                console.error("Falha ao enviar codigo por email", err);
   }
 
   return NextResponse.json({ success: true });
