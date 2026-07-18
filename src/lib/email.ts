@@ -6,7 +6,7 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 
 function getConfig() {
 const apiKey = process.env.RESEND_API_KEY as string;
-const fromEmail = process.env.RESEND_FROM_EMAIL || "Area do Cliente EXP Tour <acesso@send.exp-tour.com>";
+const fromEmail = process.env.RESEND_FROM_EMAIL || "Area do Cliente EXP Tour <noreply@exp-tour.com>";
 
 if (!apiKey) {
 throw new Error("RESEND_API_KEY nao configurado");
