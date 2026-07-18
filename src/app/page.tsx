@@ -59,11 +59,11 @@ export default function LoginPage() {
   const logoEl = createElement("img", {
           src: LOGO_URL,
           alt: "EXP TOUR",
-          width: 140,
+          width: 175,
           className: "mx-auto mb-6",
   });
 
-  const tituloEl = createElement("h1", { className: "mb-2 text-2xl font-semibold text-brand" }, "Area do cliente");
+  const tituloEl = createElement("h1", { className: "mb-2 text-3xl font-semibold text-brand" }, "Area do cliente");
 
   const formularioCpf = createElement(
           "form",
@@ -71,14 +71,14 @@ export default function LoginPage() {
           createElement(
                     "div",
                     null,
-                    createElement("label", { className: "mb-1 block text-sm font-medium text-brand" }, "CPF"),
+                    createElement("label", { className: "mb-1 block text-base font-medium text-brand" }, "CPF"),
                     createElement("input", {
                                 type: "text",
                                 required: true,
                                 value: cpf,
                                 onChange: (e: any) => setCpf(e.target.value),
                                 placeholder: "000.000.000-00",
-                                className: "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none",
+                                className: "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-base focus:border-brand focus:outline-none",
                     })
                   ),
           createElement(
@@ -89,7 +89,7 @@ export default function LoginPage() {
                         {
                                       type: "submit",
                                       disabled: loading,
-                                      className: "w-full rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
+                                      className: "w-full rounded-md bg-brand px-4 py-2 text-base font-medium text-white hover:opacity-90 disabled:opacity-50",
                         },
                                 loading ? "Enviando..." : "Receber codigo por email"
                               )
@@ -102,7 +102,7 @@ export default function LoginPage() {
           createElement(
                     "div",
                     null,
-                    createElement("label", { className: "mb-1 block text-sm font-medium text-brand" }, "Codigo de acesso"),
+                    createElement("label", { className: "mb-1 block text-base font-medium text-brand" }, "Codigo de acesso"),
                     createElement("input", {
                                 type: "text",
                                 required: true,
@@ -110,7 +110,7 @@ export default function LoginPage() {
                                 onChange: (e: any) => setCodigo(e.target.value),
                                 placeholder: "000000",
                                 maxLength: 6,
-                                className: "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none",
+                                className: "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-base focus:border-brand focus:outline-none",
                     })
                   ),
           createElement(
@@ -121,7 +121,7 @@ export default function LoginPage() {
                         {
                                       type: "submit",
                                       disabled: loading,
-                                      className: "w-full rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
+                                      className: "w-full rounded-md bg-brand px-4 py-2 text-base font-medium text-white hover:opacity-90 disabled:opacity-50",
                         },
                                 loading ? "Confirmando..." : "Confirmar codigo"
                               )
@@ -134,7 +134,7 @@ export default function LoginPage() {
                                         setEtapa("cpf");
                                         setMessage(null);
                           },
-                          className: "w-full text-center text-sm text-brand underline",
+                          className: "w-full text-center text-base text-brand underline",
               },
                     "Usar outro CPF"
                   )
@@ -147,7 +147,7 @@ export default function LoginPage() {
                         null,
                         createElement(
                                         "p",
-                            { className: "mb-6 text-sm text-brand" },
+                            { className: "mb-6 text-base text-brand" },
                                         "Informe seu CPF. Enviaremos um codigo de acesso para o seu email - voce vera apenas os seus contratos"
                                       ),
                         formularioCpf
@@ -157,13 +157,13 @@ export default function LoginPage() {
                           null,
                           createElement(
                                           "p",
-                              { className: "mb-6 text-sm text-brand" },
+                              { className: "mb-6 text-base text-brand" },
                                           "Digite o codigo de 6 digitos que enviamos para o seu email."
                                         ),
                           formularioCodigo
                         );
 
-  const mensagemEl = message ? createElement("p", { className: "mt-4 text-sm text-brand" }, message) : null;
+  const mensagemEl = message ? createElement("p", { className: "mt-4 text-base text-brand" }, message) : null;
 
   return createElement(
           "main",
