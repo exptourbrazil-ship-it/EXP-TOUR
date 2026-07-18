@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg";
+const BRAND_GREEN = "#042f1b";
 
 function getConfig() {
   const apiKey = process.env.RESEND_API_KEY as string;
@@ -46,28 +47,27 @@ return `
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0;padding:0;">
-<div style="background-color:#0f3d2e;padding:32px 0;font-family:'Roboto',Arial,Helvetica,sans-serif;">
-<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:#0f3d2e;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:'Bellefair',Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:${BRAND_GREEN};">
 <tr>
 <td style="text-align:center;padding-bottom:24px;">
-<img src="${LOGO_URL}" alt="EXP TOUR" width="88" style="display:block;margin:0 auto 8px;border:0;" />
-<span style="color:#c9a35e;font-size:14px;letter-spacing:2px;font-weight:bold;">EXP TOUR</span>
+<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
 </td>
 </tr>
 <tr>
 <td style="background-color:#F5EAD9;border-radius:8px;padding:32px;text-align:center;">
-<p style="color:#0f3d2e;font-size:16px;margin:0 0 16px;">${saudacao}</p>
-<p style="color:#0f3d2e;font-size:15px;margin:0 0 24px;">Use o codigo abaixo para acessar a sua Area do Cliente:</p>
-<div style="background-color:#0f3d2e;color:#c9a35e;font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;border-radius:6px;display:inline-block;">${codigo}</div>
-<p style="color:#0f3d2e;font-size:13px;margin:24px 0 0;">Este codigo expira em 10 minutos. Se voce nao solicitou este acesso, ignore este e-mail.</p>
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:16px;margin:0 0 24px;">Use o codigo abaixo para acessar a sua Area do Cliente:</p>
+<div style="background-color:${BRAND_GREEN};color:#c9a35e;font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;border-radius:6px;display:inline-block;">${codigo}</div>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:24px 0 0;">Este codigo expira em 10 minutos. Se voce nao solicitou este acesso, ignore este e-mail.</p>
 </td>
 </tr>
 <tr>
 <td style="text-align:center;padding-top:24px;">
-<span style="color:#F5EAD9;font-size:12px;">EXP Tour - Area do Cliente</span>
+<span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span>
 </td>
 </tr>
 </table>
