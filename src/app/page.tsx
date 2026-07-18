@@ -48,7 +48,7 @@ export default function LoginPage() {
                                 setMessage(resultado.error || "Codigo invalido ou expirado.");
                                 return;
                     }
-                    window.location.href = "/parcelas";
+                    window.location.href = "/inicio";
           } catch (err) {
                     setMessage("Nao foi possivel confirmar o codigo.");
           } finally {
