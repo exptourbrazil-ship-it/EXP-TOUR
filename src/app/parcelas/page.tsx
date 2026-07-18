@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import ParcelasClient from "./ParcelasClient";
 import DocumentosClient from "./DocumentosClient";
+import BottomNav from "@/components/BottomNav";
 
 // Pagina do servidor: le a sessao autenticada (cookie httpOnly, criado em
 // /api/auth/verify-code), busca no Supabase (com a service role, que
@@ -49,5 +50,5 @@ export default async function ParcelasPage() {
 
     const { data: documentos } = await supabase.from("documentos").select("*").eq("titular_id", sessao.titularId).order("created_at", { ascending: false });
 
-  return createElement("div", null, createElement(DocumentosClient, { documentos: documentos || [] }), createElement(ParcelasClient, { parcelas }));
+  return createElement("div", null, createElement(DocumentosClient, { documentos: documentos || [] }), createElement(ParcelasClient, { parcelas }), createElement(BottomNav));
 }
