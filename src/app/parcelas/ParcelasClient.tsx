@@ -26,7 +26,7 @@ function formatarMoeda(valor: number, moeda: string): string {
     }
 }
 
-export default function ParcelasClient({ parcelas, programaNome }: { parcelas: Parcela[]; programaNome?: string | null }) {
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number }) {
     const router = useRouter();
     const [erro, setErro] = useState<string | null>(null);
     const [gerando, setGerando] = useState<string | null>(null);
@@ -67,6 +67,28 @@ const cabecalho = createElement(
                 ? createElement("p", { className: "text-sm text-neutral-500 mt-1" }, programaNome)
                 : null
         );
+
+    const percentualPago = totalPrograma && totalPrograma > 0 ? Math.min(100, Math.round(((pagoAteAgora || 0) / totalPrograma) * 100)) : 0;
+    const moedaPrograma = parcelas.length > 0 ? parcelas[0].moeda : "BRL";
+
+    const resumoPagamento = totalPrograma && totalPrograma > 0
+    ? createElement(
+        "div",
+        { className: "mb-6 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm" },
+        createElement("p", { className: "text-xs font-medium text-neutral-500 uppercase tracking-wide" }, "Pago até agora"),
+        createElement(
+            "div",
+            { className: "mt-1 flex items-baseline gap-2" },
+            createElement("span", { className: "text-2xl font-semibold text-brand" }, formatarMoeda(pagoAteAgora || 0, moedaPrograma)),
+            createElement("span", { className: "text-sm text-neutral-500" }, `${percentualPago}% do programa`)
+            ),
+        createElement(
+            "div",
+            { className: "mt-3 h-2 w-full rounded-full bg-neutral-100" },
+            createElement("div", { className: "h-2 rounded-full bg-green-600", style: { width: `${percentualPago}%` } })
+            )
+        )
+        : null;
 
   const erroEl = erro ? createElement("div", { className: "mb-4 text-sm text-red-600" }, erro) : null;
 
@@ -161,5 +183,5 @@ const cabecalho = createElement(
 
   const listaEl = createElement("div", { className: "space-y-3" }, ...itensLista);
 
-  return createElement("main", { className: "mx-auto max-w-3xl p-6" }, cabecalho, erroEl, listaEl);
+      return createElement("main", { className: "mx-auto max-w-3xl p-6" }, cabecalho, resumoPagamento, erroEl, listaEl);
 }
