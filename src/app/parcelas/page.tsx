@@ -50,6 +50,37 @@ export default async function ParcelasPage() {
       }));
   }
 
+    const moedasUnicas = Array.from(new Set(parcelas.map((p) => p.moeda).filter((m) => m && m !== "BRL")));
+    const cotacoesPorMoeda = new Map<string, number>();
+
+    if (moedasUnicas.length > 0) {
+        const hojeISO = new Date().toISOString().slice(0, 10);
+        for (const moeda of moedasUnicas) {
+            const { data: cotacao } = await supabase
+            .from("cotacoes_cambio")
+            .select("cotacao_vet")
+            .eq("moeda", moeda)
+            .lte("data", hojeISO)
+            .order("data", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+            if (cotacao) {
+                cotacoesPorMoeda.set(moeda, Number(cotacao.cotacao_vet));
+            }
+        }
+    }
+
+    const taxaAdministrativa = Number(process.env.TAXA_ADMINISTRATIVA_CAMBIO_BRL || "4.99");
+
+    parcelas = parcelas.map((p) => {
+        const cotacaoEstimada = cotacoesPorMoeda.get(p.moeda) || null;
+        const valorEstimadoBRL = cotacaoEstimada
+        ? Math.round((Number(p.valor_original) * cotacaoEstimada + taxaAdministrativa) * 100) / 100
+            : null;
+        return { ...p, cotacaoEstimada, valorEstimadoBRL };
+    });
+
     const pagoAteAgora = parcelas.filter((p) => p.status === "pago").reduce((soma, p) => soma + Number(p.valor_original || 0), 0);
 
     const { data: documentos } = await supabase.from("documentos").select("*").eq("titular_id", sessao.titularId).order("created_at", { ascending: false });
