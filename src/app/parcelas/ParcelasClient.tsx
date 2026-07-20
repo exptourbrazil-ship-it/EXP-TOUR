@@ -26,7 +26,7 @@ function formatarMoeda(valor: number, moeda: string): string {
     }
 }
 
-export default function ParcelasClient({ parcelas }: { parcelas: Parcela[] }) {
+export default function ParcelasClient({ parcelas, programaNome }: { parcelas: Parcela[]; programaNome?: string | null }) {
     const router = useRouter();
     const [erro, setErro] = useState<string | null>(null);
     const [gerando, setGerando] = useState<string | null>(null);
@@ -54,12 +54,19 @@ export default function ParcelasClient({ parcelas }: { parcelas: Parcela[] }) {
         window.location.href = "/";
   }
 
-  const cabecalho = createElement(
-        "div",
-    { className: "mb-6 flex items-center justify-between" },
-        createElement("h1", { className: "text-2xl font-semibold text-brand" }, "Parcelas"),
-        createElement("button", { onClick: sair, className: "text-sm text-neutral-500 underline" }, "Sair")
-      );
+const cabecalho = createElement(
+            "div",
+    { className: "mb-6" },
+            createElement(
+                            "div",
+                { className: "flex items-center justify-between" },
+                            createElement("h1", { className: "text-2xl font-semibold text-brand" }, "Parcelas"),
+                            createElement("button", { onClick: sair, className: "text-sm text-neutral-500 underline" }, "Sair")
+                        ),
+            programaNome
+                ? createElement("p", { className: "text-sm text-neutral-500 mt-1" }, programaNome)
+                : null
+        );
 
   const erroEl = erro ? createElement("div", { className: "mb-4 text-sm text-red-600" }, erro) : null;
 
