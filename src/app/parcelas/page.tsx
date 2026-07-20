@@ -27,11 +27,12 @@ export default async function ParcelasPage() {
 
   const { data: contratos } = await supabase
       .from("contratos")
-      .select("id, moeda")
+      .select("id, nome, moeda")
       .eq("titular_id", sessao.titularId);
 
   const contratoIds = (contratos || []).map((c) => c.id);
     const moedaPorContrato = new Map((contratos || []).map((c) => [c.id, c.moeda]));
+    const programaNome = contratos && contratos.length > 0 ? (contratos[0] as any).nome : null;
 
   let parcelas: any[] = [];
 
@@ -50,5 +51,5 @@ export default async function ParcelasPage() {
 
     const { data: documentos } = await supabase.from("documentos").select("*").eq("titular_id", sessao.titularId).order("created_at", { ascending: false });
 
-  return createElement("div", null, createElement(DocumentosClient, { documentos: documentos || [] }), createElement(ParcelasClient, { parcelas }), createElement(BottomNav));
+  return createElement("div", null, createElement(DocumentosClient, { documentos: documentos || [] }), createElement(ParcelasClient, { parcelas, programaNome }), createElement(BottomNav));
 }
