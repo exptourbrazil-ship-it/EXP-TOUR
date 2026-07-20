@@ -16,6 +16,8 @@ type Parcela = {
     payment_link: string | null;
     qr_code_url: string | null;
     moeda: string;
+    cotacaoEstimada?: number | null;
+    valorEstimadoBRL?: number | null;
 };
 
 function formatarMoeda(valor: number, moeda: string): string {
@@ -142,7 +144,7 @@ const cabecalho = createElement(
                                                           ? createElement(
                                                                           "div",
                                                             { className: "text-xs text-neutral-400" },
-                                                                          "O valor em BRL sera calculado no momento de gerar o Pix, pela cotacao do dia."
+                                                                          parcela.valorEstimadoBRL ? `Equivalente hoje: ${formatarMoeda(parcela.valorEstimadoBRL, "BRL")} (estimativa, a cotacao pode mudar ate o pagamento)` : "O valor em BRL sera calculado no momento de gerar o Pix, pela cotacao do dia."
                                                                         )
                                                           : null,
                                                         infoBotaoStatus
