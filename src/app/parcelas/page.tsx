@@ -25,13 +25,15 @@ export default async function ParcelasPage() {
 
   const { data: contratos } = await supabase
     .from("contratos")
-    .select("id, nome, moeda, valor_total")
+    .select("id, nome, moeda, valor_total, data_inicio")
     .eq("titular_id", sessao.titularId);
 
   const contratoIds = (contratos || []).map((c) => c.id);
   const moedaPorContrato = new Map((contratos || []).map((c) => [c.id, c.moeda]));
   const programaNome = contratos && contratos.length > 0 ? (contratos[0] as any).nome : null;
   const totalPrograma = contratos && contratos.length > 0 ? contratos.reduce((soma, c) => soma + Number((c as any).valor_total || 0), 0) : 0;
+  const contratoId = contratos && contratos.length > 0 ? (contratos[0] as any).id : null;
+  const dataInicio = contratos && contratos.length > 0 ? ((contratos[0] as any).data_inicio || null) : null;
 
   let parcelas: any[] = [];
 
@@ -81,5 +83,5 @@ export default async function ParcelasPage() {
 
   const pagoAteAgora = parcelas.filter((p) => p.status === "pago").reduce((soma, p) => soma + Number(p.valor_original || 0), 0);
 
-  return createElement("div", null, createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora }), createElement(BottomNav));
+  return createElement("div", null, createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio }), createElement(BottomNav));
 }
