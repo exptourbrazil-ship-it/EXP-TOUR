@@ -20,6 +20,14 @@ type Parcela = {
   valorEstimadoBRL?: number | null;
 };
 
+type LinhaEdicao = {
+  id?: string;
+  descricao: string;
+  valor: string;
+  vencimento: string;
+  bloqueada: boolean;
+};
+
 function formatarMoeda(valor: number, moeda: string): string {
   try {
     return valor.toLocaleString("pt-BR", { style: "currency", currency: moeda });
@@ -102,10 +110,201 @@ function CopiarPix({ codigo }: { codigo: string }) {
   );
 }
 
-export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number }) {
+function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, onFechar, onSalvo }: { parcelas: Parcela[]; contratoId: string; dataInicio: string | null; moeda: string; onFechar: () => void; onSalvo: () => void; }) {
+  const iniciais: LinhaEdicao[] = parcelas.map((p) => ({
+    id: p.id,
+    descricao: p.descricao,
+    valor: String(p.valor_original),
+    vencimento: p.vencimento ? p.vencimento.slice(0, 10) : "",
+    bloqueada: p.status === "pago" || !!p.qr_code_url,
+  }));
+
+  const [linhas, setLinhas] = useState<LinhaEdicao[]>(iniciais);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const limite30 = (() => {
+    if (!dataInicio) return null;
+    const inicio = new Date(dataInicio + "T00:00:00");
+    const limite = new Date(inicio);
+    limite.setDate(limite.getDate() - 30);
+    return limite;
+  })();
+
+  function atualizar(index: number, campo: keyof LinhaEdicao, valor: string) {
+    setLinhas((atual) => atual.map((l, i) => (i === index ? { ...l, [campo]: valor } : l)));
+  }
+
+  function remover(index: number) {
+    setLinhas((atual) => atual.filter((_, i) => i !== index));
+  }
+
+  function adicionar() {
+    setLinhas((atual) => [...atual, { descricao: "Nova parcela", valor: "", vencimento: "", bloqueada: false }]);
+  }
+
+  const total = linhas.reduce((soma, l) => soma + (Number(l.valor) || 0), 0);
+
+  async function salvar() {
+    setErro(null);
+    for (const l of linhas) {
+      if (!l.descricao || !l.vencimento || !(Number(l.valor) > 0)) {
+        setErro("Cada parcela precisa de descricao, valor maior que zero e data de vencimento.");
+        return;
+      }
+    }
+    if (limite30) {
+      const ultimo = linhas
+        .map((l) => new Date(l.vencimento + "T00:00:00"))
+        .reduce((max, d) => (d > max ? d : max), new Date(0));
+      if (ultimo > limite30) {
+        setErro("O ultimo pagamento precisa ser ate " + limite30.toISOString().slice(0, 10) + " (30 dias antes do inicio do programa).");
+        return;
+      }
+    }
+    setSalvando(true);
+    try {
+      const payload = {
+        contratoId,
+        parcelas: linhas.map((l, i) => ({
+          id: l.id,
+          numero: i + 1,
+          descricao: l.descricao,
+          valor: Number(l.valor),
+          vencimento: l.vencimento,
+        })),
+      };
+      const resp = await fetch("/api/parcelas/ajustar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const resultado = await resp.json();
+      if (resultado.ok) {
+        onSalvo();
+      } else {
+        setErro(resultado.erro || "Nao foi possivel salvar as alteracoes.");
+      }
+    } catch {
+      setErro("Nao foi possivel salvar as alteracoes.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const linhasEl = linhas.map((l, index) =>
+    createElement(
+      "div",
+      { key: l.id || "nova-" + index, className: "rounded-xl border border-neutral-200 p-3" },
+      l.bloqueada
+        ? createElement("p", { className: "mb-2 text-xs font-medium text-neutral-400" }, "Parcela ja paga ou com Pix gerado - nao pode ser alterada")
+        : null,
+      createElement(
+        "div",
+        { className: "flex flex-col gap-2 sm:flex-row sm:items-end" },
+        createElement(
+          "label",
+          { className: "flex-1 text-xs text-neutral-500" },
+          "Descricao",
+          createElement("input", {
+            type: "text",
+            value: l.descricao,
+            disabled: l.bloqueada,
+            onChange: (e: any) => atualizar(index, "descricao", e.target.value),
+            className: "mt-1 w-full rounded-lg border border-neutral-200 p-2 text-sm disabled:bg-neutral-100",
+          })
+        ),
+        createElement(
+          "label",
+          { className: "w-28 text-xs text-neutral-500" },
+          "Valor (" + moeda + ")",
+          createElement("input", {
+            type: "number",
+            step: "0.01",
+            min: "0",
+            value: l.valor,
+            disabled: l.bloqueada,
+            onChange: (e: any) => atualizar(index, "valor", e.target.value),
+            className: "mt-1 w-full rounded-lg border border-neutral-200 p-2 text-sm disabled:bg-neutral-100",
+          })
+        ),
+        createElement(
+          "label",
+          { className: "w-40 text-xs text-neutral-500" },
+          "Vencimento",
+          createElement("input", {
+            type: "date",
+            value: l.vencimento,
+            disabled: l.bloqueada,
+            onChange: (e: any) => atualizar(index, "vencimento", e.target.value),
+            className: "mt-1 w-full rounded-lg border border-neutral-200 p-2 text-sm disabled:bg-neutral-100",
+          })
+        ),
+        l.bloqueada
+          ? null
+          : createElement(
+              "button",
+              { onClick: () => remover(index), className: "shrink-0 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600" },
+              "Excluir"
+            )
+      )
+    )
+  );
+
+  return createElement(
+    "div",
+    { className: "fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" },
+    createElement(
+      "div",
+      { className: "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" },
+      createElement(
+        "div",
+        { className: "mb-4 flex items-center justify-between" },
+        createElement("h3", { className: "text-lg font-semibold text-brand" }, "Ajustar parcelas"),
+        createElement("button", { onClick: onFechar, className: "text-sm text-neutral-500 underline" }, "Fechar")
+      ),
+      dataInicio
+        ? createElement(
+            "p",
+            { className: "mb-3 text-xs text-neutral-500" },
+            "O ultimo pagamento precisa ser ate 30 dias antes do inicio do programa (" + new Date(dataInicio + "T00:00:00").toLocaleDateString("pt-BR") + ")."
+          )
+        : createElement(
+            "p",
+            { className: "mb-3 text-xs text-neutral-400" },
+            "Voce pode ajustar valores e datas, adicionar ou excluir parcelas."
+          ),
+      createElement("div", { className: "space-y-3" }, ...linhasEl),
+      createElement(
+        "button",
+        { onClick: adicionar, className: "mt-3 rounded-lg border border-dashed border-neutral-300 px-4 py-2 text-sm text-neutral-600" },
+        "+ Adicionar parcela"
+      ),
+      erro ? createElement("div", { className: "mt-3 text-sm text-red-600" }, erro) : null,
+      createElement(
+        "div",
+        { className: "mt-4 flex items-center justify-between border-t border-neutral-100 pt-4" },
+        createElement("span", { className: "text-sm text-neutral-500" }, "Total: " + formatarMoeda(total, moeda)),
+        createElement(
+          "div",
+          { className: "flex gap-2" },
+          createElement("button", { onClick: onFechar, className: "rounded-full border border-neutral-300 px-4 py-2 text-sm" }, "Cancelar"),
+          createElement(
+            "button",
+            { onClick: salvar, disabled: salvando, className: "rounded-full bg-brand px-5 py-2 text-sm font-medium text-white disabled:opacity-50" },
+            salvando ? "Salvando..." : "Salvar"
+          )
+        )
+      )
+    )
+  );
+}
+
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null }) {
   const router = useRouter();
   const [erro, setErro] = useState<string | null>(null);
   const [gerando, setGerando] = useState<string | null>(null);
+  const [editando, setEditando] = useState(false);
 
   async function gerarCobranca(parcelaId: string) {
     setGerando(parcelaId);
@@ -130,6 +329,8 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
     window.location.href = "/";
   }
 
+  const moedaPrograma = parcelas.length > 0 ? parcelas[0].moeda : "BRL";
+
   const cabecalho = createElement(
     "div",
     { className: "mb-6" },
@@ -143,7 +344,6 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   );
 
   const percentualPago = totalPrograma && totalPrograma > 0 ? Math.min(100, Math.round(((pagoAteAgora || 0) / totalPrograma) * 100)) : 0;
-  const moedaPrograma = parcelas.length > 0 ? parcelas[0].moeda : "BRL";
 
   const resumoPagamento =
     totalPrograma && totalPrograma > 0
@@ -270,12 +470,35 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
     );
   });
 
-  const listaEl = createElement(
+  const cabecalhoLista = createElement(
     "div",
-    { className: "space-y-3" },
-    createElement("h2", { className: "mb-1 text-lg font-semibold text-brand" }, "Parcelas"),
-    ...itensLista
+    { className: "mb-1 flex items-center justify-between" },
+    createElement("h2", { className: "text-lg font-semibold text-brand" }, "Parcelas"),
+    contratoId
+      ? createElement(
+          "button",
+          { onClick: () => setEditando(true), className: "text-sm font-medium text-brand underline" },
+          "Ajustar parcelas"
+        )
+      : null
   );
 
-  return createElement("main", { className: "mx-auto max-w-3xl p-6 pb-28" }, cabecalho, resumoPagamento, erroEl, listaEl);
+  const listaEl = createElement("div", { className: "space-y-3" }, cabecalhoLista, ...itensLista);
+
+  const modal =
+    editando && contratoId
+      ? createElement(AjustarParcelas, {
+          parcelas,
+          contratoId,
+          dataInicio: dataInicio || null,
+          moeda: moedaPrograma,
+          onFechar: () => setEditando(false),
+          onSalvo: () => {
+            setEditando(false);
+            router.refresh();
+          },
+        })
+      : null;
+
+  return createElement("main", { className: "mx-auto max-w-3xl p-6 pb-28" }, cabecalho, resumoPagamento, erroEl, listaEl, modal);
 }
