@@ -39,6 +39,69 @@ function IconePago() {
 function IconePendente() {
   return createElement("span", { className: "h-6 w-6 shrink-0 rounded-full border-2 border-neutral-300" });
 }
+
+function CopiarPix({ codigo }: { codigo: string }) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar() {
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(codigo);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = codigo;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        ok = true;
+      } catch {
+        ok = false;
+      }
+    }
+    if (ok) {
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    }
+  }
+
+  return createElement(
+    "div",
+    { className: "mt-3 w-full max-w-md" },
+    createElement("p", { className: "mb-1 text-xs text-neutral-500" }, "Pix copia e cola"),
+    createElement(
+      "div",
+      { className: "flex items-stretch gap-2" },
+      createElement("textarea", {
+        readOnly: true,
+        value: codigo,
+        onClick: (e: any) => e.target.select(),
+        className: "h-16 flex-1 resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-2 text-[11px] leading-tight text-neutral-600 break-all",
+      }),
+      createElement(
+        "button",
+        {
+          onClick: copiar,
+          className: copiado
+            ? "shrink-0 rounded-lg bg-green-600 px-4 text-sm font-medium text-white"
+            : "shrink-0 rounded-lg bg-brand px-4 text-sm font-medium text-white",
+        },
+        copiado ? "Copiado!" : "Copiar"
+      )
+    )
+  );
+}
+
 export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number }) {
   const router = useRouter();
   const [erro, setErro] = useState<string | null>(null);
@@ -78,6 +141,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
     ),
     programaNome ? createElement("p", { className: "mt-1 text-sm text-neutral-500" }, programaNome) : null
   );
+
   const percentualPago = totalPrograma && totalPrograma > 0 ? Math.min(100, Math.round(((pagoAteAgora || 0) / totalPrograma) * 100)) : 0;
   const moedaPrograma = parcelas.length > 0 ? parcelas[0].moeda : "BRL";
 
@@ -126,6 +190,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
           },
           gerando === parcela.id ? "Gerando..." : "Gerar Pix"
         );
+
     const linhaTopo = createElement(
       "div",
       { className: "flex items-center justify-between gap-3" },
@@ -167,25 +232,17 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
         createElement("div", { className: "mt-1" }, infoBotaoStatus)
       )
     );
+
     const blocoQr =
       !paga && parcela.qr_code_url
         ? createElement(
             "div",
             { className: "mt-4 flex flex-col items-center gap-2 border-t border-neutral-100 pt-4" },
             createElement("img", { src: parcela.qr_code_url, alt: "QR Code Pix", className: "h-40 w-40" }),
-            parcela.payment_link
-              ? createElement(
-                  "button",
-                  {
-                    onClick: () => navigator.clipboard.writeText(parcela.payment_link as string),
-                    className: "text-xs text-neutral-500 underline",
-                  },
-                  "Copiar codigo Pix (copia e cola)"
-                )
-              : null,
+            parcela.payment_link ? createElement(CopiarPix, { codigo: parcela.payment_link }) : null,
             createElement(
               "span",
-              { className: "text-xs text-neutral-400" },
+              { className: "mt-1 text-xs text-neutral-400" },
               "O status sera atualizado automaticamente apos a confirmacao do pagamento."
             )
           )
@@ -220,5 +277,5 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
     ...itensLista
   );
 
-  return createElement("main", { className: "mx-auto max-w-3xl p-6" }, cabecalho, resumoPagamento, erroEl, listaEl);
+  return createElement("main", { className: "mx-auto max-w-3xl p-6 pb-28" }, cabecalho, resumoPagamento, erroEl, listaEl);
 }
