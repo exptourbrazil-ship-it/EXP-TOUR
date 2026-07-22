@@ -252,6 +252,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   const [gerando, setGerando] = useState<string | null>(null)
   const [editando, setEditando] = useState(false)
   const [restaurando, setRestaurando] = useState(false)
+  const [cancelando, setCancelando] = useState<string | null>(null)
 
   async function gerarCobranca(parcelaId: string) {
     setGerando(parcelaId)
@@ -268,6 +269,26 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
       setErro("Nao foi possivel gerar a cobranca Pix.")
     } finally {
       setGerando(null)
+    }
+  }
+
+  async function cancelarCobranca(parcelaId: string) {
+    const confirmado = window.confirm("Cancelar esta cobranca Pix e voltar a parcela para 'em aberto'? Voce podera edita-la ou gerar o Pix novamente depois.")
+    if (!confirmado) return
+    setCancelando(parcelaId)
+    setErro(null)
+    try {
+      const response = await fetch("/api/parcelas/" + parcelaId + "/cancelar-cobranca", { method: "POST" })
+      const resultado = await response.json()
+      if (resultado.ok) {
+        router.refresh()
+      } else {
+        setErro(resultado.erro || "Nao foi possivel cancelar a cobranca.")
+      }
+    } catch {
+      setErro("Nao foi possivel cancelar a cobranca.")
+    } finally {
+      setCancelando(null)
     }
   }
 
@@ -412,6 +433,13 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       <img src={parcela.qr_code_url} alt="QR Code Pix" className="h-40 w-40" />
                       {parcela.payment_link ? <CopiarPix codigo={parcela.payment_link} /> : null}
                       <span className="mt-1 text-xs text-neutral-400">O status sera atualizado automaticamente apos a confirmacao do pagamento.</span>
+                      <button
+                        onClick={() => cancelarCobranca(parcela.id)}
+                        disabled={cancelando === parcela.id}
+                        className="mt-1 text-xs font-medium text-neutral-500 underline disabled:opacity-50"
+                      >
+                        {cancelando === parcela.id ? "Cancelando..." : "Cancelar cobranca e voltar para em aberto"}
+                      </button>
                     </div>
                   ) : null}
                 </div>
