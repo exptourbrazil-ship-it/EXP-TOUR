@@ -4,8 +4,7 @@ import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 
 // Ajuste de parcelas pelo proprio cliente (aba Financeiro).
-// Substitui o antigo "antecipar / reprogramar parcela". Permite editar
-// valores e datas, adicionar e excluir parcelas (sem valor minimo).
+// Permite editar valores e datas, adicionar e excluir parcelas (sem valor minimo).
 //
 // Regras de seguranca (aplicadas SEMPRE no servidor, nao apenas na UI):
 //  - a sessao precisa estar autenticada;
@@ -15,10 +14,11 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 //  - se o contrato tiver data_inicio (vinda do Zoho), o ultimo pagamento
 //    precisa ser >= 30 dias corridos antes da data de inicio. Enquanto a
 //    data_inicio nao existir, a regra dos 30 dias fica inativa.
+//  - valor_original NUNCA e sobrescrito ao editar (preserva o plano original
+//    para permitir "Restaurar plano original").
 
 type ParcelaInput = {
   id?: string;
-  numero: number;
   descricao: string;
   valor: number;
   vencimento: string; // YYYY-MM-DD
@@ -135,12 +135,12 @@ export async function POST(request: Request) {
 
   for (const p of novas) {
     if (p.id) {
+      // valor_original NAO e alterado: preserva o plano original.
       const { error: erroUpd } = await supabase
         .from("parcelas")
         .update({
           numero: p.numero,
           descricao: p.descricao,
-          valor_original: p.valor,
           valor_atual: p.valor,
           vencimento: p.vencimento,
         })
