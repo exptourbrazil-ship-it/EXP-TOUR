@@ -19,6 +19,7 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 
 type ParcelaInput = {
   id?: string;
+  numero?: number;
   descricao: string;
   valor: number;
   vencimento: string; // YYYY-MM-DD
