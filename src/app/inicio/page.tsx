@@ -23,7 +23,7 @@ export default async function InicioPage() {
 
   const { data: titular } = await supabase
     .from("titulares")
-    .select("nome_completo")
+    .select("nome_completo, data_inicio")
     .eq("id", sessao.titularId)
     .maybeSingle()
 
@@ -39,6 +39,7 @@ export default async function InicioPage() {
     <InicioClient
       nomeCompleto={titular ? titular.nome_completo : null}
       contrato={contrato}
+      dataInicioTitular={titular ? (titular as any).data_inicio : null}
     />
   )
 }
