@@ -18,6 +18,8 @@ type Parcela = {
   is_entrada: boolean
   payment_link: string | null
   qr_code_url: string | null
+  paid_at: string | null
+  recibo_url?: string | null
   moeda: string
   cotacaoEstimada?: number | null
   valorEstimadoBRL?: number | null
@@ -249,6 +251,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
   const [editando, setEditando] = useState(false)
+  const [restaurando, setRestaurando] = useState(false)
 
   async function gerarCobranca(parcelaId: string) {
     setGerando(parcelaId)
@@ -265,6 +268,31 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
       setErro("Nao foi possivel gerar a cobranca Pix.")
     } finally {
       setGerando(null)
+    }
+  }
+
+  async function restaurarPlano() {
+    if (!contratoId) return
+    const confirmado = window.confirm("Restaurar o plano original de parcelas? Isso desfaz suas alteracoes e volta a proposta inicial. Parcelas ja pagas ou com Pix gerado impedem a restauracao.")
+    if (!confirmado) return
+    setRestaurando(true)
+    setErro(null)
+    try {
+      const resp = await fetch("/api/parcelas/restaurar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId }),
+      })
+      const resultado = await resp.json()
+      if (resultado.ok) {
+        router.refresh()
+      } else {
+        setErro(resultado.erro || "Nao foi possivel restaurar o plano original.")
+      }
+    } catch {
+      setErro("Nao foi possivel restaurar o plano original.")
+    } finally {
+      setRestaurando(false)
     }
   }
 
@@ -311,7 +339,10 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-serif text-2xl text-brand">Parcelas</h2>
             {contratoId ? (
-              <button onClick={() => setEditando(true)} className="text-sm font-medium text-brand underline">Ajustar parcelas</button>
+              <div className="flex items-center gap-4">
+                <button onClick={() => setEditando(true)} className="text-sm font-medium text-brand underline">Ajustar parcelas</button>
+                <button onClick={restaurarPlano} disabled={restaurando} className="text-sm font-medium text-neutral-500 underline disabled:opacity-50">{restaurando ? "Restaurando..." : "Restaurar plano original"}</button>
+              </div>
             ) : null}
           </div>
 
@@ -341,7 +372,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       <div>
                         <div className="font-medium text-brand">{parcela.descricao}</div>
                         <div className="text-xs text-neutral-400">
-                          {paga ? "Paga" : "Vencimento"} {new Date(parcela.vencimento).toLocaleDateString("pt-BR")}
+                          {paga ? "Paga em " + new Date(parcela.paid_at || parcela.vencimento).toLocaleDateString("pt-BR") : "Vencimento " + new Date(parcela.vencimento).toLocaleDateString("pt-BR")}
                         </div>
                       </div>
                     </div>
@@ -357,7 +388,11 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       ) : null}
                       <div className="mt-1">
                         {paga ? (
-                          <span className="cursor-not-allowed text-xs text-neutral-300" title="Disponivel em breve">Recibo</span>
+                          parcela.recibo_url ? (
+                            <a href={parcela.recibo_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand underline">Ver recibo</a>
+                          ) : (
+                            <span className="cursor-not-allowed text-xs text-neutral-300" title="O recibo ficara disponivel em breve">Recibo em breve</span>
+                          )
                         ) : parcela.qr_code_url ? (
                           <span className="text-xs font-medium text-brand">QR Code abaixo</span>
                         ) : (
@@ -366,7 +401,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                             disabled={gerando === parcela.id}
                             className={ehProxima ? "rounded-full bg-brand px-4 py-2 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50" : "text-sm font-medium text-brand underline disabled:opacity-50"}
                           >
-                            {gerando === parcela.id ? "Gerando..." : "Gerar Pix"}
+                            {gerando === parcela.id ? "Gerando..." : ehProxima ? "Gerar Pix" : "Pagar antecipadamente"}
                           </button>
                         )}
                       </div>
