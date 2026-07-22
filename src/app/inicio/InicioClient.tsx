@@ -14,6 +14,7 @@ type Contrato = {
 type InicioClientProps = {
   nomeCompleto: string | null
   contrato: Contrato | null
+  dataInicioTitular?: string | null
 }
 
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
@@ -62,7 +63,8 @@ export default function InicioClient(props: InicioClientProps) {
   const contrato = props.contrato
   const nome = primeiroNome(nomeCompleto)
   const etapaAtualIndex = contrato ? 1 : 0
-  const dias = diasAte(contrato ? contrato.data_inicio : null)
+  const dataInicioEfetiva = (contrato && contrato.data_inicio) ? contrato.data_inicio : (props.dataInicioTitular || null)
+  const dias = diasAte(dataInicioEfetiva)
 
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28">
@@ -89,7 +91,7 @@ export default function InicioClient(props: InicioClientProps) {
             <div>
               <p className="mt-3 font-serif text-6xl leading-none">{dias} dias</p>
               <p className="mt-3 text-sm text-brand-cream/80">
-                para o inicio do seu curso &middot; {formatarData(contrato ? contrato.data_inicio : null)}
+                para o inicio do seu curso &middot; {formatarData(dataInicioEfetiva)}
               </p>
             </div>
           ) : (
