@@ -40,10 +40,38 @@ create table if not exists parcelas (
 create index if not exists idx_parcelas_contrato on parcelas(contrato_id);
 create index if not exists idx_contratos_titular on contratos(titular_id);
 
+-- Events: barramento/ledger de eventos externos (webhooks). Fonte de
+-- idempotencia e auditoria. Cada notificacao externa vira uma linha; o efeito
+-- (ex: marcar parcela como paga) e aplicado no maximo uma vez por
+-- idempotency_key. Permite log de tentativas e reprocessamento manual.
+create table if not exists events (
+  id uuid primary key default gen_random_uuid(),
+  source text not null,                 -- ex: 'mercadopago'
+  event_type text not null,             -- ex: 'payment'
+  idempotency_key text not null unique, -- ex: 'mercadopago:payment:<paymentId>'
+  external_id text,                     -- id do recurso na origem (ex: paymentId)
+  payload jsonb,                        -- corpo bruto recebido, para auditoria/replay
+  status text not null default 'pendente'
+    check (status in ('pendente','processado','ignorado','erro')),
+  tentativas int not null default 0,
+  erro text,
+  processed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+  );
+
+create index if not exists idx_events_status on events(status);
+create index if not exists idx_events_source on events(source);
+create index if not exists idx_events_external on events(source, external_id);
+
 alter table titulares enable row level security;
 alter table contratos enable row level security;
 alter table parcelas enable row level security;
+alter table events enable row level security;
 
 -- OBS: login e feito por CPF + codigo via WhatsApp (fora do Supabase Auth padrao),
 -- entao as policies de RLS finais serao definidas quando o fluxo de autenticacao
 -- customizado estiver implementado (via Edge Function com service role).
+-- A tabela events e escrita/lida apenas via service role (rotas de API), nunca
+-- pelo cliente, entao permanece sem policies publicas (RLS habilitado bloqueia
+-- o acesso anon por padrao).
