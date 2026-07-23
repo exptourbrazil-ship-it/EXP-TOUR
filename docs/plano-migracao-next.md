@@ -105,6 +105,27 @@ painel de eventos. Confirmar `npm audit` sem as advisories de "high". Commit.
   atual é mínimo — só `reactStrictMode` —, exposição baixa).
 - Validação idêntica à 3.6 + commit.
 
+### Notas de execução (o que a Fase 2 exigiu na prática)
+
+- **`overrides` de `sharp` e `postcss`**: o Next 16.2.11 ainda empacota
+  `sharp@0.34.5` e uma cópia interna de `postcss` (8.4.x) vulneráveis. Como não
+  há release do Next que os corrija ainda, foram forçados via `overrides` no
+  `package.json` (`sharp ^0.35.3`, `postcss ^8.5.22`) — e a devDependency direta
+  `postcss` foi alinhada para `^8.5.22`. Resultado: `npm audit` → **0
+  vulnerabilidades**.
+- **Convenção `middleware` → `proxy`**: no Next 16 o arquivo `middleware.ts`
+  passou a `proxy.ts`, com a função exportada renomeada de `middleware` para
+  `proxy` (o `config`/`matcher` permanece). O warning de deprecação some.
+- **`crypto` no Edge Runtime**: o `proxy.ts` importava o nome do cookie de
+  `admin-session.ts`, que importa `crypto` (Node). O Turbopack do Next 16
+  sinalizou o `crypto` sendo arrastado ao bundle Edge. O nome do cookie foi
+  extraído para `src/lib/session-constants.ts` (sem `crypto`); `admin-session.ts`
+  reexporta a constante por compatibilidade, e o `proxy.ts` importa do módulo
+  livre de `crypto`.
+- **`tsconfig.json`**: o Next 16 reescreve o arquivo no build (formatação,
+  `jsx: "preserve"` → `"react-jsx"`, inclusão de `.next/dev/types`). Mudanças
+  esperadas, mantidas.
+
 ## 5. Riscos e rollback
 
 - **Risco maior**: comportamento assíncrono de `cookies()` mal propagado →
