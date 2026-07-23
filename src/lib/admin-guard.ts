@@ -5,8 +5,8 @@ import { verificarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session"
 // Guarda server-side para paginas de admin: verifica a assinatura completa
 // do cookie de sessao (HMAC) no runtime Node. Se invalido/ausente,
 // redireciona para /admin/login. Retorna o usuario autenticado.
-export function exigirAdmin(next?: string): { usuario: string } {
-  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value;
+export async function exigirAdmin(next?: string): Promise<{ usuario: string }> {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   const sessao = verificarSessaoAdmin(token);
   if (!sessao) {
     const alvo = next ? "/admin/login?next=" + encodeURIComponent(next) : "/admin/login";
@@ -16,7 +16,7 @@ export function exigirAdmin(next?: string): { usuario: string } {
 }
 
 // Versao para rotas de API: retorna true/false sem redirecionar.
-export function checarAdminCookie(): boolean {
-  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value;
+export async function checarAdminCookie(): Promise<boolean> {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   return !!verificarSessaoAdmin(token);
 }

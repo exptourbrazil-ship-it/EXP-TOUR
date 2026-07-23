@@ -12,8 +12,8 @@ export const runtime = "nodejs";
 //
 // Autenticacao: cookie de sessao de admin (login em /admin/login). Como
 // compatibilidade, tambem aceita o Bearer ADMIN_CAMBIO_SECRET.
-function checarAuth(request: Request): boolean {
-  if (checarAdminCookie()) return true;
+async function checarAuth(request: Request): Promise<boolean> {
+  if (await checarAdminCookie()) return true;
   const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
   const authHeader = request.headers.get("authorization");
   if (!adminSecret) return false;
@@ -29,7 +29,7 @@ function getSupabase() {
 // Lista os titulares (com a data de inicio ja gravada, se houver) para
 // preencher o seletor no painel administrativo.
 export async function GET(request: Request) {
-  if (!checarAuth(request)) {
+  if (!(await checarAuth(request))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
 // Grava a data de inicio de um titular. Aceita data vazia para limpar.
 export async function POST(request: Request) {
-  if (!checarAuth(request)) {
+  if (!(await checarAuth(request))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 
