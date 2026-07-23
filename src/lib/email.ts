@@ -77,6 +77,118 @@ return `
 `;
 }
 
+type DadosLembrete = {
+  descricao: string;
+  valor: string; // ja formatado, ex: "R$ 1.234,56"
+  vencimento: string; // ja formatado, ex: "05/08/2026"
+  vencida: boolean; // true quando a parcela ja passou do vencimento
+  pixCode?: string | null; // codigo Pix copia-e-cola (payment_link), se houver
+  portalUrl?: string | null; // link para a Area do Cliente, se configurado
+};
+
+function templateLembreteCobranca(nome: string, d: DadosLembrete) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const chamada = d.vencida
+    ? "Identificamos uma parcela em atraso na sua Area do Cliente:"
+    : "Este e um lembrete de uma parcela que esta chegando:";
+
+  const pixBloco = d.pixCode
+    ? `<tr><td style="padding-top:16px;">
+         <p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 8px;">Pix copia e cola:</p>
+         <div style="background-color:#ffffff;border:1px solid ${BRAND_GREEN};border-radius:6px;padding:12px;word-break:break-all;font-family:monospace;font-size:12px;color:${BRAND_GREEN};">${d.pixCode}</div>
+       </td></tr>`
+    : "";
+
+  const portalBloco = d.portalUrl
+    ? `<tr><td style="text-align:center;padding-top:24px;">
+         <a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;font-size:16px;padding:12px 28px;border-radius:6px;display:inline-block;">Abrir minha Area do Cliente</a>
+       </td></tr>`
+    : "";
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:'Bellefair',Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:${BRAND_GREEN};">
+<tr>
+<td style="text-align:center;padding-bottom:24px;">
+<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
+</td>
+</tr>
+<tr>
+<td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:16px;margin:0 0 16px;">${chamada}</p>
+<table role="presentation" width="100%" style="border-collapse:collapse;">
+<tr><td style="color:${BRAND_GREEN};font-size:15px;padding:4px 0;">${d.descricao}</td></tr>
+<tr><td style="color:${BRAND_GREEN};font-size:22px;font-weight:bold;padding:4px 0;">${d.valor}</td></tr>
+<tr><td style="color:${BRAND_GREEN};font-size:14px;padding:4px 0;">Vencimento: ${d.vencimento}</td></tr>
+${pixBloco}
+${portalBloco}
+</table>
+</td>
+</tr>
+<tr>
+<td style="text-align:center;padding-top:24px;">
+<span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span>
+</td>
+</tr>
+</table>
+</div>
+</body>
+</html>
+`;
+}
+
+// Envia um lembrete de cobranca (regua) por e-mail via Resend. Lanca erro em
+// caso de falha, para o chamador (cron) decidir se registra/repete.
+export async function enviarLembreteCobrancaEmail(destinatario: string, nome: string, dados: DadosLembrete) {
+  const { apiKey, fromEmail } = getConfig();
+  const assunto = dados.vencida
+    ? "Parcela em atraso - EXP Tour"
+    : "Lembrete de pagamento - EXP Tour";
+
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: assunto,
+        html: templateLembreteCobranca(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "lembrete_cobranca", false, mensagem);
+    throw new Error(mensagem);
+  }
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "lembrete_cobranca", false, mensagem);
+    throw new Error(mensagem);
+  }
+
+  await registrarLog(destinatario, "lembrete_cobranca", true);
+  return data;
+}
+
 // Envia o codigo de acesso por e-mail via Resend. Lanca erro em caso de falha
 // (quem chamar deve decidir se quer expor esse erro ao usuario final ou nao).
 export async function enviarCodigoAcessoEmail(destinatario: string, nome: string, codigo: string) {
