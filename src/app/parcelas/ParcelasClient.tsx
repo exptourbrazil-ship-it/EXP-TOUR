@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import BottomNav from "@/components/BottomNav"
+import { somaParcelasConfere, somaValoresParcelas } from "@/lib/parcelas"
 
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
 
@@ -95,7 +96,7 @@ function CopiarPix({ codigo }: { codigo: string }) {
   )
 }
 
-function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, onFechar, onSalvo }: { parcelas: Parcela[]; contratoId: string; dataInicio: string | null; moeda: string; onFechar: () => void; onSalvo: () => void }) {
+function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalContrato, onFechar, onSalvo }: { parcelas: Parcela[]; contratoId: string; dataInicio: string | null; moeda: string; valorTotalContrato?: number; onFechar: () => void; onSalvo: () => void }) {
   const iniciais: LinhaEdicao[] = parcelas.map((p) => ({
     id: p.id,
     descricao: p.descricao,
@@ -125,7 +126,11 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, onFechar, on
     setLinhas((atual) => [...atual, { descricao: "Nova parcela", valor: "", vencimento: "", bloqueada: false }])
   }
 
-  const total = linhas.reduce((soma, l) => soma + (Number(l.valor) || 0), 0)
+  const total = somaValoresParcelas(linhas.map((l) => Number(l.valor) || 0))
+  // Alvo de conferencia = valor_total do contrato (mesma regra do servidor).
+  // Quando o contrato nao tem valor_total (legado), a conferencia fica inativa.
+  const conferirSoma = !!valorTotalContrato && valorTotalContrato > 0
+  const somaConfere = conferirSoma ? somaParcelasConfere(linhas.map((l) => Number(l.valor) || 0), valorTotalContrato as number) : true
 
   async function salvar() {
     setErro(null)
@@ -134,6 +139,10 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, onFechar, on
         setErro("Cada parcela precisa de descricao, valor maior que zero e data de vencimento.")
         return
       }
+    }
+    if (conferirSoma && !somaConfere) {
+      setErro(`A soma das parcelas (${formatarMoeda(total, moeda)}) precisa ser igual ao total do contrato (${formatarMoeda(valorTotalContrato as number, moeda)}).`)
+      return
     }
     if (limite30) {
       const ultimo = linhas
@@ -232,11 +241,19 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, onFechar, on
         </div>
         <button onClick={adicionar} className="mt-3 rounded-xl border border-neutral-300 px-4 py-2 text-sm text-brand">+ Adicionar parcela</button>
         {erro ? <p className="mt-3 text-sm text-red-600">{erro}</p> : null}
+        {conferirSoma && !somaConfere ? (
+          <p className="mt-3 text-sm text-red-600">
+            A soma das parcelas ({formatarMoeda(total, moeda)}) precisa ser igual ao total do contrato ({formatarMoeda(valorTotalContrato as number, moeda)}).
+          </p>
+        ) : null}
         <div className="mt-4 flex items-center justify-between border-t border-neutral-200 pt-4">
-          <span className="text-sm font-medium text-neutral-700">Total: {formatarMoeda(total, moeda)}</span>
+          <span className="text-sm font-medium text-neutral-700">
+            Total: {formatarMoeda(total, moeda)}
+            {conferirSoma ? <span className="text-neutral-400"> / {formatarMoeda(valorTotalContrato as number, moeda)}</span> : null}
+          </span>
           <div className="flex gap-2">
             <button onClick={onFechar} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600">Cancelar</button>
-            <button onClick={salvar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
+            <button onClick={salvar} disabled={salvando || (conferirSoma && !somaConfere)} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
               {salvando ? "Salvando..." : "Salvar"}
             </button>
           </div>
@@ -246,7 +263,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, onFechar, on
   )
 }
 
-export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null }) {
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number }) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
@@ -455,6 +472,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
           contratoId={contratoId}
           dataInicio={dataInicio || null}
           moeda={moedaPrograma}
+          valorTotalContrato={valorTotalContrato}
           onFechar={() => setEditando(false)}
           onSalvo={() => {
             setEditando(false)

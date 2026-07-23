@@ -35,6 +35,10 @@ export default async function ParcelasPage() {
   const totalPrograma = contratos && contratos.length > 0 ? contratos.reduce((soma, c) => soma + Number((c as any).valor_total || 0), 0) : 0;
   const contratoId = contratos && contratos.length > 0 ? (contratos[0] as any).id : null;
   const dataInicio = contratos && contratos.length > 0 ? ((contratos[0] as any).data_inicio || null) : null;
+  // Total do contrato editado (o mesmo que o servidor valida em /ajustar, que
+  // usa este contratoId). Diferente de totalPrograma, que soma todos os
+  // contratos do titular.
+  const valorTotalContrato = contratos && contratos.length > 0 ? Number((contratos[0] as any).valor_total || 0) : 0;
 
   let parcelas: any[] = [];
 
@@ -85,5 +89,5 @@ export default async function ParcelasPage() {
 
   const pagoAteAgora = parcelas.filter((p) => p.status === "pago").reduce((soma, p) => soma + Number(p.valor_original || 0), 0);
 
-  return createElement("div", null, createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio }), createElement(BottomNav));
+  return createElement("div", null, createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato }), createElement(BottomNav));
 }

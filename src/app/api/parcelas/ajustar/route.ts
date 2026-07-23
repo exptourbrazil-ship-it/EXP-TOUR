@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { somaParcelasConfere, somaValoresParcelas } from "@/lib/parcelas";
 
 // Ajuste de parcelas pelo proprio cliente (aba Financeiro).
 // Permite editar valores e datas, adicionar e excluir parcelas (sem valor minimo).
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
   // 1) Confere que o contrato existe e pertence ao titular da sessao.
   const { data: contrato, error: erroContrato } = await supabase
     .from("contratos")
-    .select("id, titular_id, data_inicio")
+    .select("id, titular_id, data_inicio, valor_total")
     .eq("id", contratoId)
     .single();
 
@@ -106,7 +107,27 @@ export async function POST(request: Request) {
     }
   }
 
-  // 5) Regra dos 30 dias: o ultimo vencimento precisa ser >= 30 dias
+  // 5) A soma das parcelas precisa conferir com o total do contrato
+  // (valor_total), na moeda do contrato. Regra pulada quando o contrato nao
+  // tem valor_total (contratos legados), no mesmo espirito da regra dos 30
+  // dias. Evita que o cliente salve um plano que soma menos (ou mais) que o
+  // valor contratado.
+  const valorTotal = (contrato as any).valor_total as number | null;
+  if (valorTotal != null && Number(valorTotal) > 0) {
+    const valores = novas.map((p) => p.valor);
+    if (!somaParcelasConfere(valores, Number(valorTotal))) {
+      const soma = somaValoresParcelas(valores);
+      return NextResponse.json(
+        {
+          ok: false,
+          erro: `A soma das parcelas (${soma}) precisa ser igual ao total do contrato (${Number(valorTotal)}).`,
+        },
+        { status: 400 }
+      );
+    }
+  }
+
+  // 6) Regra dos 30 dias: o ultimo vencimento precisa ser >= 30 dias
   // corridos antes da data_inicio (quando ela existir).
   const dataInicio = (contrato as any).data_inicio as string | null;
   if (dataInicio) {
@@ -125,7 +146,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // 6) Aplica as mudancas: remove, atualiza e insere.
+  // 7) Aplica as mudancas: remove, atualiza e insere.
   const idsRemover = removidas.map((p) => p.id);
   if (idsRemover.length > 0) {
     const { error: erroDel } = await supabase.from("parcelas").delete().in("id", idsRemover);
