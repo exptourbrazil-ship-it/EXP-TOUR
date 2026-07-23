@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { createElement } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { converterParaBRL } from "@/lib/cambio";
 import ParcelasClient from "./ParcelasClient";
 import BottomNav from "@/components/BottomNav";
 
@@ -71,12 +72,13 @@ export default async function ParcelasPage() {
     }
   }
 
-  const taxaAdministrativa = Number(process.env.TAXA_ADMINISTRATIVA_CAMBIO_BRL || "4.99");
-
   parcelas = parcelas.map((p) => {
     const cotacaoEstimada = cotacoesPorMoeda.get(p.moeda) || null;
+    // A cotacao_vet ja embute cambio BACEN + spread + IOF; o valor estimado
+    // e apenas a conversao, sem taxa administrativa fixa (alinhado ao valor
+    // efetivamente cobrado em gerar-cobranca).
     const valorEstimadoBRL = cotacaoEstimada
-      ? Math.round((Number(p.valor_original) * cotacaoEstimada + taxaAdministrativa) * 100) / 100
+      ? converterParaBRL(Number(p.valor_original), cotacaoEstimada)
       : null;
     return { ...p, cotacaoEstimada, valorEstimadoBRL };
   });

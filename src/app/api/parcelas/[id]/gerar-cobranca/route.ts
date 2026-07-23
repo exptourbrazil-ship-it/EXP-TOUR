@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { criarCobrancaPix } from "@/lib/mercadopago";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { converterParaBRL } from "@/lib/cambio";
 
 // Gera (ou reaproveita) uma cobranca Pix para uma parcela especifica e grava
 // o QR code / codigo copia-e-cola de volta na tabela parcelas.
@@ -81,8 +82,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
 
       cotacaoAplicada = Number(cotacao.cotacao_vet);
-        const taxaAdministrativa = Number(process.env.TAXA_ADMINISTRATIVA_CAMBIO_BRL || "4.99");
-        valorCobranca = Math.round((Number(parcela.valor_original) * cotacaoAplicada + taxaAdministrativa) * 100) / 100;
+        // A cotacao_vet ja embute o cambio BACEN do dia + spread + IOF
+        // (ver cron atualizar-cambio). O valor cobrado e apenas a conversao,
+        // sem taxa administrativa fixa.
+        valorCobranca = converterParaBRL(Number(parcela.valor_original), cotacaoAplicada);
   }
 
   try {
