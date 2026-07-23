@@ -64,10 +64,25 @@ create index if not exists idx_events_status on events(status);
 create index if not exists idx_events_source on events(source);
 create index if not exists idx_events_external on events(source, external_id);
 
+-- Lembretes de cobranca (regua): registra cada lembrete ja enviado por
+-- (parcela, janela), garantindo idempotencia do cron da regua de cobranca
+-- (ver src/app/api/cron/regua-cobranca). A constraint unique impede reenvio
+-- do mesmo lembrete. Escrita/leitura apenas via service role (cron).
+create table if not exists lembretes_cobranca (
+  id uuid primary key default gen_random_uuid(),
+  parcela_id uuid not null references parcelas(id) on delete cascade,
+  janela text not null,               -- 'D-7' | 'D-2' | 'D+1' | 'D+5'
+  enviado_at timestamptz not null default now(),
+  unique (parcela_id, janela)
+  );
+
+create index if not exists idx_lembretes_parcela on lembretes_cobranca(parcela_id);
+
 alter table titulares enable row level security;
 alter table contratos enable row level security;
 alter table parcelas enable row level security;
 alter table events enable row level security;
+alter table lembretes_cobranca enable row level security;
 
 -- OBS: login e feito por CPF + codigo via WhatsApp (fora do Supabase Auth padrao),
 -- entao as policies de RLS finais serao definidas quando o fluxo de autenticacao
