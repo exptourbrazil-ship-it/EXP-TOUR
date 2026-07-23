@@ -4,7 +4,10 @@ import crypto from "crypto";
 // httpOnly separado da sessao dos clientes. Mesmo formato do lib/session.ts:
 // base64url(payload) + "." + assinatura.
 
-export const ADMIN_SESSION_COOKIE = "exp_tour_admin";
+// O nome do cookie vive em session-constants.ts (sem dependencia de crypto)
+// para poder ser importado pelo proxy/middleware no Edge Runtime. Reexportamos
+// aqui por compatibilidade com os consumidores que ja importam deste modulo.
+export { ADMIN_SESSION_COOKIE } from "./session-constants";
 
 const ADMIN_SESSION_DURATION_SECONDS = 60 * 60 * 12; // 12 horas
 

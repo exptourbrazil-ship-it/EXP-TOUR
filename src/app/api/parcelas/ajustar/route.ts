@@ -26,7 +26,7 @@ type ParcelaInput = {
 };
 
 export async function POST(request: Request) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
 
   if (!sessao) {

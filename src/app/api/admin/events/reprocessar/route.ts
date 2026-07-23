@@ -15,8 +15,8 @@ export const runtime = "nodejs";
 //
 // Autenticacao: cookie de sessao de admin, com fallback ao Bearer
 // ADMIN_CAMBIO_SECRET.
-function checarAuth(request: Request): boolean {
-  if (checarAdminCookie()) return true;
+async function checarAuth(request: Request): Promise<boolean> {
+  if (await checarAdminCookie()) return true;
   const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
   if (!adminSecret) return false;
   return request.headers.get("authorization") === "Bearer " + adminSecret;
@@ -29,7 +29,7 @@ function getSupabase() {
 }
 
 export async function POST(request: Request) {
-  if (!checarAuth(request)) {
+  if (!(await checarAuth(request))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

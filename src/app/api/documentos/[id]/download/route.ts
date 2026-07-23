@@ -4,8 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { getZohoAttachmentContent } from "@/lib/zoho";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const cookieStore = cookies();
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const cookieStore = await cookies();
   const sessaoToken = cookieStore.get(SESSION_COOKIE)?.value;
   const sessao = verificarSessao(sessaoToken);
   if (!sessao) {
@@ -15,7 +16,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const { data: documento, error } = await supabase.from("documentos").select("*").eq("id", params.id).single();
+  const { data: documento, error } = await supabase.from("documentos").select("*").eq("id", id).single();
   if (error || !documento || documento.titular_id !== titularId) {
     return NextResponse.json({ error: "Documento nao encontrado" }, { status: 404 });
   }

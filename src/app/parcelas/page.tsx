@@ -11,7 +11,7 @@ import BottomNav from "@/components/BottomNav";
 // dados para ParcelasClient. Os documentos agora tem pagina propria em
 // /documentos (aba Docs), para que cada aba mostre somente o seu conteudo.
 export default async function ParcelasPage() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessaoToken = cookieStore.get(SESSION_COOKIE)?.value;
   const sessao = verificarSessao(sessaoToken);
 

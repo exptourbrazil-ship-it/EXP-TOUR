@@ -20,8 +20,9 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 //
 // So o titular autenticado (sessao de CPF + WhatsApp) que e dono do contrato
 // pode gerar a cobranca da propria parcela.
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-    const cookieStore = cookies();
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+    const { id } = await params;
+    const cookieStore = await cookies();
     const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
 
   if (!sessao) {
@@ -35,7 +36,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const { data: parcela, error } = await supabase
       .from("parcelas")
       .select("*, contrato:contratos(moeda, titular_id)")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
   if (error || !parcela) {
@@ -104,7 +105,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
                     valor_atual: valorCobranca,
                     cotacao_aplicada: cotacaoAplicada,
           })
-          .eq("id", params.id);
+          .eq("id", id);
 
       return NextResponse.json({
               ok: true,

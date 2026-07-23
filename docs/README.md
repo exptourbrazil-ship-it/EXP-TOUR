@@ -5,6 +5,7 @@
 | Documento | O que é |
 |---|---|
 | [`plano-desenvolvimento-v2.md`](./plano-desenvolvimento-v2.md) | Plano de desenvolvimento v2, alinhado ao que já está em produção. Toma a decisão de arquitetura (Supabase como fonte de verdade, Zoho como camada comercial sincronizada), mapeia o que existe contra a arquitetura-mestre e reordena o backlog em blocos. **Documento de referência ativo.** |
+| [`plano-migracao-next.md`](./plano-migracao-next.md) | Plano de migração do Next.js 14 → 16 em duas fases (14→15 com APIs de request assíncronas + React 19; 15→16 com Node 20+ e Turbopack). Mapeia os pontos exatos do código a ajustar. |
 | `arquitetura-mestre-v4.md` | _(pendente)_ A arquitetura-mestre v4 referenciada pelo plano v2 ainda não está no repositório. Quando disponível, colocá-la aqui com este nome, para que o plano e o CLAUDE.md apontem para ela. |
 
 ## Como trabalhar a partir daqui

@@ -14,15 +14,16 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session"
 //  - se a parcela ja estiver paga (status "pago"), o cancelamento e
 //    bloqueado, pois um pagamento confirmado nao pode ser desfeito aqui.
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const cookieStore = cookies()
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const cookieStore = await cookies()
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value)
 
   if (!sessao) {
     return NextResponse.json({ ok: false, erro: "Sessao nao autenticada" }, { status: 401 })
   }
 
-  const parcelaId = params.id
+  const parcelaId = id
   if (!parcelaId) {
     return NextResponse.json({ ok: false, erro: "Parcela nao informada" }, { status: 400 })
   }

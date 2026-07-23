@@ -11,7 +11,7 @@ import { uploadZohoAttachment } from "@/lib/zoho";
 // para o Zoho CRM (Contacts/Attachments), quando o titular tiver um
 // zoho_contact_id vinculado.
 export async function POST(request: Request) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessaoToken = cookieStore.get(SESSION_COOKIE)?.value;
   const sessao = verificarSessao(sessaoToken);
 

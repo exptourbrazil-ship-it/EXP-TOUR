@@ -9,7 +9,7 @@ import InicioClient from "./InicioClient"
 // contrato mais recente, para montar a saudacao e o resumo do programa
 // exibidos na aba Inicio.
 export default async function InicioPage() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const sessaoToken = cookieStore.get(SESSION_COOKIE)?.value
   const sessao = verificarSessao(sessaoToken)
 

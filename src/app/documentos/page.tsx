@@ -10,7 +10,7 @@ import BottomNav from "@/components/BottomNav";
 // autenticado. Separada da aba Financeiro (/parcelas) para que cada aba da
 // navegacao inferior exiba apenas o seu proprio conteudo.
 export default async function DocumentosPage() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessaoToken = cookieStore.get(SESSION_COOKIE)?.value;
   const sessao = verificarSessao(sessaoToken);
 
