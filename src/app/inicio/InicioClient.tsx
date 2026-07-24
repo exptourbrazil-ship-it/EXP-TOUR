@@ -9,6 +9,7 @@ type Contrato = {
   valor_total: number | null
   moeda: string | null
   data_inicio: string | null
+  estudante_nome?: string | null
 }
 
 type InicioClientProps = {
@@ -61,7 +62,10 @@ const ETAPAS_JORNADA = [
 export default function InicioClient(props: InicioClientProps) {
   const nomeCompleto = props.nomeCompleto
   const contrato = props.contrato
-  const nome = primeiroNome(nomeCompleto)
+  // Saudacao/avatar usam o nome do ESTUDANTE (o app acompanha a jornada dele);
+  // se o contrato ainda nao tem estudante_nome, cai para o nome do titular.
+  const nomeExibicao = (contrato && contrato.estudante_nome) ? contrato.estudante_nome : nomeCompleto
+  const nome = primeiroNome(nomeExibicao)
   const etapaAtualIndex = contrato ? 1 : 0
   const dataInicioEfetiva = (contrato && contrato.data_inicio) ? contrato.data_inicio : (props.dataInicioTitular || null)
   const dias = diasAte(dataInicioEfetiva)

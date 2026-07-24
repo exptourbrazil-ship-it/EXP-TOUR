@@ -57,6 +57,28 @@ Duas observações de respeito ao que foi construído: a regra "valor_original n
 
 **Depois (conforme roadmap v4)**: papéis multiusuário, portal do fornecedor, motor de checklist por regras, cockpit, NFS-e (aguardando contador), parceiros ancilares, demais exceções.
 
+### Acesso do estudante (papéis multiusuário — requisitos já definidos)
+
+Detalhamento do item "papéis multiusuário" acima, para quando for construído.
+Contexto: hoje o modelo é **um titular (pagante) por contrato**, e o login é
+CPF + código por e-mail. O campo `contratos.estudante_nome` já existe e a tela
+Início já exibe o nome do estudante (independente de quem loga).
+
+Requisitos acordados com o cliente:
+
+- **Um contrato, dois acessos** (pagante + estudante), via uma tabela de acessos
+  ligando vários titulares/pessoas a um mesmo contrato (padrão de papéis:
+  `contratante`/`estudante`/`observador`).
+- **O estudante NÃO vê o Financeiro** (parcelas/pagamentos); vê todo o resto
+  (Início, Docs, jornada). Ou seja, o papel define a visibilidade das abas.
+- **A saudação/tela Início mostra o nome do estudante** para os dois acessos
+  (já implementado, pois usa `contratos.estudante_nome`, não o nome de quem
+  loga).
+- **Bloqueador de dados**: o login do estudante exige o **e-mail do estudante**,
+  que hoje não está na base (o cadastro só tem e-mail dos responsáveis; os
+  estudantes são menores). Coletar os e-mails, ou definir outro método de
+  acesso (ex.: convite emitido pelo pagante), é pré-requisito.
+
 ## 4. Pequenas dívidas a registrar (não urgentes, não esquecer)
 
 - Contas de admin individuais (o doc já prevê); trilha de auditoria de ações do admin (quem definiu `data_inicio`, quem inseriu documento) — barata agora, valiosa sempre.
