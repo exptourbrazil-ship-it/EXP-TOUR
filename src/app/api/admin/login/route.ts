@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { criarSessaoAdmin, ADMIN_SESSION_COOKIE, compararSeguro } from "@/lib/admin-session";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -35,6 +38,19 @@ export async function POST(request: Request) {
       { ok: false, erro: "Usuario ou senha invalidos." },
       { status: 401 }
     );
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  if (supabaseUrl && serviceRoleKey) {
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    await registrarAuditoriaAdmin(supabase, {
+      usuario,
+      acao: "admin.login",
+      alvo: null,
+      detalhe: { metodo: "usuario_senha" },
+      ip: obterIp(request),
+    });
   }
 
   const token = criarSessaoAdmin(usuario);

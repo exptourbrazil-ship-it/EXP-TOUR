@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { usuarioAdminAtual } from "@/lib/admin-guard";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
+
+export const runtime = "nodejs";
 
 // Rota de fallback manual para moedas que nao possuem fonte automatica
 // confiavel (por exemplo, o NZD, que o BCB nao publica no boletim PTAX e
@@ -49,6 +54,15 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ ok: false, erro: error.message }, { status: 500 });
   }
+
+  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  await registrarAuditoriaAdmin(supabase, {
+    usuario,
+    acao: "cambio.manual.definir",
+    alvo: moeda,
+    detalhe: { data: hojeISO, cambioComercial, cotacaoVet },
+    ip: obterIp(request),
+  });
 
   return NextResponse.json({ ok: true, moeda, data: hojeISO, cambioComercial, cotacaoVet });
 }

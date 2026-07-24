@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminCookie } from "@/lib/admin-guard";
+import { checarAdminCookie, usuarioAdminAtual } from "@/lib/admin-guard";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -82,6 +84,15 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ ok: false, erro: "Nao foi possivel salvar a data." }, { status: 500 });
   }
+
+  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  await registrarAuditoriaAdmin(supabase, {
+    usuario,
+    acao: "titular.data_inicio.definir",
+    alvo: titularId,
+    detalhe: { dataInicio },
+    ip: obterIp(request),
+  });
 
   return NextResponse.json({ ok: true });
 }

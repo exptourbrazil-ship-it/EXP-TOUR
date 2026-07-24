@@ -20,3 +20,11 @@ export async function checarAdminCookie(): Promise<boolean> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   return !!verificarSessaoAdmin(token);
 }
+
+// Retorna o usuario da sessao de admin (cookie), ou null se nao houver sessao
+// valida. Usado pela trilha de auditoria para saber QUEM executou a acao.
+export async function usuarioAdminAtual(): Promise<string | null> {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  const sessao = verificarSessaoAdmin(token);
+  return sessao ? sessao.usuario : null;
+}

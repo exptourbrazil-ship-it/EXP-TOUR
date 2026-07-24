@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { usuarioAdminAtual } from "@/lib/admin-guard";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
+
+export const runtime = "nodejs";
 
 const STATUS_VALIDOS = ["pendente", "aprovado", "rejeitado"];
 
@@ -28,6 +33,15 @@ const { error } = await supabase.from("documentos").update({ status }).eq("id", 
   if (error) {
     return NextResponse.json({ ok: false, error: "Falha ao atualizar status" }, { status: 500 });
   }
+
+  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  await registrarAuditoriaAdmin(supabase, {
+    usuario,
+    acao: "documento.status.definir",
+    alvo: id,
+    detalhe: { status },
+    ip: obterIp(request),
+  });
 
 return NextResponse.json({ ok: true });
 }
