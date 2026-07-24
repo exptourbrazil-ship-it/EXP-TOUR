@@ -78,11 +78,24 @@ create table if not exists lembretes_cobranca (
 
 create index if not exists idx_lembretes_parcela on lembretes_cobranca(parcela_id);
 
+-- Rate limiting: cada "hit" e uma tentativa (ex.: pedido de codigo de acesso),
+-- identificada por uma chave (ex.: "req-code:ip:1.2.3.4"). O limite e checado
+-- contando os hits de uma chave dentro de uma janela de tempo. Escrita/leitura
+-- apenas via service role (rotas de API). Ver src/lib/rate-limit.ts.
+create table if not exists rate_limit_hits (
+  id uuid primary key default gen_random_uuid(),
+  chave text not null,
+  criado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_rate_limit_chave_tempo on rate_limit_hits(chave, criado_em);
+
 alter table titulares enable row level security;
 alter table contratos enable row level security;
 alter table parcelas enable row level security;
 alter table events enable row level security;
 alter table lembretes_cobranca enable row level security;
+alter table rate_limit_hits enable row level security;
 
 -- OBS: login e feito por CPF + codigo via WhatsApp (fora do Supabase Auth padrao),
 -- entao as policies de RLS finais serao definidas quando o fluxo de autenticacao

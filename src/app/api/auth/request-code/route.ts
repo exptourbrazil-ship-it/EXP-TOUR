@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
+import { checarELimitar, obterIp } from "@/lib/rate-limit";
+
+// Rate limit anti-abuso do Resend / enumeracao de CPF (janela de 10 min):
+// no maximo RL_IP pedidos por IP e RL_CPF por CPF. Configuravel por env.
+const RL_JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
+const RL_IP = Number(process.env.RATE_LIMIT_REQUEST_CODE_IP || "10");
+const RL_CPF = Number(process.env.RATE_LIMIT_REQUEST_CODE_CPF || "3");
 
 function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
@@ -40,6 +47,20 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const cpfLimpo = limparCpf(cpf);
+
+  // Rate limit: primeiro por IP (anti-abuso geral), depois por CPF (evita
+  // esgotar a caixa de um titular). Mensagem generica com status 429.
+  const ip = obterIp(request);
+  const erro429 = NextResponse.json(
+    { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
+    { status: 429 }
+  );
+  if (!(await checarELimitar(supabase, `req-code:ip:${ip}`, RL_IP, RL_JANELA_SEG))) {
+    return erro429;
+  }
+  if (!(await checarELimitar(supabase, `req-code:cpf:${cpfLimpo}`, RL_CPF, RL_JANELA_SEG))) {
+    return erro429;
+  }
 
   const { data: titular } = await supabase
       .from("titulares")
