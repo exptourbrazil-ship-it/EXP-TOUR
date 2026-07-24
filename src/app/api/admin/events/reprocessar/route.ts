@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminCookie } from "@/lib/admin-guard";
+import { checarAdminCookie, usuarioAdminAtual } from "@/lib/admin-guard";
 import { montarIdempotencyKey } from "@/lib/mp-events";
 import { processarPagamentoMercadoPago } from "@/lib/mp-processar-pagamento";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -80,6 +82,15 @@ export async function POST(request: Request) {
     }
     await supabase.from("events").update(patch).eq("id", evento.id);
   }
+
+  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  await registrarAuditoriaAdmin(supabase, {
+    usuario,
+    acao: "evento.reprocessar",
+    alvo: paymentId,
+    detalhe: { eventId: evento?.id ?? null, status: resultado.status },
+    ip: obterIp(request),
+  });
 
   const httpStatus = resultado.status === "erro" ? 502 : 200;
   return NextResponse.json({ ok: resultado.status !== "erro", paymentId, resultado }, { status: httpStatus });

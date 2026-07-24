@@ -90,6 +90,22 @@ create table if not exists rate_limit_hits (
 
 create index if not exists idx_rate_limit_chave_tempo on rate_limit_hits(chave, criado_em);
 
+-- Trilha de auditoria de acoes administrativas sensiveis: quem (usuario) fez
+-- qual acao, sobre qual alvo, com que detalhe, de qual IP e quando. Escrita
+-- apenas via service role nas rotas admin. Ver src/lib/admin-audit.ts.
+create table if not exists admin_audit (
+  id uuid primary key default gen_random_uuid(),
+  usuario text not null,
+  acao text not null,
+  alvo text,
+  detalhe jsonb,
+  ip text,
+  criado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_admin_audit_criado on admin_audit(criado_em desc);
+create index if not exists idx_admin_audit_acao on admin_audit(acao);
+
 -- ============================================================================
 -- Modelo de seguranca / RLS (revisado)
 -- ============================================================================
@@ -121,3 +137,4 @@ alter table if exists email_logs         enable row level security;
 alter table if exists whatsapp_logs      enable row level security;
 alter table if exists lembretes_cobranca enable row level security;
 alter table if exists rate_limit_hits    enable row level security;
+alter table if exists admin_audit        enable row level security;

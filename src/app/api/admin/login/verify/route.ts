@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { verificarTokenCodigo, ADMIN_CODIGO_COOKIE } from "@/lib/admin-codigo";
 import { criarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +42,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Código inválido ou expirado." }, { status: 401 });
   }
 
-  const sessao = criarSessaoAdmin(process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com");
+  const usuario = process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com";
+  const sessao = criarSessaoAdmin(usuario);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  if (supabaseUrl && serviceRoleKey) {
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    await registrarAuditoriaAdmin(supabase, {
+      usuario,
+      acao: "admin.login",
+      alvo: null,
+      detalhe: { metodo: "codigo_email" },
+      ip: obterIp(request),
+    });
+  }
 
   const res = NextResponse.json({ success: true });
   res.cookies.set(ADMIN_SESSION_COOKIE, sessao, {
