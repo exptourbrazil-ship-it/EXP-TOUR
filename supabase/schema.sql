@@ -90,16 +90,34 @@ create table if not exists rate_limit_hits (
 
 create index if not exists idx_rate_limit_chave_tempo on rate_limit_hits(chave, criado_em);
 
-alter table titulares enable row level security;
-alter table contratos enable row level security;
-alter table parcelas enable row level security;
-alter table events enable row level security;
-alter table lembretes_cobranca enable row level security;
-alter table rate_limit_hits enable row level security;
+-- ============================================================================
+-- Modelo de seguranca / RLS (revisado)
+-- ============================================================================
+-- O login e customizado (CPF + codigo por e-mail via Resend, fora do Supabase
+-- Auth), entao nao ha auth.uid() para basear policies por linha. Decisao de
+-- arquitetura:
+--   * TODO acesso ao banco e feito server-side (rotas de API / server
+--     components) usando a SERVICE ROLE, que IGNORA o RLS.
+--   * A anon key (publica, NEXT_PUBLIC_SUPABASE_ANON_KEY) NAO e usada para ler
+--     dados no app. Com RLS habilitado e SEM policies, o acesso anon fica
+--     bloqueado por padrao (deny-by-default) -- que e o comportamento desejado.
+-- Resultado: RLS habilitado em TODAS as tabelas e ZERO policies publicas.
+-- Os buckets de Storage (documentos-admin / documentos-titular) sao privados;
+-- os downloads usam URLs assinadas de curta duracao geradas no servidor.
+--
+-- OBS: varias tabelas abaixo foram criadas direto no SQL Editor (nao ha um
+-- "create table" correspondente neste arquivo) -- por isso o "if exists".
+-- Reconciliar o DDL completo dessas tabelas aqui e uma divida conhecida
+-- (ver CLAUDE.md). Ao criar QUALQUER tabela nova, habilite o RLS dela.
 
--- OBS: login e feito por CPF + codigo via WhatsApp (fora do Supabase Auth padrao),
--- entao as policies de RLS finais serao definidas quando o fluxo de autenticacao
--- customizado estiver implementado (via Edge Function com service role).
--- A tabela events e escrita/lida apenas via service role (rotas de API), nunca
--- pelo cliente, entao permanece sem policies publicas (RLS habilitado bloqueia
--- o acesso anon por padrao).
+alter table if exists titulares          enable row level security;
+alter table if exists contratos          enable row level security;
+alter table if exists parcelas           enable row level security;
+alter table if exists documentos         enable row level security;
+alter table if exists codigos_acesso     enable row level security;
+alter table if exists cotacoes_cambio    enable row level security;
+alter table if exists events             enable row level security;
+alter table if exists email_logs         enable row level security;
+alter table if exists whatsapp_logs      enable row level security;
+alter table if exists lembretes_cobranca enable row level security;
+alter table if exists rate_limit_hits    enable row level security;
