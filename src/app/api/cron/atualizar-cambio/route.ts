@@ -14,10 +14,10 @@ import { createClient } from "@supabase/supabase-js";
 // fixo por transacao e nao por unidade de moeda.
 //
 // O BCB nao publica cotacao PTAX para NZD (Dolar da Nova Zelandia). Para
-// essa moeda, aproximamos o cambio comercial por uma conversao cruzada,
-// usando a taxa NZD/USD publicada diariamente e gratuitamente pelo
-// Reserve Bank of New Zealand (fonte oficial, sem autenticacao) e a
-// cotacao USD/BRL do proprio BCB: NZD/BRL = (NZD/USD do RBNZ) x (USD/BRL do BCB).
+// essa moeda, aproximamos o cambio comercial por uma conversao cruzada:
+// NZD/BRL = (NZD/USD) x (USD/BRL do BCB). O ratio NZD/USD vem de uma API
+// publica sem autenticacao (Frankfurter/BCE, com fallback open.er-api.com),
+// pois e mais estavel que o scraping antigo do RBNZ (que passou a dar 403).
 // Essa camada extra de aproximacao deve ser levada em conta ao validar o NZD.
 
 const MOEDAS_SUPORTADAS: string[] = ["USD", "CAD", "EUR", "GBP", "AUD", "NZD"];
@@ -54,41 +54,50 @@ async function buscarCambioComercialBCB(moeda: string): Promise<number | null> {
 // autenticacao). A tabela mostra as ultimas datas em colunas; usamos a
 // ultima coluna (data mais recente publicada). Retorna tambem informacao
 // de diagnostico em caso de falha, para facilitar depuracao.
-async function buscarTaxaNZDUSDRBNZ(): Promise<{ valor: number | null; diagnostico: string }> {
+// Busca a taxa NZD/USD (quantos USD equivalem a 1 NZD). O BACEN nao publica
+// PTAX diaria para NZD, entao usamos uma API publica sem autenticacao e de
+// schema estavel: Frankfurter (baseada nas referencias do BCE), com fallback
+// para open.er-api.com. Substitui o scraping antigo do site do RBNZ, que era
+// fragil (mudanca de HTML / bloqueio anti-bot com HTTP 403). O valor retornado
+// e multiplicado pelo USD/BRL do BACEN em buscarCambioComercial.
+async function buscarTaxaNZDUSD(): Promise<{ valor: number | null; diagnostico: string }> {
+  // 1) Frankfurter (BCE): { "rates": { "USD": <USD por 1 NZD> } }
   try {
-    const res = await fetch(
-      "https://www.rbnz.govt.nz/statistics/series/exchange-and-interest-rates/exchange-rates-and-the-trade-weighted-index",
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-      }
-    );
-    if (!res.ok) return { valor: null, diagnostico: `http ${res.status}` };
-    const html = await res.text();
-
-    const linhaMatch = html.match(/<tr>\s*<td>United States dollar<\/td>([\s\S]*?)<\/tr>/);
-    if (!linhaMatch) return { valor: null, diagnostico: `linha nao encontrada (html len ${html.length})` };
-
-    const valores = Array.from(linhaMatch[1].matchAll(/<td[^>]*>([\d.,]+)<\/td>/g)).map((m) =>
-      Number(m[1].replace(",", "."))
-    );
-    if (valores.length === 0) return { valor: null, diagnostico: "sem valores na linha" };
-
-    return { valor: valores[valores.length - 1], diagnostico: "ok" };
-  } catch (e: any) {
-    return { valor: null, diagnostico: `exception: ${e?.message || e}` };
+    const res = await fetch("https://api.frankfurter.app/latest?from=NZD&to=USD", {
+      headers: { Accept: "application/json" },
+    });
+    if (res.ok) {
+      const json: any = await res.json();
+      const v = Number(json?.rates?.USD);
+      if (v > 0) return { valor: v, diagnostico: "frankfurter" };
+    }
+  } catch {
+    // segue para o fallback
   }
+
+  // 2) Fallback: open.er-api.com: { "rates": { "USD": <USD por 1 NZD> } }
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/NZD", {
+      headers: { Accept: "application/json" },
+    });
+    if (res.ok) {
+      const json: any = await res.json();
+      const v = Number(json?.rates?.USD);
+      if (v > 0) return { valor: v, diagnostico: "er-api" };
+    }
+  } catch {
+    // sem fonte disponivel
+  }
+
+  return { valor: null, diagnostico: "frankfurter e er-api indisponiveis" };
 }
 
 async function buscarCambioComercial(moeda: string): Promise<{ valor: number | null; diagnostico?: string }> {
   if (moeda === "NZD") {
     const cambioUSD = await buscarCambioComercialBCB("USD");
-    const { valor: taxaNzdUsd, diagnostico } = await buscarTaxaNZDUSDRBNZ();
+    const { valor: taxaNzdUsd, diagnostico } = await buscarTaxaNZDUSD();
     if (cambioUSD === null) return { valor: null, diagnostico: "USD do BCB indisponivel" };
-    if (taxaNzdUsd === null) return { valor: null, diagnostico: `RBNZ: ${diagnostico}` };
+    if (taxaNzdUsd === null) return { valor: null, diagnostico: `NZD/USD: ${diagnostico}` };
     return { valor: cambioUSD * taxaNzdUsd };
   }
   const valor = await buscarCambioComercialBCB(moeda);
