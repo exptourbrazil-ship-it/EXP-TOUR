@@ -29,7 +29,7 @@ export default async function InicioPage() {
 
   const { data: contratos } = await supabase
     .from("contratos")
-    .select("id, nome, valor_total, moeda, data_inicio")
+    .select("id, nome, valor_total, moeda, data_inicio, estudante_nome")
     .eq("titular_id", sessao.titularId)
     .order("id", { ascending: false })
 
