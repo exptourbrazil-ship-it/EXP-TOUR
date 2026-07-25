@@ -52,7 +52,8 @@ Duas observações de respeito ao que foi construído: a regra "valor_original n
 
 **Bloco 4 — Completar a jornada visível (2 semanas)**
 8. **Abas Embarque, Viagem e Retorno** (estados 6–8): checklist de embarque versão 1 (estática por destino antes do motor de regras), contatos/endereços na Viagem, e o Retorno com certificado no cofre + NPS + convite Google + indicação, que é o de melhor retorno por esforço.
-   - **Retorno — entregue** (aba `/retorno` ativa): certificado de conclusão puxado do cofre (novo tipo `certificado_conclusao`), avaliação NPS 0–10 salva em `nps_respostas` (rota `POST /api/nps`), convite para avaliar no Google (env `NEXT_PUBLIC_GOOGLE_REVIEW_URL`) e indicação via WhatsApp (`wa.me`). Falta ainda: abas Embarque e Viagem.
+   - **Retorno — entregue** (aba `/retorno` ativa): certificado de conclusão puxado do cofre (novo tipo `certificado_conclusao`), avaliação NPS 0–10 salva em `nps_respostas` (rota `POST /api/nps`), convite para avaliar no Google (env `NEXT_PUBLIC_GOOGLE_REVIEW_URL`) e indicação via WhatsApp (`wa.me`, com site público e artigo por `contratos.estudante_sexo`).
+   - **Embarque — entregue** (aba `/embarque` ativa): checklist de pré-embarque híbrido — itens de documento marcam sozinhos pelo cofre + tarefas manuais salvas em `embarque_checklist` (rota `POST /api/embarque/checklist`); listas por destino via `contratos.pais_destino` (`canada`/`eua`/`nova_zelandia` + base). Config em `src/lib/embarque.ts`. Falta ainda: aba Viagem.
 9. **Marco 1 completo** no ajuste de parcelas quando o cadastro de fornecedor existir (valor da escola + prazo por fornecedor), evoluindo a regra dos 30 dias para os dois marcos do wireframe aprovado.
 10. **Arrependimento de 7 dias e E1 mínimo (visto negado pausa cobrança)** — os dois primeiros processos de exceção, validando o padrão para os demais.
 

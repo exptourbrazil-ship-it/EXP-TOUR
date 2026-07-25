@@ -11,6 +11,7 @@ export const TIPOS_DOCUMENTO: {
   { valor: "passaporte", label: "Passaporte", categoria: "estudante", palavrasChave: ["passaporte", "passport"] },
   { valor: "visto", label: "Visto", categoria: "estudante", palavrasChave: ["visa", "visto"] },
   { valor: "visto_2", label: "Visto 2", categoria: "estudante", palavrasChave: ["visto 2", "visa 2", "second visa"] },
+  { valor: "visto_eua", label: "Visto Americano (B1/B2)", categoria: "estudante", palavrasChave: ["b1/b2", "b1 b2", "b1b2", "visto americano", "us visa", "usa visa", "visto eua"] },
   { valor: "certidao_vacinacao", label: "Certidao de Vacinacao", categoria: "estudante", palavrasChave: ["vacina", "vaccination", "certidao de vacinacao"] },
   { valor: "passagem_aerea", label: "Passagem Aerea", categoria: "estudante", palavrasChave: ["airline ticket", "passagem aerea", "e-ticket", "eticket", "itinerary"] },
   { valor: "eta", label: "eTA e similares", categoria: "estudante", palavrasChave: ["eta", "electronic travel authorization", "entry authorization"] },
