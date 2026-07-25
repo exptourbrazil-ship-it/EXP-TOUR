@@ -106,6 +106,24 @@ create table if not exists admin_audit (
 create index if not exists idx_admin_audit_criado on admin_audit(criado_em desc);
 create index if not exists idx_admin_audit_acao on admin_audit(acao);
 
+-- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
+-- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
+-- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via
+-- service role (rota /api/nps e paineis admin). Ver src/lib/nps.ts.
+create table if not exists nps_respostas (
+  id uuid primary key default gen_random_uuid(),
+  titular_id uuid not null references titulares(id) on delete cascade,
+  contrato_id uuid references contratos(id) on delete cascade,
+  nota int not null check (nota >= 0 and nota <= 10),
+  classificacao text check (classificacao in ('detrator','neutro','promotor')),
+  comentario text,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_nps_titular on nps_respostas(titular_id);
+create index if not exists idx_nps_contrato on nps_respostas(contrato_id);
+
 -- ============================================================================
 -- Modelo de seguranca / RLS (revisado)
 -- ============================================================================
@@ -138,3 +156,4 @@ alter table if exists whatsapp_logs      enable row level security;
 alter table if exists lembretes_cobranca enable row level security;
 alter table if exists rate_limit_hits    enable row level security;
 alter table if exists admin_audit        enable row level security;
+alter table if exists nps_respostas      enable row level security;
