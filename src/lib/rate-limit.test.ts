@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contarDentroDaJanela, excedeuLimite, obterIp } from "./rate-limit.ts";
+import { contarDentroDaJanela, excedeuLimite, obterIp, calcularCorteRetencaoISO } from "./rate-limit.ts";
 
 const AGORA = 1_000_000_000_000; // instante de referencia fixo (ms)
 const MIN = 60_000;
@@ -37,4 +37,12 @@ test("obterIp cai para x-real-ip e depois para 'desconhecido'", () => {
   const req = new Request("https://x", { headers: { "x-real-ip": "198.51.100.9" } });
   assert.equal(obterIp(req), "198.51.100.9");
   assert.equal(obterIp(new Request("https://x")), "desconhecido");
+});
+
+test("calcularCorteRetencaoISO recua o numero de horas informado", () => {
+  // 24h antes de AGORA
+  const corte = calcularCorteRetencaoISO(AGORA, 24);
+  assert.equal(new Date(corte).getTime(), AGORA - 24 * 60 * MIN);
+  // retencao 0 => o proprio instante atual
+  assert.equal(new Date(calcularCorteRetencaoISO(AGORA, 0)).getTime(), AGORA);
 });

@@ -55,6 +55,14 @@ export async function checarELimitar(
   }
 }
 
+// Helper puro (testavel): calcula o timestamp de corte para a limpeza. Linhas
+// com criado_em ANTERIOR a este corte ja passaram muito da janela de rate-limit
+// (minutos) e podem ser apagadas com seguranca. retencaoHoras define quanto
+// tempo de historico manter (ex.: 24h).
+export function calcularCorteRetencaoISO(agoraMs: number, retencaoHoras: number): string {
+  return new Date(agoraMs - retencaoHoras * 3600 * 1000).toISOString();
+}
+
 // Extrai o IP do cliente a partir dos headers (Vercel popula x-forwarded-for).
 export function obterIp(request: Request): string {
   const xff = request.headers.get("x-forwarded-for");
