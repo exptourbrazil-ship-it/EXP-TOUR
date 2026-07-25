@@ -28,10 +28,12 @@ export default async function DocumentosPage() {
     .eq("titular_id", sessao.titularId)
     .order("created_at", { ascending: false });
 
+  const afiliadoVistoUrl = process.env.NEXT_PUBLIC_AFILIADO_VISTO_URL || null;
+
   return createElement(
     "div",
     { className: "pb-28" },
-    createElement(DocumentosClient, { documentos: documentos || [] }),
+    createElement(DocumentosClient, { documentos: documentos || [], afiliadoVistoUrl }),
     createElement(BottomNav)
   );
 }

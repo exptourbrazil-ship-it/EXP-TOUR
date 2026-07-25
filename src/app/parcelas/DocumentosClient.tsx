@@ -13,6 +13,17 @@ const STATUS_LABEL: Record<string, string> = {
   rejeitado: "Reenviar",
 };
 
+// Passo a passo para solicitar o passaporte brasileiro (Policia Federal).
+// Valores e detalhes mudam com o tempo -> sempre apontamos para o site oficial.
+const PASSOS_PASSAPORTE = [
+  "Acesse o site da Polícia Federal (gov.br/pf) e preencha o formulário de solicitação de passaporte.",
+  "Emita e pague a GRU (taxa federal) gerada no próprio site.",
+  "Agende o atendimento presencial na unidade da PF mais próxima.",
+  "No dia, leve documento de identidade original, o comprovante de pagamento da GRU e o protocolo do agendamento.",
+  "No atendimento são coletados foto, impressões digitais e assinatura.",
+  "Acompanhe a emissão pelo site e retire o passaporte na unidade quando estiver pronto.",
+];
+
 const STATUS_COR: Record<string, { texto: string; fundo: string }> = {
   pendente: { texto: "#92600a", fundo: "#fdf3d7" },
   aprovado: { texto: "#15803d", fundo: "#e4f5ea" },
@@ -44,11 +55,12 @@ function IconeArquivo() {
   );
 }
 
-export default function DocumentosClient({ documentos }: { documentos: any[] }) {
+export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { documentos: any[]; afiliadoVistoUrl?: string | null }) {
   const [documentosState, setDocumentosState] = useState(documentos || []);
   const [tipoUpload, setTipoUpload] = useState({} as Record<string, string>);
   const [enviando, setEnviando] = useState(null as string | null);
   const [mensagem, setMensagem] = useState({} as Record<string, string>);
+  const [mostrarPassaporte, setMostrarPassaporte] = useState(false);
 
   const secoes = CATEGORIAS_DOCUMENTO.map((cat) => {
     const tipos = TIPOS_DOCUMENTO.filter((t) => t.categoria === cat.valor);
@@ -155,9 +167,57 @@ export default function DocumentosClient({ documentos }: { documentos: any[] }) 
     );
   }
 
+  // Card de orientacao: passo a passo do passaporte + botao de afiliado do visto.
+  function cardAjuda() {
+    const botaoBase: any = {
+      display: "block", width: "100%", boxSizing: "border-box", padding: "12px 14px",
+      borderRadius: 12, fontSize: 14, fontWeight: 600, textAlign: "center",
+      textDecoration: "none", cursor: "pointer", border: "none",
+    };
+    return createElement(
+      "div",
+      { style: { background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" } },
+      createElement("h2", { style: { fontFamily: "Bellefair, serif", fontSize: 20, color: VERDE, margin: 0 } }, "Passaporte e visto"),
+      createElement("p", { style: { fontSize: 12, color: "#999", margin: "4px 0 12px" } }, "Precisa tirar o passaporte ou solicitar o visto? A gente te orienta."),
+      // Botao: como solicitar passaporte (abre/fecha o passo a passo)
+      createElement(
+        "button",
+        { onClick: () => setMostrarPassaporte((v) => !v), style: { ...botaoBase, background: VERDE, color: CREME } },
+        mostrarPassaporte ? "Ocultar passo a passo" : "Como solicitar passaporte"
+      ),
+      // Painel com o passo a passo
+      mostrarPassaporte
+        ? createElement(
+            "div",
+            { style: { marginTop: 12, padding: 16, borderRadius: 12, background: "#fafafa", border: "1px solid #eee" } },
+            createElement(
+              "ol",
+              { style: { margin: 0, paddingLeft: 20, color: "#333", fontSize: 13, lineHeight: 1.6 } },
+              ...PASSOS_PASSAPORTE.map((p, i) => createElement("li", { key: i, style: { marginBottom: 8 } }, p))
+            ),
+            createElement("p", { style: { fontSize: 12, color: "#92600a", background: "#fdf3d7", padding: "8px 10px", borderRadius: 8, margin: "12px 0 0" } }, "Menor de idade: é obrigatória a presença dos pais ou responsáveis no atendimento, com a documentação de autorização. Consulte sempre o site oficial para valores e regras atualizadas."),
+            createElement(
+              "a",
+              { href: "https://www.gov.br/pf/pt-br/assuntos/passaporte", target: "_blank", rel: "noreferrer", style: { display: "inline-block", marginTop: 12, fontSize: 13, fontWeight: 600, color: OURO, textDecoration: "none" } },
+              "Abrir site oficial da Polícia Federal →"
+            )
+          )
+        : null,
+      // Botao: solicitar visto (afiliado) -- so aparece se a env existir
+      afiliadoVistoUrl
+        ? createElement(
+            "a",
+            { href: afiliadoVistoUrl, target: "_blank", rel: "noreferrer nofollow sponsored", style: { ...botaoBase, background: OURO, color: VERDE, marginTop: 10 } },
+            "Solicitar visto com parceiro"
+          )
+        : null
+    );
+  }
+
   return createElement(
     "div",
     { style: { marginBottom: 32 } },
+    cardAjuda(),
     ...secoes.map((secao) => cardSecao(secao))
   );
 }
