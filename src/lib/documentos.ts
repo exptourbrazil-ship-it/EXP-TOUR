@@ -24,6 +24,7 @@ export const TIPOS_DOCUMENTO: {
   { valor: "carta_transfer", label: "Carta de Transfer", categoria: "escola", palavrasChave: ["transfer letter", "carta de transfer"] },
   { valor: "documento_visto_escola", label: "Documento para Visto", categoria: "escola", palavrasChave: ["documento para visto", "document for visa"] },
   { valor: "seguro_saude", label: "Seguro Saude", categoria: "escola", palavrasChave: ["insurance", "seguro saude", "seguro-saude"] },
+  { valor: "certificado_conclusao", label: "Certificado de Conclusao", categoria: "escola", palavrasChave: ["certificado", "certificate", "certificado de conclusao", "completion certificate", "certificate of completion", "certificate of attendance"] },
   { valor: "contrato_prestacao_servicos", label: "Contrato de Prestacao de Servicos", categoria: "financeiro", palavrasChave: ["contrato de prestacao de servicos", "service agreement"] },
   { valor: "invoice_escola", label: "Invoice da Escola", categoria: "financeiro", palavrasChave: ["invoice", "invoice gross"] },
   { valor: "recibo_pagamento", label: "Recibo de Pagamento", categoria: "financeiro", palavrasChave: ["recibo", "receipt", "recibo de pagamento"] },
