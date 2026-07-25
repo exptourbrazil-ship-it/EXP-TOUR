@@ -33,25 +33,41 @@ export async function GET(request: Request) {
   }
 
   const supabase = getSupabase();
-  const { data, error } = await supabase
+
+  // Duas queries separadas (mais robusto que embed reverso do PostgREST):
+  // 1) contratos + nome do titular; 2) viagem_info; merge por contrato_id.
+  const { data: contratosRaw, error } = await supabase
     .from("contratos")
-    .select(
-      "id, nome, estudante_nome, pais_destino, titular:titulares(nome_completo), viagem_info(escola_nome, escola_endereco, acomodacao_endereco, contato_local_nome, contato_local_telefone, observacoes)"
-    )
+    .select("id, nome, estudante_nome, pais_destino, titular_id")
     .order("estudante_nome", { ascending: true });
 
   if (error) {
-    return NextResponse.json({ ok: false, erro: "Nao foi possivel listar os contratos." }, { status: 500 });
+    return NextResponse.json({ ok: false, erro: "Nao foi possivel listar os contratos: " + error.message }, { status: 500 });
   }
 
-  // Normaliza: viagem_info vem como array (0 ou 1 registro) por conta do embed.
-  const contratos = (data || []).map((c: any) => ({
+  const titularIds = Array.from(new Set((contratosRaw || []).map((c: any) => c.titular_id).filter(Boolean)));
+  const contratoIds = (contratosRaw || []).map((c: any) => c.id);
+
+  const { data: titulares } = titularIds.length
+    ? await supabase.from("titulares").select("id, nome_completo").in("id", titularIds)
+    : { data: [] };
+  const mapaTitular = new Map((titulares || []).map((t: any) => [t.id, t.nome_completo]));
+
+  const { data: infos } = contratoIds.length
+    ? await supabase
+        .from("viagem_info")
+        .select("contrato_id, escola_nome, escola_endereco, acomodacao_endereco, contato_local_nome, contato_local_telefone, observacoes")
+        .in("contrato_id", contratoIds)
+    : { data: [] };
+  const mapaInfo = new Map((infos || []).map((i: any) => [i.contrato_id, i]));
+
+  const contratos = (contratosRaw || []).map((c: any) => ({
     id: c.id,
     nome: c.nome,
     estudante_nome: c.estudante_nome,
     pais_destino: c.pais_destino,
-    titular_nome: c.titular?.nome_completo || null,
-    info: (Array.isArray(c.viagem_info) ? c.viagem_info[0] : c.viagem_info) || null,
+    titular_nome: mapaTitular.get(c.titular_id) || null,
+    info: mapaInfo.get(c.id) || null,
   }));
 
   return NextResponse.json({ ok: true, contratos });
