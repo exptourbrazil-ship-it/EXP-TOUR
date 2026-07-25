@@ -27,7 +27,7 @@ export default async function RetornoPage() {
 
   const { data: contratos } = await supabase
     .from("contratos")
-    .select("id, nome, estudante_nome")
+    .select("id, nome, estudante_nome, estudante_sexo")
     .eq("titular_id", sessao.titularId)
     .order("id", { ascending: false });
   const contrato = (contratos && contratos[0]) || null;
@@ -50,7 +50,6 @@ export default async function RetornoPage() {
     : await filtroNps.is("contrato_id", null).maybeSingle();
 
   const googleReviewUrl = process.env.NEXT_PUBLIC_GOOGLE_REVIEW_URL || null;
-  const portalUrl = process.env.NEXT_PUBLIC_APP_URL || null;
 
   return (
     <RetornoClient
@@ -59,7 +58,6 @@ export default async function RetornoPage() {
       certificados={certificados || []}
       npsExistente={npsExistente || null}
       googleReviewUrl={googleReviewUrl}
-      portalUrl={portalUrl}
     />
   );
 }

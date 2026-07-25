@@ -15,8 +15,16 @@ create table if not exists contratos (
   nome text not null,
   valor_total numeric(12,2) not null,
   moeda text not null default 'CAD',
+  estudante_nome text,               -- nome do estudante (aparece na aba Inicio/Retorno)
+  estudante_sexo text check (estudante_sexo in ('F','M')), -- artigo da msg de indicacao
   created_at timestamptz not null default now()
   );
+
+-- Colunas aplicadas depois via SQL Editor em bancos ja existentes (o create
+-- acima so vale para bancos novos). Ver CLAUDE.md sobre reconciliacao de DDL.
+alter table if exists contratos add column if not exists estudante_nome text;
+alter table if exists contratos add column if not exists estudante_sexo text
+  check (estudante_sexo in ('F','M'));
 
 -- Parcelas: cronograma de pagamento de cada contrato
 create table if not exists parcelas (
