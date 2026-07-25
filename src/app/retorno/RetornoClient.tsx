@@ -8,6 +8,7 @@ type Contrato = {
   id: string
   nome: string | null
   estudante_nome?: string | null
+  estudante_sexo?: "F" | "M" | null
 }
 
 type Certificado = {
@@ -27,7 +28,6 @@ type RetornoClientProps = {
   certificados: Certificado[]
   npsExistente: NpsExistente | null
   googleReviewUrl: string | null
-  portalUrl: string | null
 }
 
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
@@ -74,7 +74,7 @@ export default function RetornoClient(props: RetornoClientProps) {
     }
   }
 
-  const linkIndicacao = montarLinkIndicacaoWhatsApp(nomeExibicao, props.portalUrl)
+  const linkIndicacao = montarLinkIndicacaoWhatsApp(nomeExibicao, props.contrato ? props.contrato.estudante_sexo : null)
   const temCertificado = props.certificados.length > 0
 
   return (
