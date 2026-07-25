@@ -150,6 +150,21 @@ create table if not exists embarque_checklist (
 
 create index if not exists idx_embarque_titular on embarque_checklist(titular_id);
 
+-- Dados estruturados da aba Viagem (escola, acomodacao e contato local),
+-- preenchidos pela equipe. Um registro por contrato. Escrita/leitura via
+-- service role. Ver src/app/viagem e src/lib/viagem.ts.
+create table if not exists viagem_info (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null unique references contratos(id) on delete cascade,
+  escola_nome text,
+  escola_endereco text,
+  acomodacao_endereco text,
+  contato_local_nome text,
+  contato_local_telefone text,
+  observacoes text,
+  atualizado_em timestamptz not null default now()
+  );
+
 -- ============================================================================
 -- Modelo de seguranca / RLS (revisado)
 -- ============================================================================
@@ -184,3 +199,4 @@ alter table if exists rate_limit_hits    enable row level security;
 alter table if exists admin_audit        enable row level security;
 alter table if exists nps_respostas      enable row level security;
 alter table if exists embarque_checklist enable row level security;
+alter table if exists viagem_info        enable row level security;
