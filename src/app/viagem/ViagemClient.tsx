@@ -18,6 +18,7 @@ type ViagemClientProps = {
   info: ViagemInfo | null
   afiliadoMoedaUrl: string | null
   afiliadoChipUrl: string | null
+  afiliadoPassagemUrl: string | null
 }
 
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
@@ -151,7 +152,7 @@ export default function ViagemClient(props: ViagemClientProps) {
         </section>
 
         {/* Servicos para a viagem (parceiros / afiliados) */}
-        {(props.afiliadoMoedaUrl || props.afiliadoChipUrl) ? (
+        {(props.afiliadoMoedaUrl || props.afiliadoChipUrl || props.afiliadoPassagemUrl) ? (
           <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
               Prepare-se para a viagem
@@ -160,6 +161,17 @@ export default function ViagemClient(props: ViagemClientProps) {
               Parceiros da EXP Tour para voce chegar tranquilo.
             </p>
             <div className="mt-4 space-y-3">
+              {props.afiliadoPassagemUrl ? (
+                <a
+                  href={props.afiliadoPassagemUrl}
+                  target="_blank"
+                  rel="noreferrer nofollow sponsored"
+                  className="flex items-center justify-between rounded-xl bg-brand px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
+                >
+                  <span>Comprar passagem aerea</span>
+                  <span className="ml-3 shrink-0">&rarr;</span>
+                </a>
+              ) : null}
               {props.afiliadoMoedaUrl ? (
                 <a
                   href={props.afiliadoMoedaUrl}

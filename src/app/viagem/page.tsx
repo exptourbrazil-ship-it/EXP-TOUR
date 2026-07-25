@@ -47,6 +47,7 @@ export default async function ViagemPage() {
   // Links de afiliados (parceiros). Cada botao so aparece se a env existir.
   const afiliadoMoedaUrl = process.env.NEXT_PUBLIC_AFILIADO_MOEDA_URL || null;
   const afiliadoChipUrl = process.env.NEXT_PUBLIC_AFILIADO_CHIP_URL || null;
+  const afiliadoPassagemUrl = process.env.NEXT_PUBLIC_AFILIADO_PASSAGEM_URL || null;
 
   return (
     <ViagemClient
@@ -55,6 +56,7 @@ export default async function ViagemPage() {
       info={info || null}
       afiliadoMoedaUrl={afiliadoMoedaUrl}
       afiliadoChipUrl={afiliadoChipUrl}
+      afiliadoPassagemUrl={afiliadoPassagemUrl}
     />
   );
 }
