@@ -66,13 +66,13 @@ const iconeRetorno = (
 );
 
 // Navegacao inferior compartilhada entre as areas da Area do Cliente.
-// Embarque e Viagem ainda nao tem pagina propria (fase seguinte), por isso
-// aparecem desabilitadas por enquanto. Retorno ja esta disponivel.
+// Viagem ainda nao tem pagina propria (fase seguinte), por isso aparece
+// desabilitada. Embarque e Retorno ja estao disponiveis.
 const ITENS: ItemNav[] = [
   { href: "/inicio", label: "In\u00edcio", disponivel: true, icon: iconeInicio },
   { href: "/parcelas", label: "Financeiro", disponivel: true, icon: iconeFinanceiro },
   { href: "/documentos", label: "Docs", disponivel: true, icon: iconeDocs },
-  { href: "/embarque", label: "Embarque", disponivel: false, icon: iconeEmbarque },
+  { href: "/embarque", label: "Embarque", disponivel: true, icon: iconeEmbarque },
   { href: "/viagem", label: "Viagem", disponivel: false, icon: iconeViagem },
   { href: "/retorno", label: "Retorno", disponivel: true, icon: iconeRetorno },
 ];

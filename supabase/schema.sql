@@ -17,6 +17,7 @@ create table if not exists contratos (
   moeda text not null default 'CAD',
   estudante_nome text,               -- nome do estudante (aparece na aba Inicio/Retorno)
   estudante_sexo text check (estudante_sexo in ('F','M')), -- artigo da msg de indicacao
+  pais_destino text,                 -- slug do destino (ex.: 'canada','eua','nova_zelandia')
   created_at timestamptz not null default now()
   );
 
@@ -25,6 +26,7 @@ create table if not exists contratos (
 alter table if exists contratos add column if not exists estudante_nome text;
 alter table if exists contratos add column if not exists estudante_sexo text
   check (estudante_sexo in ('F','M'));
+alter table if exists contratos add column if not exists pais_destino text;
 
 -- Parcelas: cronograma de pagamento de cada contrato
 create table if not exists parcelas (
@@ -132,6 +134,22 @@ create table if not exists nps_respostas (
 create index if not exists idx_nps_titular on nps_respostas(titular_id);
 create index if not exists idx_nps_contrato on nps_respostas(contrato_id);
 
+-- Checklist de pre-embarque (aba Embarque): guarda o estado das TAREFAS manuais
+-- que o aluno marca (itens de documento marcam sozinhos pelo cofre, nao entram
+-- aqui). Uma linha por (titular, contrato, item). Escrita/leitura via service
+-- role (rota /api/embarque/checklist). Ver src/lib/embarque.ts.
+create table if not exists embarque_checklist (
+  id uuid primary key default gen_random_uuid(),
+  titular_id uuid not null references titulares(id) on delete cascade,
+  contrato_id uuid references contratos(id) on delete cascade,
+  item_chave text not null,
+  concluido boolean not null default true,
+  atualizado_em timestamptz not null default now(),
+  unique (titular_id, contrato_id, item_chave)
+  );
+
+create index if not exists idx_embarque_titular on embarque_checklist(titular_id);
+
 -- ============================================================================
 -- Modelo de seguranca / RLS (revisado)
 -- ============================================================================
@@ -165,3 +183,4 @@ alter table if exists lembretes_cobranca enable row level security;
 alter table if exists rate_limit_hits    enable row level security;
 alter table if exists admin_audit        enable row level security;
 alter table if exists nps_respostas      enable row level security;
+alter table if exists embarque_checklist enable row level security;
