@@ -7,6 +7,11 @@ import {
   cpfValido,
   soDigitos,
   nomeEstudante,
+  nomeLookup,
+  normalizarSexo,
+  slugDestino,
+  dataZoho,
+  dadosPrograma,
 } from "./zoho-contato.ts";
 
 test("usa o CPF do estudante quando preenchido", () => {
@@ -68,4 +73,65 @@ test("cpfValido exige 11 digitos; soDigitos remove pontuacao", () => {
   assert.equal(cpfValido("123.456.789-09"), true);
   assert.equal(cpfValido("123"), false);
   assert.equal(cpfValido(null), false);
+});
+
+test("nomeLookup extrai de objeto { name } ou de string", () => {
+  assert.equal(nomeLookup({ name: "Kaplan - Toronto" }), "Kaplan - Toronto");
+  assert.equal(nomeLookup("ILAC - Vancouver"), "ILAC - Vancouver");
+  assert.equal(nomeLookup(null), null);
+  assert.equal(nomeLookup({ name: "" }), null);
+});
+
+test("normalizarSexo aceita M/F e Masculino/Feminino", () => {
+  assert.equal(normalizarSexo("M"), "M");
+  assert.equal(normalizarSexo("F"), "F");
+  assert.equal(normalizarSexo("Masculino"), "M");
+  assert.equal(normalizarSexo("feminino"), "F");
+  assert.equal(normalizarSexo(""), null);
+  assert.equal(normalizarSexo(null), null);
+});
+
+test("slugDestino mapeia os destinos suportados (com/sem acento)", () => {
+  assert.equal(slugDestino({ name: "Canadá" }), "canada");
+  assert.equal(slugDestino({ name: "Estados Unidos" }), "eua");
+  assert.equal(slugDestino("EUA"), "eua");
+  assert.equal(slugDestino({ name: "Nova Zelândia" }), "nova_zelandia");
+});
+
+test("slugDestino gera slug generico para pais ainda nao suportado", () => {
+  assert.equal(slugDestino({ name: "Irlanda" }), "irlanda");
+  assert.equal(slugDestino({ name: "Reino Unido" }), "reino_unido");
+  assert.equal(slugDestino(null), null);
+});
+
+test("dataZoho extrai a parte da data", () => {
+  assert.equal(dataZoho("2026-09-15"), "2026-09-15");
+  assert.equal(dataZoho("2026-09-15T00:00:00-03:00"), "2026-09-15");
+  assert.equal(dataZoho(""), null);
+  assert.equal(dataZoho(null), null);
+});
+
+test("dadosPrograma reune os campos do programa no formato do banco", () => {
+  const p = dadosPrograma({
+    Full_Name: "Luiza Haas",
+    Sexo: "F",
+    Destino: { name: "Canadá" },
+    Data_de_Inicio: "2026-09-15",
+    Vendor_Name: { name: "ILAC - Toronto" },
+  });
+  assert.deepEqual(p, {
+    estudanteNome: "Luiza Haas",
+    estudanteSexo: "F",
+    paisDestino: "canada",
+    dataInicio: "2026-09-15",
+    escolaNome: "ILAC - Toronto",
+  });
+});
+
+test("dadosPrograma retorna nulos quando o Contato nao tem os campos", () => {
+  const p = dadosPrograma({ Full_Name: "Sem Programa" });
+  assert.equal(p.estudanteSexo, null);
+  assert.equal(p.paisDestino, null);
+  assert.equal(p.dataInicio, null);
+  assert.equal(p.escolaNome, null);
 });
