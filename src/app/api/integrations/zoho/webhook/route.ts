@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
 import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
+import { resolverTitular } from "@/lib/zoho-contato";
 
 // Webhook do Zoho CRM: disparado por uma Workflow Rule no modulo Contatos
 // quando um contato e criado/atualizado com um Produto Adquirido vinculado.
@@ -57,16 +58,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao buscar contato no Zoho" }, { status: 502 });
   }
 
-  const cpf = String(contato.CPF || "").replace(/\D/g, "");
-  const nomeCompleto =
-    contato.Full_Name || `${contato.First_Name || ""} ${contato.Last_Name || ""}`.trim();
+  // Resolve o CPF de login e o nome do titular. Regra: usa o CPF do estudante;
+  // se ele nao tiver CPF proprio (menor de idade), assume o do Responsavel 1.
+  const { cpf, nome: nomeCompleto } = resolverTitular(contato);
   const telefone = contato.Phone || contato.Mobile || null;
     const email = contato.Email || null;
   const produtoLookup = contato.Produto_Adquirido;
 
   if (!cpf || !nomeCompleto) {
     return NextResponse.json(
-      { ok: false, error: "Contato do Zoho sem CPF ou nome preenchido" },
+      {
+        ok: false,
+        error:
+          "Contato do Zoho sem CPF (do estudante ou do responsavel 1) ou sem nome preenchido",
+      },
       { status: 422 }
     );
   }
