@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
 import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
-import { resolverTitular, dadosPrograma } from "@/lib/zoho-contato";
+import { resolverTitular, dadosPrograma, dadosComerciais } from "@/lib/zoho-contato";
 
 // Webhook do Zoho CRM: disparado por uma Workflow Rule no modulo Contatos
 // quando um contato e criado/atualizado com um Produto Adquirido vinculado.
@@ -104,34 +104,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao buscar produto no Zoho" }, { status: 502 });
   }
 
-  const numeroParcelas = Number(produto.Numero_de_Parcelas || 0);
-  const valorEntrada = Number(produto.Valor_de_Entrada || 0);
-  const nomeProduto = produto.Product_Name || "Viagem EXP Tour";
-
-  // A opcao "BRL" da lista Moeda_do_Produto reaproveitou uma opcao padrao do
-  // Zoho cujo valor interno antigo ainda e "Opção 1" (e "USD" e "Opção 2");
-  // por isso normalizamos os dois valores possiveis para cada moeda.
-  function normalizarMoeda(raw: string): string {
-    if (!raw || raw === "-None-") return "BRL";
-    if (raw === "Opção 1") return "BRL";
-    if (raw === "Opção 2") return "USD";
-    return raw;
-  }
-
-  const moeda = normalizarMoeda(String(produto.Moeda_do_Produto || ""));
-
-  // Valor do contrato sempre na moeda do produto: se for BRL usamos o Preco
-  // Unitario normal; se for moeda estrangeira usamos o Preco na Moeda
-  // Original. A conversao para BRL NAO acontece aqui.
-  const valorTotal =
-    moeda === "BRL" ? Number(produto.Unit_Price || 0) : Number(produto.Preco_na_Moeda_Original || 0);
-
-  if (!valorTotal || !numeroParcelas) {
-    return NextResponse.json(
-      { ok: false, error: "Produto no Zoho sem preco (na moeda correta) ou numero de parcelas configurados" },
-      { status: 422 }
-    );
-  }
+  // Dados comerciais do contrato (valor total, moeda, entrada, nº de parcelas).
+  // Fonte de verdade e o CONTATO (comercial negociado por cliente); o Produto
+  // e fallback (retrocompatibilidade) e catalogo (nome do curso). A moeda nao
+  // e convertida aqui -- isso acontece parcela a parcela, no dia do Pix.
+  // A validacao de valor/parcelas so acontece na criacao de um contrato NOVO
+  // (mais abaixo): um contrato ja existente sincroniza escola/programa sem
+  // depender de preco.
+  const { nomeProduto, moeda, valorTotal, valorEntrada, numeroParcelas } =
+    dadosComerciais(contato, produto);
 
   // Dados do programa vindos do Contato (estudante, sexo, destino, data e
   // escola). So incluimos os campos que o Zoho tem preenchidos, para nunca
@@ -197,6 +178,20 @@ export async function POST(request: Request) {
       contrato_id: contratoExistente.id,
       info: "Contrato ja existente para este titular e produto",
     });
+  }
+
+  // Contrato NOVO: agora sim exigimos valor e numero de parcelas. Preencha o
+  // comercial no Contato do Zoho (Valor Total, Moeda, Valor de Entrada, Numero
+  // de Parcelas) -- ou, para contratos antigos, no proprio Produto.
+  if (!valorTotal || !numeroParcelas) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Sem valor total (na moeda correta) ou numero de parcelas. Preencha o comercial no Contato do Zoho (ou no Produto).",
+      },
+      { status: 422 }
+    );
   }
 
   const { data: contrato, error: contratoError } = await supabase
