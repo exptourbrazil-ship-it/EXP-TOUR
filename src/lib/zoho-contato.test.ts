@@ -14,30 +14,30 @@ import {
   dadosPrograma,
 } from "./zoho-contato.ts";
 
-test("usa o CPF do estudante quando preenchido", () => {
+test("titular e o responsavel 1, mesmo com o estudante tendo CPF proprio", () => {
   const r = resolverTitular({
     Full_Name: "Luiza Haas",
     CPF: "123.456.789-09",
     CPF_do_Respons_vel_1: "111.111.111-11",
-  });
-  assert.equal(r.cpf, "12345678909");
-  assert.equal(r.nome, "Luiza Haas");
-  assert.equal(r.origemCpf, "estudante");
-});
-
-test("assume o CPF do responsavel 1 quando o estudante nao tem CPF", () => {
-  const r = resolverTitular({
-    Full_Name: "Luiza Haas",
-    CPF: "",
-    CPF_do_Respons_vel_1: "111.111.111-11",
-    Nome_do_Respons_vel_1: "Mario Haas",
+    Nome_do_Respons_vel_1: "Fernanda Haas",
   });
   assert.equal(r.cpf, "11111111111");
-  assert.equal(r.nome, "Mario Haas");
+  assert.equal(r.nome, "Fernanda Haas");
   assert.equal(r.origemCpf, "responsavel_1");
 });
 
-test("no fallback, cai para o nome do estudante se o responsavel nao tem nome", () => {
+test("cai para o CPF do estudante quando nao ha responsavel 1 (aluno adulto)", () => {
+  const r = resolverTitular({
+    Full_Name: "Joao Adulto",
+    CPF: "123.456.789-09",
+    CPF_do_Respons_vel_1: "",
+  });
+  assert.equal(r.cpf, "12345678909");
+  assert.equal(r.nome, "Joao Adulto");
+  assert.equal(r.origemCpf, "estudante");
+});
+
+test("usa o CPF do responsavel 1 e cai para o nome do estudante se o responsavel nao tem nome", () => {
   const r = resolverTitular({
     Full_Name: "Luiza Haas",
     CPF: null,
@@ -48,14 +48,14 @@ test("no fallback, cai para o nome do estudante se o responsavel nao tem nome", 
   assert.equal(r.origemCpf, "responsavel_1");
 });
 
-test("CPF incompleto do estudante nao bloqueia o fallback do responsavel", () => {
+test("CPF incompleto do responsavel 1 cai para o CPF do estudante", () => {
   const r = resolverTitular({
     Full_Name: "Luiza Haas",
-    CPF: "123",
-    CPF_do_Respons_vel_1: "111.111.111-11",
+    CPF: "123.456.789-09",
+    CPF_do_Respons_vel_1: "111",
   });
-  assert.equal(r.cpf, "11111111111");
-  assert.equal(r.origemCpf, "responsavel_1");
+  assert.equal(r.cpf, "12345678909");
+  assert.equal(r.origemCpf, "estudante");
 });
 
 test("sem nenhum CPF valido retorna vazio (webhook devolve 422)", () => {

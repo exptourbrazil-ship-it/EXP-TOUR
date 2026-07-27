@@ -58,8 +58,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao buscar contato no Zoho" }, { status: 502 });
   }
 
-  // Resolve o CPF de login e o nome do titular. Regra: usa o CPF do estudante;
-  // se ele nao tiver CPF proprio (menor de idade), assume o do Responsavel 1.
+  // Resolve o CPF de login e o nome do titular. Regra: o titular e o
+  // responsavel financeiro -> usa o CPF do Responsavel 1; se nao houver
+  // (aluno adulto), cai para o CPF do estudante.
   const { cpf, nome: nomeCompleto } = resolverTitular(contato);
   const telefone = contato.Phone || contato.Mobile || null;
     const email = contato.Email || null;
@@ -141,6 +142,9 @@ export async function POST(request: Request) {
   if (prog.estudanteSexo) camposContrato.estudante_sexo = prog.estudanteSexo;
   if (prog.paisDestino) camposContrato.pais_destino = prog.paisDestino;
   if (prog.dataInicio) camposContrato.data_inicio = prog.dataInicio;
+  // Sempre grava o contato do Zoho no contrato: e a chave estavel de dedupe
+  // (independe de qual CPF virou titular) e cura contratos antigos sem ela.
+  camposContrato.zoho_contact_id = contactId;
 
   // Grava a escola (Vendor_Name) em viagem_info sem apagar endereco/contatos
   // ja preenchidos. Nao-fatal: uma falha aqui nao impede a criacao do contrato.
@@ -158,12 +162,27 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: contratoExistente } = await supabase
-    .from("contratos")
-    .select("id")
-    .eq("titular_id", titular.id)
-    .eq("zoho_product_id", produtoLookup.id)
-    .maybeSingle();
+  // Dedupe: primeiro pelo contato do Zoho gravado no contrato (chave estavel,
+  // nao depende de qual CPF virou titular); se nao houver, pelo par
+  // titular + produto (contratos antigos, antes de gravarmos o contact id).
+  let contratoExistente: { id: string } | null = null;
+  {
+    const { data } = await supabase
+      .from("contratos")
+      .select("id")
+      .eq("zoho_contact_id", contactId)
+      .maybeSingle();
+    contratoExistente = data;
+  }
+  if (!contratoExistente) {
+    const { data } = await supabase
+      .from("contratos")
+      .select("id")
+      .eq("titular_id", titular.id)
+      .eq("zoho_product_id", produtoLookup.id)
+      .maybeSingle();
+    contratoExistente = data;
+  }
 
   if (contratoExistente) {
     // Contrato ja existe: nao mexemos em valores/parcelas, mas sincronizamos

@@ -44,21 +44,18 @@ export function nomeEstudante(contato: ContatoZoho): string {
 
 // Resolve o titular (login por CPF) a partir do Contato do Zoho.
 //
-// Regra de negocio (definida com a equipe): o CPF de login e o do ESTUDANTE.
-// Quando o estudante e menor e nao tem CPF proprio preenchido, assume-se o CPF
-// do Responsavel 1. Nesse caso o nome do titular passa a ser o do responsavel
-// (o dono do CPF), caindo para o nome do estudante se o do responsavel nao
-// estiver preenchido.
+// Regra de negocio (revisada com a equipe): o titular e o RESPONSAVEL
+// FINANCEIRO. Usa-se o CPF do Responsavel 1; se ele nao tiver CPF (ex.: aluno
+// maior de idade que e o proprio responsavel), cai para o CPF do estudante.
+// O nome do titular acompanha o dono do CPF (nome do responsavel; se vazio,
+// nome do estudante). O nome do estudante em si vai sempre para o contrato
+// (contratos.estudante_nome), independentemente de quem e o titular.
 export function resolverTitular(contato: ContatoZoho): {
   cpf: string;
   nome: string;
-  origemCpf: "estudante" | "responsavel_1" | null;
+  origemCpf: "responsavel_1" | "estudante" | null;
 } {
   const nome = nomeEstudante(contato);
-
-  if (cpfValido(contato.CPF)) {
-    return { cpf: soDigitos(contato.CPF), nome, origemCpf: "estudante" };
-  }
 
   if (cpfValido(contato.CPF_do_Respons_vel_1)) {
     return {
@@ -66,6 +63,10 @@ export function resolverTitular(contato: ContatoZoho): {
       nome: (contato.Nome_do_Respons_vel_1 || nome).trim(),
       origemCpf: "responsavel_1",
     };
+  }
+
+  if (cpfValido(contato.CPF)) {
+    return { cpf: soDigitos(contato.CPF), nome, origemCpf: "estudante" };
   }
 
   return { cpf: "", nome, origemCpf: null };
