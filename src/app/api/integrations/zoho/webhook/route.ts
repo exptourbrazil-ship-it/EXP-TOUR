@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
 import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
-import { resolverTitular } from "@/lib/zoho-contato";
+import { resolverTitular, dadosPrograma } from "@/lib/zoho-contato";
 
 // Webhook do Zoho CRM: disparado por uma Workflow Rule no modulo Contatos
 // quando um contato e criado/atualizado com um Produto Adquirido vinculado.
@@ -132,6 +132,32 @@ export async function POST(request: Request) {
     );
   }
 
+  // Dados do programa vindos do Contato (estudante, sexo, destino, data e
+  // escola). So incluimos os campos que o Zoho tem preenchidos, para nunca
+  // sobrescrever com null um dado ja ajustado manualmente no portal.
+  const prog = dadosPrograma(contato);
+  const camposContrato: Record<string, unknown> = {};
+  if (prog.estudanteNome) camposContrato.estudante_nome = prog.estudanteNome;
+  if (prog.estudanteSexo) camposContrato.estudante_sexo = prog.estudanteSexo;
+  if (prog.paisDestino) camposContrato.pais_destino = prog.paisDestino;
+  if (prog.dataInicio) camposContrato.data_inicio = prog.dataInicio;
+
+  // Grava a escola (Vendor_Name) em viagem_info sem apagar endereco/contatos
+  // ja preenchidos. Nao-fatal: uma falha aqui nao impede a criacao do contrato.
+  async function sincronizarViagemInfo(contratoId: string) {
+    if (!prog.escolaNome) return;
+    try {
+      await supabase
+        .from("viagem_info")
+        .upsert(
+          { contrato_id: contratoId, escola_nome: prog.escolaNome },
+          { onConflict: "contrato_id" }
+        );
+    } catch (err) {
+      console.error("Falha ao sincronizar escola (viagem_info) do Zoho", err);
+    }
+  }
+
   const { data: contratoExistente } = await supabase
     .from("contratos")
     .select("id")
@@ -140,6 +166,12 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (contratoExistente) {
+    // Contrato ja existe: nao mexemos em valores/parcelas, mas sincronizamos
+    // os campos do programa (backfill para contratos ja na base).
+    if (Object.keys(camposContrato).length > 0) {
+      await supabase.from("contratos").update(camposContrato).eq("id", contratoExistente.id);
+    }
+    await sincronizarViagemInfo(contratoExistente.id);
     return NextResponse.json({
       ok: true,
       titular_id: titular.id,
@@ -156,6 +188,7 @@ export async function POST(request: Request) {
       valor_total: valorTotal,
       moeda,
       zoho_product_id: produtoLookup.id,
+      ...camposContrato,
     })
     .select()
     .single();
@@ -209,6 +242,8 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+
+  await sincronizarViagemInfo(contrato.id);
 
   return NextResponse.json({
     ok: true,
