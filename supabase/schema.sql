@@ -54,6 +54,30 @@ create table if not exists parcelas (
 create index if not exists idx_parcelas_contrato on parcelas(contrato_id);
 create index if not exists idx_contratos_titular on contratos(titular_id);
 
+-- Ledger de pagamentos: um lancamento imutavel por parcela paga, com o cambio
+-- aplicado e o montante em BRL efetivamente pago (do transaction_amount do
+-- Mercado Pago), alem do montante na moeda do programa. A divida vive sempre
+-- na moeda do programa; este ledger registra a "fotografia" do cambio no
+-- momento de cada pagamento, para conciliacao contabil. Escrito na confirmacao
+-- do pagamento (ver src/lib/mp-processar-pagamento.ts). A chave unica
+-- (parcela_id, external_payment_id) garante idempotencia no reprocessamento.
+create table if not exists pagamentos (
+  id uuid primary key default gen_random_uuid(),
+  parcela_id uuid not null references parcelas(id) on delete cascade,
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  external_payment_id text not null,       -- id do pagamento no Mercado Pago
+  moeda text not null,                     -- moeda do programa (ex: CAD, USD)
+  valor_programa numeric(12,2) not null,   -- montante na moeda do programa
+  cotacao_aplicada numeric(12,6),          -- BRL por 1 unidade da moeda (VET)
+  valor_brl numeric(12,2) not null,        -- BRL efetivamente pago
+  pago_em timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (parcela_id, external_payment_id)
+  );
+
+create index if not exists idx_pagamentos_contrato on pagamentos(contrato_id);
+create index if not exists idx_pagamentos_parcela on pagamentos(parcela_id);
+
 -- Events: barramento/ledger de eventos externos (webhooks). Fonte de
 -- idempotencia e auditoria. Cada notificacao externa vira uma linha; o efeito
 -- (ex: marcar parcela como paga) e aplicado no maximo uma vez por
