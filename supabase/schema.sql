@@ -27,6 +27,10 @@ alter table if exists contratos add column if not exists estudante_nome text;
 alter table if exists contratos add column if not exists estudante_sexo text
   check (estudante_sexo in ('F','M'));
 alter table if exists contratos add column if not exists pais_destino text;
+-- id do Contato no Zoho CRM: chave estavel de dedupe do webhook (independe de
+-- qual CPF vira titular). Ver src/app/api/integrations/zoho/webhook/route.ts.
+alter table if exists contratos add column if not exists zoho_contact_id text;
+create index if not exists idx_contratos_zoho_contact on contratos(zoho_contact_id);
 
 -- Parcelas: cronograma de pagamento de cada contrato
 create table if not exists parcelas (
