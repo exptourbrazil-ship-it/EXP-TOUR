@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { criarCobrancaPix } from "@/lib/mercadopago";
+import { criarCobrancaPix, cancelarPagamento } from "@/lib/mercadopago";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { converterParaBRL } from "@/lib/cambio";
@@ -102,6 +102,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const qrCodeUrl = cobranca.qrCodeBase64
           ? `data:image/png;base64,${cobranca.qrCodeBase64}`
               : null;
+
+      // Se havia uma cobranca anterior e a nova e diferente (valor mudou),
+      // cancela a antiga no MP para o cliente nao pagar o QR/valor velho.
+      // Melhor esforco: uma falha aqui nao deve impedir a nova cobranca.
+      const idAnterior = (parcela as any).external_payment_id as string | null;
+      if (idAnterior && idAnterior !== cobranca.paymentId) {
+              try {
+                        await cancelarPagamento(idAnterior);
+              } catch {
+                        // ignora: a nova cobranca ja e a valida exibida ao cliente
+              }
+      }
 
       await supabase
           .from("parcelas")
