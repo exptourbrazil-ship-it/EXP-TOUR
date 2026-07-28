@@ -35,7 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // 1) Carrega a parcela e o contrato dono dela.
   const { data: parcela, error: erroParcela } = await supabase
     .from("parcelas")
-    .select("id, status, contrato_id")
+    .select("id, status, contrato_id, valor_original")
     .eq("id", parcelaId)
     .single()
 
@@ -62,7 +62,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, erro: "Esta parcela ja foi paga e nao pode voltar para em aberto." }, { status: 400 })
   }
 
-  // 4) Limpa os dados da cobranca Pix, mantendo a parcela pendente.
+  // 4) Limpa os dados da cobranca Pix, mantendo a parcela pendente. Ao gerar a
+  // cobranca, `valor_atual` foi sobrescrito com o BRL cobrado; ao cancelar,
+  // devolvemos `valor_atual` ao valor na moeda do programa (valor_original) e
+  // limpamos a cotacao, para que uma nova cobranca converta corretamente e nao
+  // aplique cambio sobre um valor que ja estava em BRL.
   const { error: erroUpdate } = await supabase
     .from("parcelas")
     .update({
@@ -70,6 +74,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       payment_link: null,
       external_payment_id: null,
       status: "pendente",
+      valor_atual: Number((parcela as any).valor_original),
+      cotacao_aplicada: null,
     })
     .eq("id", parcelaId)
 

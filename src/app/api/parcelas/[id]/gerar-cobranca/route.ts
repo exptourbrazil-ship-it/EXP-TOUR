@@ -4,6 +4,7 @@ import { criarCobrancaPix } from "@/lib/mercadopago";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { converterParaBRL } from "@/lib/cambio";
+import { valorProgramaAtual } from "@/lib/parcelas";
 
 // Gera (ou reaproveita) uma cobranca Pix para uma parcela especifica e grava
 // o QR code / codigo copia-e-cola de volta na tabela parcelas.
@@ -56,7 +57,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const moeda = (parcela as any).contrato?.moeda || "BRL";
-    let valorCobranca = Number(parcela.valor_original);
+    // Base da cobranca = valor efetivo na moeda do programa (com ajustes do
+    // cliente), nao o valor_original. Antes da cobranca ser gerada isso e o
+    // valor_atual; assim o Pix cobra exatamente o que o cliente ve na tela.
+    let valorCobranca = valorProgramaAtual(parcela as any);
     let cotacaoAplicada: number | null = null;
 
   if (moeda !== "BRL") {
@@ -85,7 +89,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         // A cotacao_vet ja embute o cambio BACEN do dia + spread + IOF
         // (ver cron atualizar-cambio). O valor cobrado e apenas a conversao,
         // sem taxa administrativa fixa.
-        valorCobranca = converterParaBRL(Number(parcela.valor_original), cotacaoAplicada);
+        valorCobranca = converterParaBRL(valorProgramaAtual(parcela as any), cotacaoAplicada);
   }
 
   try {
