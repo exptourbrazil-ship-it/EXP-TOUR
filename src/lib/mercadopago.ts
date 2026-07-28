@@ -15,12 +15,21 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
           throw new Error("MERCADOPAGO_ACCESS_TOKEN nao configurado");
     }
 
+  // A chave de idempotencia precisa variar com o VALOR, nao so com a parcela.
+  // Se usar apenas o id da parcela, ao regerar a cobranca com um valor diferente
+  // (ex.: apos o cliente ajustar a parcela) o Mercado Pago devolve a cobranca
+  // ANTIGA (mesmo QR/valor) em vez de criar uma nova — o QR ficaria cobrando o
+  // valor velho enquanto o sistema registra o novo. Incluindo o valor na chave,
+  // um valor diferente gera uma cobranca nova; o mesmo valor continua idempotente
+  // (protege contra duplo-clique).
+  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}`;
+
   const response = await fetch(`${MP_API_URL}/v1/payments`, {
         method: "POST",
         headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${accessToken}`,
-                "X-Idempotency-Key": params.externalReference,
+                "X-Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
                 transaction_amount: params.valor,
@@ -47,6 +56,34 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
         qrCode: transactionData?.qr_code as string | undefined,
         ticketUrl: transactionData?.ticket_url as string | undefined,
   };
+}
+
+// Cancela um pagamento Pix pendente no Mercado Pago. Usado ao regerar uma
+// cobranca com valor diferente: a cobranca antiga (QR com o valor velho)
+// precisa ser invalidada para o cliente nao conseguir pagar o valor errado.
+// Melhor esforco: lanca em caso de falha, mas o chamador trata (nao deve
+// impedir a criacao da nova cobranca).
+export async function cancelarPagamento(paymentId: string) {
+    const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (!accessToken) {
+          throw new Error("MERCADOPAGO_ACCESS_TOKEN nao configurado");
+    }
+
+  const response = await fetch(`${MP_API_URL}/v1/payments/${paymentId}`, {
+        method: "PUT",
+        headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ status: "cancelled" }),
+  });
+
+  if (!response.ok) {
+        const erro = await response.text();
+        throw new Error(`Erro ao cancelar cobranca Pix: ${erro}`);
+  }
+
+  return response.json();
 }
 
 // Consulta o status atual de um pagamento no Mercado Pago (usado pelo webhook).
