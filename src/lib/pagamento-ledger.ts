@@ -6,9 +6,12 @@
 //
 // Fonte do BRL (em ordem de preferencia):
 //  1. transaction_amount do pagamento do Mercado Pago -> o valor realmente pago;
-//  2. valor_atual da parcela -> o BRL cobrado na geracao do Pix (fallback);
+//  2. valor_cobrado_brl da parcela -> o BRL cobrado na geracao do Pix (fallback);
 //  3. valor_programa * cotacao_aplicada -> reconstrucao pela formula;
 //  4. valor_programa -> contrato ja em BRL (sem cotacao).
+//
+// O valor na moeda do programa vem do valor_atual (valor efetivo, ja com os
+// ajustes do cliente), com fallback ao valor_original.
 
 export type PagamentoMP = {
   transaction_amount?: number | string | null;
@@ -20,6 +23,7 @@ export type ParcelaLedger = {
   contrato_id: string;
   valor_original: number | string | null;
   valor_atual?: number | string | null;
+  valor_cobrado_brl?: number | string | null;
   cotacao_aplicada?: number | string | null;
 };
 
@@ -55,12 +59,13 @@ export function montarLancamentoPagamento(params: {
 }): LancamentoPagamento {
   const { parcela, moeda, paymentId, pagamentoMP, pagoEm } = params;
 
-  const valorPrograma = numeroOuNulo(parcela.valor_original) ?? 0;
+  const valorPrograma =
+    numeroOuNulo(parcela.valor_atual) ?? numeroOuNulo(parcela.valor_original) ?? 0;
   const cotacao = numeroOuNulo(parcela.cotacao_aplicada);
 
   const valorBRL =
     numeroOuNulo(pagamentoMP.transaction_amount) ??
-    numeroOuNulo(parcela.valor_atual) ??
+    numeroOuNulo(parcela.valor_cobrado_brl) ??
     (cotacao !== null ? centavos(valorPrograma * cotacao) : valorPrograma);
 
   return {

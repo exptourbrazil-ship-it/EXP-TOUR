@@ -121,7 +121,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                     payment_link: cobranca.qrCode || cobranca.ticketUrl || null,
                     qr_code_url: qrCodeUrl,
                     external_payment_id: cobranca.paymentId,
-                    valor_atual: valorCobranca,
+                    // valor_atual NAO e tocado: continua na moeda do programa.
+                    // O BRL cobrado vai para a coluna dedicada.
+                    valor_cobrado_brl: valorCobranca,
                     cotacao_aplicada: cotacaoAplicada,
           })
           .eq("id", id);
