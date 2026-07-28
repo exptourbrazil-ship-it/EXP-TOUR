@@ -216,6 +216,7 @@ create table if not exists viagem_info (
 alter table if exists titulares          enable row level security;
 alter table if exists contratos          enable row level security;
 alter table if exists parcelas           enable row level security;
+alter table if exists pagamentos         enable row level security;
 alter table if exists documentos         enable row level security;
 alter table if exists codigos_acesso     enable row level security;
 alter table if exists cotacoes_cambio    enable row level security;
