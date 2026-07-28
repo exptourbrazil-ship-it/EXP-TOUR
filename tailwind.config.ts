@@ -31,6 +31,7 @@ const config: Config = {
                   },
                   fontFamily: {
                             serif: ["Bellefair", "Georgia", "Times New Roman", "serif"],
+                            sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
                   },
           },
     },

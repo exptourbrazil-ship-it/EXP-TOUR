@@ -124,7 +124,7 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
                 )}
 
                 <div className="min-w-0 flex-1">
-                  <p className={"text-sm " + (item.concluido ? "text-neutral-400 line-through" : "text-brand")}>
+                  <p className={"text-sm " + (item.concluido ? "text-neutral-500 line-through" : "text-brand")}>
                     {item.label}
                   </p>
                   {!item.concluido && item.tipo === "documento" ? (
@@ -134,7 +134,7 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
                     </p>
                   ) : null}
                   {!item.concluido && item.tipo === "tarefa" && item.dica ? (
-                    <p className="mt-1 text-xs text-neutral-400">{item.dica}</p>
+                    <p className="mt-1 text-xs text-neutral-500">{item.dica}</p>
                   ) : null}
                 </div>
 

@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 ),
           createElement(
                   "body",
-            { className: "min-h-screen bg-brand font-serif text-neutral-900" },
+            { className: "min-h-screen bg-brand font-sans text-neutral-900 antialiased" },
                   children
                 )
         );
