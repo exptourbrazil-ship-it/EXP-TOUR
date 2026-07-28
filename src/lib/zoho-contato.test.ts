@@ -12,6 +12,8 @@ import {
   slugDestino,
   dataZoho,
   dadosPrograma,
+  dadosComerciais,
+  normalizarMoeda,
 } from "./zoho-contato.ts";
 
 test("titular e o responsavel 1, mesmo com o estudante tendo CPF proprio", () => {
@@ -134,4 +136,82 @@ test("dadosPrograma retorna nulos quando o Contato nao tem os campos", () => {
   assert.equal(p.paisDestino, null);
   assert.equal(p.dataInicio, null);
   assert.equal(p.escolaNome, null);
+});
+
+test("normalizarMoeda traduz as opcoes legadas do Zoho", () => {
+  assert.equal(normalizarMoeda("Opção 1"), "BRL");
+  assert.equal(normalizarMoeda("Opção 2"), "USD");
+  assert.equal(normalizarMoeda("CAD"), "CAD");
+  assert.equal(normalizarMoeda(""), "BRL");
+  assert.equal(normalizarMoeda("-None-"), "BRL");
+  assert.equal(normalizarMoeda(null), "BRL");
+});
+
+test("dadosComerciais: o Contato vence quando tem Valor_Total (comercial por cliente)", () => {
+  const c = dadosComerciais(
+    {
+      Full_Name: "Aluno X",
+      Valor_Total: "12000",
+      Moeda: "CAD",
+      Valor_de_Entrada: "2000",
+      Numero_de_Parcelas: "10",
+    },
+    // Produto (catalogo) com precos diferentes: devem ser ignorados.
+    {
+      Product_Name: "Ingles Geral",
+      Moeda_do_Produto: "USD",
+      Preco_na_Moeda_Original: "999",
+      Numero_de_Parcelas: "3",
+      Valor_de_Entrada: "1",
+    }
+  );
+  assert.deepEqual(c, {
+    nomeProduto: "Ingles Geral",
+    moeda: "CAD",
+    valorTotal: 12000,
+    valorEntrada: 2000,
+    numeroParcelas: 10,
+    origem: "contato",
+  });
+});
+
+test("dadosComerciais: cai para o Produto quando o Contato nao tem Valor_Total (retrocompat)", () => {
+  const c = dadosComerciais(
+    { Full_Name: "Aluno Antigo" },
+    {
+      Product_Name: "Pacote Canada",
+      Moeda_do_Produto: "Opção 2", // USD legado
+      Preco_na_Moeda_Original: "8000",
+      Unit_Price: "40000", // BRL: ignorado porque a moeda e USD
+      Numero_de_Parcelas: "8",
+      Valor_de_Entrada: "1500",
+    }
+  );
+  assert.deepEqual(c, {
+    nomeProduto: "Pacote Canada",
+    moeda: "USD",
+    valorTotal: 8000,
+    valorEntrada: 1500,
+    numeroParcelas: 8,
+    origem: "produto",
+  });
+});
+
+test("dadosComerciais: Produto BRL usa o Preco Unitario", () => {
+  const c = dadosComerciais(
+    { Full_Name: "Aluno BRL" },
+    { Moeda_do_Produto: "BRL", Unit_Price: "30000", Numero_de_Parcelas: "12" }
+  );
+  assert.equal(c.moeda, "BRL");
+  assert.equal(c.valorTotal, 30000);
+  assert.equal(c.numeroParcelas, 12);
+});
+
+test("dadosComerciais: sem comercial em lugar nenhum -> zeros (a rota valida depois)", () => {
+  const c = dadosComerciais({ Full_Name: "Vazio" }, {});
+  assert.equal(c.valorTotal, 0);
+  assert.equal(c.numeroParcelas, 0);
+  assert.equal(c.valorEntrada, 0);
+  assert.equal(c.moeda, "BRL");
+  assert.equal(c.nomeProduto, "Viagem EXP Tour");
 });

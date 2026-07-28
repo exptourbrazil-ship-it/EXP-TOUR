@@ -19,7 +19,27 @@ export type ContatoZoho = {
   Destino?: LookupZoho;
   Data_de_Inicio?: string | null;
   Vendor_Name?: LookupZoho;
+  // Comercial por-cliente (preferencial sobre o Produto): valor negociado,
+  // moeda, entrada e numero de parcelas inicial. Preenchidos no Contato porque
+  // variam por aluno (duracao, acomodacao, servicos). Depois da criacao do
+  // contrato, quem manda na flexibilidade e o portal (Supabase), nao o Zoho.
+  Valor_Total?: number | string | null;
+  Moeda?: string | null;
+  Valor_de_Entrada?: number | string | null;
+  Numero_de_Parcelas?: number | string | null;
 };
+
+// Formato parcial de um Produto do Zoho CRM (catalogo do curso/pacote). Serve
+// de fallback comercial para contratos antigos cujo comercial ainda mora no
+// Produto, e fornece o nome legivel do curso.
+export type ProdutoZoho = {
+  Product_Name?: string | null;
+  Numero_de_Parcelas?: number | string | null;
+  Valor_de_Entrada?: number | string | null;
+  Moeda_do_Produto?: string | null;
+  Unit_Price?: number | string | null;
+  Preco_na_Moeda_Original?: number | string | null;
+} | null | undefined;
 
 // Remove tudo que nao for digito.
 export function soDigitos(valor: unknown): string {
@@ -123,6 +143,73 @@ export function slugDestino(valor: LookupZoho | undefined): string | null {
 export function dataZoho(valor: unknown): string | null {
   const m = String(valor ?? "").trim().match(/^\d{4}-\d{2}-\d{2}/);
   return m ? m[0] : null;
+}
+
+// A opcao "BRL" da lista de moedas reaproveitou uma opcao padrao antiga do
+// Zoho cujo valor interno ainda e "Opção 1" (e "USD" e "Opção 2"); por isso
+// normalizamos os dois valores possiveis. Sem valor => assume BRL.
+export function normalizarMoeda(raw: unknown): string {
+  const v = String(raw ?? "").trim();
+  if (!v || v === "-None-") return "BRL";
+  if (v === "Opção 1") return "BRL";
+  if (v === "Opção 2") return "USD";
+  return v;
+}
+
+// Converte para numero finito ou null (trata "", null, undefined e lixo).
+function numeroOuNulo(valor: unknown): number | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Dados comerciais do contrato (valor total, moeda, entrada, nº de parcelas).
+//
+// Fonte de verdade e o CONTATO (comercial negociado por cliente); caimos para
+// o PRODUTO apenas por retrocompatibilidade (contratos antigos cujo comercial
+// ainda mora no Produto). O Contato "vence" como UNIDADE quando tem Valor_Total
+// preenchido (> 0), para nunca misturar a moeda de uma fonte com o valor de
+// outra. O valor sempre fica na moeda escolhida, sem conversao aqui.
+export function dadosComerciais(
+  contato: ContatoZoho,
+  produto?: ProdutoZoho
+): {
+  nomeProduto: string;
+  moeda: string;
+  valorTotal: number;
+  valorEntrada: number;
+  numeroParcelas: number;
+  origem: "contato" | "produto";
+} {
+  const valorContato = numeroOuNulo(contato.Valor_Total);
+  const usaContato = valorContato !== null && valorContato > 0;
+
+  // Valor do Produto na moeda do proprio Produto: BRL usa o Preco Unitario;
+  // moeda estrangeira usa o Preco na Moeda Original.
+  const moedaProduto = normalizarMoeda(produto?.Moeda_do_Produto);
+  const valorProduto =
+    moedaProduto === "BRL"
+      ? numeroOuNulo(produto?.Unit_Price)
+      : numeroOuNulo(produto?.Preco_na_Moeda_Original);
+
+  const nomeProduto =
+    (typeof produto?.Product_Name === "string" && produto.Product_Name.trim()) ||
+    "Viagem EXP Tour";
+
+  return {
+    nomeProduto,
+    moeda: usaContato ? normalizarMoeda(contato.Moeda) : moedaProduto,
+    valorTotal: (usaContato ? valorContato : valorProduto) ?? 0,
+    valorEntrada:
+      (usaContato
+        ? numeroOuNulo(contato.Valor_de_Entrada)
+        : numeroOuNulo(produto?.Valor_de_Entrada)) ?? 0,
+    numeroParcelas:
+      (usaContato
+        ? numeroOuNulo(contato.Numero_de_Parcelas)
+        : numeroOuNulo(produto?.Numero_de_Parcelas)) ?? 0,
+    origem: usaContato ? "contato" : "produto",
+  };
 }
 
 // Reune os dados do programa a partir do Contato, ja no formato do banco.
