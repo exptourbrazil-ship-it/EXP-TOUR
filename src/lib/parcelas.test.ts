@@ -41,40 +41,17 @@ test("somaParcelasConfere respeita tolerancia customizada", () => {
   assert.equal(somaParcelasConfere([100], 106, 5), false);
 });
 
-test("valorProgramaAtual: parcela pendente usa o valor_atual (ajustado)", () => {
-  // Cliente ajustou de 400 para 500; ainda nao gerou Pix -> vale o ajuste.
-  assert.equal(
-    valorProgramaAtual({ valor_original: 400, valor_atual: 500, status: "pendente", qr_code_url: null }),
-    500
-  );
+test("valorProgramaAtual: retorna o valor_atual (moeda do programa, ja ajustado)", () => {
+  // Cliente ajustou de 400 para 500; valor_atual guarda sempre a moeda do
+  // programa (o BRL cobrado vive em valor_cobrado_brl, nao aqui).
+  assert.equal(valorProgramaAtual({ valor_atual: 500 }), 500);
 });
 
-test("valorProgramaAtual: parcela sem ajuste retorna o mesmo valor", () => {
-  assert.equal(
-    valorProgramaAtual({ valor_original: 400, valor_atual: 400, status: "pendente", qr_code_url: null }),
-    400
-  );
-});
-
-test("valorProgramaAtual: com Pix gerado usa valor_original (valor_atual virou BRL)", () => {
-  // Apos gerar-cobranca, valor_atual guarda o BRL cobrado; a divida na moeda
-  // do programa continua sendo o valor_original.
-  assert.equal(
-    valorProgramaAtual({ valor_original: 400, valor_atual: 1595.3, status: "pendente", qr_code_url: "data:image/png;base64,xxx" }),
-    400
-  );
-});
-
-test("valorProgramaAtual: parcela paga usa valor_original", () => {
-  assert.equal(
-    valorProgramaAtual({ valor_original: 400, valor_atual: 1595.3, status: "pago", qr_code_url: null }),
-    400
-  );
+test("valorProgramaAtual: independe de ter Pix gerado (valor_atual sempre e a moeda do programa)", () => {
+  // Mesmo com cobranca gerada, valor_atual permanece na moeda do programa.
+  assert.equal(valorProgramaAtual({ valor_atual: 500 }), 500);
 });
 
 test("valorProgramaAtual: aceita valores em string (vindos do banco)", () => {
-  assert.equal(
-    valorProgramaAtual({ valor_original: "400.00", valor_atual: "500.00", status: "pendente", qr_code_url: null }),
-    500
-  );
+  assert.equal(valorProgramaAtual({ valor_atual: "500.00" }), 500);
 });

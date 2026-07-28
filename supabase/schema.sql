@@ -39,7 +39,9 @@ create table if not exists parcelas (
   numero int not null,
   descricao text not null,
   valor_original numeric(12,2) not null,
-  valor_atual numeric(12,2) not null,
+  valor_atual numeric(12,2) not null, -- valor efetivo na MOEDA DO PROGRAMA (com ajustes do cliente)
+  cotacao_aplicada numeric(12,6), -- VET aplicada na geracao do Pix (aplicado direto no SQL Editor)
+  valor_cobrado_brl numeric(12,2), -- BRL cobrado na geracao do Pix (migration parcelas_valor_cobrado_brl); limpo ao cancelar
   vencimento date not null,
   is_entrada boolean not null default false,
   status text not null default 'pendente' check (status in ('pendente','pago','atrasado')),

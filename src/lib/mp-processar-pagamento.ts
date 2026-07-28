@@ -37,7 +37,7 @@ export async function processarPagamentoMercadoPago(
   // (re)gravar o lancamento do ledger de forma idempotente.
   const { data: parcelasPagamento, error: selErr } = await supabase
     .from("parcelas")
-    .select("id, contrato_id, valor_original, valor_atual, cotacao_aplicada, paid_at, contrato:contratos(moeda)")
+    .select("id, contrato_id, valor_original, valor_atual, valor_cobrado_brl, cotacao_aplicada, paid_at, contrato:contratos(moeda)")
     .eq("external_payment_id", paymentId);
 
   if (selErr) {

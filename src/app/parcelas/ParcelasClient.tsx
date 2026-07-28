@@ -13,6 +13,7 @@ type Parcela = {
   descricao: string
   valor_original: number
   valor_atual: number
+  valor_cobrado_brl: number | null
   cotacao_aplicada: number | null
   vencimento: string
   status: "pendente" | "pago" | "atrasado"
@@ -33,14 +34,11 @@ type LinhaEdicao = {
   vencimento: string
   bloqueada: boolean
 }
-// Valor efetivo da parcela na moeda do programa. Enquanto nao ha cobranca Pix
-// gerada (nem pagamento), `valor_atual` guarda o valor corrente na moeda do
-// programa, ja com os ajustes do cliente — e o que deve ser exibido e editado.
-// Depois que o Pix e gerado, `gerar-cobranca` sobrescreve `valor_atual` com o
-// BRL cobrado; nesse caso a divida na moeda do programa e o `valor_original`.
-function valorProgramaAtual(p: { valor_original: number; valor_atual: number; status: string; qr_code_url: string | null }): number {
-  const cobrancaGerada = p.status === "pago" || !!p.qr_code_url
-  return Number(cobrancaGerada ? p.valor_original : p.valor_atual)
+// Valor efetivo da parcela na moeda do programa, ja com os ajustes do cliente.
+// `valor_atual` guarda SEMPRE a moeda do programa; o BRL cobrado no Pix vive em
+// `valor_cobrado_brl`.
+function valorProgramaAtual(p: { valor_atual: number }): number {
+  return Number(p.valor_atual)
 }
 
 function formatarMoeda(valor: number, moeda: string): string {
@@ -426,7 +424,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                     <div className="text-right">
                                            <div className="font-medium text-brand">{formatarMoeda(valorProgramaAtual(parcela), moeda)}</div>   
                       {emMoedaEstrangeira && cobrancaJaGerada ? (
-                        <div className="text-xs text-neutral-500">Voce paga: {formatarMoeda(Number(parcela.valor_atual), "BRL")} (VET: {parcela.cotacao_aplicada ?? "-"})</div>
+                        <div className="text-xs text-neutral-500">Voce paga: {formatarMoeda(Number(parcela.valor_cobrado_brl ?? 0), "BRL")} (VET: {parcela.cotacao_aplicada ?? "-"})</div>
                       ) : null}
                       {emMoedaEstrangeira && !cobrancaJaGerada && !paga ? (
                         <div className="text-xs text-neutral-400">

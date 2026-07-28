@@ -9,15 +9,16 @@ const base = {
   pagoEm: "2026-07-27T12:00:00.000Z",
 };
 
-test("usa o transaction_amount do MP como BRL efetivamente pago", () => {
+test("usa o transaction_amount do MP como BRL; valor_programa vem do valor_atual (ajustado)", () => {
   const l = montarLancamentoPagamento({
     ...base,
     moeda: "CAD",
     parcela: {
       id: "p1",
       contrato_id: "c1",
-      valor_original: "1000", // CAD
-      valor_atual: "3990.00", // BRL cobrado na geracao
+      valor_original: "1000", // plano original (CAD)
+      valor_atual: "1200", // valor efetivo apos ajuste (CAD) -> vale este
+      valor_cobrado_brl: "4785.89", // BRL cobrado na geracao
       cotacao_aplicada: "3.99",
     },
     pagamentoMP: { status: "approved", transaction_amount: 4010.5 }, // pago um pouco diferente
@@ -27,14 +28,14 @@ test("usa o transaction_amount do MP como BRL efetivamente pago", () => {
     contrato_id: "c1",
     external_payment_id: "MP-123",
     moeda: "CAD",
-    valor_programa: 1000,
+    valor_programa: 1200, // valor_atual (efetivo), nao o valor_original
     cotacao_aplicada: 3.99,
-    valor_brl: 4010.5, // veio do MP, nao do valor_atual
+    valor_brl: 4010.5, // veio do MP
     pago_em: "2026-07-27T12:00:00.000Z",
   });
 });
 
-test("cai para valor_atual (BRL cobrado) quando o MP nao traz transaction_amount", () => {
+test("cai para valor_cobrado_brl quando o MP nao traz transaction_amount", () => {
   const l = montarLancamentoPagamento({
     ...base,
     moeda: "USD",
@@ -42,7 +43,8 @@ test("cai para valor_atual (BRL cobrado) quando o MP nao traz transaction_amount
       id: "p2",
       contrato_id: "c1",
       valor_original: "500",
-      valor_atual: "2750.00",
+      valor_atual: "500",
+      valor_cobrado_brl: "2750.00",
       cotacao_aplicada: "5.5",
     },
     pagamentoMP: { status: "approved" },
@@ -52,7 +54,7 @@ test("cai para valor_atual (BRL cobrado) quando o MP nao traz transaction_amount
   assert.equal(l.valor_programa, 500);
 });
 
-test("reconstroi pela formula quando nao ha MP nem valor_atual", () => {
+test("reconstroi pela formula quando nao ha MP nem valor_cobrado_brl", () => {
   const l = montarLancamentoPagamento({
     ...base,
     moeda: "CAD",
@@ -60,7 +62,8 @@ test("reconstroi pela formula quando nao ha MP nem valor_atual", () => {
       id: "p3",
       contrato_id: "c1",
       valor_original: "100",
-      valor_atual: null,
+      valor_atual: "100",
+      valor_cobrado_brl: null,
       cotacao_aplicada: "4.005",
     },
     pagamentoMP: {},
@@ -76,7 +79,8 @@ test("contrato em BRL: sem cotacao, BRL = valor do programa", () => {
       id: "p4",
       contrato_id: "c1",
       valor_original: "1500.00",
-      valor_atual: null,
+      valor_atual: "1500.00",
+      valor_cobrado_brl: null,
       cotacao_aplicada: null,
     },
     pagamentoMP: {},
