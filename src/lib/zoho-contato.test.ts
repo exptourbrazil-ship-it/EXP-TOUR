@@ -130,6 +130,24 @@ test("dadosPrograma reune os campos do programa no formato do banco", () => {
   });
 });
 
+test("dadosPrograma cai para 'Destino do Fornecedor' (texto) quando o lookup Destino esta vazio", () => {
+  const p = dadosPrograma({
+    Full_Name: "Aluno Sem Lookup",
+    Destino: null,
+    Destino_do_Fornecedor: "Canadá",
+  });
+  assert.equal(p.paisDestino, "canada");
+});
+
+test("dadosPrograma prioriza o lookup Destino sobre o texto do fornecedor", () => {
+  const p = dadosPrograma({
+    Full_Name: "Aluno Com Lookup",
+    Destino: { name: "Nova Zelândia" },
+    Destino_do_Fornecedor: "Canadá",
+  });
+  assert.equal(p.paisDestino, "nova_zelandia");
+});
+
 test("dadosPrograma retorna nulos quando o Contato nao tem os campos", () => {
   const p = dadosPrograma({ Full_Name: "Sem Programa" });
   assert.equal(p.estudanteSexo, null);

@@ -16,7 +16,11 @@ export type ContatoZoho = {
   Nome_do_Respons_vel_1?: string | null;
   // Campos do programa (usados para preencher o contrato / viagem_info).
   Sexo?: string | null;
+  // Pais de destino. Ha dois campos no CRM: "Destino" (lookup/Pesquisar) e
+  // "Destino do Fornecedor" (texto). A equipe preenche o segundo; lemos os dois
+  // (o lookup tem prioridade quando presente) para nao depender de qual foi usado.
   Destino?: LookupZoho;
+  Destino_do_Fornecedor?: LookupZoho;
   Data_de_Inicio?: string | null;
   Vendor_Name?: LookupZoho;
   // Comercial por-cliente (preferencial sobre o Produto): valor negociado,
@@ -223,7 +227,8 @@ export function dadosPrograma(contato: ContatoZoho): {
   return {
     estudanteNome: nomeEstudante(contato) || null,
     estudanteSexo: normalizarSexo(contato.Sexo),
-    paisDestino: slugDestino(contato.Destino),
+    // Prefere o lookup "Destino"; se vazio, cai para o texto "Destino do Fornecedor".
+    paisDestino: slugDestino(contato.Destino) ?? slugDestino(contato.Destino_do_Fornecedor),
     dataInicio: dataZoho(contato.Data_de_Inicio),
     escolaNome: nomeLookup(contato.Vendor_Name),
   };
