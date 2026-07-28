@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createElement } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { converterParaBRL } from "@/lib/cambio";
+import { valorProgramaAtual } from "@/lib/parcelas";
 import ParcelasClient from "./ParcelasClient";
 import BottomNav from "@/components/BottomNav";
 
@@ -82,7 +83,7 @@ export default async function ParcelasPage() {
     // e apenas a conversao, sem taxa administrativa fixa (alinhado ao valor
     // efetivamente cobrado em gerar-cobranca).
     const valorEstimadoBRL = cotacaoEstimada
-      ? converterParaBRL(Number(p.valor_original), cotacaoEstimada)
+      ? converterParaBRL(valorProgramaAtual(p), cotacaoEstimada)
       : null;
     return { ...p, cotacaoEstimada, valorEstimadoBRL };
   });
