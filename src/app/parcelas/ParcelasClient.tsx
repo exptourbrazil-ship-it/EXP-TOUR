@@ -49,6 +49,15 @@ function formatarMoeda(valor: number, moeda: string): string {
   }
 }
 
+// Formata data para pt-BR sem deslocar o dia por fuso horario. Uma string
+// "YYYY-MM-DD" (vencimento) precisa ser interpretada no fuso LOCAL; caso
+// contrario `new Date("2026-08-05")` vira meia-noite UTC e, em BRT (UTC-3),
+// exibe o dia anterior (04/08). Timestamps completos (paid_at) sao usados como vem.
+function formatarDataBR(valor: string): string {
+  const soData = /^\d{4}-\d{2}-\d{2}$/.test(valor)
+  return new Date(soData ? valor + "T00:00:00" : valor).toLocaleDateString("pt-BR")
+}
+
 function CopiarPix({ codigo }: { codigo: string }) {
   const [copiado, setCopiado] = useState(false)
   async function copiar() {
@@ -406,7 +415,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                 >
                   {ehProxima ? (
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-                      Proxima &middot; {new Date(parcela.vencimento).toLocaleDateString("pt-BR")}
+                      Proxima &middot; {formatarDataBR(parcela.vencimento)}
                     </p>
                   ) : null}
                   <div className="flex items-start justify-between gap-3">
@@ -417,7 +426,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       <div>
                         <div className="font-medium text-brand">{parcela.descricao}</div>
                         <div className="text-xs text-neutral-400">
-                          {paga ? "Paga em " + new Date(parcela.paid_at || parcela.vencimento).toLocaleDateString("pt-BR") : "Vencimento " + new Date(parcela.vencimento).toLocaleDateString("pt-BR")}
+                          {paga ? "Paga em " + formatarDataBR(parcela.paid_at || parcela.vencimento) : "Vencimento " + formatarDataBR(parcela.vencimento)}
                         </div>
                       </div>
                     </div>
