@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   const cookieStore = await cookies();
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
   if (!sessao) {
-    return NextResponse.json({ ok: false, erro: "Nao autenticado" }, { status: 401 });
+    return NextResponse.json({ ok: false, erro: "Não autenticado" }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     : await supabase.from("nps_respostas").insert(registro);
 
   if (error) {
-    return NextResponse.json({ ok: false, erro: "Nao foi possivel salvar a avaliacao." }, { status: 500 });
+    return NextResponse.json({ ok: false, erro: "Não foi possível salvar a avaliação." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

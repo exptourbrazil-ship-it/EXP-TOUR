@@ -18,24 +18,24 @@ export type ItemChecklist = {
 
 // Lista comum a todos os destinos.
 export const CHECKLIST_BASE: ItemChecklist[] = [
-  { chave: "passaporte", label: "Passaporte valido", tipo: "documento", tiposDocumento: ["passaporte"], dica: "Envie a foto do passaporte na aba Docs." },
+  { chave: "passaporte", label: "Passaporte válido", tipo: "documento", tiposDocumento: ["passaporte"], dica: "Envie a foto do passaporte na aba Documentos." },
   { chave: "carta_aceite", label: "Carta de aceite (LOA)", tipo: "documento", tiposDocumento: ["carta_aceite"] },
-  { chave: "passagem_aerea", label: "Passagem aerea", tipo: "documento", tiposDocumento: ["passagem_aerea"] },
-  { chave: "seguro_saude", label: "Seguro saude", tipo: "documento", tiposDocumento: ["seguro_saude"] },
-  { chave: "acomodacao", label: "Comprovante de acomodacao", tipo: "documento", tiposDocumento: ["carta_acomodacao"] },
-  { chave: "contatos_emergencia", label: "Contatos de emergencia salvos no celular", tipo: "tarefa" },
-  { chave: "malas", label: "Malas prontas (peso e dimensoes da cia aerea)", tipo: "tarefa" },
-  { chave: "cartao_internacional", label: "Cartao internacional habilitado / banco avisado", tipo: "tarefa" },
+  { chave: "passagem_aerea", label: "Passagem aérea", tipo: "documento", tiposDocumento: ["passagem_aerea"] },
+  { chave: "seguro_saude", label: "Seguro saúde", tipo: "documento", tiposDocumento: ["seguro_saude"] },
+  { chave: "acomodacao", label: "Comprovante de acomodação", tipo: "documento", tiposDocumento: ["carta_acomodacao"] },
+  { chave: "contatos_emergencia", label: "Contatos de emergência salvos no celular", tipo: "tarefa" },
+  { chave: "malas", label: "Malas prontas (peso e dimensões da cia aérea)", tipo: "tarefa" },
+  { chave: "cartao_internacional", label: "Cartão internacional habilitado / banco avisado", tipo: "tarefa" },
   { chave: "chip_roaming", label: "Chip internacional ou roaming ativado", tipo: "tarefa" },
-  { chave: "copias_digitais", label: "Copias digitais dos documentos na nuvem", tipo: "tarefa" },
+  { chave: "copias_digitais", label: "Cópias digitais dos documentos na nuvem", tipo: "tarefa" },
 ];
 
 // Itens adicionais por destino. A chave e um slug simples gravado em
 // contratos.pais_destino (ex.: 'canada', 'eua', 'nova_zelandia').
 export const CHECKLIST_POR_DESTINO: Record<string, ItemChecklist[]> = {
   canada: [
-    { chave: "visto_canada", label: "Visto de estudo do Canada ou eTA", tipo: "documento", tiposDocumento: ["visto", "eta"], dica: "Cursos curtos podem exigir apenas a eTA." },
-    { chave: "visto_eua_transito", label: "Visto americano B1/B2 (transito pelos EUA)", tipo: "documento", tiposDocumento: ["visto_eua"], dica: "Necessario porque a viagem faz conexao nos Estados Unidos." },
+    { chave: "visto_canada", label: "Visto de estudo do Canadá ou eTA", tipo: "documento", tiposDocumento: ["visto", "eta"], dica: "Cursos curtos podem exigir apenas a eTA." },
+    { chave: "visto_eua_transito", label: "Visto americano B1/B2 (trânsito pelos EUA)", tipo: "documento", tiposDocumento: ["visto_eua"], dica: "Necessário porque a viagem faz conexão nos Estados Unidos." },
   ],
   eua: [
     { chave: "visto_eua", label: "Visto F, M ou J", tipo: "documento", tiposDocumento: ["visto"] },

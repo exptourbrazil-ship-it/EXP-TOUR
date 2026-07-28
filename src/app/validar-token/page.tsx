@@ -20,7 +20,7 @@ export default function ValidarTokenPage() {
 function Carregando() {
   return createElement(
     "main",
-    { className: "min-h-screen bg-neutral-50 flex items-center justify-center px-4 py-10" },
+    { className: "min-h-screen bg-brand-cream/40 flex items-center justify-center px-4 py-10" },
     createElement("p", { className: "text-neutral-600 text-sm" }, "Carregando...")
     );
 }
@@ -44,12 +44,12 @@ useEffect(() => {
       const data = await res.json();
       const info = data && data.result;
       if (!info || !info.status) {
-        setResultado({ status: "erro", mensagem: "Nao foi possivel validar o token agora. Tente novamente em alguns minutos." });
+        setResultado({ status: "erro", mensagem: "Não foi possível validar o token agora. Tente novamente em alguns minutos." });
       } else {
         setResultado(info);
       }
     } catch (err) {
-      setResultado({ status: "erro", mensagem: "Nao foi possivel conectar ao servidor de validacao." });
+      setResultado({ status: "erro", mensagem: "Não foi possível conectar ao servidor de validação." });
     } finally {
       setCarregando(false);
     }
@@ -60,8 +60,8 @@ useEffect(() => {
 const cabecalho = createElement(
   "div",
   { className: "bg-brand px-6 py-5 text-center" },
-  createElement("p", { className: "text-gold text-xs font-semibold tracking-widest uppercase mb-1" }, "EXP TOUR"),
-  createElement("h1", { className: "text-white text-lg font-semibold" }, "Validacao de Acesso")
+  createElement("p", { className: "text-brand-gold text-xs font-semibold tracking-widest uppercase mb-1" }, "EXP TOUR"),
+  createElement("h1", { className: "text-white text-lg font-semibold" }, "Validação de Acesso")
   );
 
 const corpo = carregando
@@ -85,11 +85,11 @@ return createElement(
 function ResultadoView(props: { resultado: ResultadoValidacao }) {
   const resultado = props.resultado;
   const configPorStatus: { [key: string]: { titulo: string; cor: string; icone: string } } = {
-    valido: { titulo: "Acesso autorizado", cor: "text-brand", icone: "OK" },
+    valido: { titulo: "Acesso autorizado", cor: "text-brand", icone: "✓" },
     expirado: { titulo: "Link expirado", cor: "text-amber-600", icone: "!" },
-    usado: { titulo: "Link ja utilizado", cor: "text-amber-600", icone: "!" },
-    invalido: { titulo: "Link invalido", cor: "text-red-600", icone: "X" },
-    erro: { titulo: "Erro ao validar", cor: "text-red-600", icone: "X" },
+    usado: { titulo: "Link já utilizado", cor: "text-amber-600", icone: "!" },
+    invalido: { titulo: "Link inválido", cor: "text-red-600", icone: "✕" },
+    erro: { titulo: "Erro ao validar", cor: "text-red-600", icone: "✕" },
   };
 
 const info = configPorStatus[resultado.status] || configPorStatus.erro;
@@ -101,7 +101,7 @@ const caixaSucesso = resultado.status === "valido"
     createElement(
       "p",
       { className: "text-neutral-800" },
-      "Ola" + (resultado.email ? ", " + resultado.email : "") + "! Seu acesso foi confirmado com sucesso."
+      "Olá" + (resultado.email ? ", " + resultado.email : "") + "! Seu acesso foi confirmado com sucesso."
       )
     )
   : null;
@@ -110,12 +110,12 @@ const botao = resultado.status === "valido"
   ? createElement(
     "a",
     { href: "/", className: "inline-block w-full rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition" },
-    "Acessar a Area do Cliente"
+    "Acessar a Área do Cliente"
     )
   : createElement(
     "a",
-    { href: "/", className: "inline-block w-full rounded-md border border-brand px-4 py-2 text-sm font-medium text-brand hover:bg-neutral-50 transition" },
-    "Ir para a pagina inicial"
+    { href: "/", className: "inline-block w-full rounded-md border border-brand px-4 py-2 text-sm font-medium text-brand hover:bg-brand-cream/60 transition" },
+    "Ir para a página inicial"
     );
 
 return createElement(

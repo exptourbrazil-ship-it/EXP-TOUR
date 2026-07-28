@@ -1,6 +1,7 @@
 "use client"
 
 import BottomNav from "@/components/BottomNav"
+import Cabecalho from "@/components/Cabecalho"
 import { montarLinkMapa, montarLinkSuporteWhatsApp, SITE_PUBLICO_EXP_TOUR, WHATSAPP_EXP_TOUR, type InfoEmergencia } from "@/lib/viagem"
 
 type ViagemInfo = {
@@ -37,17 +38,12 @@ export default function ViagemClient(props: ViagemClientProps) {
 
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28">
-      <header className="flex items-center justify-between px-5 py-4">
-        <img src={LOGO_URL} alt="EXP TOUR" className="h-6" />
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-medium text-brand-cream">
-          {nome ? nome.charAt(0).toUpperCase() : "?"}
-        </div>
-      </header>
+      <Cabecalho nome={props.nomeExibicao} subtitulo="Viagem" />
 
       <main className="mx-auto max-w-md px-5 py-2">
         <h1 className="font-serif text-4xl text-brand">Durante a viagem</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Tudo o que voce precisa ter a mao enquanto estiver no destino.
+        <p className="mt-2 text-sm text-neutral-600">
+          Tudo o que você precisa ter à mão enquanto estiver no destino.
         </p>
 
         {/* Fale com a EXP Tour */}
@@ -56,7 +52,7 @@ export default function ViagemClient(props: ViagemClientProps) {
             Fale com a EXP Tour
           </p>
           <p className="mt-3 text-sm text-brand-cream/80">
-            Precisa de ajuda? A gente esta com voce em qualquer fuso.
+            Precisa de ajuda? A gente está com você em qualquer fuso.
           </p>
           <a
             href={montarLinkSuporteWhatsApp()}
@@ -79,14 +75,14 @@ export default function ViagemClient(props: ViagemClientProps) {
         {/* Em caso de emergencia */}
         {props.emergencia ? (
           <section className="mt-5 rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-red-500">
-              Em caso de emergencia
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-red-600">
+              Em caso de emergência
             </p>
             <h2 className="mt-2 font-serif text-2xl text-red-700">
               {props.emergencia.pais}: {props.emergencia.numeroEmergencia}
             </h2>
-            <p className="mt-1 text-sm text-red-600/80">
-              Policia, ambulancia e bombeiros. Ligue em qualquer emergencia grave.
+            <p className="mt-1 text-sm text-red-700/90">
+              Polícia, ambulância e bombeiros. Ligue em qualquer emergência grave.
             </p>
             <a
               href={"tel:" + props.emergencia.numeroEmergencia}
@@ -99,8 +95,8 @@ export default function ViagemClient(props: ViagemClientProps) {
 
         {/* Escola e acomodacao */}
         <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-            Escola e acomodacao
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
+            Escola e acomodação
           </p>
           {temEndereco ? (
             <div className="mt-3 space-y-5">
@@ -109,7 +105,7 @@ export default function ViagemClient(props: ViagemClientProps) {
                   <p className="text-sm font-medium text-brand">{info.escola_nome || "Escola"}</p>
                   {info.escola_endereco ? <p className="mt-1 text-sm text-neutral-500">{info.escola_endereco}</p> : null}
                   {mapaEscola ? (
-                    <a href={mapaEscola} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-brand-gold underline">
+                    <a href={mapaEscola} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-brand-golddark underline">
                       Ver no mapa
                     </a>
                   ) : null}
@@ -118,10 +114,10 @@ export default function ViagemClient(props: ViagemClientProps) {
 
               {info && info.acomodacao_endereco ? (
                 <div>
-                  <p className="text-sm font-medium text-brand">Acomodacao</p>
+                  <p className="text-sm font-medium text-brand">Acomodação</p>
                   <p className="mt-1 text-sm text-neutral-500">{info.acomodacao_endereco}</p>
                   {mapaAcomodacao ? (
-                    <a href={mapaAcomodacao} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-brand-gold underline">
+                    <a href={mapaAcomodacao} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-brand-golddark underline">
                       Ver no mapa
                     </a>
                   ) : null}
@@ -133,7 +129,7 @@ export default function ViagemClient(props: ViagemClientProps) {
                   <p className="text-sm font-medium text-brand">Contato local</p>
                   {info.contato_local_nome ? <p className="mt-1 text-sm text-neutral-500">{info.contato_local_nome}</p> : null}
                   {info.contato_local_telefone ? (
-                    <a href={"tel:" + info.contato_local_telefone} className="mt-1 inline-block text-sm text-brand-gold underline">
+                    <a href={"tel:" + info.contato_local_telefone} className="mt-1 inline-block text-sm font-medium text-brand-golddark underline">
                       {info.contato_local_telefone}
                     </a>
                   ) : null}
@@ -146,7 +142,7 @@ export default function ViagemClient(props: ViagemClientProps) {
             </div>
           ) : (
             <p className="mt-3 text-sm text-neutral-500">
-              Os dados da sua escola e acomodacao aparecerao aqui em breve.
+              Os dados da sua escola e acomodação aparecerão aqui em breve.
             </p>
           )}
         </section>
@@ -154,11 +150,11 @@ export default function ViagemClient(props: ViagemClientProps) {
         {/* Servicos para a viagem (parceiros / afiliados) */}
         {(props.afiliadoMoedaUrl || props.afiliadoChipUrl || props.afiliadoPassagemUrl) ? (
           <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
               Prepare-se para a viagem
             </p>
             <p className="mt-2 text-sm text-neutral-500">
-              Parceiros da EXP Tour para voce chegar tranquilo.
+              Parceiros da EXP Tour para você chegar tranquilo.
             </p>
             <div className="mt-4 space-y-3">
               {props.afiliadoPassagemUrl ? (
@@ -168,7 +164,7 @@ export default function ViagemClient(props: ViagemClientProps) {
                   rel="noreferrer nofollow sponsored"
                   className="flex items-center justify-between rounded-xl bg-brand px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
                 >
-                  <span>Comprar passagem aerea</span>
+                  <span>Comprar passagem aérea</span>
                   <span className="ml-3 shrink-0">&rarr;</span>
                 </a>
               ) : null}

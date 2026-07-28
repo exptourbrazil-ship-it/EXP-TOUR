@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, createElement, Fragment } from "react";
+import { montarLinkSuporteWhatsApp, WHATSAPP_EXP_TOUR } from "@/lib/viagem";
 
 type Etapa = "cpf" | "codigo";
 
@@ -25,9 +26,9 @@ export default function LoginPage() {
                     });
                     if (!res.ok) throw new Error("Falha ao solicitar codigo");
                     setEtapa("codigo");
-                    setMessage("Codigo enviado para o seu email.");
+                    setMessage("Código enviado para o seu e-mail.");
           } catch (err) {
-                    setMessage("Nao foi possivel enviar o codigo. Verifique o CPF informado.");
+                    setMessage("Não foi possível enviar o código. Verifique o CPF informado.");
           } finally {
                     setLoading(false);
           }
@@ -45,12 +46,12 @@ export default function LoginPage() {
                     });
                     const resultado = await res.json();
                     if (!res.ok || !resultado.success) {
-                                setMessage(resultado.error || "Codigo invalido ou expirado.");
+                                setMessage(resultado.error || "Código inválido ou expirado.");
                                 return;
                     }
                     window.location.href = "/inicio";
           } catch (err) {
-                    setMessage("Nao foi possivel confirmar o codigo.");
+                    setMessage("Não foi possível confirmar o código.");
           } finally {
                     setLoading(false);
           }
@@ -63,7 +64,7 @@ export default function LoginPage() {
           className: "mx-auto mb-6",
   });
 
-  const tituloEl = createElement("h1", { className: "mb-2 text-3xl font-semibold text-brand" }, "Area do cliente");
+  const tituloEl = createElement("h1", { className: "mb-2 text-3xl font-semibold text-brand" }, "Área do cliente");
 
   const formularioCpf = createElement(
           "form",
@@ -91,7 +92,7 @@ export default function LoginPage() {
                                       disabled: loading,
                                       className: "w-full rounded-md bg-brand px-4 py-2 text-base font-medium text-white hover:opacity-90 disabled:opacity-50",
                         },
-                                loading ? "Enviando..." : "Receber codigo por email"
+                                loading ? "Enviando..." : "Receber código por e-mail"
                               )
                   )
         );
@@ -102,7 +103,7 @@ export default function LoginPage() {
           createElement(
                     "div",
                     null,
-                    createElement("label", { className: "mb-1 block text-base font-medium text-brand" }, "Codigo de acesso"),
+                    createElement("label", { className: "mb-1 block text-base font-medium text-brand" }, "Código de acesso"),
                     createElement("input", {
                                 type: "text",
                                 required: true,
@@ -123,7 +124,7 @@ export default function LoginPage() {
                                       disabled: loading,
                                       className: "w-full rounded-md bg-brand px-4 py-2 text-base font-medium text-white hover:opacity-90 disabled:opacity-50",
                         },
-                                loading ? "Confirmando..." : "Confirmar codigo"
+                                loading ? "Confirmando..." : "Confirmar código"
                               )
                   ),
           createElement(
@@ -148,7 +149,7 @@ export default function LoginPage() {
                         createElement(
                                         "p",
                             { className: "mb-6 text-base text-brand" },
-                                        "Informe seu CPF. Enviaremos um codigo de acesso para o seu email - voce vera apenas os seus contratos"
+                                        "Informe seu CPF. Enviaremos um código de acesso para o seu e-mail — você verá apenas os seus contratos."
                                       ),
                         formularioCpf
                       )
@@ -158,7 +159,7 @@ export default function LoginPage() {
                           createElement(
                                           "p",
                               { className: "mb-6 text-base text-brand" },
-                                          "Digite o codigo de 6 digitos que enviamos para o seu email."
+                                          "Digite o código de 6 dígitos que enviamos para o seu e-mail."
                                         ),
                           formularioCodigo
                         );
@@ -171,10 +172,25 @@ export default function LoginPage() {
           logoEl,
           createElement(
                     "div",
-              { className: "w-full max-w-md rounded-xl bg-brand-cream p-8 shadow-lg" },
+              { className: "w-full max-w-md rounded-xl bg-brand-cream p-8 shadow-lg animate-fade-in-up" },
                     tituloEl,
                     conteudoEtapa,
                     mensagemEl
+                  ),
+          createElement(
+                    "p",
+              { className: "mt-6 text-center text-sm text-brand-cream/80" },
+                    "Precisa de ajuda? ",
+                    createElement(
+                                "a",
+                        {
+                                      href: montarLinkSuporteWhatsApp(),
+                                      target: "_blank",
+                                      rel: "noopener noreferrer",
+                                      className: "font-medium text-brand-cream underline",
+                        },
+                                "WhatsApp " + WHATSAPP_EXP_TOUR
+                              )
                   )
         );
 }

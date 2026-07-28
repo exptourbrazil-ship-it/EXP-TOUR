@@ -1,3 +1,43 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Foco visivel e consistente para navegacao por teclado/acessibilidade. */
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid #c9a35e; /* dourado da marca */
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+}
+
+@layer components {
+  /* Card com microinteracao de hover (elevacao sutil). Aplicar em cards
+     clicaveis ou que se beneficiam de resposta ao toque. */
+  .card-interativo {
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .card-interativo:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -12px rgba(4, 47, 27, 0.25);
+  }
+  .card-interativo:active {
+    transform: translateY(0);
+  }
+}
+
+/* Respeita quem prefere menos movimento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

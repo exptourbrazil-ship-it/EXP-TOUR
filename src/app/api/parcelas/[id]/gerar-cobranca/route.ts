@@ -28,7 +28,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
 
   if (!sessao) {
-        return NextResponse.json({ ok: false, erro: "Sessao nao autenticada" }, { status: 401 });
+        return NextResponse.json({ ok: false, erro: "Sessão não autenticada" }, { status: 401 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -42,18 +42,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single();
 
   if (error || !parcela) {
-        return NextResponse.json({ ok: false, erro: "Parcela nao encontrada" }, { status: 404 });
+        return NextResponse.json({ ok: false, erro: "Parcela não encontrada" }, { status: 404 });
   }
 
   if ((parcela as any).contrato?.titular_id !== sessao.titularId) {
         return NextResponse.json(
-          { ok: false, erro: "Esta parcela nao pertence ao titular autenticado" },
+          { ok: false, erro: "Esta parcela não pertence ao titular autenticado" },
           { status: 403 }
               );
   }
 
   if (parcela.status === "pago") {
-        return NextResponse.json({ ok: false, erro: "Parcela ja esta paga" }, { status: 400 });
+        return NextResponse.json({ ok: false, erro: "Parcela já está paga" }, { status: 400 });
   }
 
   const moeda = (parcela as any).contrato?.moeda || "BRL";

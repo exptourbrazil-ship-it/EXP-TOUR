@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import BottomNav from "@/components/BottomNav"
+import Cabecalho from "@/components/Cabecalho"
+import SuporteRodape from "@/components/SuporteRodape"
 import { somaParcelasConfere, somaValoresParcelas } from "@/lib/parcelas"
 
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
@@ -152,7 +154,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
     setErro(null)
     for (const l of linhas) {
       if (!l.descricao || !l.vencimento || !(Number(l.valor) > 0)) {
-        setErro("Cada parcela precisa de descricao, valor maior que zero e data de vencimento.")
+        setErro("Cada parcela precisa de descrição, valor maior que zero e data de vencimento.")
         return
       }
     }
@@ -165,7 +167,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
         .map((l) => new Date(l.vencimento + "T00:00:00"))
         .reduce((max, d) => (d > max ? d : max), new Date(0))
       if (ultimo > limite30) {
-        setErro("O ultimo pagamento precisa ser ate " + limite30.toISOString().slice(0, 10) + " (30 dias antes do inicio do programa).")
+        setErro("O último pagamento precisa ser até " + limite30.toISOString().slice(0, 10) + " (30 dias antes do início do programa).")
         return
       }
     }
@@ -193,7 +195,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
         setErro(resultado.erro || "Nao foi possivel salvar as alteracoes.")
       }
     } catch {
-      setErro("Nao foi possivel salvar as alteracoes.")
+      setErro("Não foi possível salvar as alterações.")
     } finally {
       setSalvando(false)
     }
@@ -201,25 +203,26 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="my-6 w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
+      <div className="my-6 w-full max-w-lg animate-scale-in rounded-3xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between">
           <h2 className="font-serif text-2xl text-brand">Ajustar parcelas</h2>
           <button onClick={onFechar} className="text-sm text-neutral-500 underline">Fechar</button>
         </div>
+        <p className="mt-1 text-sm text-neutral-500">Edite valores e datas das parcelas ainda em aberto. A soma precisa bater com o total do contrato.</p>
         {limite30 ? (
           <p className="mt-2 text-sm text-neutral-500">
-            O ultimo pagamento precisa ser ate 30 dias antes do inicio do programa ({limite30.toLocaleDateString("pt-BR")}).
+            O último pagamento precisa ser até 30 dias antes do início do programa ({limite30.toLocaleDateString("pt-BR")}).
           </p>
         ) : null}
         <div className="mt-4 space-y-3">
           {linhas.map((l, index) => (
             <div key={l.id || "nova-" + index} className="rounded-2xl border border-neutral-200 p-3">
               {l.bloqueada ? (
-                <p className="mb-2 text-xs font-medium text-neutral-400">Parcela ja paga ou com Pix gerado - nao pode ser alterada</p>
+                <p className="mb-2 text-xs font-medium text-neutral-500">Parcela já paga ou com Pix gerado — não pode ser alterada</p>
               ) : null}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label className="flex-1 text-xs text-neutral-500">
-                  Descricao
+                  Descrição
                   <input
                     type="text"
                     value={l.descricao}
@@ -279,13 +282,19 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
   )
 }
 
-export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number }) {
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null }) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
   const [editando, setEditando] = useState(false)
   const [restaurando, setRestaurando] = useState(false)
   const [cancelando, setCancelando] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  function mostrarAviso(mensagem: string) {
+    setAviso(mensagem)
+    setTimeout(() => setAviso(null), 3500)
+  }
 
   async function gerarCobranca(parcelaId: string) {
     setGerando(parcelaId)
@@ -294,19 +303,20 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
       const response = await fetch("/api/parcelas/" + parcelaId + "/gerar-cobranca", { method: "POST" })
       const resultado = await response.json()
       if (resultado.ok) {
+        mostrarAviso("Pix gerado. Escaneie o QR Code abaixo.")
         router.refresh()
       } else {
-        setErro(resultado.erro || "Nao foi possivel gerar a cobranca Pix.")
+        setErro(resultado.erro || "Não foi possível gerar a cobrança Pix.")
       }
     } catch {
-      setErro("Nao foi possivel gerar a cobranca Pix.")
+      setErro("Não foi possível gerar a cobrança Pix.")
     } finally {
       setGerando(null)
     }
   }
 
   async function cancelarCobranca(parcelaId: string) {
-    const confirmado = window.confirm("Cancelar esta cobranca Pix e voltar a parcela para 'em aberto'? Voce podera edita-la ou gerar o Pix novamente depois.")
+    const confirmado = window.confirm("Cancelar esta cobrança Pix e voltar a parcela para 'em aberto'? Você poderá editá-la ou gerar o Pix novamente depois.")
     if (!confirmado) return
     setCancelando(parcelaId)
     setErro(null)
@@ -314,12 +324,13 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
       const response = await fetch("/api/parcelas/" + parcelaId + "/cancelar-cobranca", { method: "POST" })
       const resultado = await response.json()
       if (resultado.ok) {
+        mostrarAviso("Cobrança cancelada. A parcela voltou para em aberto.")
         router.refresh()
       } else {
-        setErro(resultado.erro || "Nao foi possivel cancelar a cobranca.")
+        setErro(resultado.erro || "Não foi possível cancelar a cobrança.")
       }
     } catch {
-      setErro("Nao foi possivel cancelar a cobranca.")
+      setErro("Não foi possível cancelar a cobrança.")
     } finally {
       setCancelando(null)
     }
@@ -327,7 +338,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
 
   async function restaurarPlano() {
     if (!contratoId) return
-    const confirmado = window.confirm("Restaurar o plano original de parcelas? Isso desfaz suas alteracoes e volta a proposta inicial. Parcelas ja pagas ou com Pix gerado impedem a restauracao.")
+    const confirmado = window.confirm("Restaurar o plano original de parcelas? Isso desfaz suas alterações e volta à proposta inicial. Parcelas já pagas ou com Pix gerado impedem a restauração.")
     if (!confirmado) return
     setRestaurando(true)
     setErro(null)
@@ -339,50 +350,54 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
       })
       const resultado = await resp.json()
       if (resultado.ok) {
+        mostrarAviso("Plano original restaurado.")
         router.refresh()
       } else {
-        setErro(resultado.erro || "Nao foi possivel restaurar o plano original.")
+        setErro(resultado.erro || "Não foi possível restaurar o plano original.")
       }
     } catch {
-      setErro("Nao foi possivel restaurar o plano original.")
+      setErro("Não foi possível restaurar o plano original.")
     } finally {
       setRestaurando(false)
     }
-  }
-
-  async function sair() {
-    await fetch("/api/auth/logout", { method: "POST" })
-    window.location.href = "/"
   }
 
   const moedaPrograma = parcelas.length > 0 ? parcelas[0].moeda : "BRL"
   const percentualPago = totalPrograma && totalPrograma > 0 ? Math.min(100, Math.round(((pagoAteAgora || 0) / totalPrograma) * 100)) : 0
   const proximaParcela = parcelas.find((p) => p.status !== "pago") || null
   const nome = programaNome || null
+  const temMoedaEstrangeira = parcelas.some((p) => (p.moeda || "BRL") !== "BRL")
+  const hojeMeiaNoite = new Date()
+  hojeMeiaNoite.setHours(0, 0, 0, 0)
 
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28">
-      <header className="flex items-center justify-between px-5 py-4">
-        <img src={LOGO_URL} alt="EXP TOUR" className="h-6" />
-        <button onClick={sair} className="text-sm text-neutral-500 underline">Sair</button>
-      </header>
+      <Cabecalho nome={nomeCliente || null} subtitulo={nome} />
 
       <main className="mx-auto max-w-md px-5 py-2">
         <h1 className="font-serif text-4xl text-brand">Financeiro</h1>
-        {nome ? <p className="mt-2 text-sm text-neutral-500">{nome}</p> : null}
+        <p className="mt-2 text-sm text-neutral-600">
+          {nome ? nome + " · " : ""}Acompanhe suas parcelas, gere o Pix e veja o que já foi pago.
+        </p>
         {totalPrograma && totalPrograma > 0 ? (
           <p className="text-sm text-neutral-500">Contrato de {formatarMoeda(totalPrograma, moedaPrograma)}</p>
         ) : null}
 
         {totalPrograma && totalPrograma > 0 ? (
           <div className="mt-6 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-neutral-500">Pago ate agora</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Pago até agora</p>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-serif text-4xl text-green-700">{formatarMoeda(pagoAteAgora || 0, moedaPrograma)}</span>
+              <span className="font-serif text-4xl text-brand">{formatarMoeda(pagoAteAgora || 0, moedaPrograma)}</span>
               <span className="text-sm text-neutral-500">{percentualPago}% do programa</span>
             </div>
-            <div className="mt-4 h-2 w-full rounded-full bg-neutral-100">
-              <div className="h-2 rounded-full bg-green-600" style={{ width: percentualPago + "%" }} />
+            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+              <div className="h-2 rounded-full bg-brand transition-all duration-500" style={{ width: percentualPago + "%" }} />
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3 text-sm">
+              <span className="text-neutral-500">Saldo a pagar</span>
+              <span className="font-medium text-brand">
+                {formatarMoeda(Math.max(0, (totalPrograma || 0) - (pagoAteAgora || 0)), moedaPrograma)}
+              </span>
             </div>
           </div>
         ) : null}
@@ -407,25 +422,34 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
               const cobrancaJaGerada = !!parcela.qr_code_url
               const paga = parcela.status === "pago"
               const ehProxima = !paga && proximaParcela?.id === parcela.id
+              const venc = new Date(parcela.vencimento + "T00:00:00")
+              const atrasada = !paga && !cobrancaJaGerada && !isNaN(venc.getTime()) && venc < hojeMeiaNoite
+
+              const containerClasse = atrasada
+                ? "rounded-2xl border border-red-200 bg-red-50/60 p-4 card-interativo"
+                : ehProxima
+                ? "rounded-2xl border border-brand-gold/50 bg-brand-cream/50 p-4 card-interativo"
+                : "rounded-2xl border border-neutral-100 bg-white p-4 card-interativo"
 
               return (
-                <div
-                  key={parcela.id}
-                  className={ehProxima ? "rounded-2xl border border-brand-gold/50 bg-brand-cream/50 p-4" : "rounded-2xl border border-neutral-100 bg-white p-4"}
-                >
-                  {ehProxima ? (
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-                      Proxima &middot; {formatarDataBR(parcela.vencimento)}
+                <div key={parcela.id} className={containerClasse}>
+                  {atrasada ? (
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-red-600">
+                      Atrasada &middot; venceu {formatarDataBR(parcela.vencimento)}
+                    </p>
+                  ) : ehProxima ? (
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
+                      Próxima &middot; {formatarDataBR(parcela.vencimento)}
                     </p>
                   ) : null}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <span className={paga ? "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs text-white" : "mt-1 h-6 w-6 shrink-0 rounded-full border-2 border-neutral-300"}>
+                      <span className={paga ? "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs text-brand-cream" : "mt-1 h-6 w-6 shrink-0 rounded-full border-2 border-neutral-300"}>
                         {paga ? "✓" : ""}
                       </span>
                       <div>
                         <div className="font-medium text-brand">{parcela.descricao}</div>
-                        <div className="text-xs text-neutral-400">
+                        <div className={"text-xs " + (atrasada ? "text-red-600" : "text-neutral-500")}>
                           {paga ? "Paga em " + formatarDataBR(parcela.paid_at || parcela.vencimento) : "Vencimento " + formatarDataBR(parcela.vencimento)}
                         </div>
                       </div>
@@ -433,7 +457,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                     <div className="text-right">
                                            <div className="font-medium text-brand">{formatarMoeda(valorProgramaAtual(parcela), moeda)}</div>   
                       {emMoedaEstrangeira && cobrancaJaGerada ? (
-                        <div className="text-xs text-neutral-500">Voce paga: {formatarMoeda(Number(parcela.valor_cobrado_brl ?? 0), "BRL")} (VET: {parcela.cotacao_aplicada ?? "-"})</div>
+                        <div className="text-xs text-neutral-500">Você paga: {formatarMoeda(Number(parcela.valor_cobrado_brl ?? 0), "BRL")} <span className="text-neutral-400">(VET {parcela.cotacao_aplicada ?? "-"})</span></div>
                       ) : null}
                       {emMoedaEstrangeira && !cobrancaJaGerada && !paga ? (
                         <div className="text-xs text-neutral-400">
@@ -445,7 +469,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                           parcela.recibo_url ? (
                             <a href={parcela.recibo_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand underline">Ver recibo</a>
                           ) : (
-                            <span className="cursor-not-allowed text-xs text-neutral-300" title="O recibo ficara disponivel em breve">Recibo em breve</span>
+                            <span className="cursor-not-allowed text-xs text-neutral-400" title="O recibo ficará disponível em breve">Recibo em breve</span>
                           )
                         ) : parcela.qr_code_url ? (
                           <span className="text-xs font-medium text-brand">QR Code abaixo</span>
@@ -465,13 +489,13 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                     <div className="mt-4 flex flex-col items-center gap-2 border-t border-neutral-100 pt-4">
                       <img src={parcela.qr_code_url} alt="QR Code Pix" className="h-40 w-40" />
                       {parcela.payment_link ? <CopiarPix codigo={parcela.payment_link} /> : null}
-                      <span className="mt-1 text-xs text-neutral-400">O status sera atualizado automaticamente apos a confirmacao do pagamento.</span>
+                      <span className="mt-1 text-xs text-neutral-500">O status será atualizado automaticamente após a confirmação do pagamento.</span>
                       <button
                         onClick={() => cancelarCobranca(parcela.id)}
                         disabled={cancelando === parcela.id}
                         className="mt-1 text-xs font-medium text-neutral-500 underline disabled:opacity-50"
                       >
-                        {cancelando === parcela.id ? "Cancelando..." : "Cancelar cobranca e voltar para em aberto"}
+                        {cancelando === parcela.id ? "Cancelando..." : "Cancelar cobrança e voltar para em aberto"}
                       </button>
                     </div>
                   ) : null}
@@ -479,8 +503,23 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
               )
             })}
           </div>
+          {temMoedaEstrangeira ? (
+            <p className="mt-4 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
+              <span className="font-medium text-brand">VET</span> é a cotação usada na conversão para reais quando o Pix é gerado — já inclui o câmbio comercial do dia, o spread e o IOF. Sua dívida fica registrada em {moedaPrograma}; o valor em reais só é fixado no momento da cobrança.
+            </p>
+          ) : null}
         </div>
       </main>
+
+      <SuporteRodape contexto="Dúvida sobre uma parcela, o câmbio ou um pagamento? Fale com a gente." />
+
+      {aviso ? (
+        <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4">
+          <div className="animate-fade-in-up rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-lg">
+            {aviso}
+          </div>
+        </div>
+      ) : null}
 
       {editando && contratoId ? (
         <AjustarParcelas

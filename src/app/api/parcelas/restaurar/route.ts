@@ -27,19 +27,19 @@ export async function POST(request: Request) {
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
 
   if (!sessao) {
-    return NextResponse.json({ ok: false, erro: "Sessao nao autenticada" }, { status: 401 });
+    return NextResponse.json({ ok: false, erro: "Sessão não autenticada" }, { status: 401 });
   }
 
   let corpo: { contratoId?: string };
   try {
     corpo = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, erro: "Corpo invalido" }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "Corpo inválido" }, { status: 400 });
   }
 
   const contratoId = corpo.contratoId;
   if (!contratoId) {
-    return NextResponse.json({ ok: false, erro: "contratoId obrigatorio" }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "contratoId obrigatório" }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -54,15 +54,15 @@ export async function POST(request: Request) {
     .single();
 
   if (erroContrato || !contrato) {
-    return NextResponse.json({ ok: false, erro: "Contrato nao encontrado" }, { status: 404 });
+    return NextResponse.json({ ok: false, erro: "Contrato não encontrado" }, { status: 404 });
   }
   if ((contrato as any).titular_id !== sessao.titularId) {
-    return NextResponse.json({ ok: false, erro: "Contrato nao pertence ao titular autenticado" }, { status: 403 });
+    return NextResponse.json({ ok: false, erro: "Contrato não pertence ao titular autenticado" }, { status: 403 });
   }
 
   const plano = (contrato as any).plano_original as LinhaOriginal[] | null;
   if (!plano || !Array.isArray(plano) || plano.length === 0) {
-    return NextResponse.json({ ok: false, erro: "Este contrato nao tem plano original guardado." }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "Este contrato não tem plano original guardado." }, { status: 400 });
   }
 
   // 2) Se houver parcela paga ou com Pix gerado, nao da para restaurar.
@@ -72,13 +72,13 @@ export async function POST(request: Request) {
     .eq("contrato_id", contratoId);
 
   if (erroAtuais) {
-    return NextResponse.json({ ok: false, erro: "Nao foi possivel ler as parcelas atuais." }, { status: 500 });
+    return NextResponse.json({ ok: false, erro: "Não foi possível ler as parcelas atuais." }, { status: 500 });
   }
 
   const temBloqueio = (atuais || []).some((p) => p.status === "pago" || !!p.qr_code_url);
   if (temBloqueio) {
     return NextResponse.json(
-      { ok: false, erro: "Nao e possivel restaurar: ja existe parcela paga ou com Pix gerado. Ajuste manualmente as parcelas pendentes." },
+      { ok: false, erro: "Não é possível restaurar: já existe parcela paga ou com Pix gerado. Ajuste manualmente as parcelas pendentes." },
       { status: 400 }
     );
   }

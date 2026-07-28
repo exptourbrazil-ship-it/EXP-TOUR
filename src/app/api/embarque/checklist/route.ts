@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const cookieStore = await cookies();
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
   if (!sessao) {
-    return NextResponse.json({ ok: false, erro: "Nao autenticado" }, { status: 401 });
+    return NextResponse.json({ ok: false, erro: "Não autenticado" }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   // So aceita chaves de TAREFA conhecidas (impede marcar itens de documento
   // ou chaves arbitrarias).
   if (!chavesDeTarefa().has(itemChave)) {
-    return NextResponse.json({ ok: false, erro: "Item invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "Item inválido." }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     : await supabase.from("embarque_checklist").insert(registro);
 
   if (error) {
-    return NextResponse.json({ ok: false, erro: "Nao foi possivel salvar." }, { status: 500 });
+    return NextResponse.json({ ok: false, erro: "Não foi possível salvar." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
