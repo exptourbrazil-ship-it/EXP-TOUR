@@ -12,9 +12,9 @@ export type InfoEmergencia = { pais: string; numeroEmergencia: string };
 // Numero de emergencia por destino (dado factual e estavel). O consulado nao
 // entra aqui para nao arriscar telefone incorreto; fica para uma proxima versao.
 export const EMERGENCIA_POR_DESTINO: Record<string, InfoEmergencia> = {
-  canada: { pais: "Canada", numeroEmergencia: "911" },
+  canada: { pais: "Canadá", numeroEmergencia: "911" },
   eua: { pais: "Estados Unidos", numeroEmergencia: "911" },
-  nova_zelandia: { pais: "Nova Zelandia", numeroEmergencia: "111" },
+  nova_zelandia: { pais: "Nova Zelândia", numeroEmergencia: "111" },
 };
 
 export function emergenciaDoDestino(paisDestino: string | null | undefined): InfoEmergencia | null {

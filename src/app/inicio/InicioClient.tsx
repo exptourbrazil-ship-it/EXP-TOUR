@@ -2,6 +2,9 @@
 
 import Link from "next/link"
 import BottomNav from "@/components/BottomNav"
+import Cabecalho from "@/components/Cabecalho"
+import SuporteRodape from "@/components/SuporteRodape"
+import { calcularJornada, indiceEtapaAtual, totalConcluidas, type EstadoEtapa } from "@/lib/jornada"
 
 type Contrato = {
   id: string
@@ -16,9 +19,10 @@ type InicioClientProps = {
   nomeCompleto: string | null
   contrato: Contrato | null
   dataInicioTitular?: string | null
+  documentosEnviados?: number
+  parcelasPagas?: number
+  parcelasTotal?: number
 }
-
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
 
 function saudacaoPorHorario(): string {
   const hora = new Date().getHours()
@@ -49,15 +53,15 @@ function formatarData(dataInicio: string | null): string {
   return d.toLocaleDateString("pt-BR")
 }
 
-const ETAPAS_JORNADA = [
-  "Contrato",
-  "Matricula",
-  "Acomodacao",
-  "Visto",
-  "Pre-embarque",
-  "Durante a viagem",
-  "Retorno",
-]
+// Para cada etapa da jornada, para onde o cliente deve ir agora.
+const CTA_POR_ETAPA: Record<string, { rotulo: string; href: string }> = {
+  Contrato: { rotulo: "Ver Financeiro", href: "/parcelas" },
+  Documentos: { rotulo: "Enviar documentos", href: "/documentos" },
+  Pagamentos: { rotulo: "Ver parcelas", href: "/parcelas" },
+  "Pré-embarque": { rotulo: "Ver checklist", href: "/embarque" },
+  "Durante a viagem": { rotulo: "Abrir Viagem", href: "/viagem" },
+  Retorno: { rotulo: "Abrir Retorno", href: "/retorno" },
+}
 
 export default function InicioClient(props: InicioClientProps) {
   const nomeCompleto = props.nomeCompleto
@@ -66,36 +70,57 @@ export default function InicioClient(props: InicioClientProps) {
   // se o contrato ainda nao tem estudante_nome, cai para o nome do titular.
   const nomeExibicao = (contrato && contrato.estudante_nome) ? contrato.estudante_nome : nomeCompleto
   const nome = primeiroNome(nomeExibicao)
-  const etapaAtualIndex = contrato ? 1 : 0
   const dataInicioEfetiva = (contrato && contrato.data_inicio) ? contrato.data_inicio : (props.dataInicioTitular || null)
   const dias = diasAte(dataInicioEfetiva)
 
+  const etapas = calcularJornada({
+    temContrato: !!contrato,
+    documentosEnviados: props.documentosEnviados || 0,
+    parcelasPagas: props.parcelasPagas || 0,
+    parcelasTotal: props.parcelasTotal || 0,
+    diasAteInicio: dias,
+  })
+  const atualIdx = indiceEtapaAtual(etapas)
+  const concluidas = totalConcluidas(etapas)
+  const etapaAtual = atualIdx < etapas.length ? etapas[atualIdx] : null
+  const cta = etapaAtual ? (CTA_POR_ETAPA[etapaAtual.nome] || CTA_POR_ETAPA.Pagamentos) : { rotulo: "Abrir Retorno", href: "/retorno" }
+
+  const bolinhaPorEstado: Record<EstadoEtapa, string> = {
+    concluida: "bg-brand text-brand-cream",
+    andamento: "border-2 border-brand text-brand",
+    pendente: "border border-neutral-300 text-transparent",
+  }
+  const textoPorEstado: Record<EstadoEtapa, string> = {
+    concluida: "text-brand",
+    andamento: "font-medium text-brand",
+    pendente: "text-neutral-400",
+  }
+
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28">
-      <header className="flex items-center justify-between px-5 py-4">
-        <img src={LOGO_URL} alt="EXP TOUR" className="h-6" />
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-medium text-brand-cream">
-          {nome ? nome.charAt(0).toUpperCase() : "?"}
-        </div>
-      </header>
+      <Cabecalho nome={nomeExibicao} subtitulo={contrato && contrato.nome ? contrato.nome : null} />
 
       <main className="mx-auto max-w-md px-5 py-2">
         <h1 className="font-serif text-4xl text-brand">
           {saudacaoPorHorario()}{nome ? ", " + nome : ""}
         </h1>
-        <p className="mt-2 text-sm text-neutral-500">
+        <p className="mt-2 text-sm text-neutral-600">
           {contrato && contrato.nome ? contrato.nome : "Sua jornada com a EXP Tour"}
         </p>
 
-        <div className="mt-6 rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
+        <div className="mt-6 animate-fade-in-up rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-            Inicio do curso
+            Início do curso
           </p>
           {dias !== null ? (
             <div>
-              <p className="mt-3 font-serif text-6xl leading-none">{dias} dias</p>
+              <p className="mt-3 font-serif text-6xl leading-none">
+                {dias > 0 ? dias + " dias" : dias === 0 ? "É hoje!" : "Em andamento"}
+              </p>
               <p className="mt-3 text-sm text-brand-cream/80">
-                para o inicio do seu curso &middot; {formatarData(dataInicioEfetiva)}
+                {dias > 0
+                  ? "para o início do seu curso · " + formatarData(dataInicioEfetiva)
+                  : "início em " + formatarData(dataInicioEfetiva)}
               </p>
             </div>
           ) : (
@@ -104,65 +129,69 @@ export default function InicioClient(props: InicioClientProps) {
                 {contrato && contrato.nome ? contrato.nome : "Programa EXP Tour"}
               </p>
               <p className="mt-3 text-sm text-brand-cream/80">
-                A data de inicio sera confirmada em breve.
+                A data de início será confirmada em breve.
               </p>
             </div>
           )}
           <div className="mt-5 border-t border-brand-cream/20 pt-4">
             <p className="flex items-center gap-2 text-sm text-brand-cream/90">
               <span className="inline-block h-2 w-2 rounded-full bg-brand-gold" />
-              Esta tudo andando &mdash; {etapaAtualIndex} de {ETAPAS_JORNADA.length} etapas concluidas
+              {concluidas} de {etapas.length} etapas concluídas
             </p>
           </div>
         </div>
 
-        <div className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-            Seu proximo passo
+        <div className="mt-5 animate-fade-in-up rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
+            Seu próximo passo
           </p>
-          <h2 className="mt-2 font-serif text-2xl text-brand">Acompanhe Financeiro e Docs</h2>
-          <p className="mt-2 text-sm text-neutral-500">
-            Veja suas parcelas, contratos e documentos nas abas Financeiro e Docs.
+          <h2 className="mt-2 font-serif text-2xl text-brand">
+            {etapaAtual ? etapaAtual.nome : "Tudo em dia por aqui"}
+          </h2>
+          <p className="mt-2 text-sm text-neutral-600">
+            {etapaAtual ? etapaAtual.descricao : "Você concluiu as etapas registradas. Qualquer novidade aparece aqui."}
           </p>
           <Link
-            href="/parcelas"
+            href={cta.href}
             className="mt-5 block rounded-xl bg-brand py-3 text-center text-sm font-medium text-brand-cream transition hover:opacity-90"
           >
-            Ir para Financeiro
+            {cta.rotulo}
           </Link>
         </div>
 
         <div className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between">
+          <div className="mb-1 flex items-center justify-between">
             <h2 className="font-serif text-xl text-brand">Sua jornada</h2>
-            <span className="text-xs text-neutral-400">
-              {etapaAtualIndex} de {ETAPAS_JORNADA.length} concluidas
+            <span className="text-xs text-neutral-500">
+              {concluidas} de {etapas.length}
             </span>
           </div>
+          <p className="mb-5 text-xs text-neutral-500">Seu progresso real, atualizado conforme você avança.</p>
           <ol className="space-y-4">
-            {ETAPAS_JORNADA.map(function (etapa, index) {
-              const concluida = index < etapaAtualIndex
-              const emAndamento = index === etapaAtualIndex
-              const bolinha = concluida
-                ? "bg-brand text-brand-cream"
-                : emAndamento
-                ? "border-2 border-brand text-brand"
-                : "border border-neutral-300 text-transparent"
-              const textoClasse = emAndamento ? "font-medium text-brand" : concluida ? "text-brand" : "text-neutral-400"
-              return (
-                <li key={etapa} className="flex items-center gap-3">
-                  <span className={"flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " + bolinha}>
-                    {concluida ? "✓" : ""}
-                  </span>
-                  <span className={"text-sm " + textoClasse}>
-                    {etapa}{emAndamento ? " (em andamento)" : ""}
-                  </span>
-                </li>
-              )
-            })}
+            {etapas.map((etapa) => (
+              <li key={etapa.nome} className="flex items-start gap-3">
+                <span
+                  className={
+                    "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+                    bolinhaPorEstado[etapa.estado]
+                  }
+                >
+                  {etapa.estado === "concluida" ? "✓" : ""}
+                </span>
+                <div>
+                  <p className={"text-sm " + textoPorEstado[etapa.estado]}>
+                    {etapa.nome}
+                    {etapa.estado === "andamento" ? " (em andamento)" : ""}
+                  </p>
+                  <p className="text-xs text-neutral-500">{etapa.descricao}</p>
+                </div>
+              </li>
+            ))}
           </ol>
         </div>
       </main>
+
+      <SuporteRodape contexto="Dúvidas sobre seu programa, documentos ou pagamentos? Fale com a gente." />
 
       <BottomNav />
     </div>

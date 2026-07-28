@@ -34,12 +34,33 @@ export default async function InicioPage() {
     .order("id", { ascending: false })
 
   const contrato = (contratos && contratos[0]) || null
+  const contratoIds = (contratos || []).map((c) => c.id)
+
+  // Sinais reais para a "linha do tempo" da jornada (sem progresso ficticio).
+  let parcelasTotal = 0
+  let parcelasPagas = 0
+  if (contratoIds.length > 0) {
+    const { data: parcelas } = await supabase
+      .from("parcelas")
+      .select("status")
+      .in("contrato_id", contratoIds)
+    parcelasTotal = (parcelas || []).length
+    parcelasPagas = (parcelas || []).filter((p) => p.status === "pago").length
+  }
+
+  const { count: documentosEnviados } = await supabase
+    .from("documentos")
+    .select("id", { count: "exact", head: true })
+    .eq("titular_id", sessao.titularId)
 
   return (
     <InicioClient
       nomeCompleto={titular ? titular.nome_completo : null}
       contrato={contrato}
       dataInicioTitular={titular ? (titular as any).data_inicio : null}
+      documentosEnviados={documentosEnviados || 0}
+      parcelasPagas={parcelasPagas}
+      parcelasTotal={parcelasTotal}
     />
   )
 }

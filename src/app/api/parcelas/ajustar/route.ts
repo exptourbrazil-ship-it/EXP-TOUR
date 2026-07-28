@@ -31,24 +31,24 @@ export async function POST(request: Request) {
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value);
 
   if (!sessao) {
-    return NextResponse.json({ ok: false, erro: "Sessao nao autenticada" }, { status: 401 });
+    return NextResponse.json({ ok: false, erro: "Sessão não autenticada" }, { status: 401 });
   }
 
   let corpo: { contratoId?: string; parcelas?: ParcelaInput[] };
   try {
     corpo = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, erro: "Corpo invalido" }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "Corpo inválido" }, { status: 400 });
   }
 
   const contratoId = corpo.contratoId;
   const novas = Array.isArray(corpo.parcelas) ? corpo.parcelas : [];
 
   if (!contratoId) {
-    return NextResponse.json({ ok: false, erro: "contratoId obrigatorio" }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "contratoId obrigatório" }, { status: 400 });
   }
   if (novas.length === 0) {
-    return NextResponse.json({ ok: false, erro: "E preciso manter ao menos uma parcela." }, { status: 400 });
+    return NextResponse.json({ ok: false, erro: "É preciso manter ao menos uma parcela." }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -63,10 +63,10 @@ export async function POST(request: Request) {
     .single();
 
   if (erroContrato || !contrato) {
-    return NextResponse.json({ ok: false, erro: "Contrato nao encontrado" }, { status: 404 });
+    return NextResponse.json({ ok: false, erro: "Contrato não encontrado" }, { status: 404 });
   }
   if ((contrato as any).titular_id !== sessao.titularId) {
-    return NextResponse.json({ ok: false, erro: "Contrato nao pertence ao titular autenticado" }, { status: 403 });
+    return NextResponse.json({ ok: false, erro: "Contrato não pertence ao titular autenticado" }, { status: 403 });
   }
 
   // 2) Carrega as parcelas atuais do contrato.
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     .eq("contrato_id", contratoId);
 
   if (erroAtuais) {
-    return NextResponse.json({ ok: false, erro: "Nao foi possivel ler as parcelas atuais." }, { status: 500 });
+    return NextResponse.json({ ok: false, erro: "Não foi possível ler as parcelas atuais." }, { status: 500 });
   }
 
   const atuaisPorId = new Map((atuais || []).map((p) => [p.id, p]));
@@ -85,15 +85,15 @@ export async function POST(request: Request) {
   // 3) Valida cada parcela recebida.
   for (const p of novas) {
     if (!p.descricao || typeof p.valor !== "number" || p.valor <= 0 || !p.vencimento) {
-      return NextResponse.json({ ok: false, erro: "Cada parcela precisa de descricao, valor maior que zero e data de vencimento." }, { status: 400 });
+      return NextResponse.json({ ok: false, erro: "Cada parcela precisa de descrição, valor maior que zero e data de vencimento." }, { status: 400 });
     }
     if (p.id) {
       const atual = atuaisPorId.get(p.id);
       if (!atual) {
-        return NextResponse.json({ ok: false, erro: "Parcela informada nao pertence a este contrato." }, { status: 400 });
+        return NextResponse.json({ ok: false, erro: "Parcela informada não pertence a este contrato." }, { status: 400 });
       }
       if (bloqueada(atual)) {
-        return NextResponse.json({ ok: false, erro: "Uma das parcelas ja foi paga ou ja tem Pix gerado e nao pode ser alterada." }, { status: 400 });
+        return NextResponse.json({ ok: false, erro: "Uma das parcelas já foi paga ou já tem Pix gerado e não pode ser alterada." }, { status: 400 });
       }
     }
   }
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   const removidas = (atuais || []).filter((p) => !idsRecebidos.has(p.id));
   for (const r of removidas) {
     if (bloqueada(r)) {
-      return NextResponse.json({ ok: false, erro: "Nao e possivel excluir uma parcela ja paga ou com Pix ja gerado." }, { status: 400 });
+      return NextResponse.json({ ok: false, erro: "Não é possível excluir uma parcela já paga ou com Pix já gerado." }, { status: 400 });
     }
   }
 

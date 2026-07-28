@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const codigo = body?.codigo;
 
   if (typeof cpf !== "string" || typeof codigo !== "string") {
-        return NextResponse.json({ error: "Dados invalidos" }, { status: 400 });
+        return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
   if (!titular) {
-        return NextResponse.json({ error: "Codigo invalido ou expirado" }, { status: 401 });
+        return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
   }
 
   const agoraISO = new Date().toISOString();
@@ -46,12 +46,12 @@ export async function POST(request: Request) {
       .maybeSingle();
 
   if (!codigoAcesso || codigoAcesso.expires_at < agoraISO) {
-        return NextResponse.json({ error: "Codigo invalido ou expirado" }, { status: 401 });
+        return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
   }
 
   if (codigoAcesso.tentativas >= 5) {
         return NextResponse.json(
-          { error: "Numero maximo de tentativas excedido. Solicite um novo codigo." },
+          { error: "Número máximo de tentativas excedido. Solicite um novo código." },
           { status: 429 }
               );
   }
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
           .from("codigos_acesso")
           .update({ tentativas: codigoAcesso.tentativas + 1 })
           .eq("id", codigoAcesso.id);
-        return NextResponse.json({ error: "Codigo invalido ou expirado" }, { status: 401 });
+        return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
   }
 
   await supabase

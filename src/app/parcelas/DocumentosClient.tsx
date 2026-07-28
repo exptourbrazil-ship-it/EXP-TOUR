@@ -4,7 +4,8 @@ import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, labelDoTipoDocumento } from "@/l
 
 // Paleta da marca EXP Tour
 const VERDE = "#042f1b";
-const OURO = "#c9a35e";
+const OURO = "#c9a35e"; // dourado para FUNDOS (botoes) e detalhes
+const OURO_TEXTO = "#8a6a2f"; // dourado acessivel para TEXTO/links sobre fundo claro (WCAG AA)
 const CREME = "#f5ead9";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -117,7 +118,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
       StatusBadge(doc.status),
       createElement(
         "a",
-        { href: `/api/documentos/${doc.id}/download`, target: "_blank", rel: "noreferrer", style: { fontSize: 13, fontWeight: 600, color: OURO, textDecoration: "none", whiteSpace: "nowrap" } },
+        { href: `/api/documentos/${doc.id}/download`, target: "_blank", rel: "noreferrer", style: { fontSize: 13, fontWeight: 600, color: OURO_TEXTO, textDecoration: "underline", whiteSpace: "nowrap" } },
         "Baixar"
       )
     );
@@ -161,7 +162,13 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
       createElement("h2", { style: { fontFamily: "Bellefair, serif", fontSize: 20, color: VERDE, margin: 0 } }, secao.label),
       createElement("p", { style: { fontSize: 12, color: "#999", margin: "4px 0 4px" } }, subtitulo),
       vazia
-        ? createElement("p", { style: { fontSize: 13, color: "#aaa", padding: "16px 0 4px" } }, "Nenhum documento por aqui ainda.")
+        ? createElement(
+            "p",
+            { style: { fontSize: 13, color: "#6b6b6b", padding: "16px 0 4px" } },
+            secao.valor === "estudante"
+              ? "Você ainda não enviou documentos desta categoria. Use o campo abaixo para enviar."
+              : "A EXP Tour disponibilizará seus documentos aqui assim que estiverem prontos."
+          )
         : createElement("div", null, ...secao.grupos.flatMap((g: any) => g.itens.map((doc: any) => linhaDocumento(doc)))),
       podeEnviar(secao.valor) ? caixaUpload(secao) : null
     );
@@ -198,7 +205,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
             createElement("p", { style: { fontSize: 12, color: "#92600a", background: "#fdf3d7", padding: "8px 10px", borderRadius: 8, margin: "12px 0 0" } }, "Menor de idade: é obrigatória a presença dos pais ou responsáveis no atendimento, com a documentação de autorização. Consulte sempre o site oficial para valores e regras atualizadas."),
             createElement(
               "a",
-              { href: "https://www.gov.br/pf/pt-br/assuntos/passaporte", target: "_blank", rel: "noreferrer", style: { display: "inline-block", marginTop: 12, fontSize: 13, fontWeight: 600, color: OURO, textDecoration: "none" } },
+              { href: "https://www.gov.br/pf/pt-br/assuntos/passaporte", target: "_blank", rel: "noreferrer", style: { display: "inline-block", marginTop: 12, fontSize: 13, fontWeight: 600, color: OURO_TEXTO, textDecoration: "underline" } },
               "Abrir site oficial da Polícia Federal →"
             )
           )

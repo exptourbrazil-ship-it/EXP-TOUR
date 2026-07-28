@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import BottomNav from "@/components/BottomNav"
+import Cabecalho from "@/components/Cabecalho"
+import SuporteRodape from "@/components/SuporteRodape"
 import { montarLinkIndicacaoWhatsApp } from "@/lib/nps"
 
 type Contrato = {
@@ -63,12 +65,12 @@ export default function RetornoClient(props: RetornoClientProps) {
       })
       const json = await resp.json().catch(() => ({}))
       if (!resp.ok || !json.ok) {
-        setErro(json.erro || "Nao foi possivel enviar. Tente novamente.")
+        setErro(json.erro || "Não foi possível enviar. Tente novamente.")
       } else {
         setEnviado(true)
       }
     } catch {
-      setErro("Falha de conexao. Tente novamente.")
+      setErro("Falha de conexão. Tente novamente.")
     } finally {
       setEnviando(false)
     }
@@ -76,20 +78,17 @@ export default function RetornoClient(props: RetornoClientProps) {
 
   const linkIndicacao = montarLinkIndicacaoWhatsApp(nomeExibicao, props.contrato ? props.contrato.estudante_sexo : null)
   const temCertificado = props.certificados.length > 0
+  const sexo = props.contrato ? props.contrato.estudante_sexo : null
+  const bemVindo = sexo === "F" ? "Bem-vinda" : sexo === "M" ? "Bem-vindo" : "Bem-vindo(a)"
 
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28">
-      <header className="flex items-center justify-between px-5 py-4">
-        <img src={LOGO_URL} alt="EXP TOUR" className="h-6" />
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-medium text-brand-cream">
-          {nome ? nome.charAt(0).toUpperCase() : "?"}
-        </div>
-      </header>
+      <Cabecalho nome={nomeExibicao} subtitulo="Retorno" />
 
       <main className="mx-auto max-w-md px-5 py-2">
-        <h1 className="font-serif text-4xl text-brand">Bem-vindo de volta{nome ? ", " + nome : ""}</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          O fim de uma jornada &mdash; e o comeco das proximas historias.
+        <h1 className="font-serif text-4xl text-brand">{bemVindo} de volta{nome ? ", " + nome : ""}</h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          O fim de uma jornada &mdash; é o começo das próximas histórias.
         </p>
 
         {/* Certificado de conclusao */}
@@ -100,7 +99,7 @@ export default function RetornoClient(props: RetornoClientProps) {
           {temCertificado ? (
             <div className="mt-3 space-y-3">
               <p className="text-sm text-brand-cream/80">
-                Seu certificado de conclusao esta disponivel no cofre.
+                Seu certificado de conclusão está disponível no cofre.
               </p>
               {props.certificados.map((c) => (
                 <a
@@ -110,40 +109,40 @@ export default function RetornoClient(props: RetornoClientProps) {
                   rel="noreferrer"
                   className="flex items-center justify-between rounded-xl bg-brand-cream/10 px-4 py-3 text-sm transition hover:bg-brand-cream/20"
                 >
-                  <span className="truncate">{c.nome_arquivo || "Certificado de Conclusao"}</span>
+                  <span className="truncate">{c.nome_arquivo || "Certificado de Conclusão"}</span>
                   <span className="ml-3 shrink-0 text-brand-gold">Baixar &darr;</span>
                 </a>
               ))}
             </div>
           ) : (
             <p className="mt-3 text-sm text-brand-cream/80">
-              Assim que sua escola emitir o certificado de conclusao, ele aparecera aqui.
+              Assim que sua escola emitir o certificado de conclusão, ele aparecerá aqui.
             </p>
           )}
         </section>
 
         {/* Avaliacao NPS */}
         <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-            Sua opiniao
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
+            Sua opinião
           </p>
           {enviado ? (
             <div className="mt-2">
-              <h2 className="font-serif text-2xl text-brand">Obrigado pela sua avaliacao!</h2>
+              <h2 className="font-serif text-2xl text-brand">Obrigado pela sua avaliação!</h2>
               <p className="mt-2 text-sm text-neutral-500">
-                Sua nota{nota !== null ? " (" + nota + "/10)" : ""} foi registrada. Se quiser mudar, e so avaliar de novo abaixo.
+                Sua nota{nota !== null ? " (" + nota + "/10)" : ""} foi registrada. Se quiser mudar, é só avaliar de novo abaixo.
               </p>
               <button
                 onClick={() => setEnviado(false)}
                 className="mt-4 text-sm font-medium text-brand underline"
               >
-                Revisar minha avaliacao
+                Revisar minha avaliação
               </button>
             </div>
           ) : (
             <div className="mt-2">
-              <h2 className="font-serif text-2xl text-brand">O quanto voce recomendaria a EXP Tour?</h2>
-              <p className="mt-2 text-sm text-neutral-500">De 0 (nada provavel) a 10 (com certeza).</p>
+              <h2 className="font-serif text-2xl text-brand">O quanto você recomendaria a EXP Tour?</h2>
+              <p className="mt-2 text-sm text-neutral-500">De 0 (nada provável) a 10 (com certeza).</p>
               <div className="mt-4 grid grid-cols-6 gap-2">
                 {Array.from({ length: 11 }, (_, n) => (
                   <button
@@ -163,7 +162,7 @@ export default function RetornoClient(props: RetornoClientProps) {
               <textarea
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Quer contar algo sobre sua experiencia? (opcional)"
+                placeholder="Quer contar algo sobre sua experiência? (opcional)"
                 rows={3}
                 className="mt-4 w-full rounded-xl border border-neutral-300 p-3 text-sm text-neutral-700 outline-none focus:border-brand"
               />
@@ -173,7 +172,7 @@ export default function RetornoClient(props: RetornoClientProps) {
                 disabled={enviando}
                 className="mt-4 block w-full rounded-xl bg-brand py-3 text-center text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-60"
               >
-                {enviando ? "Enviando..." : "Enviar avaliacao"}
+                {enviando ? "Enviando..." : "Enviar avaliação"}
               </button>
             </div>
           )}
@@ -182,12 +181,12 @@ export default function RetornoClient(props: RetornoClientProps) {
         {/* Convite para avaliar no Google */}
         {props.googleReviewUrl ? (
           <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
               Avalie no Google
             </p>
-            <h2 className="mt-2 font-serif text-2xl text-brand">Sua avaliacao ajuda muito</h2>
+            <h2 className="mt-2 font-serif text-2xl text-brand">Sua avaliação ajuda muito</h2>
             <p className="mt-2 text-sm text-neutral-500">
-              Um minutinho para deixar uma estrela faz toda a diferenca para quem ainda esta decidindo.
+              Um minutinho para deixar uma estrela faz toda a diferença para quem ainda está decidindo.
             </p>
             <a
               href={props.googleReviewUrl}
@@ -202,12 +201,12 @@ export default function RetornoClient(props: RetornoClientProps) {
 
         {/* Indicacao via WhatsApp */}
         <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
             Indique um amigo
           </p>
-          <h2 className="mt-2 font-serif text-2xl text-brand">Conhece alguem querendo estudar fora?</h2>
+          <h2 className="mt-2 font-serif text-2xl text-brand">Conhece alguém querendo estudar fora?</h2>
           <p className="mt-2 text-sm text-neutral-500">
-            Compartilhe a EXP Tour com quem esta pensando em fazer intercambio.
+            Compartilhe a EXP Tour com quem está pensando em fazer intercâmbio.
           </p>
           <a
             href={linkIndicacao}
@@ -219,6 +218,8 @@ export default function RetornoClient(props: RetornoClientProps) {
           </a>
         </section>
       </main>
+
+      <SuporteRodape contexto="Quer contar como foi ou precisa de algo do seu intercâmbio? Estamos aqui." />
 
       <BottomNav />
     </div>

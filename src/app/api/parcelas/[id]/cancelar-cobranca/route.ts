@@ -20,12 +20,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const sessao = verificarSessao(cookieStore.get(SESSION_COOKIE)?.value)
 
   if (!sessao) {
-    return NextResponse.json({ ok: false, erro: "Sessao nao autenticada" }, { status: 401 })
+    return NextResponse.json({ ok: false, erro: "Sessão não autenticada" }, { status: 401 })
   }
 
   const parcelaId = id
   if (!parcelaId) {
-    return NextResponse.json({ ok: false, erro: "Parcela nao informada" }, { status: 400 })
+    return NextResponse.json({ ok: false, erro: "Parcela não informada" }, { status: 400 })
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string
@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .single()
 
   if (erroParcela || !parcela) {
-    return NextResponse.json({ ok: false, erro: "Parcela nao encontrada" }, { status: 404 })
+    return NextResponse.json({ ok: false, erro: "Parcela não encontrada" }, { status: 404 })
   }
 
   // 2) Confere que o contrato pertence ao titular autenticado.
@@ -51,15 +51,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .single()
 
   if (erroContrato || !contrato) {
-    return NextResponse.json({ ok: false, erro: "Contrato nao encontrado" }, { status: 404 })
+    return NextResponse.json({ ok: false, erro: "Contrato não encontrado" }, { status: 404 })
   }
   if ((contrato as any).titular_id !== sessao.titularId) {
-    return NextResponse.json({ ok: false, erro: "Parcela nao pertence ao titular autenticado" }, { status: 403 })
+    return NextResponse.json({ ok: false, erro: "Parcela não pertence ao titular autenticado" }, { status: 403 })
   }
 
   // 3) Nao permite cancelar uma parcela ja paga.
   if ((parcela as any).status === "pago") {
-    return NextResponse.json({ ok: false, erro: "Esta parcela ja foi paga e nao pode voltar para em aberto." }, { status: 400 })
+    return NextResponse.json({ ok: false, erro: "Esta parcela já foi paga e não pode voltar para em aberto." }, { status: 400 })
   }
 
   // 4) Limpa os dados da cobranca Pix, mantendo a parcela pendente. `valor_atual`
@@ -78,7 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .eq("id", parcelaId)
 
   if (erroUpdate) {
-    return NextResponse.json({ ok: false, erro: "Nao foi possivel cancelar a cobranca." }, { status: 500 })
+    return NextResponse.json({ ok: false, erro: "Não foi possível cancelar a cobrança." }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })

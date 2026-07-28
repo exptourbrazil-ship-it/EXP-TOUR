@@ -6,7 +6,6 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { converterParaBRL } from "@/lib/cambio";
 import { valorProgramaAtual } from "@/lib/parcelas";
 import ParcelasClient from "./ParcelasClient";
-import BottomNav from "@/components/BottomNav";
 
 // Pagina do servidor (aba Financeiro): le a sessao autenticada, busca no
 // Supabase apenas os contratos e parcelas do titular da sessao e entrega os
@@ -27,8 +26,14 @@ export default async function ParcelasPage() {
 
   const { data: contratos } = await supabase
     .from("contratos")
-    .select("id, nome, moeda, valor_total, data_inicio")
+    .select("id, nome, moeda, valor_total, data_inicio, estudante_nome")
     .eq("titular_id", sessao.titularId);
+
+  const { data: titular } = await supabase
+    .from("titulares")
+    .select("nome_completo")
+    .eq("id", sessao.titularId)
+    .maybeSingle();
 
   const contratoIds = (contratos || []).map((c) => c.id);
   const moedaPorContrato = new Map((contratos || []).map((c) => [c.id, c.moeda]));
@@ -40,6 +45,8 @@ export default async function ParcelasPage() {
   // usa este contratoId). Diferente de totalPrograma, que soma todos os
   // contratos do titular.
   const valorTotalContrato = contratos && contratos.length > 0 ? Number((contratos[0] as any).valor_total || 0) : 0;
+  const estudanteNome = contratos && contratos.length > 0 ? (contratos[0] as any).estudante_nome : null;
+  const nomeCliente = estudanteNome || (titular ? titular.nome_completo : null);
 
   let parcelas: any[] = [];
 
@@ -90,5 +97,5 @@ export default async function ParcelasPage() {
 
   const pagoAteAgora = parcelas.filter((p) => p.status === "pago").reduce((soma, p) => soma + Number(p.valor_original || 0), 0);
 
-  return createElement("div", null, createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato }), createElement(BottomNav));
+  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente });
 }

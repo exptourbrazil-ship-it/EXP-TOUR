@@ -3,6 +3,8 @@
 import { useState } from "react"
 import Link from "next/link"
 import BottomNav from "@/components/BottomNav"
+import Cabecalho from "@/components/Cabecalho"
+import SuporteRodape from "@/components/SuporteRodape"
 
 type ItemEstado = {
   chave: string
@@ -63,17 +65,12 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
 
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28">
-      <header className="flex items-center justify-between px-5 py-4">
-        <img src={LOGO_URL} alt="EXP TOUR" className="h-6" />
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-medium text-brand-cream">
-          {nome ? nome.charAt(0).toUpperCase() : "?"}
-        </div>
-      </header>
+      <Cabecalho nome={props.nomeExibicao} subtitulo="Embarque" />
 
       <main className="mx-auto max-w-md px-5 py-2">
         <h1 className="font-serif text-4xl text-brand">Pronto para embarcar?</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Seu checklist de pre-embarque. Os documentos marcam sozinhos quando voce os envia na aba Docs.
+        <p className="mt-2 text-sm text-neutral-600">
+          Seu checklist de pré-embarque. Os itens de documento marcam sozinhos quando você os envia na aba Documentos.
         </p>
 
         {/* Barra de progresso */}
@@ -88,7 +85,7 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
             <div className="h-full rounded-full bg-brand-gold transition-all" style={{ width: percentual + "%" }} />
           </div>
           <p className="mt-2 text-sm text-brand-cream/80">
-            {percentual === 100 ? "Tudo pronto! Boa viagem ✈" : percentual + "% concluido"}
+            {percentual === 100 ? "Tudo pronto! Boa viagem ✈" : percentual + "% concluído"}
           </p>
         </div>
 
@@ -131,9 +128,9 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
                     {item.label}
                   </p>
                   {!item.concluido && item.tipo === "documento" ? (
-                    <p className="mt-1 text-xs text-neutral-400">
-                      {item.dica || "Sera marcado quando o documento estiver no cofre."}{" "}
-                      <Link href="/documentos" className="text-brand-gold underline">Ir para Docs</Link>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      {item.dica || "Será marcado quando o documento estiver no cofre."}{" "}
+                      <Link href="/documentos" className="font-medium text-brand-golddark underline">Ir para Documentos</Link>
                     </p>
                   ) : null}
                   {!item.concluido && item.tipo === "tarefa" && item.dica ? (
@@ -141,14 +138,19 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
                   ) : null}
                 </div>
 
-                <span className="mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-neutral-300">
-                  {isTarefa ? "voce" : "docs"}
+                <span
+                  title={isTarefa ? "Você marca este item" : "Marcado automaticamente a partir dos seus documentos"}
+                  className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500"
+                >
+                  {isTarefa ? "você" : "auto"}
                 </span>
               </div>
             )
           })}
         </div>
       </main>
+
+      <SuporteRodape contexto="Dúvida sobre documentos, vistos ou o que levar? Fale com a gente." />
 
       <BottomNav />
     </div>

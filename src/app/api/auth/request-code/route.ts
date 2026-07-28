@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     const cpf = body?.cpf;
 
   if (typeof cpf !== "string" || limparCpf(cpf).length !== 11) {
-        return NextResponse.json({ error: "CPF invalido" }, { status: 400 });
+        return NextResponse.json({ error: "CPF inválido" }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
