@@ -33,6 +33,15 @@ type LinhaEdicao = {
   vencimento: string
   bloqueada: boolean
 }
+// Valor efetivo da parcela na moeda do programa. Enquanto nao ha cobranca Pix
+// gerada (nem pagamento), `valor_atual` guarda o valor corrente na moeda do
+// programa, ja com os ajustes do cliente — e o que deve ser exibido e editado.
+// Depois que o Pix e gerado, `gerar-cobranca` sobrescreve `valor_atual` com o
+// BRL cobrado; nesse caso a divida na moeda do programa e o `valor_original`.
+function valorProgramaAtual(p: { valor_original: number; valor_atual: number; status: string; qr_code_url: string | null }): number {
+  const cobrancaGerada = p.status === "pago" || !!p.qr_code_url
+  return Number(cobrancaGerada ? p.valor_original : p.valor_atual)
+}
 
 function formatarMoeda(valor: number, moeda: string): string {
   try {
@@ -100,7 +109,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
   const iniciais: LinhaEdicao[] = parcelas.map((p) => ({
     id: p.id,
     descricao: p.descricao,
-    valor: String(p.valor_original),
+    valor: String(valorProgramaAtual(p)),
     vencimento: p.vencimento ? p.vencimento.slice(0, 10) : "",
     bloqueada: p.status === "pago" || !!p.qr_code_url,
   }))
@@ -415,7 +424,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-medium text-brand">{formatarMoeda(Number(parcela.valor_original), moeda)}</div>
+                                           <div className="font-medium text-brand">{formatarMoeda(valorProgramaAtual(parcela), moeda)}</div>   
                       {emMoedaEstrangeira && cobrancaJaGerada ? (
                         <div className="text-xs text-neutral-500">Voce paga: {formatarMoeda(Number(parcela.valor_atual), "BRL")} (VET: {parcela.cotacao_aplicada ?? "-"})</div>
                       ) : null}
