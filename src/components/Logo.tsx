@@ -15,8 +15,8 @@ export default function Logo({
   comAssinatura?: boolean
   escuro?: boolean
 }) {
-  const corTitulo = escuro ? "text-brand-cream" : "text-brand"
-  const corAssinatura = escuro ? "text-brand-cream/70" : "text-brand-golddark"
+  const corTitulo = escuro ? "text-white" : "text-brand"
+  const corAssinatura = escuro ? "text-white/70" : "text-brand-golddark"
 
   return (
     <span className={"inline-flex items-center gap-3 " + className} aria-label="EXP Tour">
@@ -24,7 +24,7 @@ export default function Logo({
       <svg
         viewBox="1823.19970703125 848.7000122070312 1353.700439453125 1302.900146484375"
         aria-hidden="true"
-        className="h-9 w-auto shrink-0 text-brand-gold"
+        className="h-9 w-auto shrink-0 text-[#d2ab73]"
         fill="currentColor"
       >
         <path d="M3012.4,1628.8c-55.3-40.1-110.6-80.1-166.4-119.4c-52.1-37.2-104.7-73.7-157.2-110.4v39.3c47.2,31.4,94.3,62.9,141.9,93.6c57.1,37.4,114.5,74.3,172.1,111c57.8,36.5,115.5,72.9,174.1,108.1C3122.6,1709.4,3067.5,1669.1,3012.4,1628.8z" />

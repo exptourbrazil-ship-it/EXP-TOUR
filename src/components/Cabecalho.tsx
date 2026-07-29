@@ -27,8 +27,9 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
   }
 
   return (
-    <header className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-4 md:px-8">
-      <Logo />
+    <header className="bg-brand">
+    <div className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-4 md:px-8">
+      <Logo escuro />
 
       <button
         type="button"
@@ -36,7 +37,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
         aria-haspopup="menu"
         aria-expanded={aberto}
         aria-label="Abrir menu da conta"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-medium text-brand-cream transition hover:opacity-90"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-cream text-sm font-medium text-brand ring-1 ring-white/20 transition hover:opacity-90"
       >
         {inicial ? (
           inicial
@@ -77,6 +78,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
           </div>
         </>
       ) : null}
+    </div>
     </header>
   )
 }
