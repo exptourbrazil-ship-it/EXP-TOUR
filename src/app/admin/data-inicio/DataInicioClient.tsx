@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 // Painel administrativo para definir manualmente a data de inicio do curso
 // de um titular, inclusive de clientes sem contrato. A autenticacao e feita
@@ -14,8 +13,7 @@ type TitularAdmin = {
   data_inicio: string | null;
 };
 
-export default function DataInicioClient({ usuario }: { usuario: string }) {
-  const router = useRouter();
+export default function DataInicioClient() {
   const [titulares, setTitulares] = useState<TitularAdmin[]>([]);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [titularId, setTitularId] = useState("");
@@ -71,23 +69,9 @@ export default function DataInicioClient({ usuario }: { usuario: string }) {
     }
   }
 
-  async function sair() {
-    await fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
-    router.replace("/admin/login");
-  }
-
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "32px 20px", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Data de inicio (admin)</h1>
-        <button
-          type="button"
-          onClick={sair}
-          style={{ fontSize: 12, padding: "6px 10px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}
-        >
-          Sair ({usuario})
-        </button>
-      </div>
+      <h1 style={{ fontSize: 20, margin: "0 0 8px" }}>Data de inicio (admin)</h1>
       <p style={{ fontSize: 14, color: "#555", marginBottom: 24 }}>
         Define manualmente a data de inicio do curso de um titular. Funciona
         inclusive para clientes sem contrato cadastrado. A aba Inicio usa a

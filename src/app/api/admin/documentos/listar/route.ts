@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checarAdminRequest } from "@/lib/admin-guard";
+
+export const runtime = "nodejs";
 
 // Lista os documentos de um titular (por CPF) para a tela de admin
 // aprovar/rejeitar documentos enviados pelo cliente.
 export async function GET(request: Request) {
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (!adminSecret || authHeader !== `Bearer ${adminSecret}`) {
+  if (!(await checarAdminRequest(request))) {
     return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
   }
 
