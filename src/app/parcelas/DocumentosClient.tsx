@@ -223,7 +223,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
 
   return createElement(
     "div",
-    { className: "grid gap-4 md:grid-cols-2 md:items-start", style: { marginBottom: 32 } },
+    { className: "md:grid md:grid-cols-2 md:gap-4 md:items-start", style: { marginBottom: 32 } },
     cardAjuda(),
     ...secoes.map((secao) => cardSecao(secao))
   );
