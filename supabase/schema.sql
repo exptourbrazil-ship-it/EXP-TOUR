@@ -231,3 +231,43 @@ alter table if exists admin_audit        enable row level security;
 alter table if exists nps_respostas      enable row level security;
 alter table if exists embarque_checklist enable row level security;
 alter table if exists viagem_info        enable row level security;
+
+-- ============================================================================
+-- Zoho Sign — contrato assinado (ver docs/plano-zoho-sign.md)
+-- ============================================================================
+-- Aplicar tambem no SQL Editor do Supabase de producao (ver CLAUDE.md).
+
+-- Liga o documento (PDF assinado) ao contrato certo (um titular pode ter mais
+-- de um contrato). Opcional para os demais documentos.
+alter table if exists documentos add column if not exists contrato_id uuid references contratos(id);
+create index if not exists idx_documentos_contrato on documentos(contrato_id);
+
+-- Se documentos.origem tiver um CHECK constraint, incluir 'sistema' (origem do
+-- PDF gerado pelo Zoho Sign). Sem constraint, este passo e desnecessario.
+-- Ex.: alter table documentos drop constraint if exists documentos_origem_check;
+--      alter table documentos add constraint documentos_origem_check
+--        check (origem in ('titular','admin','sistema','zoho'));
+
+-- Envelope de assinatura: espelho local do estado no Zoho Sign. Uma linha por
+-- solicitacao de assinatura de um contrato.
+create table if not exists contratos_assinatura (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  envelope_id_zoho text unique,        -- request_id do Zoho Sign
+  status text not null default 'rascunho'
+    check (status in ('rascunho','enviado','em_andamento','assinado','recusado','expirado')),
+  signatarios jsonb,                    -- lista de signatarios (nome/email/papel)
+  documento_id uuid references documentos(id), -- PDF final no cofre
+  enviado_em timestamptz,
+  assinado_em timestamptz,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_contratos_assinatura_contrato on contratos_assinatura(contrato_id);
+create index if not exists idx_contratos_assinatura_envelope on contratos_assinatura(envelope_id_zoho);
+
+alter table if exists contratos_assinatura enable row level security;
+
+-- Storage: criar o bucket PRIVADO "documentos-contratos" (como os demais); os
+-- downloads usam URLs assinadas de curta duracao. Feito no painel do Supabase.
