@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -17,9 +17,7 @@ export const runtime = "nodejs";
 // autenticacao real de staff ainda nao foi construida.
 
 export async function POST(request: Request) {
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (adminSecret && authHeader !== `Bearer ${adminSecret}`) {
+  if (!(await checarAdminRequest(request))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminCookie, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -13,15 +13,8 @@ export const runtime = "nodejs";
 // existe e, caso contrario, cai para esta data do titular.
 //
 // Autenticacao: cookie de sessao de admin (login em /admin/login). Como
-// compatibilidade, tambem aceita o Bearer ADMIN_CAMBIO_SECRET.
-async function checarAuth(request: Request): Promise<boolean> {
-  if (await checarAdminCookie()) return true;
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (!adminSecret) return false;
-  return authHeader === "Bearer " + adminSecret;
-}
-
+// compatibilidade, tambem aceita o Bearer ADMIN_CAMBIO_SECRET (ver
+// checarAdminRequest em admin-guard).
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -31,7 +24,7 @@ function getSupabase() {
 // Lista os titulares (com a data de inicio ja gravada, se houver) para
 // preencher o seletor no painel administrativo.
 export async function GET(request: Request) {
-  if (!(await checarAuth(request))) {
+  if (!(await checarAdminRequest(request))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 
@@ -50,7 +43,7 @@ export async function GET(request: Request) {
 
 // Grava a data de inicio de um titular. Aceita data vazia para limpar.
 export async function POST(request: Request) {
-  if (!(await checarAuth(request))) {
+  if (!(await checarAdminRequest(request))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

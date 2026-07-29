@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 // cria um cookie de sessão httpOnly (12h) e redireciona para o painel.
 export default function AdminLoginPage() {
   const router = useRouter();
-  const next = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("next") || "/admin/data-inicio") : "/admin/data-inicio";
+  const next = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("next") || "/admin") : "/admin";
 
   const [etapa, setEtapa] = useState("solicitar" as "solicitar" | "codigo");
   const [codigo, setCodigo] = useState("");

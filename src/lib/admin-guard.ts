@@ -21,6 +21,16 @@ export async function checarAdminCookie(): Promise<boolean> {
   return !!verificarSessaoAdmin(token);
 }
 
+// Auth padrao das rotas de API admin: aceita a sessao de admin (cookie) e,
+// por compatibilidade, o Bearer ADMIN_CAMBIO_SECRET. A sessao e o caminho
+// preferido; o Bearer permanece para clientes/scripts que ainda o usem.
+export async function checarAdminRequest(request: Request): Promise<boolean> {
+  if (await checarAdminCookie()) return true;
+  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
+  if (!adminSecret) return false;
+  return request.headers.get("authorization") === "Bearer " + adminSecret;
+}
+
 // Retorna o usuario da sessao de admin (cookie), ou null se nao houver sessao
 // valida. Usado pela trilha de auditoria para saber QUEM executou a acao.
 export async function usuarioAdminAtual(): Promise<string | null> {

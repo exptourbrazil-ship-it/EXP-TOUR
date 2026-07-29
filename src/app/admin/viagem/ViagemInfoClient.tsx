@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 // Painel administrativo para preencher os dados da aba Viagem (viagem_info) de
 // cada contrato: escola, endereco, acomodacao, contato local e observacoes.
@@ -33,8 +32,7 @@ const VAZIO = {
   observacoes: "",
 };
 
-export default function ViagemInfoClient({ usuario }: { usuario: string }) {
-  const router = useRouter();
+export default function ViagemInfoClient() {
   const [contratos, setContratos] = useState<ContratoAdmin[]>([]);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [contratoId, setContratoId] = useState("");
@@ -118,11 +116,6 @@ export default function ViagemInfoClient({ usuario }: { usuario: string }) {
     }
   }
 
-  async function sair() {
-    await fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
-    router.replace("/admin/login");
-  }
-
   const campo = (rotulo: string, chave: keyof typeof VAZIO, placeholder = "", multilinha = false) => (
     <div style={{ marginBottom: 12 }}>
       <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{rotulo}</label>
@@ -148,16 +141,7 @@ export default function ViagemInfoClient({ usuario }: { usuario: string }) {
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "32px 20px", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Dados da viagem (admin)</h1>
-        <button
-          type="button"
-          onClick={sair}
-          style={{ fontSize: 12, padding: "6px 10px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}
-        >
-          Sair ({usuario})
-        </button>
-      </div>
+      <h1 style={{ fontSize: 20, margin: "0 0 8px" }}>Dados da viagem (admin)</h1>
       <p style={{ fontSize: 14, color: "#555", marginBottom: 24 }}>
         Preenche a escola, a acomodacao e o contato local que aparecem na aba
         Viagem do cliente. Selecione um contrato para carregar/editar.

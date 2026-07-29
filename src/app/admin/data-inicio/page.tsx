@@ -8,6 +8,6 @@ export const dynamic = "force-dynamic";
 // middleware ja redireciona quando nao ha cookie; aqui verificamos a
 // assinatura completa no servidor antes de renderizar.
 export default async function AdminDataInicioPage() {
-  const { usuario } = await exigirAdmin("/admin/data-inicio");
-  return <DataInicioClient usuario={usuario} />;
+  await exigirAdmin("/admin/data-inicio");
+  return <DataInicioClient />;
 }
