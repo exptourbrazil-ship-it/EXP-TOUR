@@ -67,14 +67,16 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
     <div className="min-h-screen bg-brand-cream/40 pb-28">
       <Cabecalho nome={props.nomeExibicao} subtitulo="Embarque" />
 
-      <main className="mx-auto max-w-md px-5 py-2">
-        <h1 className="font-serif text-4xl text-brand">Pronto para embarcar?</h1>
+      <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl">
+        <h1 className="font-serif text-4xl text-brand md:text-5xl">Pronto para embarcar?</h1>
         <p className="mt-2 text-sm text-neutral-600">
           Seu checklist de pré-embarque. Os itens de documento marcam sozinhos quando você os envia na aba Documentos.
         </p>
 
+        <div className="mt-6 lg:grid lg:grid-cols-[1fr_1.4fr] lg:gap-6 lg:items-start">
         {/* Barra de progresso */}
-        <div className="mt-6 rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
+        <div className="lg:sticky lg:top-4">
+        <div className="rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
             Seu progresso
           </p>
@@ -88,9 +90,10 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
             {percentual === 100 ? "Tudo pronto! Boa viagem ✈" : percentual + "% concluído"}
           </p>
         </div>
+        </div>
 
         {/* Lista de itens */}
-        <div className="mt-5 space-y-3">
+        <div className="mt-5 space-y-3 lg:mt-0">
           {itens.map((item) => {
             const isTarefa = item.tipo === "tarefa"
             return (
@@ -147,6 +150,7 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
               </div>
             )
           })}
+        </div>
         </div>
       </main>
 

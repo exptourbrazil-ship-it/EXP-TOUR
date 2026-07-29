@@ -100,15 +100,17 @@ export default function InicioClient(props: InicioClientProps) {
     <div className="min-h-screen bg-brand-cream/40 pb-28">
       <Cabecalho nome={nomeExibicao} subtitulo={contrato && contrato.nome ? contrato.nome : null} />
 
-      <main className="mx-auto max-w-md px-5 py-2">
-        <h1 className="font-serif text-4xl text-brand">
+      <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl">
+        <h1 className="font-serif text-4xl text-brand md:text-5xl">
           {saudacaoPorHorario()}{nome ? ", " + nome : ""}
         </h1>
         <p className="mt-2 text-sm text-neutral-600">
           {contrato && contrato.nome ? contrato.nome : "Sua jornada com a EXP Tour"}
         </p>
 
-        <div className="mt-6 animate-fade-in-up rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
+        <div className="mt-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+          <div className="space-y-5">
+          <div className="animate-fade-in-up rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
             Início do curso
           </p>
@@ -141,7 +143,7 @@ export default function InicioClient(props: InicioClientProps) {
           </div>
         </div>
 
-        <div className="mt-5 animate-fade-in-up rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <div className="animate-fade-in-up rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
             Seu próximo passo
           </p>
@@ -157,9 +159,11 @@ export default function InicioClient(props: InicioClientProps) {
           >
             {cta.rotulo}
           </Link>
-        </div>
+          </div>
+          </div>
 
-        <div className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <div className="mt-5 lg:mt-0">
+          <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-1 flex items-center justify-between">
             <h2 className="font-serif text-xl text-brand">Sua jornada</h2>
             <span className="text-xs text-neutral-500">
@@ -188,6 +192,8 @@ export default function InicioClient(props: InicioClientProps) {
               </li>
             ))}
           </ol>
+          </div>
+          </div>
         </div>
       </main>
 

@@ -80,8 +80,8 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-3xl items-stretch justify-between px-1">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur md:inset-x-0 md:bottom-4 md:border-t-0 md:bg-transparent md:backdrop-blur-0">
+      <div className="mx-auto flex max-w-3xl items-stretch justify-between px-1 md:max-w-xl md:gap-1 md:rounded-full md:border md:border-neutral-200 md:bg-white/95 md:px-2 md:py-1 md:shadow-lg md:backdrop-blur">
         {ITENS.map((item) => {
           const ativo = pathname === item.href;
           return (
@@ -109,8 +109,8 @@ export default function BottomNav() {
           );
         })}
       </div>
-      {/* Espaco seguro para aparelhos com barra de gestos */}
-      <div className="h-[env(safe-area-inset-bottom)]" />
+      {/* Espaco seguro para aparelhos com barra de gestos (apenas na barra fixa mobile) */}
+      <div className="h-[env(safe-area-inset-bottom)] md:hidden" />
     </nav>
   );
 }

@@ -40,14 +40,15 @@ export default function ViagemClient(props: ViagemClientProps) {
     <div className="min-h-screen bg-brand-cream/40 pb-28">
       <Cabecalho nome={props.nomeExibicao} subtitulo="Viagem" />
 
-      <main className="mx-auto max-w-md px-5 py-2">
-        <h1 className="font-serif text-4xl text-brand">Durante a viagem</h1>
+      <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl">
+        <h1 className="font-serif text-4xl text-brand md:text-5xl">Durante a viagem</h1>
         <p className="mt-2 text-sm text-neutral-600">
           Tudo o que você precisa ter à mão enquanto estiver no destino.
         </p>
 
+        <div className="mt-6 space-y-5 md:grid md:grid-cols-2 md:gap-5 md:space-y-0 md:items-start">
         {/* Fale com a EXP Tour */}
-        <section className="mt-6 rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
+        <section className="rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
             Fale com a EXP Tour
           </p>
@@ -74,7 +75,7 @@ export default function ViagemClient(props: ViagemClientProps) {
 
         {/* Em caso de emergencia */}
         {props.emergencia ? (
-          <section className="mt-5 rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm">
+          <section className="rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-red-600">
               Em caso de emergência
             </p>
@@ -94,7 +95,7 @@ export default function ViagemClient(props: ViagemClientProps) {
         ) : null}
 
         {/* Escola e acomodacao */}
-        <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
             Escola e acomodação
           </p>
@@ -149,7 +150,7 @@ export default function ViagemClient(props: ViagemClientProps) {
 
         {/* Servicos para a viagem (parceiros / afiliados) */}
         {(props.afiliadoMoedaUrl || props.afiliadoChipUrl || props.afiliadoPassagemUrl) ? (
-          <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
               Prepare-se para a viagem
             </p>
@@ -193,6 +194,7 @@ export default function ViagemClient(props: ViagemClientProps) {
             </div>
           </section>
         ) : null}
+        </div>
       </main>
 
       <BottomNav />
