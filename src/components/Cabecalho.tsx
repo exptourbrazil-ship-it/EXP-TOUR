@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
+import Logo from "@/components/Logo"
 
 // Cabecalho compartilhado das telas do cliente: logo + menu de conta com o
 // nome de quem esta logado e o botao "Sair". Antes o logout so existia na aba
@@ -29,7 +28,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
 
   return (
     <header className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-4 md:px-8">
-      <img src={LOGO_URL} alt="EXP Tour" className="h-9" />
+      <Logo />
 
       <button
         type="button"
