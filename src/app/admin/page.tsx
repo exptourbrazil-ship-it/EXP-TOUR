@@ -1,25 +1,27 @@
 import Link from "next/link";
 import { exigirAdmin } from "@/lib/admin-guard";
 import { ADMIN_NAV } from "@/lib/admin-nav";
+import { carregarFinanceiro } from "@/lib/admin-financeiro";
+import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Home do painel admin. A verificacao completa da sessao (assinatura HMAC) e
 // feita aqui via exigirAdmin; o proxy da borda ja barra quem nao tem cookie.
-// Por enquanto (Fase 0) traz os atalhos das secoes e os espacos reservados
-// das metricas — sem numeros ficticios. As metricas reais entram na Fase 1.
+// Mostra os indicadores financeiros reais (Fase 1) com link para o Financeiro;
+// a fila de documentos (Fase 2) segue como espaco reservado.
 export default async function AdminHomePage() {
   const { usuario } = await exigirAdmin("/admin");
 
-  // Cards de metrica que serao preenchidos nas proximas fases. Ficam visiveis
-  // como estrutura, marcados "em breve", para nao exibir dado inventado.
-  const metricasPrevistas = [
-    { titulo: "Recebido no mês", fase: "Fase 1" },
-    { titulo: "A receber", fase: "Fase 1" },
-    { titulo: "Em atraso", fase: "Fase 1" },
-    { titulo: "Documentos pendentes", fase: "Fase 2" },
-  ];
+  // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
+  let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
+  try {
+    financeiro = await carregarFinanceiro();
+  } catch {
+    financeiro = null;
+  }
+  const m = financeiro?.metricas ?? null;
 
   // Secoes navegaveis (exclui a propria home).
   const secoes = ADMIN_NAV.filter((i) => i.href !== "/admin");
@@ -30,27 +32,39 @@ export default async function AdminHomePage() {
         <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Painel</p>
         <h1 className="mt-1 font-serif text-3xl text-brand">Olá, {primeiroNome(usuario)}</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Visão geral da operação. As métricas financeiras e as filas entram nas próximas fases —
-          por ora, use os atalhos abaixo para as ferramentas já disponíveis.
+          Visão geral da operação. Os indicadores financeiros já estão ativos; as filas de
+          documentos e a saúde do sistema entram nas próximas fases.
         </p>
       </header>
 
-      {/* Métricas (reservadas — Fase 1/2) */}
-      <section aria-label="Métricas" className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold text-brand">Indicadores</h2>
+      {/* Indicadores financeiros (Fase 1) + reservado (Fase 2) */}
+      <section aria-label="Indicadores" className="mb-10">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-brand">Indicadores</h2>
+          <Link href="/admin/financeiro" className="text-xs font-medium text-brand-golddark hover:underline">
+            Ver Financeiro →
+          </Link>
+        </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {metricasPrevistas.map((m) => (
-            <div
-              key={m.titulo}
-              className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-4"
-            >
-              <p className="text-xs font-medium text-neutral-500">{m.titulo}</p>
-              <p className="mt-2 font-serif text-2xl text-neutral-300">—</p>
-              <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-brand-golddark">
-                {m.fase}
-              </p>
-            </div>
-          ))}
+          <CardMetrica titulo="Recebido no mês" valor={m ? fmtBRL(m.recebidoMesBRL) : "—"} href="/admin/financeiro" />
+          <CardMetrica
+            titulo="A receber"
+            valor={m ? fmtPorMoeda(m.aReceber.porMoeda) : "—"}
+            legenda={m ? `${m.aReceber.count} parcela(s)` : undefined}
+            href="/admin/financeiro"
+          />
+          <CardMetrica
+            titulo="Em atraso"
+            valor={m ? fmtPorMoeda(m.emAtraso.porMoeda) : "—"}
+            legenda={m ? `${m.emAtraso.count} parcela(s)` : undefined}
+            href="/admin/financeiro"
+            tom="alerta"
+          />
+          <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-4">
+            <p className="text-xs font-medium text-neutral-500">Documentos pendentes</p>
+            <p className="mt-2 font-serif text-2xl text-neutral-300">—</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-brand-golddark">Fase 2</p>
+          </div>
         </div>
       </section>
 
@@ -115,6 +129,35 @@ export default async function AdminHomePage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function CardMetrica({
+  titulo,
+  valor,
+  legenda,
+  href,
+  tom,
+}: {
+  titulo: string;
+  valor: string;
+  legenda?: string;
+  href: string;
+  tom?: "alerta";
+}) {
+  return (
+    <Link
+      href={href}
+      className={`block rounded-2xl border bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
+        tom === "alerta" ? "border-red-200" : "border-neutral-200"
+      }`}
+    >
+      <p className="text-xs font-medium text-neutral-500">{titulo}</p>
+      <p className={`mt-2 font-serif text-xl ${tom === "alerta" ? "text-red-700" : "text-brand"}`}>
+        {valor}
+      </p>
+      <p className="mt-1 text-xs text-neutral-400">{legenda ?? " "}</p>
+    </Link>
   );
 }
 

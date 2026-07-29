@@ -47,7 +47,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Financeiro",
     descricao: "Recebido, a receber e parcelas em atraso",
     icone: ICONES.financeiro,
-    emBreve: true,
   },
   {
     href: "/admin/documentos",
