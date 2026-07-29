@@ -59,7 +59,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Clientes",
     descricao: "Carteira de titulares e contratos",
     icone: ICONES.clientes,
-    emBreve: true,
   },
   {
     href: "/admin/sistema",
