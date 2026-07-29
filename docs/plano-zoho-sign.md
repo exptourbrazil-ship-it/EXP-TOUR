@@ -113,10 +113,10 @@ confirma que a renovação do token funcionou.
 
 ## Dependências / decisões abertas
 
-- **Data de nascimento do estudante:** a regra multi-signatário por idade precisa
-  saber se é menor; hoje há `contratos.estudante_sexo`, mas não a data de
-  nascimento — precisaria de coluna (`estudante_data_nascimento`) ou captura no
-  envio.
+- **Data de nascimento / e-mail do estudante:** colunas `estudante_data_nascimento`
+  e `estudante_email` adicionadas ao `contratos` (schema.sql) para a regra
+  multi-signatário e o envio ao estudante maior. Podem ser preenchidas no envio
+  quando faltarem.
 - **Merge do contrato:** v1 recomenda template no Zoho Sign preenchido com dados
   do Supabase (menos código) em vez de gerar o PDF nós mesmos.
 - **LGPD:** contrato é dado pessoal → bucket restrito + URL assinada de curta

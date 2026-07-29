@@ -242,6 +242,13 @@ alter table if exists viagem_info        enable row level security;
 alter table if exists documentos add column if not exists contrato_id uuid references contratos(id);
 create index if not exists idx_documentos_contrato on documentos(contrato_id);
 
+-- Dados do estudante necessarios ao Zoho Sign: a data de nascimento decide a
+-- regra multi-signatario por idade (menor -> so o pagante assina); o e-mail e
+-- para o estudante maior assinar. Ambos opcionais (podem ser preenchidos no
+-- envio quando faltarem).
+alter table if exists contratos add column if not exists estudante_data_nascimento date;
+alter table if exists contratos add column if not exists estudante_email text;
+
 -- Se documentos.origem tiver um CHECK constraint, incluir 'sistema' (origem do
 -- PDF gerado pelo Zoho Sign). Sem constraint, este passo e desnecessario.
 -- Ex.: alter table documentos drop constraint if exists documentos_origem_check;
