@@ -66,7 +66,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Sistema",
     descricao: "Webhooks, régua de cobrança e NPS",
     icone: ICONES.sistema,
-    emBreve: true,
   },
   {
     href: "/admin/cambio",

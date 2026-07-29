@@ -1,7 +1,7 @@
 // Testes dos helpers puros do NPS. Roda com `npm test` (node --test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarNotaNps, classificarNps, montarLinkIndicacaoWhatsApp, aberturaIndicacao, SITE_PUBLICO_EXP_TOUR, WHATSAPP_EXP_TOUR } from "./nps.ts";
+import { validarNotaNps, classificarNps, calcularNps, montarLinkIndicacaoWhatsApp, aberturaIndicacao, SITE_PUBLICO_EXP_TOUR, WHATSAPP_EXP_TOUR } from "./nps.ts";
 
 test("validarNotaNps aceita inteiros de 0 a 10", () => {
   assert.equal(validarNotaNps(0), true);
@@ -25,6 +25,31 @@ test("classificarNps segue a regra 0-6/7-8/9-10", () => {
   assert.equal(classificarNps(8), "neutro");
   assert.equal(classificarNps(9), "promotor");
   assert.equal(classificarNps(10), "promotor");
+});
+
+test("calcularNps com zero respostas retorna score 0", () => {
+  const r = calcularNps([]);
+  assert.deepEqual(r, { total: 0, promotores: 0, neutros: 0, detratores: 0, score: 0 });
+});
+
+test("calcularNps agrega e calcula o score (%promotores - %detratores)", () => {
+  // 6 promotores, 2 neutros, 2 detratores (total 10) -> (60 - 20) = 40
+  const notas = [10, 10, 9, 9, 9, 9, 8, 7, 3, 0];
+  const r = calcularNps(notas);
+  assert.equal(r.total, 10);
+  assert.equal(r.promotores, 6);
+  assert.equal(r.neutros, 2);
+  assert.equal(r.detratores, 2);
+  assert.equal(r.score, 40);
+});
+
+test("calcularNps ignora notas invalidas (fora de 0-10 ou nao numericas) e aceita string", () => {
+  const r = calcularNps([9, "10", 7, -1, 11, null, undefined, "x"]);
+  assert.equal(r.total, 3); // 9, 10, 7
+  assert.equal(r.promotores, 2);
+  assert.equal(r.neutros, 1);
+  assert.equal(r.detratores, 0);
+  assert.equal(r.score, 67); // round(2/3*100)
 });
 
 test("aberturaIndicacao escolhe o artigo pelo sexo", () => {

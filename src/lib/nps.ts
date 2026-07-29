@@ -16,6 +16,41 @@ export function classificarNps(nota: number): ClassificacaoNps {
   return "promotor";
 }
 
+export type ResumoNps = {
+  total: number;
+  promotores: number;
+  neutros: number;
+  detratores: number;
+  score: number; // -100 a 100
+};
+
+// Agrega uma lista de notas (0-10) no resumo do NPS. Notas fora da faixa ou
+// nao numericas sao ignoradas. Score = %promotores - %detratores, arredondado
+// para inteiro; com zero respostas, score = 0. Reusa classificarNps.
+export function calcularNps(notas: Array<number | string | null | undefined>): ResumoNps {
+  let promotores = 0;
+  let neutros = 0;
+  let detratores = 0;
+
+  for (const bruto of notas) {
+    // Descarta vazios ANTES de converter: Number(null) e Number("") sao 0, o
+    // que contaria falsamente como detrator.
+    if (bruto === null || bruto === undefined) continue;
+    if (typeof bruto === "string" && bruto.trim() === "") continue;
+    const nota = Number(bruto);
+    if (!Number.isFinite(nota) || nota < 0 || nota > 10) continue;
+    const classe = classificarNps(nota);
+    if (classe === "promotor") promotores += 1;
+    else if (classe === "neutro") neutros += 1;
+    else detratores += 1;
+  }
+
+  const total = promotores + neutros + detratores;
+  const score = total === 0 ? 0 : Math.round(((promotores - detratores) / total) * 100);
+
+  return { total, promotores, neutros, detratores, score };
+}
+
 export type SexoEstudante = "F" | "M" | null | undefined;
 
 // Contatos publicos da EXP Tour usados na mensagem de indicacao. A Area do
