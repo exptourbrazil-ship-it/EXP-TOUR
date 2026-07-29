@@ -28,7 +28,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
   }
 
   return (
-    <header className="relative flex items-center justify-between px-5 py-4">
+    <header className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-4 md:px-8">
       <img src={LOGO_URL} alt="EXP Tour" className="h-9" />
 
       <button
@@ -60,7 +60,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
           />
           <div
             role="menu"
-            className="absolute right-5 top-16 z-50 w-60 origin-top-right animate-scale-in rounded-2xl border border-neutral-200 bg-white p-4 shadow-xl"
+            className="absolute right-5 top-16 z-50 w-60 origin-top-right animate-scale-in rounded-2xl border border-neutral-200 bg-white p-4 shadow-xl md:right-8"
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Conta</p>
             <p className="mt-1 truncate font-serif text-lg text-brand" title={nome || undefined}>

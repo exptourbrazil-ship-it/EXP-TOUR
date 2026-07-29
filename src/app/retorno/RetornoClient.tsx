@@ -85,14 +85,15 @@ export default function RetornoClient(props: RetornoClientProps) {
     <div className="min-h-screen bg-brand-cream/40 pb-28">
       <Cabecalho nome={nomeExibicao} subtitulo="Retorno" />
 
-      <main className="mx-auto max-w-md px-5 py-2">
-        <h1 className="font-serif text-4xl text-brand">{bemVindo} de volta{nome ? ", " + nome : ""}</h1>
+      <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl">
+        <h1 className="font-serif text-4xl text-brand md:text-5xl">{bemVindo} de volta{nome ? ", " + nome : ""}</h1>
         <p className="mt-2 text-sm text-neutral-600">
           O fim de uma jornada &mdash; é o começo das próximas histórias.
         </p>
 
+        <div className="mt-6 space-y-5 md:grid md:grid-cols-2 md:gap-5 md:space-y-0 md:items-start">
         {/* Certificado de conclusao */}
-        <section className="mt-6 rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
+        <section className="rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
             Seu certificado
           </p>
@@ -122,7 +123,7 @@ export default function RetornoClient(props: RetornoClientProps) {
         </section>
 
         {/* Avaliacao NPS */}
-        <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
             Sua opinião
           </p>
@@ -180,7 +181,7 @@ export default function RetornoClient(props: RetornoClientProps) {
 
         {/* Convite para avaliar no Google */}
         {props.googleReviewUrl ? (
-          <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
               Avalie no Google
             </p>
@@ -200,7 +201,7 @@ export default function RetornoClient(props: RetornoClientProps) {
         ) : null}
 
         {/* Indicacao via WhatsApp */}
-        <section className="mt-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
             Indique um amigo
           </p>
@@ -217,6 +218,7 @@ export default function RetornoClient(props: RetornoClientProps) {
             Compartilhar no WhatsApp
           </a>
         </section>
+        </div>
       </main>
 
       <SuporteRodape contexto="Quer contar como foi ou precisa de algo do seu intercâmbio? Estamos aqui." />

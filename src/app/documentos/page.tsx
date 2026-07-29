@@ -54,8 +54,8 @@ export default async function DocumentosPage() {
     createElement(Cabecalho, { nome: nomeCliente, subtitulo: "Documentos" }),
     createElement(
       "main",
-      { className: "mx-auto max-w-md px-5 py-2" },
-      createElement("h1", { className: "font-serif text-4xl text-brand" }, "Documentos"),
+      { className: "mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl" },
+      createElement("h1", { className: "font-serif text-4xl text-brand md:text-5xl" }, "Documentos"),
       createElement(
         "p",
         { className: "mt-2 mb-4 text-sm text-neutral-600" },

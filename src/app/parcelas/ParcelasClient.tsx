@@ -374,8 +374,8 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
     <div className="min-h-screen bg-brand-cream/40 pb-28">
       <Cabecalho nome={nomeCliente || null} subtitulo={nome} />
 
-      <main className="mx-auto max-w-md px-5 py-2">
-        <h1 className="font-serif text-4xl text-brand">Financeiro</h1>
+      <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8">
+        <h1 className="font-serif text-4xl text-brand md:text-5xl">Financeiro</h1>
         <p className="mt-2 text-sm text-neutral-600">
           {nome ? nome + " · " : ""}Acompanhe suas parcelas, gere o Pix e veja o que já foi pago.
         </p>
