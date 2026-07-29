@@ -2,10 +2,9 @@
 
 import { useState, createElement, Fragment } from "react";
 import { montarLinkSuporteWhatsApp, WHATSAPP_EXP_TOUR } from "@/lib/viagem";
+import Logo from "@/components/Logo";
 
 type Etapa = "cpf" | "codigo";
-
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg";
 
 export default function LoginPage() {
       const [etapa, setEtapa] = useState<Etapa>("cpf");
@@ -57,12 +56,11 @@ export default function LoginPage() {
           }
   }
 
-  const logoEl = createElement("img", {
-          src: LOGO_URL,
-          alt: "EXP TOUR",
-          width: 175,
-          className: "mx-auto mb-6",
-  });
+  const logoEl = createElement(
+          "div",
+      { className: "mb-6 flex justify-center" },
+          createElement(Logo, { escuro: true })
+  );
 
   const tituloEl = createElement("h1", { className: "mb-2 text-3xl font-semibold text-brand" }, "Área do cliente");
 
