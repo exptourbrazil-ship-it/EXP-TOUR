@@ -1,6 +1,6 @@
 "use client";
 import { createElement, useState } from "react";
-import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, labelDoTipoDocumento } from "@/lib/documentos";
+import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, labelDoTipoDocumento, categoriaDoTipoDocumento } from "@/lib/documentos";
 
 // Paleta da marca EXP Tour
 const VERDE = "#042f1b";
@@ -60,6 +60,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
   const [documentosState, setDocumentosState] = useState(documentos || []);
   const [tipoUpload, setTipoUpload] = useState({} as Record<string, string>);
   const [enviando, setEnviando] = useState(null as string | null);
+  const [excluindo, setExcluindo] = useState(null as string | null);
   const [mensagem, setMensagem] = useState({} as Record<string, string>);
   const [mostrarPassaporte, setMostrarPassaporte] = useState(false);
 
@@ -104,7 +105,36 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
     }
   }
 
+  // Exclui um documento do estudante enviado pelo proprio cliente. Pede
+  // confirmacao e remove da lista ao concluir. A regra de seguranca tambem e
+  // aplicada no servidor (so categoria "estudante" + origem "titular").
+  async function excluirDocumento(doc: any) {
+    const ok = window.confirm(
+      `Excluir "${labelDoTipoDocumento(doc.tipo_documento)}" (${doc.nome_arquivo})? Esta ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    setExcluindo(doc.id);
+    setMensagem((m) => ({ ...m, estudante: "" }));
+    try {
+      const res = await fetch(`/api/documentos/${doc.id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        setMensagem((m) => ({ ...m, estudante: json.erro || "Não foi possível excluir o documento." }));
+      } else {
+        setDocumentosState((ds) => ds.filter((d) => d.id !== doc.id));
+        setMensagem((m) => ({ ...m, estudante: "Documento excluído." }));
+      }
+    } catch {
+      setMensagem((m) => ({ ...m, estudante: "Não foi possível excluir o documento." }));
+    } finally {
+      setExcluindo(null);
+    }
+  }
+
   function linhaDocumento(doc: any) {
+    // Cliente pode excluir apenas documentos do ESTUDANTE que ele proprio
+    // enviou (origem "titular"). Documentos da escola/financeiro ficam protegidos.
+    const podeExcluir = categoriaDoTipoDocumento(doc.tipo_documento) === "estudante" && doc.origem === "titular";
     return createElement(
       "div",
       { key: doc.id, style: { display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid #eee" } },
@@ -120,7 +150,18 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
         "a",
         { href: `/api/documentos/${doc.id}/download`, target: "_blank", rel: "noreferrer", style: { fontSize: 13, fontWeight: 600, color: OURO_TEXTO, textDecoration: "underline", whiteSpace: "nowrap" } },
         "Baixar"
-      )
+      ),
+      podeExcluir
+        ? createElement(
+            "button",
+            {
+              onClick: () => excluirDocumento(doc),
+              disabled: excluindo === doc.id,
+              style: { fontSize: 13, fontWeight: 600, color: "#b91c1c", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", whiteSpace: "nowrap", padding: 0 },
+            },
+            excluindo === doc.id ? "Excluindo..." : "Excluir"
+          )
+        : null
     );
   }
 
