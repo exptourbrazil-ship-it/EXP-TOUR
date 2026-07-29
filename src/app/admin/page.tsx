@@ -2,6 +2,7 @@ import Link from "next/link";
 import { exigirAdmin } from "@/lib/admin-guard";
 import { ADMIN_NAV } from "@/lib/admin-nav";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
+import { contarDocumentosPendentes } from "@/lib/admin-operacao";
 import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
 
 export const runtime = "nodejs";
@@ -22,6 +23,14 @@ export default async function AdminHomePage() {
     financeiro = null;
   }
   const m = financeiro?.metricas ?? null;
+
+  // Contagem da fila de documentos (Fase 2). Best-effort: 0 se falhar.
+  let docsPendentes = 0;
+  try {
+    docsPendentes = await contarDocumentosPendentes();
+  } catch {
+    docsPendentes = 0;
+  }
 
   // Secoes navegaveis (exclui a propria home).
   const secoes = ADMIN_NAV.filter((i) => i.href !== "/admin");
@@ -60,11 +69,13 @@ export default async function AdminHomePage() {
             href="/admin/financeiro"
             tom="alerta"
           />
-          <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-4">
-            <p className="text-xs font-medium text-neutral-500">Documentos pendentes</p>
-            <p className="mt-2 font-serif text-2xl text-neutral-300">—</p>
-            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-brand-golddark">Fase 2</p>
-          </div>
+          <CardMetrica
+            titulo="Documentos pendentes"
+            valor={String(docsPendentes)}
+            legenda="aguardando revisão"
+            href="/admin/documentos"
+            tom={docsPendentes > 0 ? "alerta" : undefined}
+          />
         </div>
       </section>
 
