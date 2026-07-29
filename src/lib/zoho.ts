@@ -76,6 +76,12 @@ export async function verificarConexaoZoho(): Promise<{ ok: boolean; erro?: stri
   }
 }
 
+// Expoe o access token para outros clientes Zoho (ex.: Zoho Sign, que usa o
+// mesmo OAuth mas outro dominio de API). Mantem getAccessToken privado.
+export async function obterAccessTokenZoho(): Promise<string> {
+  return getAccessToken();
+}
+
 // Busca um registro especifico de um modulo do Zoho CRM (ex: Contacts, Products).
 export async function getZohoRecord(zohoModule: string, id: string): Promise<any> {
   const accessToken = await getAccessToken();

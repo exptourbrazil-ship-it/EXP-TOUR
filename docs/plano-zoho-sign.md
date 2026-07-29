@@ -74,12 +74,29 @@ envio real do envelope espera as credenciais.
 2. ✅ Helper de cópia no CRM (`espelharDocumentoNoContatoZoho`) aplicado ao
    upload do cliente e do admin. — FEITO
 3. ✅ Autoteste de conexão (`/api/admin/zoho/status`). — FEITO
-4. Helpers puros + testes (`sign-events.ts`: idempotência, parse, signatários).
-5. Consumidor de `events` + `sign-processar.ts` (testável com payload simulado).
-6. DDL: `documentos.contrato_id`, `origem 'sistema'` + bucket, `contratos_assinatura`.
+4. ✅ Helpers puros + testes (`sign-events.ts`: `extrairEventoSign`,
+   `mapearStatusSign`, `montarSignatarios` por idade). — FEITO
+5. ✅ Consumidor de `events` (`/api/webhooks/zoho-sign`) + `sign-processar.ts`
+   (persiste PDF no Storage, registra em `documentos`, espelha no CRM, liga ao
+   envelope; idempotente). — FEITO
+6. ✅ DDL em `supabase/schema.sql`: `documentos.contrato_id`, tabela
+   `contratos_assinatura`, nota sobre `origem 'sistema'`/bucket. — FEITO
+   (aplicar no SQL Editor + criar bucket `documentos-contratos`).
 
-**Só quando o OAuth do Zoho chegar:**
-7. `zoho-sign.ts` (API real) + rota de envio + botão no admin → fluxo ponta a ponta.
+Também feito: `zoho-sign.ts` (`baixarPdfAssinado`/`getRequestSign`) e
+`obterAccessTokenZoho` exposto em `zoho.ts` — código pronto, roda só com OAuth.
+
+**Só quando o OAuth do Zoho chegar (passo 7):**
+- Rota admin `POST /api/admin/contratos/[id]/enviar-assinatura` (gera o envelope
+  por merge do template) + botão/estado no admin → fluxo ponta a ponta.
+- Envs adicionais: `ZOHO_SIGN_API_DOMAIN` (datacenter), `ZOHO_SIGN_WEBHOOK_SECRET`.
+
+### Passos manuais para ativar (equipe)
+1. Aplicar o DDL de `supabase/schema.sql` no SQL Editor; se `documentos.origem`
+   tiver CHECK, incluir `'sistema'`.
+2. Criar o bucket privado `documentos-contratos` no Storage.
+3. Configurar o webhook do Zoho Sign apontando para
+   `/api/webhooks/zoho-sign?token=<ZOHO_SIGN_WEBHOOK_SECRET>`.
 
 ## Configuração da conexão (feita pela equipe, não pelo assistente)
 
@@ -96,10 +113,10 @@ confirma que a renovação do token funcionou.
 
 ## Dependências / decisões abertas
 
-- **Data de nascimento do estudante:** a regra multi-signatário por idade precisa
-  saber se é menor; hoje há `contratos.estudante_sexo`, mas não a data de
-  nascimento — precisaria de coluna (`estudante_data_nascimento`) ou captura no
-  envio.
+- **Data de nascimento / e-mail do estudante:** colunas `estudante_data_nascimento`
+  e `estudante_email` adicionadas ao `contratos` (schema.sql) para a regra
+  multi-signatário e o envio ao estudante maior. Podem ser preenchidas no envio
+  quando faltarem.
 - **Merge do contrato:** v1 recomenda template no Zoho Sign preenchido com dados
   do Supabase (menos código) em vez de gerar o PDF nós mesmos.
 - **LGPD:** contrato é dado pessoal → bucket restrito + URL assinada de curta
