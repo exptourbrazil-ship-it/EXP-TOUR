@@ -1,6 +1,7 @@
 import { exigirAdmin } from "@/lib/admin-guard";
 import { carregarSistema, JANELAS_REGUA } from "@/lib/admin-sistema";
 import EventosProblematicos from "./EventosProblematicos";
+import ZohoStatusCard from "./ZohoStatusCard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,9 @@ export default async function AdminSistemaPage() {
           Saúde dos webhooks, régua de cobrança e satisfação (NPS).
         </p>
       </header>
+
+      {/* Status da integração Zoho */}
+      <ZohoStatusCard />
 
       {/* Fila interativa de eventos a resolver */}
       <EventosProblematicos />
