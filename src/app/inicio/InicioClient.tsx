@@ -93,7 +93,7 @@ export default function InicioClient(props: InicioClientProps) {
   const textoPorEstado: Record<EstadoEtapa, string> = {
     concluida: "text-brand",
     andamento: "font-medium text-brand",
-    pendente: "text-neutral-400",
+    pendente: "text-neutral-500",
   }
 
   return (

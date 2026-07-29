@@ -89,20 +89,22 @@ export default function BottomNav() {
               key={item.href}
               href={item.href}
               aria-current={ativo ? "page" : undefined}
-              className={
-                "group relative flex flex-1 flex-col items-center gap-1 px-1 pb-2 pt-2.5 text-[10.5px] transition-colors " +
-                (ativo ? "text-brand font-semibold" : "text-neutral-500 hover:text-brand")
-              }
+              className="group relative flex flex-1 flex-col items-center gap-1 px-1 pb-2 pt-2 text-[10.5px]"
             >
-              {/* Indicador da aba ativa */}
+              {/* Icone da aba: chip preenchido em destaque quando ativa */}
               <span
                 className={
-                  "absolute top-0 h-0.5 w-8 rounded-full transition-all " +
-                  (ativo ? "bg-brand-gold opacity-100" : "opacity-0")
+                  "flex h-9 w-9 items-center justify-center rounded-full transition-all group-active:scale-90 " +
+                  (ativo
+                    ? "bg-brand text-brand-cream shadow-md ring-2 ring-brand-gold/60"
+                    : "text-neutral-500 group-hover:bg-brand-cream group-hover:text-brand")
                 }
-              />
-              <span className="transition-transform group-active:scale-90">{item.icon}</span>
-              <span className="leading-none">{item.label}</span>
+              >
+                {item.icon}
+              </span>
+              <span className={"leading-none " + (ativo ? "font-semibold text-brand" : "text-neutral-500")}>
+                {item.label}
+              </span>
             </Link>
           );
         })}

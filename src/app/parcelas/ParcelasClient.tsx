@@ -192,7 +192,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
       if (resultado.ok) {
         onSalvo()
       } else {
-        setErro(resultado.erro || "Nao foi possivel salvar as alteracoes.")
+        setErro(resultado.erro || "Não foi possível salvar as alterações.")
       }
     } catch {
       setErro("Não foi possível salvar as alterações.")
@@ -268,7 +268,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
         <div className="mt-4 flex items-center justify-between border-t border-neutral-200 pt-4">
           <span className="text-sm font-medium text-neutral-700">
             Total: {formatarMoeda(total, moeda)}
-            {conferirSoma ? <span className="text-neutral-400"> / {formatarMoeda(valorTotalContrato as number, moeda)}</span> : null}
+            {conferirSoma ? <span className="text-neutral-500"> / {formatarMoeda(valorTotalContrato as number, moeda)}</span> : null}
           </span>
           <div className="flex gap-2">
             <button onClick={onFechar} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600">Cancelar</button>
@@ -457,10 +457,10 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                     <div className="text-right">
                                            <div className="font-medium text-brand">{formatarMoeda(valorProgramaAtual(parcela), moeda)}</div>   
                       {emMoedaEstrangeira && cobrancaJaGerada ? (
-                        <div className="text-xs text-neutral-500">Você paga: {formatarMoeda(Number(parcela.valor_cobrado_brl ?? 0), "BRL")} <span className="text-neutral-400">(VET {parcela.cotacao_aplicada ?? "-"})</span></div>
+                        <div className="text-xs text-neutral-500">Você paga: {formatarMoeda(Number(parcela.valor_cobrado_brl ?? 0), "BRL")} <span className="text-neutral-500">(VET {parcela.cotacao_aplicada ?? "-"})</span></div>
                       ) : null}
                       {emMoedaEstrangeira && !cobrancaJaGerada && !paga ? (
-                        <div className="text-xs text-neutral-400">
+                        <div className="text-xs text-neutral-500">
                           {parcela.valorEstimadoBRL ? "Equivalente hoje: " + formatarMoeda(parcela.valorEstimadoBRL, "BRL") + " (estimativa)" : "BRL calculado ao gerar o Pix."}
                         </div>
                       ) : null}
@@ -469,7 +469,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                           parcela.recibo_url ? (
                             <a href={parcela.recibo_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand underline">Ver recibo</a>
                           ) : (
-                            <span className="cursor-not-allowed text-xs text-neutral-400" title="O recibo ficará disponível em breve">Recibo em breve</span>
+                            <span className="cursor-not-allowed text-xs text-neutral-500" title="O recibo ficará disponível em breve">Recibo em breve</span>
                           )
                         ) : parcela.qr_code_url ? (
                           <span className="text-xs font-medium text-brand">QR Code abaixo</span>

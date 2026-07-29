@@ -29,7 +29,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
 
   return (
     <header className="relative flex items-center justify-between px-5 py-4">
-      <img src={LOGO_URL} alt="EXP Tour" className="h-6" />
+      <img src={LOGO_URL} alt="EXP Tour" className="h-9" />
 
       <button
         type="button"
