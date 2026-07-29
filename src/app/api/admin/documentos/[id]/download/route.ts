@@ -1,0 +1,67 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { checarAdminRequest } from "@/lib/admin-guard";
+import { getZohoAttachmentContent } from "@/lib/zoho";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Download/visualizacao de um documento pelo ADMIN (fecha o gap: a versao do
+// cliente exige que o documento seja do proprio titular; aqui o admin pode ver
+// qualquer documento). Resolve os dois casos: arquivo no Storage do Supabase
+// (origem 'titular'/'admin'/'sistema' -> URL assinada de 60s) ou anexo no Zoho
+// CRM (demais origens -> stream do conteudo). Autenticacao: sessao de admin (ou
+// Bearer de compatibilidade).
+//
+// Mapa de origem -> bucket do Storage. 'sistema' cobre os contratos assinados
+// gerados pelo Zoho Sign (ver docs/plano-zoho-sign.md).
+const BUCKET_POR_ORIGEM: Record<string, string> = {
+  titular: "documentos-titular",
+  admin: "documentos-admin",
+  sistema: "documentos-contratos",
+};
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await checarAdminRequest(request))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  const { data: documento, error } = await supabase.from("documentos").select("*").eq("id", id).single();
+  if (error || !documento) {
+    return NextResponse.json({ ok: false, error: "Documento nao encontrado" }, { status: 404 });
+  }
+
+  const bucket = BUCKET_POR_ORIGEM[documento.origem as string];
+  if (bucket && documento.storage_path) {
+    const { data: signed, error: signedError } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(documento.storage_path, 60);
+    if (signedError || !signed) {
+      return NextResponse.json({ ok: false, error: "Falha ao gerar link do documento" }, { status: 500 });
+    }
+    return NextResponse.redirect(signed.signedUrl);
+  }
+
+  // Demais origens: anexo no Zoho CRM.
+  try {
+    const conteudo = await getZohoAttachmentContent(
+      documento.zoho_module,
+      documento.zoho_record_id,
+      documento.zoho_attachment_id
+    );
+    return new NextResponse(conteudo.buffer, {
+      headers: {
+        "Content-Type": conteudo.contentType || "application/octet-stream",
+        "Content-Disposition": `inline; filename="${documento.nome_arquivo}"`,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ ok: false, error: "Falha ao buscar documento no Zoho" }, { status: 502 });
+  }
+}
