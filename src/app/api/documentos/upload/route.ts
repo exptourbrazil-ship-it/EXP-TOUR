@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { TIPOS_DOCUMENTO } from "@/lib/documentos";
-import { uploadZohoAttachment } from "@/lib/zoho";
+import { espelharDocumentoNoContatoZoho } from "@/lib/zoho-documentos";
 
 // Recebe um documento enviado pelo proprio titular na area do cliente,
 // salva no Supabase Storage (bucket documentos-titular), registra na
@@ -62,14 +62,8 @@ if (insertError) {
   return NextResponse.json({ error: "Falha ao salvar registro do documento" }, { status: 500 });
 }
 
-try {
-  const { data: titular } = await supabase.from("titulares").select("zoho_contact_id").eq("id", titularId).single();
-  if (titular?.zoho_contact_id) {
-    await uploadZohoAttachment("Contacts", titular.zoho_contact_id, nomeArquivo, buffer, arquivo.type || undefined);
-  }
-} catch (err) {
-  console.error("Falha ao enviar backup do documento para o Zoho CRM:", err);
-}
+// Copia o documento para o Contato do titular no Zoho CRM (best-effort).
+await espelharDocumentoNoContatoZoho(supabase, titularId, nomeArquivo, buffer, arquivo.type);
 
 return NextResponse.json({ ok: true, documento });
 }

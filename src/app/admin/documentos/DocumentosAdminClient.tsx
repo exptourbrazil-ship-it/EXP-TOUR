@@ -190,18 +190,28 @@ export default function DocumentosAdminClient() {
                 {doc.nome_arquivo}{" "}
                 <span className="text-neutral-400">({doc.tipo_documento})</span>
               </span>
-              <select
-                value={doc.status || "pendente"}
-                disabled={atualizandoId === doc.id}
-                onChange={(e) => alterarStatus(doc.id, e.target.value)}
-                className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-              >
-                {STATUS_OPCOES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <a
+                  href={`/api/admin/documentos/${doc.id}/download`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-brand transition hover:bg-brand-cream/60"
+                >
+                  Ver
+                </a>
+                <select
+                  value={doc.status || "pendente"}
+                  disabled={atualizandoId === doc.id}
+                  onChange={(e) => alterarStatus(doc.id, e.target.value)}
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                >
+                  {STATUS_OPCOES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           ))}
         </div>

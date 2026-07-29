@@ -63,6 +63,19 @@ async function getAccessToken(): Promise<string> {
   return data.access_token as string;
 }
 
+// Autoteste de conexao: tenta renovar o access token com as credenciais
+// configuradas. Retorna { ok: true } se a troca funcionou, ou { ok: false,
+// erro } com a mensagem (credenciais ausentes, refresh invalido, etc.). Usado
+// pela rota admin de status para validar a conexao sem expor segredos.
+export async function verificarConexaoZoho(): Promise<{ ok: boolean; erro?: string }> {
+  try {
+    await getAccessToken();
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, erro: err?.message || "Falha desconhecida ao conectar ao Zoho." };
+  }
+}
+
 // Busca um registro especifico de um modulo do Zoho CRM (ex: Contacts, Products).
 export async function getZohoRecord(zohoModule: string, id: string): Promise<any> {
   const accessToken = await getAccessToken();
