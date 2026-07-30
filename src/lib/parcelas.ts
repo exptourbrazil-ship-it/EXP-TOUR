@@ -11,6 +11,28 @@ export function somaValoresParcelas(valores: number[]): number {
   return Math.round(soma * 100) / 100;
 }
 
+// Data-limite de quitacao do Saldo Devedor: 30 dias antes do inicio do
+// programa (Clausula 7.4 do contrato, "regra dos 30 dias"). Recebe e retorna
+// YYYY-MM-DD; null se nao houver data de inicio. Aritmetica em UTC (calendario).
+export const DIAS_QUITACAO_ANTES = 30;
+export function dataLimiteQuitacao(dataInicioISO: string | null | undefined): string | null {
+  if (!dataInicioISO || dataInicioISO.length < 10) return null;
+  const [ano, mes, dia] = dataInicioISO.slice(0, 10).split("-").map(Number);
+  const base = Date.UTC(ano, mes - 1, dia);
+  const d = new Date(base - DIAS_QUITACAO_ANTES * 24 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+// Saldo Devedor na moeda do programa: soma do valor efetivo das parcelas NAO
+// pagas (Clausula 6.3). E a obrigacao remanescente, sobre a qual se aplica a
+// cotacao do dia para o "valor de quitacao hoje".
+export function saldoDevedorMoeda(parcelas: Array<{ valor_atual: number | string; status: string }>): number {
+  const soma = parcelas
+    .filter((p) => p.status !== "pago")
+    .reduce((acc, p) => acc + (Number(p.valor_atual) || 0), 0);
+  return Math.round(soma * 100) / 100;
+}
+
 // Valor efetivo da parcela na moeda do programa, ja com os ajustes do cliente.
 // `valor_atual` guarda SEMPRE o valor na moeda do programa (o BRL cobrado no
 // Pix vive na coluna `valor_cobrado_brl`, nao aqui). `valor_original` e o plano

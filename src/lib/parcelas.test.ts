@@ -7,6 +7,8 @@ import {
   somaParcelasConfere,
   valorProgramaAtual,
   TOLERANCIA_SOMA_PARCELAS,
+  dataLimiteQuitacao,
+  saldoDevedorMoeda,
 } from "./parcelas.ts";
 
 test("somaValoresParcelas soma e arredonda para centavos", () => {
@@ -54,4 +56,21 @@ test("valorProgramaAtual: independe de ter Pix gerado (valor_atual sempre e a mo
 
 test("valorProgramaAtual: aceita valores em string (vindos do banco)", () => {
   assert.equal(valorProgramaAtual({ valor_atual: "500.00" }), 500);
+});
+
+test("dataLimiteQuitacao: 30 dias antes do inicio", () => {
+  assert.equal(dataLimiteQuitacao("2026-01-31"), "2026-01-01");
+  assert.equal(dataLimiteQuitacao("2026-08-31"), "2026-08-01");
+  assert.equal(dataLimiteQuitacao("2026-03-02"), "2026-01-31"); // atravessa fevereiro (2026 nao bissexto)
+  assert.equal(dataLimiteQuitacao(null), null);
+  assert.equal(dataLimiteQuitacao(""), null);
+});
+
+test("saldoDevedorMoeda: soma valor_atual das nao pagas", () => {
+  const parcelas = [
+    { valor_atual: 100, status: "pago" },
+    { valor_atual: 200, status: "pendente" },
+    { valor_atual: "300.50", status: "atrasado" },
+  ];
+  assert.equal(saldoDevedorMoeda(parcelas), 500.5); // 200 + 300,50 (a paga nao entra)
 });
