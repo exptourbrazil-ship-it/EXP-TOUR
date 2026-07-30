@@ -282,7 +282,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
   )
 }
 
-export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null }) {
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null; saldoMoeda?: number; saldoBRLhoje?: number | null; quitarAte?: string | null }) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
@@ -394,11 +394,27 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
               <div className="h-2 rounded-full bg-brand transition-all duration-500" style={{ width: percentualPago + "%" }} />
             </div>
             <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3 text-sm">
-              <span className="text-neutral-500">Saldo a pagar</span>
+              <span className="text-neutral-500">Saldo devedor</span>
               <span className="font-medium text-brand">
-                {formatarMoeda(Math.max(0, (totalPrograma || 0) - (pagoAteAgora || 0)), moedaPrograma)}
+                {formatarMoeda(saldoMoeda ?? Math.max(0, (totalPrograma || 0) - (pagoAteAgora || 0)), moedaPrograma)}
               </span>
             </div>
+            {saldoBRLhoje != null ? (
+              <div className="mt-1 flex items-center justify-between text-xs text-neutral-500">
+                <span>Para quitar hoje (cotação do dia)</span>
+                <span className="font-medium text-brand-golddark">≈ {formatarMoeda(saldoBRLhoje, "BRL")}</span>
+              </div>
+            ) : null}
+            {quitarAte ? (
+              <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3 text-sm">
+                <span className="text-neutral-500">Quitar até</span>
+                <span className="font-medium text-brand">{formatarDataBR(quitarAte)}</span>
+              </div>
+            ) : null}
+            <p className="mt-3 text-[11px] text-neutral-400">
+              O saldo é na moeda do programa; o valor em Reais é uma estimativa pela cotação do dia
+              e só se confirma na geração de cada Pix.
+            </p>
           </div>
         ) : null}
 

@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createElement } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { converterParaBRL } from "@/lib/cambio";
-import { valorProgramaAtual } from "@/lib/parcelas";
+import { valorProgramaAtual, dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import ParcelasClient from "./ParcelasClient";
 
 // Pagina do servidor (aba Financeiro): le a sessao autenticada, busca no
@@ -97,5 +97,16 @@ export default async function ParcelasPage() {
 
   const pagoAteAgora = parcelas.filter((p) => p.status === "pago").reduce((soma, p) => soma + Number(p.valor_original || 0), 0);
 
-  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente });
+  // Extrato de Saldo Devedor (Clausulas 6.8/7.12): saldo remanescente na moeda,
+  // seu equivalente em R$ pela cotacao do dia (valor de quitacao hoje) e a
+  // data-limite de quitacao (D-30 do inicio).
+  const moedaPrograma = contratos && contratos.length > 0 ? ((contratos[0] as any).moeda || "BRL") : "BRL";
+  // Saldo devedor pela soma do valor efetivo (valor_atual) das parcelas nao
+  // pagas — a obrigacao remanescente na moeda do programa (Clausula 6.3).
+  const saldoMoeda = saldoDevedorMoeda(parcelas);
+  const cotacaoDia = cotacoesPorMoeda.get(moedaPrograma) ?? null;
+  const saldoBRLhoje = cotacaoDia ? converterParaBRL(saldoMoeda, cotacaoDia) : null;
+  const quitarAte = dataLimiteQuitacao(dataInicio);
+
+  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte });
 }
