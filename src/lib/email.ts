@@ -295,6 +295,98 @@ export async function enviarConfirmacaoAceiteEmail(destinatario: string, nome: s
   return data;
 }
 
+type DadosRecibo = {
+  dataFormatada: string; // data/hora da liquidação
+  descricao: string; // ex.: "Parcela 2" ou "Entrada"
+  moeda: string; // moeda do programa (ex.: CAD)
+  ptax: number; // PTAX de venda aplicada
+  subtotal: number; // valor convertido em R$
+  taxaPercentual: number; // ex.: 0.066
+  taxaIntermediacao: number; // em R$
+  iofPercentual: number; // ex.: 0.035
+  iof: number; // em R$
+  totalBRL: number; // total pago em R$
+  amortizacaoMoeda: number; // amortizado na moeda
+  saldoRestanteMoeda: number | null; // saldo devedor remanescente na moeda
+};
+
+function brl(n: number): string {
+  return "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function moe(n: number, moeda: string): string {
+  return `${moeda} ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function pct(n: number): string {
+  return (n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 3 }) + "%";
+}
+
+function templateRecibo(nome: string, d: DadosRecibo) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const linha = (rot: string, val: string) =>
+    `<tr><td style="padding:6px 0;color:${BRAND_GREEN};font-size:13px;">${rot}</td><td style="padding:6px 0;color:${BRAND_GREEN};font-size:13px;text-align:right;font-weight:bold;">${val}</td></tr>`;
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:520px;margin:0 auto;">
+<tr><td style="text-align:center;padding-bottom:24px;">
+<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
+</td></tr>
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:28px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 4px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 16px;">Recibo do seu pagamento — <strong>${d.descricao}</strong> — em ${d.dataFormatada}.</p>
+<table role="presentation" width="100%" style="border-collapse:collapse;">
+${linha("PTAX de venda (BCB) aplicada", "R$ " + d.ptax.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 }))}
+${linha("Valor convertido", brl(d.subtotal))}
+${linha("Taxa de Intermediacao e Cambio (" + pct(d.taxaPercentual) + ")", brl(d.taxaIntermediacao))}
+${linha("IOF-cambio (" + pct(d.iofPercentual) + ")", brl(d.iof))}
+<tr><td colspan="2" style="border-top:1px solid #d8c7a8;padding-top:8px;"></td></tr>
+${linha("<strong>Total pago</strong>", "<strong>" + brl(d.totalBRL) + "</strong>")}
+${linha("Valor amortizado", moe(d.amortizacaoMoeda, d.moeda))}
+${d.saldoRestanteMoeda != null ? linha("Saldo devedor remanescente", moe(d.saldoRestanteMoeda, d.moeda)) : ""}
+</table>
+<p style="color:${BRAND_GREEN};font-size:11px;margin:16px 0 0;">Nenhuma tarifa bancaria ou despesa de remessa e cobrada separadamente — estao compreendidas na Taxa de Intermediacao e Cambio.</p>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Envia o recibo itemizado de um pagamento (Clausula 6.5.2). Best-effort.
+export async function enviarReciboPagamentoEmail(destinatario: string, nome: string, dados: DadosRecibo) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Recibo do seu pagamento - EXP Tour",
+        html: templateRecibo(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "recibo_pagamento", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "recibo_pagamento", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "recibo_pagamento", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

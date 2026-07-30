@@ -7,6 +7,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { consultarPagamento } from "@/lib/mercadopago";
 import { montarLancamentoPagamento } from "@/lib/pagamento-ledger";
+import { itemizarRecibo } from "@/lib/cambio";
+import { enviarReciboPagamentoEmail } from "@/lib/email";
 
 export type ResultadoProcessamento =
   | { status: "processado"; paymentStatus: string; parcelasAtualizadas: number }
@@ -37,7 +39,7 @@ export async function processarPagamentoMercadoPago(
   // (re)gravar o lancamento do ledger de forma idempotente.
   const { data: parcelasPagamento, error: selErr } = await supabase
     .from("parcelas")
-    .select("id, contrato_id, valor_original, valor_atual, valor_cobrado_brl, cotacao_aplicada, paid_at, contrato:contratos(moeda)")
+    .select("id, contrato_id, descricao, valor_original, valor_atual, valor_cobrado_brl, cotacao_aplicada, paid_at, contrato:contratos(moeda)")
     .eq("external_payment_id", paymentId);
 
   if (selErr) {
@@ -83,6 +85,66 @@ export async function processarPagamentoMercadoPago(
     if (ledgerErr) {
       return { status: "erro", erro: `Falha ao gravar ledger de pagamento: ${ledgerErr.message}` };
     }
+  }
+
+  // Recibo itemizado por e-mail (Clausula 6.5.2), best-effort: NUNCA derruba o
+  // processamento. So para parcelas recem-marcadas como pagas (evita reenviar
+  // em reprocessamento) e com cambio aplicado (pula contratos em BRL).
+  try {
+    const idsNovos = new Set((data ?? []).map((p: { id: string }) => p.id));
+    const recemPagas = (parcelasPagamento ?? []).filter((p: any) => idsNovos.has(p.id));
+    if (recemPagas.length > 0) {
+      const spread = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.066");
+      const iof = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
+      const fmt = (iso: string) =>
+        new Intl.DateTimeFormat("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date(iso));
+
+      for (const p of recemPagas as any[]) {
+        const moeda = p.contrato?.moeda || "BRL";
+        const vet = Number(p.cotacao_aplicada);
+        const valorPrograma = Number(p.valor_atual) || 0;
+        if (!Number.isFinite(vet) || vet <= 0 || valorPrograma <= 0) continue; // sem cambio
+
+        const { data: contrato } = await supabase
+          .from("contratos")
+          .select("titular_id")
+          .eq("id", p.contrato_id)
+          .maybeSingle();
+        if (!contrato?.titular_id) continue;
+
+        const { data: titular } = await supabase
+          .from("titulares")
+          .select("nome_completo, email")
+          .eq("id", contrato.titular_id)
+          .maybeSingle();
+        if (!titular?.email) continue;
+
+        const { data: abertas } = await supabase
+          .from("parcelas")
+          .select("valor_atual")
+          .eq("contrato_id", p.contrato_id)
+          .neq("status", "pago");
+        const saldo = (abertas ?? []).reduce((s: number, x: any) => s + (Number(x.valor_atual) || 0), 0);
+
+        const itens = itemizarRecibo(valorPrograma, vet, spread, iof);
+        await enviarReciboPagamentoEmail(titular.email, titular.nome_completo || "", {
+          dataFormatada: fmt(p.paid_at || agora),
+          descricao: p.descricao || "Pagamento",
+          moeda,
+          ...itens,
+          saldoRestanteMoeda: Math.round(saldo * 100) / 100,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Falha ao enviar recibo de pagamento por e-mail:", err);
   }
 
   return { status: "processado", paymentStatus, parcelasAtualizadas: data?.length ?? 0 };
