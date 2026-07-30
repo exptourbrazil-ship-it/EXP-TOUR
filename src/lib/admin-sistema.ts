@@ -5,7 +5,7 @@ import { calcularNps } from "@/lib/nps";
 import type { ResumoNps } from "@/lib/nps";
 
 // Janelas da regua de cobranca (ver lembretes_cobranca / cron regua-cobranca).
-export const JANELAS_REGUA = ["D-7", "D-2", "D+1", "D+5"] as const;
+export const JANELAS_REGUA = ["D-3", "D0", "D+1", "D+5"] as const;
 
 export type ResumoSistema = {
   eventos: {

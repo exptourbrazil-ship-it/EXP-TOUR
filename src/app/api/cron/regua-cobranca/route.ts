@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { janelaLembrete, janelaEhAtraso } from "@/lib/regua";
-import { enviarLembreteCobrancaEmail } from "@/lib/email";
+import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento } from "@/lib/regua";
+import { dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
+import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,8 +53,9 @@ export async function GET(request: Request) {
   const hoje = new Date();
   const hojeISO = hoje.toISOString().slice(0, 10);
   // Janela de busca: cobre de D+5 (venceu ha 5 dias) ate D-7 (vence em 7 dias).
+  // Cobre de D+5 (venceu ha 5 dias) ate D-3 (vence em 3 dias).
   const minISO = isoMaisDias(hoje, -5);
-  const maxISO = isoMaisDias(hoje, 7);
+  const maxISO = isoMaisDias(hoje, 3);
 
   const portalUrl = process.env.NEXT_PUBLIC_APP_URL || null;
 
@@ -135,5 +137,76 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, ...resultado });
+  // ── Passo 2: regua de QUITACAO (Clausula 7.12) ────────────────────────────
+  // Lembretes D-30/D-15/D-5 antes da data-limite de quitacao (que e D-30 do
+  // inicio). As janelas caem em dataInicio - 60/45/35; filtramos os contratos
+  // por data_inicio nessa faixa para varrer poucos registros. Cessa quando o
+  // saldo devedor chega a zero. Idempotente por (contrato, janela).
+  const quitacao = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, erros: 0 };
+  const inicioMin = isoMaisDias(hoje, 35);
+  const inicioMax = isoMaisDias(hoje, 60);
+
+  const { data: contratos } = await supabase
+    .from("contratos")
+    .select("id, moeda, data_inicio, titular:titulares(email, nome_completo)")
+    .not("data_inicio", "is", null)
+    .gte("data_inicio", inicioMin)
+    .lte("data_inicio", inicioMax);
+
+  for (const c of contratos || []) {
+    const dataLimite = dataLimiteQuitacao((c as any).data_inicio);
+    const janela = janelaQuitacao(hojeISO, dataLimite);
+    if (!janela) continue;
+    quitacao.analisados++;
+
+    const titular = (c as any).titular;
+    if (!titular?.email) {
+      quitacao.sem_email++;
+      continue;
+    }
+
+    const { data: parc } = await supabase
+      .from("parcelas")
+      .select("valor_atual, status")
+      .eq("contrato_id", (c as any).id);
+    const saldo = saldoDevedorMoeda((parc || []) as any);
+    if (saldo <= 0) {
+      quitacao.sem_saldo++; // quitado -> a regua cessa naturalmente
+      continue;
+    }
+
+    const { data: jaEnviado } = await supabase
+      .from("lembretes_quitacao")
+      .select("id")
+      .eq("contrato_id", (c as any).id)
+      .eq("janela", janela)
+      .maybeSingle();
+    if (jaEnviado) {
+      quitacao.ja_enviados++;
+      continue;
+    }
+
+    const moeda = (c as any).moeda || "BRL";
+    const diasRestantes = diasAteVencimento(hojeISO, dataLimite as string) ?? 0;
+    try {
+      await enviarLembreteQuitacaoEmail(titular.email, titular.nome_completo, {
+        saldo: formatarMoeda(saldo, moeda),
+        dataLimite: formatarData(dataLimite as string),
+        diasRestantes,
+        portalUrl,
+      });
+      const { error: erroInsert } = await supabase
+        .from("lembretes_quitacao")
+        .insert({ contrato_id: (c as any).id, janela });
+      if (erroInsert) {
+        quitacao.ja_enviados++;
+        continue;
+      }
+      quitacao.enviados++;
+    } catch {
+      quitacao.erros++;
+    }
+  }
+
+  return NextResponse.json({ ok: true, ...resultado, quitacao });
 }

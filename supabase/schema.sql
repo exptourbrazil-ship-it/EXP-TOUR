@@ -111,12 +111,26 @@ create index if not exists idx_events_external on events(source, external_id);
 create table if not exists lembretes_cobranca (
   id uuid primary key default gen_random_uuid(),
   parcela_id uuid not null references parcelas(id) on delete cascade,
-  janela text not null,               -- 'D-7' | 'D-2' | 'D+1' | 'D+5'
+  janela text not null,               -- 'D-3' | 'D0' | 'D+1' | 'D+5'
   enviado_at timestamptz not null default now(),
   unique (parcela_id, janela)
   );
 
 create index if not exists idx_lembretes_parcela on lembretes_cobranca(parcela_id);
+
+-- Regua de QUITACAO (Clausula 7.12): lembretes D-30/D-15/D-5 antes da
+-- data-limite de quitacao, por contrato (distinta da regua por parcela acima).
+-- Ja aplicado no banco (migracao lembretes_quitacao).
+create table if not exists lembretes_quitacao (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  janela text not null,               -- 'D-30' | 'D-15' | 'D-5'
+  enviado_at timestamptz not null default now(),
+  unique (contrato_id, janela)
+  );
+
+create index if not exists idx_lembretes_quitacao_contrato on lembretes_quitacao(contrato_id);
+alter table if exists lembretes_quitacao enable row level security;
 
 -- Anexo III (Politica de Pagamento dos Fornecedores, Clausula 7.5.2): itens por
 -- contrato, exibidos ao cliente. Ja aplicado no banco (migracao
