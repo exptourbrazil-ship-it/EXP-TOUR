@@ -118,6 +118,20 @@ create table if not exists lembretes_cobranca (
 
 create index if not exists idx_lembretes_parcela on lembretes_cobranca(parcela_id);
 
+-- Regua de QUITACAO (Clausula 7.12): lembretes D-30/D-15/D-5 antes da
+-- data-limite de quitacao, por contrato (distinta da regua por parcela acima).
+-- Ja aplicado no banco (migracao lembretes_quitacao).
+create table if not exists lembretes_quitacao (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  janela text not null,               -- 'D-30' | 'D-15' | 'D-5'
+  enviado_at timestamptz not null default now(),
+  unique (contrato_id, janela)
+  );
+
+create index if not exists idx_lembretes_quitacao_contrato on lembretes_quitacao(contrato_id);
+alter table if exists lembretes_quitacao enable row level security;
+
 -- Rate limiting: cada "hit" e uma tentativa (ex.: pedido de codigo de acesso),
 -- identificada por uma chave (ex.: "req-code:ip:1.2.3.4"). O limite e checado
 -- contando os hits de uma chave dentro de uma janela de tempo. Escrita/leitura

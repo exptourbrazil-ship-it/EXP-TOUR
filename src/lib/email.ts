@@ -387,6 +387,75 @@ export async function enviarReciboPagamentoEmail(destinatario: string, nome: str
   return data;
 }
 
+type DadosQuitacao = {
+  saldo: string; // saldo devedor ja formatado, ex.: "CAD 3.200,00"
+  dataLimite: string; // data-limite de quitacao ja formatada, ex.: "01/09/2026"
+  diasRestantes: number; // 30 / 15 / 5
+  portalUrl?: string | null;
+};
+
+function templateLembreteQuitacao(nome: string, d: DadosQuitacao) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const botao = d.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Acessar a Area do Cliente</a></td></tr>`
+    : "";
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+<tr><td style="text-align:center;padding-bottom:24px;">
+<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
+</td></tr>
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Faltam <strong>${d.diasRestantes} dias</strong> para a data-limite de quitacao do seu programa (<strong>${d.dataLimite}</strong>).</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;">Saldo devedor atual:</p>
+<p style="color:${BRAND_GREEN};font-size:22px;font-weight:bold;margin:0 0 4px;">${d.saldo}</p>
+<p style="color:${BRAND_GREEN};font-size:13px;margin:12px 0 0;">Voce pode pagar quando e quanto quiser ate essa data. O valor em Reais e definido pela cotacao do dia no momento de cada pagamento.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Lembrete de quitacao (Clausula 7.12): D-30/D-15/D-5 antes da data-limite.
+// Best-effort. Lanca em caso de falha para o chamador contabilizar.
+export async function enviarLembreteQuitacaoEmail(destinatario: string, nome: string, dados: DadosQuitacao) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: `Faltam ${dados.diasRestantes} dias para a quitacao - EXP Tour`,
+        html: templateLembreteQuitacao(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "lembrete_quitacao", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "lembrete_quitacao", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "lembrete_quitacao", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

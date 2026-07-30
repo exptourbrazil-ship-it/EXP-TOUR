@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diasAteVencimento, janelaLembrete, janelaEhAtraso } from "./regua.ts";
+import { diasAteVencimento, janelaLembrete, janelaEhAtraso, janelaQuitacao } from "./regua.ts";
 
 test("diasAteVencimento conta dias corridos (vencimento - hoje)", () => {
   assert.equal(diasAteVencimento("2026-08-01", "2026-08-08"), 7);
@@ -46,4 +46,14 @@ test("janelaEhAtraso distingue lembrete preventivo de atraso", () => {
   assert.equal(janelaEhAtraso("D-2"), false);
   assert.equal(janelaEhAtraso("D+1"), true);
   assert.equal(janelaEhAtraso("D+5"), true);
+});
+
+test("janelaQuitacao dispara 30/15/5 dias antes da data-limite", () => {
+  const limite = "2026-09-01";
+  assert.equal(janelaQuitacao("2026-08-02", limite), "D-30"); // 30 dias antes
+  assert.equal(janelaQuitacao("2026-08-17", limite), "D-15"); // 15 dias antes
+  assert.equal(janelaQuitacao("2026-08-27", limite), "D-5"); // 5 dias antes
+  assert.equal(janelaQuitacao("2026-08-20", limite), null); // fora das janelas
+  assert.equal(janelaQuitacao("2026-09-01", limite), null); // no dia da quitacao
+  assert.equal(janelaQuitacao("2026-08-02", null), null); // sem data-limite
 });

@@ -50,3 +50,28 @@ export function janelaLembrete(hojeISO: string, vencimentoISO: string): Janela |
 export function janelaEhAtraso(janela: Janela): boolean {
   return janela.startsWith("D+");
 }
+
+// Regua de QUITACAO (Clausula 7.12): lembretes 30/15/5 dias ANTES da
+// data-limite de quitacao (que e D-30 do inicio do programa; ver
+// dataLimiteQuitacao em lib/parcelas). Distinta da regua por parcela acima —
+// aqui a "data alvo" e a data-limite de quitacao do Saldo Devedor.
+export const JANELAS_QUITACAO = [
+  { janela: "D-30", offsetDias: 30 },
+  { janela: "D-15", offsetDias: 15 },
+  { janela: "D-5", offsetDias: 5 },
+] as const;
+
+export type JanelaQuitacao = (typeof JANELAS_QUITACAO)[number]["janela"];
+
+// Janela de quitacao aplicavel hoje para uma data-limite, ou null. Exige
+// execucao diaria do cron (match exato do dia), como a regua por parcela.
+export function janelaQuitacao(
+  hojeISO: string,
+  dataLimiteISO: string | null | undefined
+): JanelaQuitacao | null {
+  if (!dataLimiteISO) return null;
+  const dias = diasAteVencimento(hojeISO, dataLimiteISO);
+  if (dias === null) return null;
+  const encontrada = JANELAS_QUITACAO.find((j) => j.offsetDias === dias);
+  return encontrada ? encontrada.janela : null;
+}
