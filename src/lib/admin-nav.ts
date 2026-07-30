@@ -32,6 +32,8 @@ const ICONES = {
     "M7 3v3M17 3v3M4 8h16M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z",
   viagem:
     "M10 4h4l1 5 5 2v2l-5-.5-2 4 2 1.5V21l-3-1-3 1v-2l2-1.5-2-4L4 15v-2l5-2 1-5z",
+  termos:
+    "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM13 3v6h6M9 12h6M9 16h6",
 } as const;
 
 // Itens ja disponiveis (telas que existem hoje) + estrutura futura (emBreve).
@@ -59,6 +61,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Clientes",
     descricao: "Carteira de titulares e contratos",
     icone: ICONES.clientes,
+  },
+  {
+    href: "/admin/termos",
+    label: "Termos",
+    descricao: "Versões do Termo de Adesão",
+    icone: ICONES.termos,
   },
   {
     href: "/admin/sistema",
