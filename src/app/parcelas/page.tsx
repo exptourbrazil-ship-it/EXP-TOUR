@@ -55,6 +55,9 @@ export default async function ParcelasPage() {
       .from("parcelas")
       .select("*")
       .in("contrato_id", contratoIds)
+      // Ordem CRONOLOGICA por vencimento (numero so desempata) para que uma
+      // parcela inserida depois apareca na posicao certa pela data.
+      .order("vencimento", { ascending: true })
       .order("numero", { ascending: true });
 
     parcelas = (data || []).map((p) => ({
