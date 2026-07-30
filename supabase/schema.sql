@@ -132,6 +132,53 @@ create table if not exists lembretes_quitacao (
 create index if not exists idx_lembretes_quitacao_contrato on lembretes_quitacao(contrato_id);
 alter table if exists lembretes_quitacao enable row level security;
 
+-- Anexo III (Politica de Pagamento dos Fornecedores, Clausula 7.5.2): itens por
+-- contrato, exibidos ao cliente. Ja aplicado no banco (migracao
+-- anexo_iii_fornecedores). Requisitos migratorios (III.3) entram como itens com
+-- fornecedor = "Requisito migratorio (...)".
+create table if not exists anexo_iii_itens (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  fornecedor text not null,
+  natureza text,
+  valor numeric(12,2),
+  moeda text,
+  prazo text,
+  evento text,
+  documento_viabiliza text,
+  consequencia_atraso text,
+  politica_cancelamento text,
+  fonte text,
+  ordem int not null default 0,
+  created_at timestamptz not null default now()
+  );
+
+create index if not exists idx_anexo_iii_contrato on anexo_iii_itens(contrato_id);
+alter table if exists anexo_iii_itens enable row level security;
+
+-- Antecipacoes por exigencia de visto/fornecedor (Clausula 7.5): registradas
+-- pela equipe com lastro documental e exibidas ao cliente. Ja aplicado no banco
+-- (migracao antecipacoes_exigencia).
+create table if not exists antecipacoes (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  documento text not null,              -- documento que o pagamento viabiliza
+  justificativa text,                   -- composicao/motivo da exigencia
+  valor numeric(12,2) not null,         -- valor a antecipar, na moeda do programa
+  moeda text not null,
+  data_limite date not null,            -- data-limite fixada pelo terceiro
+  comprovante_url text,                 -- lastro documental (link), quando houver
+  status text not null default 'pendente'
+    check (status in ('pendente','atendida','cancelada')),
+  criado_por text,
+  created_at timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_antecipacoes_contrato on antecipacoes(contrato_id);
+create index if not exists idx_antecipacoes_status on antecipacoes(status);
+alter table if exists antecipacoes enable row level security;
+
 -- Rate limiting: cada "hit" e uma tentativa (ex.: pedido de codigo de acesso),
 -- identificada por uma chave (ex.: "req-code:ip:1.2.3.4"). O limite e checado
 -- contando os hits de uma chave dentro de uma janela de tempo. Escrita/leitura

@@ -97,7 +97,7 @@ export default function InicioClient(props: InicioClientProps) {
   }
 
   return (
-    <div className="min-h-screen bg-brand-cream/40 pb-28">
+    <div className="min-h-screen bg-brand-cream/40 pb-28 lg:pb-10 lg:pl-60">
       <Cabecalho nome={nomeExibicao} subtitulo={contrato && contrato.nome ? contrato.nome : null} />
 
       <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl">

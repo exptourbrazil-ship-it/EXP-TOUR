@@ -80,7 +80,39 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur md:inset-x-0 md:bottom-4 md:border-t-0 md:bg-transparent md:backdrop-blur-0">
+    <>
+    {/* Notebook/desktop: barra lateral fixa a esquerda (como no Admin). */}
+    <nav
+      aria-label="Navegação"
+      className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-60 lg:flex-col lg:border-r lg:border-neutral-200 lg:bg-white lg:px-4 lg:py-6"
+    >
+      <span className="mb-6 px-2 font-serif text-lg tracking-wide text-brand">EXP TOUR</span>
+      <ul className="flex flex-col gap-1">
+        {ITENS.map((item) => {
+          const ativo = pathname === item.href;
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                aria-current={ativo ? "page" : undefined}
+                className={
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition " +
+                  (ativo
+                    ? "bg-brand text-brand-cream ring-1 ring-brand-gold/50"
+                    : "text-brand hover:bg-brand-cream/60")
+                }
+              >
+                <span className="flex h-6 w-6 items-center justify-center">{item.icon}</span>
+                <span>{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+
+    {/* Celular/tablet: barra inferior (flutuante no md). Some no notebook. */}
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur md:inset-x-0 md:bottom-4 md:border-t-0 md:bg-transparent md:backdrop-blur-0 lg:hidden">
       <div className="mx-auto flex max-w-3xl items-stretch justify-between px-1 md:max-w-xl md:gap-1 md:rounded-full md:border md:border-neutral-200 md:bg-white/95 md:px-2 md:py-1 md:shadow-lg md:backdrop-blur">
         {ITENS.map((item) => {
           const ativo = pathname === item.href;
@@ -112,5 +144,6 @@ export default function BottomNav() {
       {/* Espaco seguro para aparelhos com barra de gestos (apenas na barra fixa mobile) */}
       <div className="h-[env(safe-area-inset-bottom)] md:hidden" />
     </nav>
+    </>
   );
 }

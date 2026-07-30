@@ -55,6 +55,9 @@ export default async function ParcelasPage() {
       .from("parcelas")
       .select("*")
       .in("contrato_id", contratoIds)
+      // Ordem CRONOLOGICA por vencimento (numero so desempata) para que uma
+      // parcela inserida depois apareca na posicao certa pela data.
+      .order("vencimento", { ascending: true })
       .order("numero", { ascending: true });
 
     parcelas = (data || []).map((p) => ({
@@ -108,5 +111,29 @@ export default async function ParcelasPage() {
   const saldoBRLhoje = cotacaoDia ? converterParaBRL(saldoMoeda, cotacaoDia) : null;
   const quitarAte = dataLimiteQuitacao(dataInicio);
 
-  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte });
+  // Antecipacoes exigidas pendentes (Clausula 7.5) — exibidas ao cliente.
+  let antecipacoes: any[] = [];
+  if (contratoIds.length > 0) {
+    const { data: ant } = await supabase
+      .from("antecipacoes")
+      .select("id, documento, justificativa, valor, moeda, data_limite, comprovante_url")
+      .in("contrato_id", contratoIds)
+      .eq("status", "pendente")
+      .order("data_limite", { ascending: true });
+    antecipacoes = ant || [];
+  }
+
+  // Anexo III — Politica de Pagamento dos Fornecedores (Clausula 7.5.2).
+  let anexoIII: any[] = [];
+  if (contratoIds.length > 0) {
+    const { data: ax } = await supabase
+      .from("anexo_iii_itens")
+      .select("id, fornecedor, natureza, valor, moeda, prazo, evento, documento_viabiliza, consequencia_atraso, politica_cancelamento, fonte")
+      .in("contrato_id", contratoIds)
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true });
+    anexoIII = ax || [];
+  }
+
+  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes, anexoIII });
 }

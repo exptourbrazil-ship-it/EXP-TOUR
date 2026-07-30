@@ -50,7 +50,7 @@ export default async function DocumentosPage() {
 
   return createElement(
     "div",
-    { className: "min-h-screen bg-brand-cream/40 pb-28" },
+    { className: "min-h-screen bg-brand-cream/40 pb-28 lg:pb-10 lg:pl-60" },
     createElement(Cabecalho, { nome: nomeCliente, subtitulo: "Documentos" }),
     createElement(
       "main",
