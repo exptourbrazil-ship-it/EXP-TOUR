@@ -118,6 +118,30 @@ create table if not exists lembretes_cobranca (
 
 create index if not exists idx_lembretes_parcela on lembretes_cobranca(parcela_id);
 
+-- Anexo III (Politica de Pagamento dos Fornecedores, Clausula 7.5.2): itens por
+-- contrato, exibidos ao cliente. Ja aplicado no banco (migracao
+-- anexo_iii_fornecedores). Requisitos migratorios (III.3) entram como itens com
+-- fornecedor = "Requisito migratorio (...)".
+create table if not exists anexo_iii_itens (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  fornecedor text not null,
+  natureza text,
+  valor numeric(12,2),
+  moeda text,
+  prazo text,
+  evento text,
+  documento_viabiliza text,
+  consequencia_atraso text,
+  politica_cancelamento text,
+  fonte text,
+  ordem int not null default 0,
+  created_at timestamptz not null default now()
+  );
+
+create index if not exists idx_anexo_iii_contrato on anexo_iii_itens(contrato_id);
+alter table if exists anexo_iii_itens enable row level security;
+
 -- Antecipacoes por exigencia de visto/fornecedor (Clausula 7.5): registradas
 -- pela equipe com lastro documental e exibidas ao cliente. Ja aplicado no banco
 -- (migracao antecipacoes_exigencia).
