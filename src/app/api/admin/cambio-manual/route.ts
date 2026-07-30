@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { comporCotacaoVet } from "@/lib/cambio";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
   const iofPercentual = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
   const hojeISO = new Date().toISOString().slice(0, 10);
 
-  const cotacaoVet = Math.round(cambioComercial * (1 + spreadPercentual) * (1 + iofPercentual) * 1e6) / 1e6;
+  const cotacaoVet = comporCotacaoVet(cambioComercial, spreadPercentual, iofPercentual);
 
   const { error } = await supabase
     .from("cotacoes_cambio")

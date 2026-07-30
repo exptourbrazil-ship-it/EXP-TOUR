@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { comporCotacaoVet } from "@/lib/cambio";
 
 // Busca automaticamente, uma vez por dia, a cotacao comercial oficial do
 // Banco Central do Brasil (PTAX, olinda.bcb.gov.br - fonte publica e sem
@@ -129,7 +130,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const cotacaoVet = Math.round(cambioComercial * (1 + spreadPercentual) * (1 + iofPercentual) * 1e6) / 1e6;
+    const cotacaoVet = comporCotacaoVet(cambioComercial, spreadPercentual, iofPercentual);
 
     const { error } = await supabase
       .from("cotacoes_cambio")
