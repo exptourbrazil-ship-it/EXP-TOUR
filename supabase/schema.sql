@@ -249,11 +249,11 @@ create index if not exists idx_documentos_contrato on documentos(contrato_id);
 alter table if exists contratos add column if not exists estudante_data_nascimento date;
 alter table if exists contratos add column if not exists estudante_email text;
 
--- Se documentos.origem tiver um CHECK constraint, incluir 'sistema' (origem do
--- PDF gerado pelo Zoho Sign). Sem constraint, este passo e desnecessario.
--- Ex.: alter table documentos drop constraint if exists documentos_origem_check;
---      alter table documentos add constraint documentos_origem_check
---        check (origem in ('titular','admin','sistema','zoho'));
+-- Inclui 'sistema' no CHECK de documentos.origem (PDF gerado pelo Zoho Sign).
+-- Ja aplicado no banco de producao (migracao zoho_sign_fluxo).
+alter table if exists documentos drop constraint if exists documentos_origem_check;
+alter table if exists documentos add constraint documentos_origem_check
+  check (origem in ('zoho','admin','titular','sistema'));
 
 -- Envelope de assinatura: espelho local do estado no Zoho Sign. Uma linha por
 -- solicitacao de assinatura de um contrato.
