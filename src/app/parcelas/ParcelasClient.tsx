@@ -371,7 +371,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   hojeMeiaNoite.setHours(0, 0, 0, 0)
 
   return (
-    <div className="min-h-screen bg-brand-cream/40 pb-28">
+    <div className="min-h-screen bg-brand-cream/40 pb-28 lg:pb-10 lg:pl-60">
       <Cabecalho nome={nomeCliente || null} subtitulo={nome} />
 
       <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8">
