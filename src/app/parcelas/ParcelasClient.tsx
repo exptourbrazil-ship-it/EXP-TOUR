@@ -282,7 +282,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
   )
 }
 
-export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null; saldoMoeda?: number; saldoBRLhoje?: number | null; quitarAte?: string | null; antecipacoes?: Array<{ id: string; documento: string; justificativa: string | null; valor: number; moeda: string; data_limite: string; comprovante_url: string | null }> }) {
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes, anexoIII }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null; saldoMoeda?: number; saldoBRLhoje?: number | null; quitarAte?: string | null; antecipacoes?: Array<{ id: string; documento: string; justificativa: string | null; valor: number; moeda: string; data_limite: string; comprovante_url: string | null }>; anexoIII?: Array<{ id: string; fornecedor: string; natureza: string | null; valor: number | null; moeda: string | null; prazo: string | null; evento: string | null; documento_viabiliza: string | null; consequencia_atraso: string | null; politica_cancelamento: string | null; fonte: string | null }> }) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
@@ -555,6 +555,41 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
             </p>
           ) : null}
         </div>
+
+        {anexoIII && anexoIII.length > 0 ? (
+          <section className="mt-8 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <h2 className="font-serif text-xl text-brand">Política de pagamento dos fornecedores</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Anexo III do contrato — prazos e condições exigidos pelos fornecedores do seu programa.
+            </p>
+            <ul className="mt-4 flex flex-col gap-3">
+              {anexoIII.map((it) => (
+                <li key={it.id} className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-medium text-brand">{it.fornecedor}</span>
+                    {it.valor != null ? (
+                      <span className="text-sm font-medium text-brand">{formatarMoeda(Number(it.valor), it.moeda || "BRL")}</span>
+                    ) : null}
+                  </div>
+                  {it.natureza ? <p className="mt-0.5 text-sm text-neutral-600">{it.natureza}</p> : null}
+                  <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-neutral-600 sm:grid-cols-2">
+                    {it.evento ? <div><dt className="inline text-neutral-400">Exigido em: </dt><dd className="inline">{it.evento}</dd></div> : null}
+                    {it.prazo ? <div><dt className="inline text-neutral-400">Prazo: </dt><dd className="inline">{it.prazo}</dd></div> : null}
+                    {it.documento_viabiliza ? <div><dt className="inline text-neutral-400">Viabiliza: </dt><dd className="inline">{it.documento_viabiliza}</dd></div> : null}
+                    {it.consequencia_atraso ? <div><dt className="inline text-neutral-400">Se atrasar: </dt><dd className="inline">{it.consequencia_atraso}</dd></div> : null}
+                    {it.fonte ? <div><dt className="inline text-neutral-400">Fonte: </dt><dd className="inline">{it.fonte}</dd></div> : null}
+                  </dl>
+                  {it.politica_cancelamento ? (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      <span className="text-neutral-400">Cancelamento/reembolso: </span>
+                      {it.politica_cancelamento}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </main>
 
       <SuporteRodape contexto="Dúvida sobre uma parcela, o câmbio ou um pagamento? Fale com a gente." />

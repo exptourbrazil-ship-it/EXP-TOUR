@@ -123,5 +123,17 @@ export default async function ParcelasPage() {
     antecipacoes = ant || [];
   }
 
-  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes });
+  // Anexo III — Politica de Pagamento dos Fornecedores (Clausula 7.5.2).
+  let anexoIII: any[] = [];
+  if (contratoIds.length > 0) {
+    const { data: ax } = await supabase
+      .from("anexo_iii_itens")
+      .select("id, fornecedor, natureza, valor, moeda, prazo, evento, documento_viabiliza, consequencia_atraso, politica_cancelamento, fonte")
+      .in("contrato_id", contratoIds)
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true });
+    anexoIII = ax || [];
+  }
+
+  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes, anexoIII });
 }
