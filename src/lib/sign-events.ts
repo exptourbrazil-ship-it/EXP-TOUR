@@ -99,3 +99,18 @@ export function montarSignatarios(opts: {
 
   return lista;
 }
+
+// Idade em anos completos na data `hojeISO`. Sem data de nascimento, assume
+// MENOR (conservador): na dúvida, só o pagante/responsável assina — evita
+// mandar pedido de assinatura a um possível menor. Datas YYYY-MM-DD.
+export function ehMenorDeIdade(
+  dataNascISO: string | null | undefined,
+  hojeISO: string
+): boolean {
+  if (!dataNascISO || dataNascISO.length < 10) return true;
+  const [ny, nm, nd] = dataNascISO.slice(0, 10).split("-").map(Number);
+  const [hy, hm, hd] = hojeISO.slice(0, 10).split("-").map(Number);
+  let idade = hy - ny;
+  if (hm < nm || (hm === nm && hd < nd)) idade -= 1;
+  return idade < 18;
+}

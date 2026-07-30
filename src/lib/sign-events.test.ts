@@ -1,7 +1,12 @@
 // Testes dos helpers puros do fluxo Zoho Sign. Roda com `npm test` (node --test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapearStatusSign, extrairEventoSign, montarSignatarios } from "./sign-events.ts";
+import {
+  mapearStatusSign,
+  extrairEventoSign,
+  montarSignatarios,
+  ehMenorDeIdade,
+} from "./sign-events.ts";
 
 test("mapearStatusSign normaliza os status crus do Zoho", () => {
   assert.equal(mapearStatusSign("completed"), "assinado");
@@ -63,6 +68,20 @@ test("montarSignatarios: não duplica quando pagante e estudante têm o mesmo e-
     estudanteEhMenor: false,
   });
   assert.equal(sig.length, 1);
+});
+
+test("ehMenorDeIdade: calcula idade em anos completos na data de referência", () => {
+  const HOJE = "2026-07-29";
+  assert.equal(ehMenorDeIdade("2010-01-01", HOJE), true); // 16
+  assert.equal(ehMenorDeIdade("2008-07-29", HOJE), false); // faz 18 hoje
+  assert.equal(ehMenorDeIdade("2008-07-30", HOJE), true); // 18 só amanhã -> ainda 17
+  assert.equal(ehMenorDeIdade("2000-12-31", HOJE), false); // 25
+});
+
+test("ehMenorDeIdade: sem data de nascimento assume menor (conservador)", () => {
+  assert.equal(ehMenorDeIdade(null, "2026-07-29"), true);
+  assert.equal(ehMenorDeIdade(undefined, "2026-07-29"), true);
+  assert.equal(ehMenorDeIdade("", "2026-07-29"), true);
 });
 
 test("montarSignatarios: descarta pagante sem e-mail", () => {
