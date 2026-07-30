@@ -1,9 +1,15 @@
 // Conversao de câmbio para BRL.
 //
 // A `cotacao_vet` (tabela cotacoes_cambio) ja embute o câmbio comercial do
-// BACEN do dia + spread + IOF (ver o cron atualizar-cambio). Portanto a
-// conversao de um valor na moeda do contrato para BRL e apenas a multiplicacao
-// pela cotacao, arredondada para centavos. NAO ha taxa administrativa fixa.
+// BACEN do dia + Taxa de Intermediacao e Cambio (spread) + IOF (ver
+// comporCotacaoVet). Portanto a conversao de um valor na moeda do contrato para
+// BRL e apenas a multiplicacao pela cotacao, arredondada para centavos. NAO ha
+// taxa administrativa fixa.
+//
+// IMPORTANTE (Anexo II / Clausula 6.4 do contrato): o IOF-cambio incide sobre o
+// VALOR CONVERTIDO (PTAX x valor), NAO sobre o spread. Por isso as aliquotas
+// SOMAM (1 + spread + iof), em vez de multiplicar. Cobrar IOF sobre o spread
+// seria tributar a remuneracao da EXP Tour, o que o contrato nao faz.
 //
 // Helper puro (sem rede/DB) para ser usado tanto na exibicao (/parcelas) quanto
 // na geracao da cobranca (gerar-cobranca), garantindo que os dois usem
@@ -16,6 +22,18 @@ export function converterParaBRL(valorOriginal: number, cotacaoVet: number): num
 // Em producao vem das envs SPREAD_CAMBIO_PERCENTUAL / IOF_CAMBIO_PERCENTUAL.
 export const SPREAD_PADRAO = 0.066;
 export const IOF_PADRAO = 0.035;
+
+// Compoe a cotacao VET a partir do cambio comercial (PTAX). Modelo ADITIVO: o
+// IOF-cambio incide sobre o valor convertido, NAO sobre o spread, entao as
+// aliquotas somam. Fonte unica usada pelo cron e pelo cambio manual do admin,
+// para os dois nunca divergirem. Puro.
+export function comporCotacaoVet(
+  comercial: number,
+  spread: number = SPREAD_PADRAO,
+  iof: number = IOF_PADRAO
+): number {
+  return Math.round(comercial * (1 + spread + iof) * 1e6) / 1e6;
+}
 
 export type ItensRecibo = {
   amortizacaoMoeda: number; // valor amortizado na moeda do programa
@@ -30,8 +48,9 @@ export type ItensRecibo = {
 
 // Decompoe uma conversao pela cotacao_vet nos itens do recibo (Clausula 6.5.2):
 // PTAX, Taxa de Intermediacao e Cambio (6,6%) e IOF-cambio. A cotacao_vet embute
-// PTAX x (1+spread) x (1+iof); reconstruimos cada parte com os MESMOS
-// percentuais da composicao. `totalBRL` reproduz converterParaBRL. Puro.
+// PTAX x (1 + spread + iof) (modelo aditivo — IOF sobre o valor convertido, nao
+// sobre o spread); reconstruimos cada parte com os MESMOS percentuais.
+// `totalBRL` reproduz converterParaBRL. Puro.
 export function itemizarRecibo(
   valorPrograma: number,
   cotacaoVet: number,
@@ -39,10 +58,10 @@ export function itemizarRecibo(
   iof: number = IOF_PADRAO
 ): ItensRecibo {
   const c = (n: number) => Math.round(n * 100) / 100;
-  const ptax = cotacaoVet / ((1 + spread) * (1 + iof));
+  const ptax = cotacaoVet / (1 + spread + iof);
   const subtotal = valorPrograma * ptax;
   const taxa = subtotal * spread;
-  const iofValor = (subtotal + taxa) * iof;
+  const iofValor = subtotal * iof; // IOF sobre o valor convertido, NAO sobre o spread
   return {
     amortizacaoMoeda: c(valorPrograma),
     ptax: Math.round(ptax * 1e6) / 1e6,
