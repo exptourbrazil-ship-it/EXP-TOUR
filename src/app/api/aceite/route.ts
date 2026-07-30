@@ -3,13 +3,17 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { obterIp } from "@/lib/rate-limit";
+import { prazoArrependimentoISO, dentroDoPrazoArrependimento } from "@/lib/termos";
+import { enviarConfirmacaoAceiteEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Aceite do Termo de Adesão pelo próprio cliente (área do cliente).
-// GET  -> termo vigente + se o titular logado já aceitou essa versão.
-// POST -> registra o aceite (prova: titular, versão, hash, data/hora, IP, UA).
+// GET  -> termo vigente + situação do aceite do titular (aceito? prazo de
+//         arrependimento? já arrependido?).
+// POST -> registra o aceite (prova: titular, versão, hash, data/hora, IP, UA) e
+//         envia a cópia/confirmação por e-mail (best-effort).
 // A verdade do consentimento é o registro em `aceites`; a UI deve exibir o
 // texto completo antes de habilitar o aceite (CDC art. 46).
 
@@ -25,7 +29,6 @@ async function titularDaSessao(): Promise<string | null> {
   return verificarSessao(token)?.titularId ?? null;
 }
 
-// Termo de Adesão vigente (ativo mais recente).
 async function termoVigente(supabase: ReturnType<typeof getSupabase>) {
   const { data } = await supabase
     .from("termos")
@@ -36,6 +39,26 @@ async function termoVigente(supabase: ReturnType<typeof getSupabase>) {
     .limit(1)
     .maybeSingle();
   return data;
+}
+
+function fmtDataHora(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function fmtData(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(iso));
 }
 
 export async function GET() {
@@ -52,16 +75,24 @@ export async function GET() {
 
   const { data: aceite } = await supabase
     .from("aceites")
-    .select("id, data_hora")
+    .select("id, data_hora, arrependido_em")
     .eq("titular_id", titularId)
     .eq("termo_id", termo.id)
     .maybeSingle();
+
+  const arrependido = !!aceite?.arrependido_em;
+  const arrependimentoAte = aceite ? prazoArrependimentoISO(aceite.data_hora) : null;
+  const podeArrepender =
+    !!aceite && !arrependido && dentroDoPrazoArrependimento(aceite.data_hora, new Date().toISOString());
 
   return NextResponse.json({
     ok: true,
     termo: { id: termo.id, versao: termo.versao, conteudo: termo.conteudo, storage_path: termo.storage_path },
     jaAceito: !!aceite,
     aceiteEm: aceite?.data_hora ?? null,
+    arrependido,
+    arrependimentoAte,
+    podeArrepender,
   });
 }
 
@@ -77,8 +108,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Nenhum termo vigente para aceitar." }, { status: 400 });
   }
 
-  // Idempotente: se já aceitou esta versão, devolve o registro existente (a
-  // prova é o primeiro aceite; não duplicamos).
+  // Idempotente: se já aceitou esta versão, devolve o registro existente.
   const { data: existente } = await supabase
     .from("aceites")
     .select("id, data_hora")
@@ -86,7 +116,12 @@ export async function POST(request: Request) {
     .eq("termo_id", termo.id)
     .maybeSingle();
   if (existente) {
-    return NextResponse.json({ ok: true, jaAceito: true, aceiteEm: existente.data_hora });
+    return NextResponse.json({
+      ok: true,
+      jaAceito: true,
+      aceiteEm: existente.data_hora,
+      arrependimentoAte: prazoArrependimentoISO(existente.data_hora),
+    });
   }
 
   const { data: novo, error } = await supabase
@@ -107,5 +142,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao registrar o aceite." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, aceiteEm: novo.data_hora });
+  const arrependimentoAte = prazoArrependimentoISO(novo.data_hora);
+
+  // Cópia/confirmação por e-mail (best-effort: não derruba o aceite).
+  try {
+    const { data: titular } = await supabase
+      .from("titulares")
+      .select("nome_completo, email")
+      .eq("id", titularId)
+      .maybeSingle();
+    if (titular?.email) {
+      await enviarConfirmacaoAceiteEmail(titular.email, titular.nome_completo || "", {
+        versao: termo.versao,
+        dataFormatada: fmtDataHora(novo.data_hora),
+        arrependimentoAte: fmtData(arrependimentoAte),
+        conteudo: termo.conteudo,
+      });
+    }
+  } catch (err) {
+    console.error("Falha ao enviar e-mail de confirmacao do aceite:", err);
+  }
+
+  return NextResponse.json({ ok: true, aceiteEm: novo.data_hora, arrependimentoAte });
 }

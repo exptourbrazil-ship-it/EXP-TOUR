@@ -226,3 +226,102 @@ if (!response.ok) {
 await registrarLog(destinatario, "codigo_acesso", true);
   return data;
 }
+
+type DadosAceite = {
+  versao: string;
+  dataFormatada: string;        // ex.: "01/07/2026 14:30"
+  arrependimentoAte: string;    // ex.: "08/07/2026"
+  conteudo?: string | null;     // texto completo do termo (cópia)
+};
+
+function templateConfirmacaoAceite(nome: string, d: DadosAceite) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const textoTermo = (d.conteudo || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:520px;margin:0 auto;">
+<tr><td style="text-align:center;padding-bottom:24px;">
+<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
+</td></tr>
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Confirmamos o seu aceite do <strong>Termo de Adesao</strong> (versao ${d.versao}) em <strong>${d.dataFormatada}</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;"><strong>Direito de arrependimento:</strong> voce pode desistir ate <strong>${d.arrependimentoAte}</strong> (7 dias), pela propria Area do Cliente ou entrando em contato conosco.</p>
+${textoTermo ? `<hr style="border:none;border-top:1px solid #d8c7a8;margin:20px 0;" /><p style="color:${BRAND_GREEN};font-size:13px;margin:0 0 8px;"><strong>Conteudo aceito:</strong></p><div style="color:${BRAND_GREEN};font-size:12px;white-space:pre-wrap;line-height:1.5;">${textoTermo}</div>` : ""}
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Envia a confirmacao/copia do aceite do Termo de Adesao. Best-effort: quem
+// chama pode ignorar o erro (o aceite ja esta registrado no banco).
+export async function enviarConfirmacaoAceiteEmail(destinatario: string, nome: string, dados: DadosAceite) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Confirmacao do aceite do Termo de Adesao - EXP Tour",
+        html: templateConfirmacaoAceite(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "aceite_termo", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "aceite_termo", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "aceite_termo", true);
+  return data;
+}
+
+// Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
+// ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
+export async function enviarAvisoInternoEmail(assunto: string, texto: string) {
+  const { apiKey, fromEmail } = getConfig();
+  const destinatario = process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com";
+  const html = `<div style="font-family:Georgia,serif;color:${BRAND_GREEN};font-size:14px;white-space:pre-wrap;">${texto
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")}</div>`;
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: fromEmail, to: [destinatario], subject: assunto, html }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "aviso_interno", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "aviso_interno", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "aviso_interno", true);
+  return data;
+}

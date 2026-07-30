@@ -1,7 +1,11 @@
 // Testes do helper puro do Termo de Adesão. Roda com `npm test` (node --test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { calcularHashTermo } from "./termos.ts";
+import {
+  calcularHashTermo,
+  prazoArrependimentoISO,
+  dentroDoPrazoArrependimento,
+} from "./termos.ts";
 
 test("calcularHashTermo: SHA-256 hex conhecido", () => {
   // sha256("abc") — valor de referência.
@@ -22,4 +26,17 @@ test("calcularHashTermo: normaliza CRLF/LF (não muda por quebra de linha do SO)
 
 test("calcularHashTermo: textos diferentes => hashes diferentes", () => {
   assert.notEqual(calcularHashTermo("versão A"), calcularHashTermo("versão B"));
+});
+
+test("prazoArrependimentoISO: aceite + 7 dias", () => {
+  assert.equal(prazoArrependimentoISO("2026-07-01T12:00:00.000Z"), "2026-07-08T12:00:00.000Z");
+});
+
+test("dentroDoPrazoArrependimento: dentro e fora da janela de 7 dias", () => {
+  const aceite = "2026-07-01T12:00:00.000Z";
+  assert.equal(dentroDoPrazoArrependimento(aceite, "2026-07-01T12:00:00.000Z"), true); // mesmo instante
+  assert.equal(dentroDoPrazoArrependimento(aceite, "2026-07-05T00:00:00.000Z"), true); // 4 dias
+  assert.equal(dentroDoPrazoArrependimento(aceite, "2026-07-08T12:00:00.000Z"), true); // limite exato
+  assert.equal(dentroDoPrazoArrependimento(aceite, "2026-07-08T12:00:01.000Z"), false); // 1s após
+  assert.equal(dentroDoPrazoArrependimento(aceite, "2026-07-20T00:00:00.000Z"), false); // muito depois
 });

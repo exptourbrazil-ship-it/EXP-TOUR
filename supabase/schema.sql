@@ -311,6 +311,7 @@ create table if not exists aceites (
   ip text,
   user_agent text,
   data_hora timestamptz not null default now(),
+  arrependido_em timestamptz,           -- CDC art. 49: quando o cliente desistiu (7 dias)
   created_at timestamptz not null default now()
   );
 

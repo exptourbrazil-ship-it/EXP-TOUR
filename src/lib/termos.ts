@@ -10,3 +10,18 @@ export function calcularHashTermo(conteudo: string): string {
   const normalizado = (conteudo || "").replace(/\r\n/g, "\n");
   return crypto.createHash("sha256").update(normalizado, "utf8").digest("hex");
 }
+
+// Direito de arrependimento (CDC art. 49): 7 dias corridos a partir do aceite.
+export const DIAS_ARREPENDIMENTO = 7;
+
+// Data-limite do arrependimento: aceite + 7 dias (ISO). Recebe o timestamp do
+// aceite (ISO). Puro e determinístico.
+export function prazoArrependimentoISO(dataHoraAceiteISO: string): string {
+  const base = new Date(dataHoraAceiteISO).getTime();
+  return new Date(base + DIAS_ARREPENDIMENTO * 24 * 60 * 60 * 1000).toISOString();
+}
+
+// `true` se `agoraISO` ainda está dentro dos 7 dias a partir do aceite.
+export function dentroDoPrazoArrependimento(dataHoraAceiteISO: string, agoraISO: string): boolean {
+  return new Date(agoraISO).getTime() <= new Date(prazoArrependimentoISO(dataHoraAceiteISO)).getTime();
+}
