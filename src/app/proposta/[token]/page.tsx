@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import Logo from "@/components/Logo";
+import AssinarProposta from "@/components/AssinarProposta";
 import { converterParaBRL } from "@/lib/cambio";
 import { estadoProposta } from "@/lib/propostas";
 
@@ -166,13 +167,8 @@ export default async function PropostaPublicaPage({ params }: { params: Promise<
         )}
       </section>
 
-      {/* Próximo passo (assinatura = Fase C) */}
-      <div className="mt-6 rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-5 text-center">
-        <p className="text-sm text-neutral-600">
-          Para prosseguir, a <strong>assinatura eletrônica</strong> será habilitada nesta tela.
-          Enquanto isso, fale com a EXP Tour em caso de dúvida.
-        </p>
-      </div>
+      {/* Assinatura eletrônica (celebra o contrato) */}
+      <AssinarProposta token={token} versaoTermo={termo?.versao ?? null} nome={p.nome_completo} />
     </Moldura>
   );
 }

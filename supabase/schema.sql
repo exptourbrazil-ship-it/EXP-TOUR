@@ -371,6 +371,7 @@ create table if not exists aceites (
   contexto text not null default 'area_cliente' check (contexto in ('checkout','area_cliente')),
   ip text,
   user_agent text,
+  sessao_id text,                       -- identificador de sessao do aceite (Clausula 17.1)
   data_hora timestamptz not null default now(),
   arrependido_em timestamptz,           -- CDC art. 49: quando o cliente desistiu (7 dias)
   created_at timestamptz not null default now()
