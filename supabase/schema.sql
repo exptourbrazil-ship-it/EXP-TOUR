@@ -278,3 +278,44 @@ alter table if exists contratos_assinatura enable row level security;
 
 -- Storage: criar o bucket PRIVADO "documentos-contratos" (como os demais); os
 -- downloads usam URLs assinadas de curta duracao. Feito no painel do Supabase.
+
+-- ============================================================================
+-- Termo de Adesao + aceites (prova de consentimento no checkout / area do cliente)
+-- ============================================================================
+-- Ja aplicado no banco de producao (migracao aceite_termo_adesao).
+
+-- Versoes do Termo de Adesao. `hash` = SHA-256 do `conteudo` (ver lib/termos.ts).
+create table if not exists termos (
+  id uuid primary key default gen_random_uuid(),
+  tipo text not null default 'adesao',
+  versao text not null,
+  conteudo text,
+  storage_path text,
+  hash text not null,
+  vigente_desde timestamptz not null default now(),
+  ativo boolean not null default true,
+  criado_em timestamptz not null default now(),
+  unique (tipo, versao)
+  );
+
+-- Prova imutavel do aceite: quem, qual versao, qual hash do texto, quando, IP e
+-- user-agent. titular_id vira null se o titular for removido (preserva a prova).
+create table if not exists aceites (
+  id uuid primary key default gen_random_uuid(),
+  titular_id uuid references titulares(id) on delete set null,
+  proposta_id uuid,
+  termo_id uuid not null references termos(id),
+  versao text not null,
+  hash_conteudo text not null,
+  contexto text not null default 'area_cliente' check (contexto in ('checkout','area_cliente')),
+  ip text,
+  user_agent text,
+  data_hora timestamptz not null default now(),
+  created_at timestamptz not null default now()
+  );
+
+create index if not exists idx_aceites_titular on aceites(titular_id);
+create index if not exists idx_aceites_termo on aceites(termo_id);
+
+alter table if exists termos  enable row level security;
+alter table if exists aceites enable row level security;
