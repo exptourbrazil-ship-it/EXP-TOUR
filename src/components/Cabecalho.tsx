@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Logo from "@/components/Logo"
+import AceiteBanner from "@/components/AceiteBanner"
 
 // Cabecalho compartilhado das telas do cliente: logo + menu de conta com o
 // nome de quem esta logado e o botao "Sair". Antes o logout so existia na aba
@@ -27,6 +28,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
   }
 
   return (
+    <>
     <header className="bg-brand">
     <div className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-4 md:px-8">
       <Logo escuro />
@@ -80,5 +82,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
       ) : null}
     </div>
     </header>
+    <AceiteBanner />
+    </>
   )
 }
