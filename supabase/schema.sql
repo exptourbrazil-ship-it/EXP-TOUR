@@ -381,3 +381,35 @@ create index if not exists idx_aceites_termo on aceites(termo_id);
 
 alter table if exists termos  enable row level security;
 alter table if exists aceites enable row level security;
+
+-- Propostas (checkout / estados 0-1, Clausula 2.5): criada pela equipe com
+-- validade de 10 dias e token para o link publico; ao aceitar (assinatura),
+-- provisiona titular + contrato + parcelas. Ja aplicado no banco (migracao
+-- propostas_checkout).
+create table if not exists propostas (
+  id uuid primary key default gen_random_uuid(),
+  token text not null unique default gen_random_uuid()::text,
+  status text not null default 'rascunho'
+    check (status in ('rascunho','enviada','aceita','expirada','cancelada')),
+  nome_completo text,
+  cpf text,
+  email text,
+  telefone text,
+  programa_nome text,
+  estudante_nome text,
+  pais_destino text,
+  moeda text,
+  custo_programa numeric(12,2),          -- saldo devedor inicial, na moeda
+  plano jsonb,                           -- plano sugerido de parcelas
+  data_inicio date,
+  validade date not null default (now() + interval '10 days')::date,
+  aceito_em timestamptz,
+  contrato_id uuid references contratos(id),
+  criado_por text,
+  created_at timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_propostas_token on propostas(token);
+create index if not exists idx_propostas_status on propostas(status);
+alter table if exists propostas enable row level security;
