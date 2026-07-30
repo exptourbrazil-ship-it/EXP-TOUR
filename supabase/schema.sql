@@ -118,6 +118,29 @@ create table if not exists lembretes_cobranca (
 
 create index if not exists idx_lembretes_parcela on lembretes_cobranca(parcela_id);
 
+-- Antecipacoes por exigencia de visto/fornecedor (Clausula 7.5): registradas
+-- pela equipe com lastro documental e exibidas ao cliente. Ja aplicado no banco
+-- (migracao antecipacoes_exigencia).
+create table if not exists antecipacoes (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  documento text not null,              -- documento que o pagamento viabiliza
+  justificativa text,                   -- composicao/motivo da exigencia
+  valor numeric(12,2) not null,         -- valor a antecipar, na moeda do programa
+  moeda text not null,
+  data_limite date not null,            -- data-limite fixada pelo terceiro
+  comprovante_url text,                 -- lastro documental (link), quando houver
+  status text not null default 'pendente'
+    check (status in ('pendente','atendida','cancelada')),
+  criado_por text,
+  created_at timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+  );
+
+create index if not exists idx_antecipacoes_contrato on antecipacoes(contrato_id);
+create index if not exists idx_antecipacoes_status on antecipacoes(status);
+alter table if exists antecipacoes enable row level security;
+
 -- Rate limiting: cada "hit" e uma tentativa (ex.: pedido de codigo de acesso),
 -- identificada por uma chave (ex.: "req-code:ip:1.2.3.4"). O limite e checado
 -- contando os hits de uma chave dentro de uma janela de tempo. Escrita/leitura

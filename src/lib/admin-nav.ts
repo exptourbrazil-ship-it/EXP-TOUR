@@ -36,6 +36,8 @@ const ICONES = {
     "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM13 3v6h6M9 14l2 2 4-4",
   termos:
     "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM13 3v6h6M9 12h6M9 16h6",
+  antecipacoes:
+    "M12 8v4l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
 } as const;
 
 // Itens ja disponiveis (telas que existem hoje) + estrutura futura (emBreve).
@@ -69,6 +71,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Contratos",
     descricao: "Enviar contrato para assinatura (Zoho Sign)",
     icone: ICONES.contratos,
+  },
+  {
+    href: "/admin/antecipacoes",
+    label: "Antecipações",
+    descricao: "Antecipações exigidas por visto/fornecedor",
+    icone: ICONES.antecipacoes,
   },
   {
     href: "/admin/termos",

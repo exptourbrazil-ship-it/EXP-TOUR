@@ -282,7 +282,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
   )
 }
 
-export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null; saldoMoeda?: number; saldoBRLhoje?: number | null; quitarAte?: string | null }) {
+export default function ParcelasClient({ parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes }: { parcelas: Parcela[]; programaNome?: string | null; totalPrograma?: number; pagoAteAgora?: number; contratoId?: string | null; dataInicio?: string | null; valorTotalContrato?: number; nomeCliente?: string | null; saldoMoeda?: number; saldoBRLhoje?: number | null; quitarAte?: string | null; antecipacoes?: Array<{ id: string; documento: string; justificativa: string | null; valor: number; moeda: string; data_limite: string; comprovante_url: string | null }> }) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
@@ -381,6 +381,36 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
         </p>
         {totalPrograma && totalPrograma > 0 ? (
           <p className="text-sm text-neutral-500">Contrato de {formatarMoeda(totalPrograma, moedaPrograma)}</p>
+        ) : null}
+
+        {antecipacoes && antecipacoes.length > 0 ? (
+          <div className="mt-6 space-y-3">
+            {antecipacoes.map((a) => (
+              <div key={a.id} className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-800">
+                  Antecipação exigida
+                </p>
+                <p className="mt-1 text-sm text-brand">
+                  Para emitir <strong>{a.documento}</strong>, é necessário antecipar{" "}
+                  <strong>{formatarMoeda(Number(a.valor), a.moeda)}</strong> até{" "}
+                  <strong>{formatarDataBR(a.data_limite)}</strong>.
+                </p>
+                {a.justificativa ? (
+                  <p className="mt-1 text-xs text-neutral-600">{a.justificativa}</p>
+                ) : null}
+                {a.comprovante_url ? (
+                  <a
+                    href={a.comprovante_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block text-xs font-medium text-amber-800 hover:underline"
+                  >
+                    ver o comprovante da exigência
+                  </a>
+                ) : null}
+              </div>
+            ))}
+          </div>
         ) : null}
 
         {totalPrograma && totalPrograma > 0 ? (

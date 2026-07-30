@@ -111,5 +111,17 @@ export default async function ParcelasPage() {
   const saldoBRLhoje = cotacaoDia ? converterParaBRL(saldoMoeda, cotacaoDia) : null;
   const quitarAte = dataLimiteQuitacao(dataInicio);
 
-  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte });
+  // Antecipacoes exigidas pendentes (Clausula 7.5) — exibidas ao cliente.
+  let antecipacoes: any[] = [];
+  if (contratoIds.length > 0) {
+    const { data: ant } = await supabase
+      .from("antecipacoes")
+      .select("id, documento, justificativa, valor, moeda, data_limite, comprovante_url")
+      .in("contrato_id", contratoIds)
+      .eq("status", "pendente")
+      .order("data_limite", { ascending: true });
+    antecipacoes = ant || [];
+  }
+
+  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes });
 }
