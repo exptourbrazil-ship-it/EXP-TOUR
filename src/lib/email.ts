@@ -131,6 +131,7 @@ function templateLembreteCobranca(nome: string, d: DadosLembrete) {
 <tr><td style="color:${BRAND_GREEN};font-size:15px;padding:4px 0;">${d.descricao}</td></tr>
 <tr><td style="color:${BRAND_GREEN};font-size:22px;font-weight:bold;padding:4px 0;">${d.valor}</td></tr>
 <tr><td style="color:${BRAND_GREEN};font-size:14px;padding:4px 0;">Vencimento: ${d.vencimento}</td></tr>
+<tr><td style="color:${BRAND_GREEN};font-size:13px;padding:10px 0 0;">Precisa de outra data? Voce pode alterar o vencimento na sua Area do Cliente, sem juros ou taxa.</td></tr>
 ${pixBloco}
 ${portalBloco}
 </table>

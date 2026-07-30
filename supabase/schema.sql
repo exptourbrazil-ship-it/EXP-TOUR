@@ -111,7 +111,7 @@ create index if not exists idx_events_external on events(source, external_id);
 create table if not exists lembretes_cobranca (
   id uuid primary key default gen_random_uuid(),
   parcela_id uuid not null references parcelas(id) on delete cascade,
-  janela text not null,               -- 'D-7' | 'D-2' | 'D+1' | 'D+5'
+  janela text not null,               -- 'D-3' | 'D0' | 'D+1' | 'D+5'
   enviado_at timestamptz not null default now(),
   unique (parcela_id, janela)
   );

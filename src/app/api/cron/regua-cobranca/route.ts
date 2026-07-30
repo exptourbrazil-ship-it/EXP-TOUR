@@ -53,8 +53,9 @@ export async function GET(request: Request) {
   const hoje = new Date();
   const hojeISO = hoje.toISOString().slice(0, 10);
   // Janela de busca: cobre de D+5 (venceu ha 5 dias) ate D-7 (vence em 7 dias).
+  // Cobre de D+5 (venceu ha 5 dias) ate D-3 (vence em 3 dias).
   const minISO = isoMaisDias(hoje, -5);
-  const maxISO = isoMaisDias(hoje, 7);
+  const maxISO = isoMaisDias(hoje, 3);
 
   const portalUrl = process.env.NEXT_PUBLIC_APP_URL || null;
 

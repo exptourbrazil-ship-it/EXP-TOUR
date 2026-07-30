@@ -7,8 +7,8 @@
 // Janelas de lembrete: dias relativos ao vencimento. Positivo = antes do
 // vencimento (lembrete preventivo); negativo = depois (parcela vencida).
 export const JANELAS_LEMBRETE = [
-  { janela: "D-7", offsetDias: 7 },
-  { janela: "D-2", offsetDias: 2 },
+  { janela: "D-3", offsetDias: 3 },
+  { janela: "D0", offsetDias: 0 },
   { janela: "D+1", offsetDias: -1 },
   { janela: "D+5", offsetDias: -5 },
 ] as const;
