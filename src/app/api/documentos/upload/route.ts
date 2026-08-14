@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { TIPOS_DOCUMENTO } from "@/lib/documentos";
 import { espelharDocumentoNoContatoZoho } from "@/lib/zoho-documentos";
+import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao } from "@/lib/upload-seguro";
 
 // Recebe um documento enviado pelo proprio titular na area do cliente,
 // salva no Supabase Storage (bucket documentos-titular), registra na
@@ -33,11 +34,21 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-const nomeArquivo = arquivo.name;
-  const caminho = `${titularId}/${Date.now()}-${nomeArquivo}`;
-  const buffer = await arquivo.arrayBuffer();
+const buffer = await arquivo.arrayBuffer();
 
-const { error: uploadError } = await supabase.storage.from("documentos-titular").upload(caminho, buffer, { contentType: arquivo.type || "application/octet-stream" });
+// Valida tamanho e conteudo REAL (magic bytes), nao o content-type declarado.
+const validacao = validarArquivo(arquivo.size, buffer);
+if (!validacao.ok) {
+  return NextResponse.json({ error: validacao.erro }, { status: 400 });
+}
+
+// A chave nao contem nenhum byte vindo do cliente — ver src/lib/upload-seguro.ts.
+const nomeArquivo = sanitizarNomeExibicao(arquivo.name);
+const caminho = montarChaveStorage(titularId, validacao.extensao);
+
+const { error: uploadError } = await supabase.storage
+  .from("documentos-titular")
+  .upload(caminho, buffer, { contentType: validacao.mime });
   if (uploadError) {
     return NextResponse.json({ error: "Falha ao enviar arquivo" }, { status: 500 });
   }
@@ -50,7 +61,7 @@ const { data: documento, error: insertError } = await supabase
     nome_arquivo: nomeArquivo,
     origem: "titular",
     storage_path: caminho,
-    mime_type: arquivo.type || null,
+    mime_type: validacao.mime,
     tamanho_bytes: arquivo.size,
     criado_por: titularId,
     status: "pendente",

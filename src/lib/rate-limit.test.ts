@@ -28,8 +28,23 @@ test("excedeuLimite bloqueia quando quantidade atinge o limite", () => {
   assert.equal(excedeuLimite(5, 3), true);
 });
 
-test("obterIp usa o primeiro IP de x-forwarded-for", () => {
-  const req = new Request("https://x", { headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1" } });
+test("obterIp prefere x-vercel-forwarded-for, que o cliente nao consegue forjar", () => {
+  const req = new Request("https://x", {
+    headers: {
+      "x-vercel-forwarded-for": "203.0.113.7",
+      // Valores plantados pelo atacante nao podem vencer.
+      "x-forwarded-for": "1.2.3.4, 203.0.113.7",
+      "x-real-ip": "5.6.7.8",
+    },
+  });
+  assert.equal(obterIp(req), "203.0.113.7");
+});
+
+test("obterIp usa o ULTIMO salto de x-forwarded-for, nao o primeiro", () => {
+  // O primeiro valor da cadeia e o que o cliente enviou: usa-lo permitia
+  // rotacionar o header para ganhar um balde de rate limit novo a cada
+  // requisicao e envenenar o IP gravado na auditoria e no aceite.
+  const req = new Request("https://x", { headers: { "x-forwarded-for": "1.2.3.4, 203.0.113.7" } });
   assert.equal(obterIp(req), "203.0.113.7");
 });
 

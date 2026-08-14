@@ -66,7 +66,7 @@ export async function GET(request: Request) {
         const bucket = d.origem === "admin" ? "documentos-admin" : "documentos-titular";
         const { data: signed } = await supabase.storage
           .from(bucket)
-          .createSignedUrl(d.storage_path, 300);
+          .createSignedUrl(d.storage_path, 300, { download: d.nome_arquivo || true });
         url = signed?.signedUrl || null;
       }
       return {

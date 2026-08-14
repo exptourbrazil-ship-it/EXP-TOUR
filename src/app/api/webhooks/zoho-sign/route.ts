@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { montarIdempotencyKey } from "@/lib/mp-events";
 import { extrairEventoSign } from "@/lib/sign-events";
@@ -29,14 +30,24 @@ function getSupabase() {
 
 export async function POST(request: Request) {
   const url = new URL(request.url);
+  // Falha FECHADO. Sem o secret, qualquer um que soubesse um envelope_id_zoho
+  // podia postar {"request_status":"declined"} e marcar a assinatura daquele
+  // contrato como recusada.
   const secret = process.env.ZOHO_SIGN_WEBHOOK_SECRET;
-  if (secret) {
-    const token = url.searchParams.get("token") || request.headers.get("x-exp-webhook-token");
-    if (token !== secret) {
-      return NextResponse.json({ ok: false, erro: "token invalido" }, { status: 401 });
-    }
-  } else {
-    console.warn("ZOHO_SIGN_WEBHOOK_SECRET nao configurado: webhook aceito sem validacao.");
+  if (!secret) {
+    console.error("ZOHO_SIGN_WEBHOOK_SECRET nao configurado: webhook recusado.");
+    return NextResponse.json({ ok: false, erro: "Webhook nao configurado" }, { status: 503 });
+  }
+
+  // Preferimos o header. Aceitar o secret por ?token= o deposita nos logs de
+  // acesso da Vercel e em qualquer Referer — mantido so por compatibilidade
+  // com a configuracao atual no Zoho.
+  const token = request.headers.get("x-exp-webhook-token") || url.searchParams.get("token") || "";
+  const a = Buffer.from(token);
+  const b = Buffer.from(secret);
+  // Comparacao em tempo constante: `!==` sai no primeiro byte diferente.
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return NextResponse.json({ ok: false, erro: "token invalido" }, { status: 401 });
   }
 
   const raw = await request.text();

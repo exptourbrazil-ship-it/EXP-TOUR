@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
 import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
 import { resolverTitular, dadosPrograma, dadosComerciais } from "@/lib/zoho-contato";
+
+export const runtime = "nodejs";
 
 // Webhook do Zoho CRM: disparado por uma Workflow Rule no modulo Contatos
 // quando um contato e criado/atualizado com um Produto Adquirido vinculado.
@@ -21,6 +24,29 @@ import { resolverTitular, dadosPrograma, dadosComerciais } from "@/lib/zoho-cont
 // cadastrada manualmente pela equipe na tabela "cotacoes_cambio".
 export async function POST(request: Request) {
     const { searchParams } = new URL(request.url);
+
+    // Autenticacao. Esta rota estava TOTALMENTE aberta: qualquer POST na
+    // internet com ?contactId= fazia o servidor buscar aquele contato com as
+    // credenciais Zoho da empresa e dar upsert em titulares por CPF,
+    // sobrescrevendo email, telefone e nome. Como o email e o canal de entrega
+    // do codigo de login, isso encadeava para tomada de conta.
+    //
+    // Falha FECHADO: sem o secret configurado a rota recusa, em vez de
+    // degradar em silencio para "sem autenticacao".
+    const secret = process.env.ZOHO_WEBHOOK_SECRET;
+    if (!secret) {
+          console.error("ZOHO_WEBHOOK_SECRET nao configurado: webhook do Zoho recusado.");
+          return NextResponse.json({ ok: false, erro: "Webhook nao configurado" }, { status: 503 });
+    }
+
+    const tokenRecebido =
+          request.headers.get("x-exp-webhook-token") || searchParams.get("token") || "";
+    const a = Buffer.from(tokenRecebido);
+    const b = Buffer.from(secret);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+          return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+    }
+
     let contactId = searchParams.get("contactId");
 
     // Fallback: a Workflow Rule do Zoho envia o contactId no corpo da

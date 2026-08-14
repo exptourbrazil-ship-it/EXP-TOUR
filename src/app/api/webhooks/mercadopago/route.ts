@@ -104,25 +104,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignorado: "sem payment id" });
   }
 
-  // Validacao de assinatura. Com o secret configurado, exigimos assinatura
-  // valida. Sem o secret (ambiente ainda nao configurado no painel do MP),
-  // seguimos mas deixamos um aviso no log.
+  // Validacao de assinatura, falhando FECHADO. Antes, sem o secret, o webhook
+  // aceitava qualquer notificacao. O efeito financeiro ja era protegido —
+  // processarPagamentoMercadoPago reconsulta o estado real no MP, entao um
+  // corpo forjado nunca marcou parcela como paga — mas o ledger de eventos
+  // ficava gravavel por estranhos, e uma variavel faltante nao pode degradar
+  // silenciosamente para "sem autenticacao".
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
-  if (secret) {
-    const assinaturaOk = verificarAssinaturaMercadoPago({
-      signatureHeader: request.headers.get("x-signature"),
-      requestId: request.headers.get("x-request-id"),
-      dataId: paymentId,
-      secret,
-    });
-    if (!assinaturaOk) {
-      await registrarAssinaturaInvalida(paymentId);
-      return NextResponse.json({ ok: false, erro: "assinatura invalida" }, { status: 401 });
-    }
-  } else {
-    console.warn(
-      "MERCADOPAGO_WEBHOOK_SECRET nao configurado: webhook aceito sem validacao de assinatura."
-    );
+  if (!secret) {
+    console.error("MERCADOPAGO_WEBHOOK_SECRET nao configurado: webhook recusado.");
+    return NextResponse.json({ ok: false, erro: "Webhook nao configurado" }, { status: 503 });
+  }
+
+  const assinaturaOk = verificarAssinaturaMercadoPago({
+    signatureHeader: request.headers.get("x-signature"),
+    requestId: request.headers.get("x-request-id"),
+    dataId: paymentId,
+    secret,
+  });
+  if (!assinaturaOk) {
+    await registrarAssinaturaInvalida(paymentId);
+    return NextResponse.json({ ok: false, erro: "assinatura invalida" }, { status: 401 });
   }
 
   const supabase = getSupabase();
