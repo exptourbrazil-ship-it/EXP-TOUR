@@ -3,12 +3,45 @@
 import { createClient } from "@supabase/supabase-js";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg";
 const BRAND_GREEN = "#042f1b";
+const BRAND_GOLD = "#c9a35e";
+
+// Logo dos e-mails.
+//
+// Historico do bug: o cabecalho apontava para o .svg hospedado no WordPress e o
+// logo nao aparecia para ninguem. Gmail, Outlook, Yahoo e a maioria dos webmails
+// ignoram <img src="*.svg">. So o Apple Mail renderiza SVG, o que mascarava o
+// problema em teste. Logo de e-mail precisa ser PNG (ou JPG).
+//
+// Regra aqui: so emitimos <img> quando conseguimos montar uma URL (via
+// EMAIL_LOGO_URL ou NEXT_PUBLIC_APP_URL). Sem nenhuma das duas — ambiente sem
+// as envs — renderizamos um wordmark em texto em vez de arriscar um icone de
+// imagem quebrada. Em producao o caminho normal e o <img>.
+//
+// O PNG vive em public/email/logo-exp-tour.png e e servido pelo proprio app.
+// Servir daqui (e nao do WordPress) tira a dependencia de um dominio externo
+// que pode cair ou ativar hotlink protection, e a URL acompanha o deploy.
+//
+// EMAIL_LOGO_URL sobrescreve, se algum dia o arquivo for para um CDN.
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+const LOGO_URL =
+  process.env.EMAIL_LOGO_URL || (APP_URL ? `${APP_URL}/email/logo-exp-tour.png` : "");
+
+function cabecalhoLogo(): string {
+  const conteudo = LOGO_URL
+    ? `<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;color:${BRAND_GOLD};font-family:Georgia,'Times New Roman',serif;font-size:20px;letter-spacing:3px;text-align:center;" />`
+    : `<div style="color:${BRAND_GOLD};font-family:Georgia,'Times New Roman',serif;">
+<div style="font-size:24px;letter-spacing:6px;line-height:1.2;">EXP TOUR</div>
+<div style="font-size:10px;letter-spacing:4px;padding-top:4px;">TRAVEL EXPERIENCE</div>
+</div>`;
+  return `<tr><td style="text-align:center;padding-bottom:24px;">
+${conteudo}
+</td></tr>`;
+}
 
 function getConfig() {
   const apiKey = process.env.RESEND_API_KEY as string;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "Area do Cliente EXP Tour <noreply@exp-tour.com>";
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "Área do Cliente EXP Tour <noreply@exp-tour.com>";
 
 if (!apiKey) {
   throw new Error("RESEND_API_KEY nao configurado");
@@ -38,7 +71,7 @@ async function registrarLog(destinatario: string, tipoMensagem: string, sucesso:
 
 function templateCodigoAcesso(nome: string, codigo: string) {
   const primeiroNome = (nome || "").trim().split(" ")[0] || "";
-  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
 
 return `
 <!DOCTYPE html>
@@ -52,22 +85,18 @@ return `
 <body style="margin:0;padding:0;">
 <div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:'Bellefair',Georgia,'Times New Roman',serif;">
 <table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:${BRAND_GREEN};">
-<tr>
-<td style="text-align:center;padding-bottom:24px;">
-<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
-</td>
-</tr>
+${cabecalhoLogo()}
 <tr>
 <td style="background-color:#F5EAD9;border-radius:8px;padding:32px;text-align:center;">
 <p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
-<p style="color:${BRAND_GREEN};font-size:16px;margin:0 0 24px;">Use o codigo abaixo para acessar a sua Area do Cliente:</p>
+<p style="color:${BRAND_GREEN};font-size:16px;margin:0 0 24px;">Use o código abaixo para acessar a sua Área do Cliente:</p>
 <div style="background-color:${BRAND_GREEN};color:#c9a35e;font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;border-radius:6px;display:inline-block;">${codigo}</div>
-<p style="color:${BRAND_GREEN};font-size:14px;margin:24px 0 0;">Este codigo expira em 10 minutos. Se voce nao solicitou este acesso, ignore este e-mail.</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:24px 0 0;">Este código expira em 10 minutos. Se você não solicitou este acesso, ignore este e-mail.</p>
 </td>
 </tr>
 <tr>
 <td style="text-align:center;padding-top:24px;">
-<span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span>
+<span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span>
 </td>
 </tr>
 </table>
@@ -88,10 +117,10 @@ type DadosLembrete = {
 
 function templateLembreteCobranca(nome: string, d: DadosLembrete) {
   const primeiroNome = (nome || "").trim().split(" ")[0] || "";
-  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
   const chamada = d.vencida
-    ? "Identificamos uma parcela em atraso na sua Area do Cliente:"
-    : "Este e um lembrete de uma parcela que esta chegando:";
+    ? "Identificamos uma parcela em atraso na sua Área do Cliente:"
+    : "Este é um lembrete de uma parcela que está chegando:";
 
   const pixBloco = d.pixCode
     ? `<tr><td style="padding-top:16px;">
@@ -102,7 +131,7 @@ function templateLembreteCobranca(nome: string, d: DadosLembrete) {
 
   const portalBloco = d.portalUrl
     ? `<tr><td style="text-align:center;padding-top:24px;">
-         <a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;font-size:16px;padding:12px 28px;border-radius:6px;display:inline-block;">Abrir minha Area do Cliente</a>
+         <a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;font-size:16px;padding:12px 28px;border-radius:6px;display:inline-block;">Abrir minha Área do Cliente</a>
        </td></tr>`
     : "";
 
@@ -118,11 +147,7 @@ function templateLembreteCobranca(nome: string, d: DadosLembrete) {
 <body style="margin:0;padding:0;">
 <div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:'Bellefair',Georgia,'Times New Roman',serif;">
 <table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:${BRAND_GREEN};">
-<tr>
-<td style="text-align:center;padding-bottom:24px;">
-<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
-</td>
-</tr>
+${cabecalhoLogo()}
 <tr>
 <td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
 <p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
@@ -131,7 +156,7 @@ function templateLembreteCobranca(nome: string, d: DadosLembrete) {
 <tr><td style="color:${BRAND_GREEN};font-size:15px;padding:4px 0;">${d.descricao}</td></tr>
 <tr><td style="color:${BRAND_GREEN};font-size:22px;font-weight:bold;padding:4px 0;">${d.valor}</td></tr>
 <tr><td style="color:${BRAND_GREEN};font-size:14px;padding:4px 0;">Vencimento: ${d.vencimento}</td></tr>
-<tr><td style="color:${BRAND_GREEN};font-size:13px;padding:10px 0 0;">Precisa de outra data? Voce pode alterar o vencimento na sua Area do Cliente, sem juros ou taxa.</td></tr>
+<tr><td style="color:${BRAND_GREEN};font-size:13px;padding:10px 0 0;">Precisa de outra data? Você pode alterar o vencimento na sua Área do Cliente, sem juros ou taxa.</td></tr>
 ${pixBloco}
 ${portalBloco}
 </table>
@@ -139,7 +164,7 @@ ${portalBloco}
 </tr>
 <tr>
 <td style="text-align:center;padding-top:24px;">
-<span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span>
+<span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span>
 </td>
 </tr>
 </table>
@@ -206,7 +231,7 @@ let response: Response;
       body: JSON.stringify({
         from: fromEmail,
         to: [destinatario],
-        subject: "Seu codigo de acesso - EXP Tour",
+        subject: "Seu código de acesso - EXP Tour",
         html: templateCodigoAcesso(nome, codigo),
       }),
     });
@@ -237,7 +262,7 @@ type DadosAceite = {
 
 function templateConfirmacaoAceite(nome: string, d: DadosAceite) {
   const primeiroNome = (nome || "").trim().split(" ")[0] || "";
-  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
   const textoTermo = (d.conteudo || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -249,16 +274,14 @@ function templateConfirmacaoAceite(nome: string, d: DadosAceite) {
 <body style="margin:0;padding:0;">
 <div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
 <table role="presentation" width="100%" style="max-width:520px;margin:0 auto;">
-<tr><td style="text-align:center;padding-bottom:24px;">
-<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
-</td></tr>
+${cabecalhoLogo()}
 <tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
 <p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
-<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Confirmamos o seu aceite do <strong>Termo de Adesao</strong> (versao ${d.versao}) em <strong>${d.dataFormatada}</strong>.</p>
-<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;"><strong>Direito de arrependimento:</strong> voce pode desistir ate <strong>${d.arrependimentoAte}</strong> (7 dias), pela propria Area do Cliente ou entrando em contato conosco.</p>
-${textoTermo ? `<hr style="border:none;border-top:1px solid #d8c7a8;margin:20px 0;" /><p style="color:${BRAND_GREEN};font-size:13px;margin:0 0 8px;"><strong>Conteudo aceito:</strong></p><div style="color:${BRAND_GREEN};font-size:12px;white-space:pre-wrap;line-height:1.5;">${textoTermo}</div>` : ""}
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Confirmamos o seu aceite do <strong>Termo de Adesão</strong> (versão ${d.versao}) em <strong>${d.dataFormatada}</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;"><strong>Direito de arrependimento:</strong> você pode desistir até <strong>${d.arrependimentoAte}</strong> (7 dias), pela própria Área do Cliente ou entrando em contato conosco.</p>
+${textoTermo ? `<hr style="border:none;border-top:1px solid #d8c7a8;margin:20px 0;" /><p style="color:${BRAND_GREEN};font-size:13px;margin:0 0 8px;"><strong>Conteúdo aceito:</strong></p><div style="color:${BRAND_GREEN};font-size:12px;white-space:pre-wrap;line-height:1.5;">${textoTermo}</div>` : ""}
 </td></tr>
-<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span></td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
 </table>
 </div>
 </body>
@@ -277,7 +300,7 @@ export async function enviarConfirmacaoAceiteEmail(destinatario: string, nome: s
       body: JSON.stringify({
         from: fromEmail,
         to: [destinatario],
-        subject: "Confirmacao do aceite do Termo de Adesao - EXP Tour",
+        subject: "Confirmação do aceite do Termo de Adesão - EXP Tour",
         html: templateConfirmacaoAceite(nome, dados),
       }),
     });
@@ -323,7 +346,7 @@ function pct(n: number): string {
 
 function templateRecibo(nome: string, d: DadosRecibo) {
   const primeiroNome = (nome || "").trim().split(" ")[0] || "";
-  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
   const linha = (rot: string, val: string) =>
     `<tr><td style="padding:6px 0;color:${BRAND_GREEN};font-size:13px;">${rot}</td><td style="padding:6px 0;color:${BRAND_GREEN};font-size:13px;text-align:right;font-weight:bold;">${val}</td></tr>`;
   return `
@@ -333,25 +356,23 @@ function templateRecibo(nome: string, d: DadosRecibo) {
 <body style="margin:0;padding:0;">
 <div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
 <table role="presentation" width="100%" style="max-width:520px;margin:0 auto;">
-<tr><td style="text-align:center;padding-bottom:24px;">
-<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
-</td></tr>
+${cabecalhoLogo()}
 <tr><td style="background-color:#F5EAD9;border-radius:8px;padding:28px;">
 <p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 4px;">${saudacao}</p>
 <p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 16px;">Recibo do seu pagamento — <strong>${d.descricao}</strong> — em ${d.dataFormatada}.</p>
 <table role="presentation" width="100%" style="border-collapse:collapse;">
 ${linha("PTAX de venda (BCB) aplicada", "R$ " + d.ptax.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 }))}
 ${linha("Valor convertido", brl(d.subtotal))}
-${linha("Taxa de Intermediacao e Cambio (" + pct(d.taxaPercentual) + ")", brl(d.taxaIntermediacao))}
-${linha("IOF-cambio (" + pct(d.iofPercentual) + ")", brl(d.iof))}
+${linha("Taxa de Intermediação e Câmbio (" + pct(d.taxaPercentual) + ")", brl(d.taxaIntermediacao))}
+${linha("IOF-câmbio (" + pct(d.iofPercentual) + ")", brl(d.iof))}
 <tr><td colspan="2" style="border-top:1px solid #d8c7a8;padding-top:8px;"></td></tr>
 ${linha("<strong>Total pago</strong>", "<strong>" + brl(d.totalBRL) + "</strong>")}
 ${linha("Valor amortizado", moe(d.amortizacaoMoeda, d.moeda))}
 ${d.saldoRestanteMoeda != null ? linha("Saldo devedor remanescente", moe(d.saldoRestanteMoeda, d.moeda)) : ""}
 </table>
-<p style="color:${BRAND_GREEN};font-size:11px;margin:16px 0 0;">Nenhuma tarifa bancaria ou despesa de remessa e cobrada separadamente — estao compreendidas na Taxa de Intermediacao e Cambio.</p>
+<p style="color:${BRAND_GREEN};font-size:11px;margin:16px 0 0;">Nenhuma tarifa bancária ou despesa de remessa é cobrada separadamente &mdash; estão compreendidas na Taxa de Intermediação e Câmbio.</p>
 </td></tr>
-<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span></td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
 </table>
 </div>
 </body>
@@ -397,9 +418,9 @@ type DadosQuitacao = {
 
 function templateLembreteQuitacao(nome: string, d: DadosQuitacao) {
   const primeiroNome = (nome || "").trim().split(" ")[0] || "";
-  const saudacao = primeiroNome ? `Ola, ${primeiroNome}!` : "Ola!";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
   const botao = d.portalUrl
-    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Acessar a Area do Cliente</a></td></tr>`
+    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Acessar a Área do Cliente</a></td></tr>`
     : "";
   return `
 <!DOCTYPE html>
@@ -408,18 +429,16 @@ function templateLembreteQuitacao(nome: string, d: DadosQuitacao) {
 <body style="margin:0;padding:0;">
 <div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
 <table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
-<tr><td style="text-align:center;padding-bottom:24px;">
-<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
-</td></tr>
+${cabecalhoLogo()}
 <tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
 <p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
-<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Faltam <strong>${d.diasRestantes} dias</strong> para a data-limite de quitacao do seu programa (<strong>${d.dataLimite}</strong>).</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Faltam <strong>${d.diasRestantes} dias</strong> para a data-limite de quitação do seu programa (<strong>${d.dataLimite}</strong>).</p>
 <p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;">Saldo devedor atual:</p>
 <p style="color:${BRAND_GREEN};font-size:22px;font-weight:bold;margin:0 0 4px;">${d.saldo}</p>
-<p style="color:${BRAND_GREEN};font-size:13px;margin:12px 0 0;">Voce pode pagar quando e quanto quiser ate essa data. O valor em Reais e definido pela cotacao do dia no momento de cada pagamento.</p>
+<p style="color:${BRAND_GREEN};font-size:13px;margin:12px 0 0;">Você pode pagar quando e quanto quiser até essa data. O valor em Reais é definido pela cotação do dia no momento de cada pagamento.</p>
 <table role="presentation">${botao}</table>
 </td></tr>
-<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour - Area do Cliente</span></td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
 </table>
 </div>
 </body>
@@ -438,7 +457,7 @@ export async function enviarLembreteQuitacaoEmail(destinatario: string, nome: st
       body: JSON.stringify({
         from: fromEmail,
         to: [destinatario],
-        subject: `Faltam ${dados.diasRestantes} dias para a quitacao - EXP Tour`,
+        subject: `Faltam ${dados.diasRestantes} dias para a quitação - EXP Tour`,
         html: templateLembreteQuitacao(nome, dados),
       }),
     });

@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/atualizar-cambio", "schedule": "0 18 * * *" },
     { "path": "/api/cron/regua-cobranca", "schedule": "0 12 * * *" },
-    { "path": "/api/cron/limpar-rate-limit", "schedule": "0 4 * * *" }
+    { "path": "/api/cron/limpar-rate-limit", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/conciliar-pagamentos", "schedule": "0 15 * * *" }
   ]
 }

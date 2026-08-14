@@ -1,5 +1,27 @@
 const MP_API_URL = "https://api.mercadopago.com";
 
+// URL de notificacao enviada junto com cada cobranca.
+//
+// Historico do bug: a entrega das notificacoes dependia exclusivamente do
+// webhook cadastrado no painel da aplicacao no Mercado Pago. O painel estava
+// configurado na aplicacao errada (o access token pertencia a outra), entao o
+// MP nunca tinha para onde avisar e nenhum pagamento aprovado chegava ao
+// portal. Mandando notification_url na propria cobranca, a entrega deixa de
+// depender de configuracao manual de painel.
+//
+// O MP recusa a criacao do pagamento se a URL nao for https publica, entao em
+// dev (localhost) ou sem NEXT_PUBLIC_APP_URL simplesmente omitimos o campo.
+export function notificationUrl(): string | null {
+  const base = (process.env.MP_NOTIFICATION_URL || process.env.NEXT_PUBLIC_APP_URL || "").trim();
+  if (!base) return null;
+  const url = process.env.MP_NOTIFICATION_URL
+    ? base
+    : `${base.replace(/\/$/, "")}/api/webhooks/mercadopago`;
+  if (!url.startsWith("https://")) return null;
+  if (/^https:\/\/(localhost|127\.0\.0\.1)/i.test(url)) return null;
+  return url;
+}
+
 type CobrancaPixParams = {
     valor: number;
     descricao: string;
@@ -22,7 +44,14 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
   // valor velho enquanto o sistema registra o novo. Incluindo o valor na chave,
   // um valor diferente gera uma cobranca nova; o mesmo valor continua idempotente
   // (protege contra duplo-clique).
-  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}`;
+  //
+  // O sufixo de versao entra na chave porque o FORMATO da requisicao mudou (a
+  // notification_url passou a ser enviada). Sem ele, regerar a cobranca de uma
+  // parcela que ja tinha Pix no mesmo valor faria o MP devolver o pagamento
+  // ANTIGO, criado sem notification_url — ou seja, a correcao nao alcancaria
+  // justamente as cobrancas que hoje estao quebradas, e em silencio. Ao mudar
+  // o formato da requisicao de novo, incrementar a versao.
+  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}:v2`;
 
   const response = await fetch(`${MP_API_URL}/v1/payments`, {
         method: "POST",
@@ -36,6 +65,7 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
                 description: params.descricao,
                 payment_method_id: "pix",
                 external_reference: params.externalReference,
+                ...(notificationUrl() ? { notification_url: notificationUrl() } : {}),
                 payer: {
                           email: params.payerEmail || "cliente@exp-tour.com",
                 },

@@ -27,6 +27,66 @@ function getSupabase() {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
+// Registra uma notificacao rejeitada por assinatura invalida.
+//
+// Antes esta rota devolvia 401 e retornava sem deixar rastro nenhum. Foi
+// exatamente isso que fez o problema passar semanas despercebido: com o secret
+// errado, TODA notificacao era descartada em silencio e o painel continuava
+// mostrando "nenhum evento". Agora a rejeicao vira uma linha visivel em
+// /admin/sistema.
+//
+// Cuidados, porque este endpoint e publico e o payload nao e autenticado:
+//
+//  - so gravamos quando o paymentId corresponde a uma parcela nossa. Isso
+//    limita o numero de linhas ao nosso proprio conjunto de cobrancas: nao ha
+//    como um terceiro inflar a tabela iterando ids arbitrarios. E justamente o
+//    caso real (secret errado) tem paymentId de parcela conhecida, entao a
+//    deteccao que importa continua funcionando;
+//  - namespace proprio na chave (assinatura-invalida, e nao payment), para que
+//    uma notificacao forjada nunca colida com o ledger de pagamentos;
+//  - nada vindo do request entra no payload.
+async function registrarAssinaturaInvalida(paymentId: string) {
+  // Ids do MP sao numericos. Alem de descartar lixo, isso impede que um id
+  // gigante estoure o limite de tamanho do indice de idempotency_key.
+  if (!/^\d{1,32}$/.test(paymentId)) return;
+
+  try {
+    const supabase = getSupabase();
+
+    const { data: parcela } = await supabase
+      .from("parcelas")
+      .select("id")
+      .eq("external_payment_id", paymentId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!parcela) return;
+
+    const { error } = await supabase.from("events").upsert(
+      {
+        source: "mercadopago",
+        event_type: "assinatura-invalida",
+        idempotency_key: montarIdempotencyKey("mercadopago", "assinatura-invalida", paymentId),
+        external_id: paymentId,
+        payload: { motivo: "assinatura HMAC nao confere" },
+        status: "erro",
+        erro: "Assinatura invalida: confira se MERCADOPAGO_WEBHOOK_SECRET e o segredo da MESMA aplicacao do MERCADOPAGO_ACCESS_TOKEN.",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "idempotency_key" }
+    );
+
+    // supabase-js devolve o erro em `error`, nao lanca. Sem este check a falha
+    // ficaria invisivel — exatamente o problema que este bloco existe para
+    // resolver.
+    if (error) {
+      console.error("Falha ao registrar rejeicao de assinatura do webhook MP:", error.message);
+    }
+  } catch (err) {
+    console.error("Falha ao registrar rejeicao de assinatura do webhook MP:", err);
+  }
+}
+
 export async function POST(request: Request) {
   const raw = await request.text();
   let body: unknown = null;
@@ -56,6 +116,7 @@ export async function POST(request: Request) {
       secret,
     });
     if (!assinaturaOk) {
+      await registrarAssinaturaInvalida(paymentId);
       return NextResponse.json({ ok: false, erro: "assinatura invalida" }, { status: 401 });
     }
   } else {
