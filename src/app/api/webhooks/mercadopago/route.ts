@@ -56,6 +56,37 @@ export async function POST(request: Request) {
       secret,
     });
     if (!assinaturaOk) {
+      // Antes esta rota devolvia 401 e retornava sem deixar rastro nenhum. Foi
+      // exatamente isso que fez o problema passar semanas despercebido: com o
+      // secret errado, TODA notificacao era descartada em silencio e o painel
+      // continuava mostrando "nenhum evento". Agora a rejeicao vira uma linha
+      // visivel em /admin/sistema.
+      //
+      // Namespace proprio na chave (assinatura-invalida, e nao payment) para
+      // que uma notificacao forjada nunca colida com o ledger de pagamentos de
+      // verdade. Como a chave e unica, tentativas repetidas com o mesmo id
+      // atualizam a mesma linha em vez de inflar a tabela.
+      try {
+        await getSupabase()
+          .from("events")
+          .upsert(
+            {
+              source: "mercadopago",
+              event_type: "assinatura-invalida",
+              idempotency_key: montarIdempotencyKey("mercadopago", "assinatura-invalida", paymentId),
+              external_id: paymentId,
+              // Payload minimo: o corpo vem de origem nao autenticada, nao
+              // guardamos conteudo arbitrario.
+              payload: { motivo: "assinatura HMAC nao confere", requestId: request.headers.get("x-request-id") },
+              status: "erro",
+              erro: "Assinatura invalida: confira se MERCADOPAGO_WEBHOOK_SECRET e o segredo da MESMA aplicacao do MERCADOPAGO_ACCESS_TOKEN.",
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "idempotency_key" }
+          );
+      } catch (err) {
+        console.error("Falha ao registrar rejeicao de assinatura do webhook MP:", err);
+      }
       return NextResponse.json({ ok: false, erro: "assinatura invalida" }, { status: 401 });
     }
   } else {
