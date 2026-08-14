@@ -18,11 +18,14 @@ const BRAND_GOLD = "#c9a35e";
 // bloqueadas (padrao do Gmail para remetentes novos) — em vez de arriscar um
 // icone de imagem quebrada.
 //
-// Para usar o logo oficial: comitar o PNG em public/email/logo-exp-tour.png e
-// definir na Vercel EMAIL_LOGO_URL=https://exp-tour.vercel.app/email/logo-exp-tour.png
-// Servir pelo proprio app (e nao pelo WordPress) tira a dependencia de um
-// dominio externo que pode cair ou ativar hotlink protection.
-const LOGO_URL = process.env.EMAIL_LOGO_URL || "";
+// O PNG vive em public/email/logo-exp-tour.png e e servido pelo proprio app.
+// Servir daqui (e nao do WordPress) tira a dependencia de um dominio externo
+// que pode cair ou ativar hotlink protection, e a URL acompanha o deploy.
+//
+// EMAIL_LOGO_URL sobrescreve, se algum dia o arquivo for para um CDN.
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+const LOGO_URL =
+  process.env.EMAIL_LOGO_URL || (APP_URL ? `${APP_URL}/email/logo-exp-tour.png` : "");
 
 function cabecalhoLogo(): string {
   const conteudo = LOGO_URL
