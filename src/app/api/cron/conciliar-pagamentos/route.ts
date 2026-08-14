@@ -23,9 +23,17 @@ export const runtime = "nodejs";
 // vezes, e grava o resultado no ledger `events` com a mesma idempotency_key do
 // webhook — entao webhook e cron nunca duplicam efeito um do outro.
 
-// Teto por execucao: protege contra um lote inesperadamente grande consumir o
-// tempo da funcao. O que sobrar entra na proxima execucao.
+// Teto por execucao: protege contra um lote inesperadamente grande estourar o
+// tempo da funcao.
+//
+// Atencao: a ordenacao e estavel (vencimento crescente), entao o que fica de
+// fora do teto NAO entra sozinho na proxima execucao — seria sempre o mesmo
+// prefixo. Por isso o excedente e logado como erro: se isso comecar a aparecer,
+// o teto precisa subir ou a varredura precisa de cursor. Com o volume atual
+// (dezenas de parcelas em aberto) a margem e enorme.
 const LIMITE_POR_EXECUCAO = 200;
+
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -43,10 +51,18 @@ export async function GET(request: Request) {
     .select("id, external_payment_id")
     .neq("status", "pago")
     .not("external_payment_id", "is", null)
+    .order("vencimento", { ascending: true })
     .limit(LIMITE_POR_EXECUCAO);
 
   if (error) {
     return NextResponse.json({ ok: false, erro: error.message }, { status: 500 });
+  }
+
+  if ((parcelas ?? []).length >= LIMITE_POR_EXECUCAO) {
+    console.error(
+      `[conciliar-pagamentos] teto de ${LIMITE_POR_EXECUCAO} parcelas atingido. ` +
+        `As parcelas alem do teto NAO sao verificadas por nenhuma execucao. Aumentar o teto ou paginar.`
+    );
   }
 
   // Um mesmo paymentId pode aparecer em mais de uma parcela; consultamos o MP
@@ -59,15 +75,25 @@ export async function GET(request: Request) {
   const detalhes: Array<{ paymentId: string; resultado: string; parcelas?: number; erro?: string }> = [];
 
   for (const paymentId of paymentIds) {
-    resumo.verificados++;
     const idempotencyKey = montarIdempotencyKey("mercadopago", "payment", paymentId);
 
+    // Se o webhook ja processou este pagamento, nao ha o que conciliar: pula
+    // sem gastar uma chamada a API do MP.
+    const { data: existente } = await supabase
+      .from("events")
+      .select("id, status")
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+
+    if (existente?.status === "processado") continue;
+
+    resumo.verificados++;
     const resultado = await processarPagamentoMercadoPago(supabase, paymentId);
 
     if (resultado.status === "erro") {
       resumo.erros++;
       detalhes.push({ paymentId, resultado: "erro", erro: resultado.erro });
-      await registrarEvento(supabase, idempotencyKey, paymentId, "erro", resultado.erro);
+      await registrarEvento(supabase, existente?.id, idempotencyKey, paymentId, "erro", resultado.erro);
       continue;
     }
 
@@ -75,15 +101,22 @@ export async function GET(request: Request) {
       // Pagamento existe no MP mas ainda nao esta aprovado (pendente, expirado,
       // cancelado). Nada a fazer: quando aprovar, o webhook ou a proxima
       // execucao deste cron resolve.
+      //
+      // Se ja existe evento para esta chave, NAO escrevemos: um "ignorado" do
+      // cron nao pode apagar um "erro" que o webhook registrou (o alerta
+      // sumiria de /admin/sistema) nem sobrescrever o payload bruto guardado
+      // para auditoria/replay.
       resumo.aindaPendentes++;
       detalhes.push({ paymentId, resultado: `ignorado:${resultado.paymentStatus}` });
-      await registrarEvento(supabase, idempotencyKey, paymentId, "ignorado", null);
+      if (!existente) {
+        await registrarEvento(supabase, undefined, idempotencyKey, paymentId, "ignorado", null);
+      }
       continue;
     }
 
     resumo.conciliados++;
     detalhes.push({ paymentId, resultado: "processado", parcelas: resultado.parcelasAtualizadas });
-    await registrarEvento(supabase, idempotencyKey, paymentId, "processado", null);
+    await registrarEvento(supabase, existente?.id, idempotencyKey, paymentId, "processado", null);
   }
 
   // Um pagamento conciliado aqui e, por definicao, um que o webhook deixou
@@ -98,8 +131,15 @@ export async function GET(request: Request) {
   return NextResponse.json({ ok: true, resumo, detalhes });
 }
 
+// Grava o resultado no mesmo ledger do webhook.
+//
+// Quando o evento ja existe (eventId presente) fazemos UPDATE de campos
+// especificos em vez de upsert do objeto inteiro: `payload` guarda o corpo
+// bruto recebido do MP, para auditoria e replay, e um upsert do cron o
+// substituiria por metadado proprio, destruindo o registro original.
 async function registrarEvento(
   supabase: SupabaseClient,
+  eventId: string | undefined,
   idempotencyKey: string,
   paymentId: string,
   status: "processado" | "ignorado" | "erro",
@@ -107,20 +147,33 @@ async function registrarEvento(
 ) {
   const agora = new Date().toISOString();
   try {
-    await supabase.from("events").upsert(
-      {
-        source: "mercadopago",
-        event_type: "payment",
-        idempotency_key: idempotencyKey,
-        external_id: paymentId,
-        payload: { origem: "cron:conciliar-pagamentos" },
-        status,
-        erro,
-        processed_at: status === "processado" ? agora : null,
-        updated_at: agora,
-      },
-      { onConflict: "idempotency_key" }
-    );
+    const { error } = eventId
+      ? await supabase
+          .from("events")
+          .update({
+            status,
+            erro,
+            ...(status === "processado" ? { processed_at: agora } : {}),
+            updated_at: agora,
+          })
+          .eq("id", eventId)
+      : await supabase.from("events").insert({
+          source: "mercadopago",
+          event_type: "payment",
+          idempotency_key: idempotencyKey,
+          external_id: paymentId,
+          payload: { origem: "cron:conciliar-pagamentos" },
+          status,
+          erro,
+          processed_at: status === "processado" ? agora : null,
+          updated_at: agora,
+        });
+
+    // supabase-js devolve o erro em `error` e nao lanca: sem este check a rota
+    // responderia ok:true com o ledger dessincronizado.
+    if (error) {
+      console.error("[conciliar-pagamentos] falha ao registrar evento:", error.message);
+    }
   } catch (err) {
     console.error("[conciliar-pagamentos] falha ao registrar evento:", err);
   }

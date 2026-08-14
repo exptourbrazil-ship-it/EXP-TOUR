@@ -13,10 +13,10 @@ const BRAND_GOLD = "#c9a35e";
 // ignoram <img src="*.svg">. So o Apple Mail renderiza SVG, o que mascarava o
 // problema em teste. Logo de e-mail precisa ser PNG (ou JPG).
 //
-// Regra aqui: so emitimos <img> quando EMAIL_LOGO_URL esta configurada. Sem ela,
-// renderizamos um wordmark em texto — que aparece sempre, inclusive com imagens
-// bloqueadas (padrao do Gmail para remetentes novos) — em vez de arriscar um
-// icone de imagem quebrada.
+// Regra aqui: so emitimos <img> quando conseguimos montar uma URL (via
+// EMAIL_LOGO_URL ou NEXT_PUBLIC_APP_URL). Sem nenhuma das duas — ambiente sem
+// as envs — renderizamos um wordmark em texto em vez de arriscar um icone de
+// imagem quebrada. Em producao o caminho normal e o <img>.
 //
 // O PNG vive em public/email/logo-exp-tour.png e e servido pelo proprio app.
 // Servir daqui (e nao do WordPress) tira a dependencia de um dominio externo

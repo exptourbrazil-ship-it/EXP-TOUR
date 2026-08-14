@@ -44,7 +44,14 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
   // valor velho enquanto o sistema registra o novo. Incluindo o valor na chave,
   // um valor diferente gera uma cobranca nova; o mesmo valor continua idempotente
   // (protege contra duplo-clique).
-  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}`;
+  //
+  // O sufixo de versao entra na chave porque o FORMATO da requisicao mudou (a
+  // notification_url passou a ser enviada). Sem ele, regerar a cobranca de uma
+  // parcela que ja tinha Pix no mesmo valor faria o MP devolver o pagamento
+  // ANTIGO, criado sem notification_url — ou seja, a correcao nao alcancaria
+  // justamente as cobrancas que hoje estao quebradas, e em silencio. Ao mudar
+  // o formato da requisicao de novo, incrementar a versao.
+  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}:v2`;
 
   const response = await fetch(`${MP_API_URL}/v1/payments`, {
         method: "POST",
