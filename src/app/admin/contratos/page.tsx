@@ -16,6 +16,9 @@ export type ContratoLista = {
   titular_nome: string | null;
   titular_email: string | null;
   assinatura_status: string | null;
+  cancelado_em: string | null;
+  cancelado_tipo: string | null;
+  cancelado_motivo: string | null;
 };
 
 // Pagina de contratos: lista os contratos com o status da assinatura e permite
@@ -33,7 +36,7 @@ export default async function AdminContratosPage() {
 
     const { data: linhas } = await supabase
       .from("contratos")
-      .select("id, nome, estudante_nome, pais_destino, moeda, valor_total, titular_id")
+      .select("id, nome, estudante_nome, pais_destino, moeda, valor_total, titular_id, cancelado_em, cancelado_tipo, cancelado_motivo")
       .order("created_at", { ascending: false });
 
     const titularIds = Array.from(new Set((linhas || []).map((c: any) => c.titular_id).filter(Boolean)));
@@ -73,6 +76,9 @@ export default async function AdminContratosPage() {
         titular_nome: t.nome,
         titular_email: t.email,
         assinatura_status: statusPorContrato.get(c.id) || null,
+        cancelado_em: c.cancelado_em ?? null,
+        cancelado_tipo: c.cancelado_tipo ?? null,
+        cancelado_motivo: c.cancelado_motivo ?? null,
       };
     });
   } catch {

@@ -39,6 +39,7 @@ export default async function DocumentosPage() {
   const { data: contratoNome } = await supabase
     .from("contratos")
     .select("estudante_nome")
+    .is("cancelado_em", null)
     .eq("titular_id", sessao.titularId)
     .limit(1)
     .maybeSingle();

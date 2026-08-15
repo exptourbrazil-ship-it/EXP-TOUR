@@ -27,7 +27,8 @@ export default async function ParcelasPage() {
   const { data: contratos } = await supabase
     .from("contratos")
     .select("id, nome, moeda, valor_total, data_inicio, estudante_nome")
-    .eq("titular_id", sessao.titularId);
+    .eq("titular_id", sessao.titularId)
+    .is("cancelado_em", null);
 
   const { data: titular } = await supabase
     .from("titulares")

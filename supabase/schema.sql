@@ -18,8 +18,18 @@ create table if not exists contratos (
   estudante_nome text,               -- nome do estudante (aparece na aba Inicio/Retorno)
   estudante_sexo text check (estudante_sexo in ('F','M')), -- artigo da msg de indicacao
   pais_destino text,                 -- slug do destino (ex.: 'canada','eua','nova_zelandia')
+  -- Cancelamento (soft). Sem isto a regua de cobranca continuava enviando
+  -- e-mail para quem ja tinha desistido: nao havia nada no modelo que
+  -- representasse um contrato cancelado. Apagar o contrato apagaria as
+  -- parcelas em cascata e destruiria o historico.
+  cancelado_em timestamptz,          -- data EFETIVA (pode ser retroativa)
+  cancelado_tipo text check (cancelado_tipo is null or cancelado_tipo in
+    ('arrependimento','desistencia','erro_cadastro','outro')),
+  cancelado_motivo text,
+  cancelado_por text,                -- usuario admin que registrou
   created_at timestamptz not null default now()
   );
+create index if not exists idx_contratos_cancelado_em on contratos(cancelado_em);
 
 -- Colunas aplicadas depois via SQL Editor em bancos ja existentes (o create
 -- acima so vale para bancos novos). Ver CLAUDE.md sobre reconciliacao de DDL.

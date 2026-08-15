@@ -31,6 +31,7 @@ export default async function InicioPage() {
     .from("contratos")
     .select("id, nome, valor_total, moeda, data_inicio, estudante_nome")
     .eq("titular_id", sessao.titularId)
+    .is("cancelado_em", null)
     .order("id", { ascending: false })
 
   const contrato = (contratos && contratos[0]) || null

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ContratoLista } from "./page";
 import { fmtMoeda } from "@/lib/formato";
+import { TIPOS_CANCELAMENTO, rotuloTipoCancelamento } from "@/lib/cancelamento";
 
 const STATUS_BADGE: Record<string, string> = {
   rascunho: "bg-neutral-100 text-neutral-600",
@@ -23,6 +24,73 @@ export default function ContratosClient({
   const [linhas, setLinhas] = useState<ContratoLista[]>(contratos);
   const [enviandoId, setEnviandoId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ id: string; texto: string; erro: boolean } | null>(null);
+  // Formulario de cancelamento aberto para um contrato especifico.
+  const [cancelando, setCancelando] = useState<string | null>(null);
+  const [tipo, setTipo] = useState(TIPOS_CANCELAMENTO[0].valor as string);
+  const [motivo, setMotivo] = useState("");
+  const [dataEfetiva, setDataEfetiva] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  function abrirCancelamento(id: string) {
+    setCancelando(id);
+    setTipo(TIPOS_CANCELAMENTO[0].valor);
+    setMotivo("");
+    setDataEfetiva("");
+    setMsg(null);
+  }
+
+  async function confirmarCancelamento(id: string) {
+    setSalvando(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/contratos/${id}/cancelar`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tipo, motivo, dataEfetiva: dataEfetiva || undefined }),
+      });
+      const json = await res.json();
+      if (res.ok && json.ok) {
+        setLinhas((ls) =>
+          ls.map((c) =>
+            c.id === id
+              ? { ...c, cancelado_em: json.canceladoEm, cancelado_tipo: tipo, cancelado_motivo: motivo }
+              : c
+          )
+        );
+        setCancelando(null);
+        setMsg({ id, texto: "Contrato cancelado. A régua de cobrança não envia mais.", erro: false });
+      } else {
+        setMsg({ id, texto: json.erro || "Falha ao cancelar.", erro: true });
+      }
+    } catch (e: any) {
+      setMsg({ id, texto: e?.message || "Erro de rede.", erro: true });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function reativar(id: string) {
+    setSalvando(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/contratos/${id}/cancelar`, { method: "DELETE" });
+      const json = await res.json();
+      if (res.ok && json.ok) {
+        setLinhas((ls) =>
+          ls.map((c) =>
+            c.id === id ? { ...c, cancelado_em: null, cancelado_tipo: null, cancelado_motivo: null } : c
+          )
+        );
+        setMsg({ id, texto: "Contrato reativado.", erro: false });
+      } else {
+        setMsg({ id, texto: json.erro || "Falha ao reativar.", erro: true });
+      }
+    } catch (e: any) {
+      setMsg({ id, texto: e?.message || "Erro de rede.", erro: true });
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   async function enviar(id: string) {
     setEnviandoId(id);
@@ -76,7 +144,7 @@ export default function ContratosClient({
               const st = c.assinatura_status;
               const jaEnviado = st === "enviado" || st === "em_andamento" || st === "assinado";
               return (
-                <tr key={c.id} className="border-b border-neutral-100 last:border-0 align-top">
+                <tr key={c.id} className={`border-b border-neutral-100 last:border-0 align-top ${c.cancelado_em ? "opacity-60" : ""}`}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-brand">{c.titular_nome || "(sem nome)"}</div>
                     <div className="text-xs text-neutral-400">{c.estudante_nome || "—"}</div>
@@ -104,15 +172,92 @@ export default function ContratosClient({
                     ) : null}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => enviar(c.id)}
-                      disabled={!templateConfigurado || !c.titular_email || enviandoId === c.id}
-                      title={!c.titular_email ? "Titular sem e-mail" : undefined}
-                      className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {enviandoId === c.id ? "Enviando…" : jaEnviado ? "Reenviar" : "Enviar p/ assinatura"}
-                    </button>
+                    {c.cancelado_em ? (
+                      <div className="space-y-1">
+                        <div className="text-xs text-neutral-500">
+                          {rotuloTipoCancelamento(c.cancelado_tipo)} em{" "}
+                          {new Date(c.cancelado_em).toLocaleDateString("pt-BR")}
+                        </div>
+                        {c.cancelado_motivo ? (
+                          <div className="text-xs text-neutral-400">{c.cancelado_motivo}</div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => reativar(c.id)}
+                          disabled={salvando}
+                          className="rounded-xl border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
+                        >
+                          Reativar
+                        </button>
+                      </div>
+                    ) : cancelando === c.id ? (
+                      <div className="w-64 space-y-2">
+                        <select
+                          value={tipo}
+                          onChange={(e) => setTipo(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+                        >
+                          {TIPOS_CANCELAMENTO.map((t) => (
+                            <option key={t.valor} value={t.valor}>
+                              {t.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={motivo}
+                          onChange={(e) => setMotivo(e.target.value)}
+                          placeholder="Motivo (fica no histórico)"
+                          className="w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+                        />
+                        <label className="block text-[11px] text-neutral-500">
+                          Data em que o cliente comunicou (opcional)
+                          <input
+                            type="date"
+                            value={dataEfetiva}
+                            onChange={(e) => setDataEfetiva(e.target.value)}
+                            max={new Date().toISOString().slice(0, 10)}
+                            className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => confirmarCancelamento(c.id)}
+                            disabled={salvando || motivo.trim().length < 3}
+                            className="rounded-xl bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                          >
+                            {salvando ? "Cancelando…" : "Confirmar"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCancelando(null)}
+                            className="rounded-xl border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600"
+                          >
+                            Voltar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => enviar(c.id)}
+                          disabled={!templateConfigurado || !c.titular_email || enviandoId === c.id}
+                          title={!c.titular_email ? "Titular sem e-mail" : undefined}
+                          className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50"
+                        >
+                          {enviandoId === c.id ? "Enviando…" : jaEnviado ? "Reenviar" : "Enviar p/ assinatura"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirCancelamento(c.id)}
+                          className="text-xs text-neutral-500 underline underline-offset-2 transition hover:text-red-600"
+                        >
+                          Cancelar contrato
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
