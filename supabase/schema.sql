@@ -423,3 +423,16 @@ create table if not exists propostas (
 create index if not exists idx_propostas_token on propostas(token);
 create index if not exists idx_propostas_status on propostas(status);
 alter table if exists propostas enable row level security;
+
+-- codigos_acesso: aplicada direto no Supabase (ver nota no CLAUDE.md sobre
+-- tabelas criadas pelo SQL Editor). Registrada aqui para referencia.
+--
+-- codigo_hash: o codigo de 6 digitos era gravado em TEXTO CLARO e a tabela
+-- nunca era expurgada — com o tempo virava um acervo crescente de credenciais
+-- de login legiveis. Hoje gravamos apenas HMAC-SHA256 (ver
+-- src/lib/codigo-acesso.ts) e o cron limpar-rate-limit apaga o que passa de
+-- 24h. A coluna `codigo` segue existindo apenas para nao derrubar quem estiver
+-- no meio de um login no momento do deploy; pode ser removida depois.
+alter table if exists codigos_acesso add column if not exists codigo_hash text;
+create index if not exists idx_codigos_acesso_titular_ativo
+  on codigos_acesso(titular_id, used_at, created_at desc);

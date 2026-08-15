@@ -175,8 +175,13 @@ export default function ContratosClient({
                     {c.cancelado_em ? (
                       <div className="space-y-1">
                         <div className="text-xs text-neutral-500">
+                          {/* timeZone UTC de proposito: a data de cancelamento e data
+                              CIVIL, nao instante. Sem isto, quem registrava 31/07 via
+                              30/07 na tela — o valor e gravado a meia-noite UTC e o
+                              navegador convertia para o fuso local (UTC-7). Um dia de
+                              diferenca muda a contagem dos 7 dias do arrependimento. */}
                           {rotuloTipoCancelamento(c.cancelado_tipo)} em{" "}
-                          {new Date(c.cancelado_em).toLocaleDateString("pt-BR")}
+                          {new Date(c.cancelado_em).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
                         </div>
                         {c.cancelado_motivo ? (
                           <div className="text-xs text-neutral-400">{c.cancelado_motivo}</div>
