@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
 import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
 import { resolverTitular, dadosPrograma, dadosComerciais } from "@/lib/zoho-contato";
+import { calcularVencimentosParcelas, dividirValorParcelas, somaParcelasConfere } from "@/lib/parcelas";
 
 export const runtime = "nodejs";
 
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
   // A validacao de valor/parcelas so acontece na criacao de um contrato NOVO
   // (mais abaixo): um contrato ja existente sincroniza escola/programa sem
   // depender de preco.
-  const { nomeProduto, moeda, valorTotal, valorEntrada, numeroParcelas } =
+  const { nomeProduto, moeda, valorTotal, valorEntrada } =
     dadosComerciais(contato, produto);
 
   // Dados do programa vindos do Contato (estudante, sexo, destino, data e
@@ -209,12 +210,29 @@ export async function POST(request: Request) {
   // Contrato NOVO: agora sim exigimos valor e numero de parcelas. Preencha o
   // comercial no Contato do Zoho (Valor Total, Moeda, Valor de Entrada, Numero
   // de Parcelas) -- ou, para contratos antigos, no proprio Produto.
-  if (!valorTotal || !numeroParcelas) {
+  if (!valorTotal) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          "Sem valor total (na moeda correta) ou numero de parcelas. Preencha o comercial no Contato do Zoho (ou no Produto).",
+          "Sem valor total (na moeda correta). Preencha o comercial no Contato do Zoho (ou no Produto).",
+      },
+      { status: 422 }
+    );
+  }
+
+  // O NUMERO DE PARCELAS NAO E MAIS LIDO DO ZOHO: passou a ser derivado da
+  // janela entre a data da compra e o inicio do programa (ver
+  // calcularVencimentosParcelas em src/lib/parcelas.ts). Sem data de inicio
+  // nao ha como aplicar a regra dos 30 dias (Clausula 7.4), entao a rota falha
+  // FECHADO -- melhor recusar e cobrar o preenchimento no CRM do que gerar um
+  // plano arbitrario que a equipe teria de corrigir na mao depois.
+  if (!prog.dataInicio) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Contato sem Data de Inicio do programa. O numero de parcelas e calculado a partir dela; preencha no Contato do Zoho e salve novamente.",
       },
       { status: 422 }
     );
@@ -238,39 +256,53 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao criar contrato no Supabase" }, { status: 500 });
   }
 
-  const hoje = new Date();
+  // Data da compra = hoje = vencimento da entrada.
+  const dataCompra = new Date().toISOString().slice(0, 10);
+
+  // Quantidade de parcelas derivada da janela ate o inicio do programa.
+  // Janela curta gera menos parcelas; janela insuficiente gera zero, e nesse
+  // caso o contrato fica so com a entrada valendo o total (a alternativa seria
+  // criar uma parcela que ja nasce violando a regra dos 30 dias).
+  const vencimentos = calcularVencimentosParcelas(dataCompra, prog.dataInicio);
+
+  const entrada = vencimentos.length > 0 ? valorEntrada : valorTotal;
+  const valoresParcelas = dividirValorParcelas(valorTotal - entrada, vencimentos.length);
+
   const parcelas: any[] = [
     {
       contrato_id: contrato.id,
       numero: 1,
       descricao: "Entrada",
-      valor_original: valorEntrada,
-      valor_atual: valorEntrada,
-      vencimento: hoje.toISOString().slice(0, 10),
+      valor_original: entrada,
+      valor_atual: entrada,
+      vencimento: dataCompra,
       is_entrada: true,
     },
   ];
 
-  const valorRestante = valorTotal - valorEntrada;
-  const valorParcelaBase = Math.floor((valorRestante / numeroParcelas) * 100) / 100;
-  let somaParcelas = 0;
-
-  for (let i = 0; i < numeroParcelas; i++) {
-    const isUltima = i === numeroParcelas - 1;
-    const valor = isUltima ? Number((valorRestante - somaParcelas).toFixed(2)) : valorParcelaBase;
-    somaParcelas += valor;
-
-    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i + 1, 15);
-
+  vencimentos.forEach((vencimento, i) => {
     parcelas.push({
       contrato_id: contrato.id,
       numero: i + 2,
-      descricao: `Parcela ${i + 1}/${numeroParcelas}`,
-      valor_original: valor,
-      valor_atual: valor,
-      vencimento: vencimento.toISOString().slice(0, 10),
+      descricao: `Parcela ${i + 1}/${vencimentos.length}`,
+      valor_original: valoresParcelas[i],
+      valor_atual: valoresParcelas[i],
+      vencimento,
       is_entrada: false,
     });
+  });
+
+  // Invariante: entrada + parcelas tem de fechar com o valor do contrato.
+  // Se nao fechar, aborta antes de gravar -- um contrato com plano torto e
+  // pior do que um contrato nao provisionado.
+  const valores = parcelas.map((p) => p.valor_original as number);
+  if (!somaParcelasConfere(valores, valorTotal)) {
+    await supabase.from("contratos").delete().eq("id", contrato.id);
+    console.error("Plano de parcelas nao fecha com o valor total", { valores, valorTotal });
+    return NextResponse.json(
+      { ok: false, error: "Plano de parcelas nao fecha com o valor total do contrato" },
+      { status: 500 }
+    );
   }
 
   const { error: parcelasError } = await supabase.from("parcelas").insert(parcelas);
