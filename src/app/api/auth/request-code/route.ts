@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
+import crypto from "node:crypto";
 
 // Rate limit anti-abuso do Resend / enumeracao de CPF (janela de 10 min):
 // no maximo RL_IP pedidos por IP e RL_CPF por CPF. Configuravel por env.
@@ -13,8 +14,12 @@ function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
 }
 
+// crypto.randomInt, nao Math.random. O Math.random do V8 e xorshift128+, um
+// PRNG nao criptografico cujo estado de 128 bits e recuperavel a partir de
+// poucas saidas: quem pedisse codigos para o proprio CPF poderia prever os
+// codigos emitidos para outros na mesma instancia serverless.
 function gerarCodigo(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return String(crypto.randomInt(100000, 1000000));
 }
 
 // Normaliza o telefone cadastrado (que pode vir do Zoho em formatos variados,

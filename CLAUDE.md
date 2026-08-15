@@ -12,7 +12,7 @@ regressiva e regras de negócio (ex.: "regra dos 30 dias" para a quitação).
 
 ## Stack
 
-- **Next.js 14** (App Router) + **TypeScript** + **Tailwind**.
+- **Next.js 16** (App Router) + **TypeScript** + **Tailwind**.
 - **Supabase** (Postgres + Storage) — **fonte de verdade operacional**.
 - **Vercel** (deploy + Cron).
 - **Resend** (e-mails) — hoje envia códigos de acesso; motor de régua de

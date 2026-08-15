@@ -40,7 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (bucket && documento.storage_path) {
     const { data: signed, error: signedError } = await supabase.storage
       .from(bucket)
-      .createSignedUrl(documento.storage_path, 60);
+      .createSignedUrl(documento.storage_path, 60, { download: documento.nome_arquivo || true });
     if (signedError || !signed) {
       return NextResponse.json({ ok: false, error: "Falha ao gerar link do documento" }, { status: 500 });
     }

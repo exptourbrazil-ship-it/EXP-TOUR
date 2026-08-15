@@ -42,7 +42,14 @@ function isoMaisDias(base: Date, dias: number): string {
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // Falha FECHADO. Antes era `if (cronSecret && ...)`: se a variavel sumisse,
+  // fosse renomeada ou ficasse vazia, a guarda era pulada e a rota virava
+  // publica, sem nenhum sinal. Configuracao faltante agora recusa.
+  if (!cronSecret) {
+    console.error("CRON_SECRET nao configurado: execucao do cron recusada.");
+    return NextResponse.json({ ok: false, erro: "Cron nao configurado" }, { status: 503 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

@@ -70,6 +70,8 @@ export function verificarTokenCodigo(token: string | undefined | null, codigo: s
   }
 }
 
+// Ver a nota em auth/request-code: Math.random nao serve para material de
+// autenticacao. Aqui o impacto era maior — este e o codigo do admin.
 export function gerarCodigo(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(crypto.randomInt(100000, 1000000));
 }

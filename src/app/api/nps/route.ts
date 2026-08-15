@@ -28,6 +28,22 @@ export async function POST(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  // Checagem de posse: o contratoId vinha do corpo e era gravado junto ao
+  // titular_id da sessao sem nunca verificar que o contrato pertence a quem
+  // esta chamando — dava para vincular a resposta ao contrato de outro cliente.
+  if (contratoId) {
+    const { data: contratoDono } = await supabase
+      .from("contratos")
+      .select("id")
+      .eq("id", contratoId)
+      .eq("titular_id", sessao.titularId)
+      .maybeSingle();
+    if (!contratoDono) {
+      return NextResponse.json({ ok: false, erro: "Contrato nao encontrado" }, { status: 404 });
+    }
+  }
+
+
   const registro = {
     titular_id: sessao.titularId,
     contrato_id: contratoId,

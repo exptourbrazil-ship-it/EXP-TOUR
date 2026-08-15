@@ -22,7 +22,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
   if (documento.origem === "admin" || documento.origem === "titular") {
     const bucket = documento.origem === "admin" ? "documentos-admin" : "documentos-titular";
-    const { data: signed, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(documento.storage_path, 60);
+    const { data: signed, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(documento.storage_path, 60, { download: documento.nome_arquivo || true });
     if (signedError || !signed) {
       return NextResponse.json({ error: "Falha ao gerar link do documento" }, { status: 500 });
     }
