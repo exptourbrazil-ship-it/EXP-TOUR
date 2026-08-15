@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest } from "@/lib/admin-guard";
+import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -32,6 +34,17 @@ const { data: documentos, error } = await supabase.from("documentos").select("*"
   if (error) {
     return NextResponse.json({ ok: false, error: "Falha ao buscar documentos" }, { status: 500 });
   }
+
+// Listar os documentos de um titular tambem e leitura de PII: expoe a
+// taxonomia completa (passaporte, CPF, visto) daquela pessoa. Auditado pelo
+// mesmo motivo do download.
+await registrarAuditoriaAdmin(supabase, {
+  usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+  acao: "documento.listar",
+  alvo: cpf,
+  detalhe: { titular_id: titular.id, quantidade: (documentos || []).length },
+  ip: obterIp(request),
+});
 
 return NextResponse.json({ ok: true, documentos });
 }

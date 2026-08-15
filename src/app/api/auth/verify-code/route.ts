@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { criarSessao, SESSION_COOKIE } from "@/lib/session";
+import { conferirCodigoAcesso } from "@/lib/codigo-acesso";
 
 function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
 
   const { data: codigoAcesso } = await supabase
       .from("codigos_acesso")
-      .select("id, codigo, expires_at, used_at, tentativas")
+      .select("id, codigo, codigo_hash, expires_at, used_at, tentativas")
       .eq("titular_id", titular.id)
       .is("used_at", null)
       .order("created_at", { ascending: false })
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
               );
   }
 
-  if (codigoAcesso.codigo !== codigo.trim()) {
+  if (!conferirCodigoAcesso(codigo, codigoAcesso as any)) {
         await supabase
           .from("codigos_acesso")
           .update({ tentativas: codigoAcesso.tentativas + 1 })

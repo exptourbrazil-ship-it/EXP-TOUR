@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 import crypto from "node:crypto";
+import { hashCodigoAcesso } from "@/lib/codigo-acesso";
 
 // Rate limit anti-abuso do Resend / enumeracao de CPF (janela de 10 min):
 // no maximo RL_IP pedidos por IP e RL_CPF por CPF. Configuravel por env.
@@ -80,9 +81,20 @@ export async function POST(request: Request) {
   const codigo = gerarCodigo();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
+  // Invalida os codigos anteriores ainda abertos deste titular. Antes, pedir um
+  // codigo novo NAO derrubava os antigos: varios codigos ficavam validos ao
+  // mesmo tempo, multiplicando as chances de um palpite acertar e mantendo
+  // valido um codigo que talvez tenha vazado por e-mail encaminhado.
+  await supabase
+        .from("codigos_acesso")
+        .update({ used_at: new Date().toISOString() })
+        .eq("titular_id", titular.id)
+        .is("used_at", null);
+
+  // Grava apenas o HMAC. O codigo em claro so existe no e-mail do cliente.
   await supabase.from("codigos_acesso").insert({
         titular_id: titular.id,
-        codigo,
+        codigo_hash: hashCodigoAcesso(codigo),
         expires_at: expiresAt,
   });
 

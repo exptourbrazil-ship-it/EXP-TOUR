@@ -45,5 +45,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, erro: "Falha na limpeza: " + error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, corte: corteISO, removidos: count ?? 0 });
+  // Expurgo dos codigos de acesso. A tabela nunca era limpa: guardava todo
+  // codigo ja emitido, indefinidamente. Agora os codigos sao gravados como
+  // HMAC, mas mesmo hash nao precisa ficar para sempre — um codigo expira em
+  // 10 minutos, entao nada com mais de 24h tem utilidade.
+  const { error: errCodigos, count: codigosRemovidos } = await supabase
+    .from("codigos_acesso")
+    .delete({ count: "exact" })
+    .lt("created_at", corteISO);
+
+  if (errCodigos) {
+    // Nao derruba a rota: a limpeza do rate limit ja foi feita e e a critica.
+    console.error("[limpar-rate-limit] falha ao expurgar codigos_acesso:", errCodigos.message);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    corte: corteISO,
+    removidos: count ?? 0,
+    codigos_removidos: errCodigos ? null : (codigosRemovidos ?? 0),
+  });
 }

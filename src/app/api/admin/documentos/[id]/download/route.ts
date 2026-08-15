@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { obterIp } from "@/lib/rate-limit";
+import { usuarioAdminAtual } from "@/lib/admin-guard";
 import { checarAdminRequest } from "@/lib/admin-guard";
 import { getZohoAttachmentContent } from "@/lib/zoho";
 
@@ -35,6 +38,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (error || !documento) {
     return NextResponse.json({ ok: false, error: "Documento nao encontrado" }, { status: 404 });
   }
+
+  // Auditoria de leitura de PII. Esta rota entrega documento de identidade de
+  // QUALQUER titular — o cofre guarda passaporte, CPF e comprovantes. Ate aqui
+  // a leitura nao deixava rastro nenhum: nao havia como saber, depois, quem
+  // abriu o documento de quem. Para um cofre de documentos, isso e a lacuna
+  // mais seria de registro.
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+    acao: "documento.ler",
+    alvo: id,
+    detalhe: {
+      titular_id: documento.titular_id,
+      tipo_documento: documento.tipo_documento,
+      origem: documento.origem,
+    },
+    ip: obterIp(request),
+  });
 
   const bucket = BUCKET_POR_ORIGEM[documento.origem as string];
   if (bucket && documento.storage_path) {
