@@ -1,0 +1,33 @@
+/* ============================================================
+   EFFECTS — radius, shadow, motion, focus.
+   Brand: flat, 4px radius, restrained shadows, ease-in-out motion.
+   ============================================================ */
+:root {
+  /* ---- Corner radius ---- */
+  --radius-sm:   4px;   /* buttons, inputs, cards — the brand default */
+  --radius-md:   8px;   /* larger surfaces, modals */
+  --radius-lg:   12px;  /* feature cards, app sheets */
+  --radius-pill: 999px; /* tags, pills, avatars */
+
+  /* ---- Borders ---- */
+  --border-width:       1px;  /* @kind other */
+  --border-width-emph:  2px;  /* @kind other */
+
+  /* ---- Shadows (subtle; brand avoids heavy effects) ---- */
+  --shadow-xs:   0 1px 2px rgba(26, 26, 26, 0.06);
+  --shadow-sm:   0 1px 3px rgba(26, 26, 26, 0.08), 0 1px 2px rgba(26, 26, 26, 0.04);
+  --shadow-md:   0 4px 12px rgba(26, 26, 26, 0.10);
+  --shadow-lg:   0 12px 32px rgba(26, 26, 26, 0.12);
+  --shadow-hover:0 6px 16px rgba(0, 68, 186, 0.14);  /* 2px lift accent on hover */
+  --shadow-focus:0 0 0 3px rgba(0, 68, 186, 0.22);   /* focus ring glow */
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);  /* @kind other */
+  --dur-micro:    200ms;  /* @kind other */
+  --dur-trans:    350ms;  /* @kind other */
+  --dur-fade:     150ms;  /* @kind other */
+  --transition-base: all var(--dur-micro) var(--ease-standard);  /* @kind other */
+
+  /* ---- Photo overlay (brand imagery treatment) ---- */
+  --overlay-brand: linear-gradient(180deg, rgba(0,68,186,0.18) 0%, rgba(14,106,165,0.22) 100%);  /* @kind other */
+}

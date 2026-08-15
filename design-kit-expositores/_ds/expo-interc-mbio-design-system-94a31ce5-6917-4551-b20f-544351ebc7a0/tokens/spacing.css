@@ -1,0 +1,30 @@
+/* ============================================================
+   SPACING & LAYOUT — Expo Intercâmbio
+   Base unit: 8px. All spacing is a multiple of 8 (brand rule).
+   ============================================================ */
+:root {
+  --space-0:  0;
+  --space-1:  8px;
+  --space-2:  16px;
+  --space-3:  24px;
+  --space-4:  32px;
+  --space-5:  40px;
+  --space-6:  48px;
+  --space-7:  56px;
+  --space-8:  64px;
+  --space-10: 80px;
+  --space-12: 96px;
+
+  /* ---- Layout grid ---- */
+  --container-max:    1200px;  /* @kind other */
+  --grid-columns:     12;      /* @kind other */
+  --grid-gutter:      16px;
+  --page-margin:      24px;   /* desktop left/right */
+  --page-margin-mob:  12px;
+
+  /* ---- Component sizing ---- */
+  --control-height:    44px;  /* min touch target */
+  --control-height-sm: 36px;
+  --icon-size:         24px;  /* primary interface icons */
+  --icon-size-sm:      16px;  /* inline / secondary icons */
+}

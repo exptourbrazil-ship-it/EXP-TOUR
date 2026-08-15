@@ -1,0 +1,41 @@
+/* ============================================================
+   TYPOGRAPHY — Expo Intercâmbio
+   Roboto = display/headings/nav/brand-forward.
+   Poppins = body/UI/supporting/secondary headings.
+   Never reverse this hierarchy (brand rule #3).
+   ============================================================ */
+:root {
+  /* ---- Families ---- */
+  --font-display: "Roboto", "Helvetica Neue", Arial, sans-serif;   /* @kind font */
+  --font-body:    "Poppins", "Segoe UI", Roboto, sans-serif;        /* @kind font */
+
+  /* ---- Weights ---- */
+  --fw-regular:  400;  /* @kind font */
+  --fw-medium:   500;  /* @kind font */
+  --fw-semibold: 600;  /* @kind font */
+  --fw-bold:     700;  /* @kind font */
+  --fw-black:    900;  /* @kind font */
+
+  /* ---- Type scale (from guideline hierarchy) ---- */
+  --fs-h1:       46px;  /* 44–48 Roboto Bold,   lh 1.2 */
+  --fs-h2:       34px;  /* 32–36 Roboto Bold,   lh 1.3 */
+  --fs-h3:       22px;  /* 20–24 Poppins Semibold, lh 1.4 */
+  --fs-body-lg:  18px;  /* hero subheading Poppins Regular */
+  --fs-body:     16px;  /* body Poppins Regular, lh 1.6 */
+  --fs-body-sm:  15px;  /* card description */
+  --fs-nav:      14px;  /* nav Roboto Medium, lh 1.5 */
+  --fs-caption:  13px;  /* form labels Poppins */
+  --fs-meta:     12px;  /* meta / captions */
+
+  /* ---- Line heights ---- */
+  --lh-tight:   1.2;  /* @kind font */
+  --lh-heading: 1.3;  /* @kind font */
+  --lh-snug:    1.4;  /* @kind font */
+  --lh-normal:  1.5;  /* @kind font */
+  --lh-body:    1.6;  /* @kind font */
+
+  /* ---- Letter spacing ---- */
+  --ls-tight:  -0.01em;  /* @kind font */
+  --ls-normal: 0;        /* @kind font */
+  --ls-wide:   0.04em;   /* @kind font */
+}
