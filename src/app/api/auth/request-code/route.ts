@@ -92,11 +92,25 @@ export async function POST(request: Request) {
         .is("used_at", null);
 
   // Grava apenas o HMAC. O codigo em claro so existe no e-mail do cliente.
-  await supabase.from("codigos_acesso").insert({
+  //
+  // O erro do insert PRECISA ser checado. Em 15/08/2026 ele nao era, e a coluna
+  // `codigo` ainda era NOT NULL: todo insert falhava, a rota seguia adiante e
+  // enviava o e-mail assim mesmo. O cliente recebia o codigo e nao existia
+  // linha para conferir — login quebrado para todo mundo, sem nenhum sinal.
+  // Enviar um codigo que nao da para validar e pior do que dizer que falhou.
+  const { error: insErr } = await supabase.from("codigos_acesso").insert({
         titular_id: titular.id,
         codigo_hash: hashCodigoAcesso(codigo),
         expires_at: expiresAt,
   });
+
+  if (insErr) {
+        console.error("[request-code] falha ao gravar o codigo de acesso:", insErr.message);
+        return NextResponse.json(
+          { success: false, error: "Nao foi possivel gerar o codigo agora. Tente novamente." },
+          { status: 500 }
+              );
+  }
 
   try {
                 await enviarCodigoAcessoEmail(titular.email, titular.nome_completo, codigo);

@@ -434,5 +434,8 @@ alter table if exists propostas enable row level security;
 -- 24h. A coluna `codigo` segue existindo apenas para nao derrubar quem estiver
 -- no meio de um login no momento do deploy; pode ser removida depois.
 alter table if exists codigos_acesso add column if not exists codigo_hash text;
+-- `codigo` precisa ser opcional: o fluxo novo grava so o hash. Enquanto era
+-- NOT NULL, todo insert falhava (incidente de 15/08/2026).
+alter table if exists codigos_acesso alter column codigo drop not null;
 create index if not exists idx_codigos_acesso_titular_ativo
   on codigos_acesso(titular_id, used_at, created_at desc);
