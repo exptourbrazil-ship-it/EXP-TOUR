@@ -1,0 +1,73 @@
+/* ============================================================
+   COLORS — Expo Intercâmbio
+   Brand palette (per brand owner):
+     Principal  #446684  — main brand color, primary actions, footer, nav
+     Secondary  #0044BA  — links, accents, focus, card accent strip
+     Text       #A6A6A6  — body text / metadata only
+     Realce     #0ACE00  — success & conversion (highlight) ONLY, sparingly
+   Do NOT introduce colors outside this palette.
+   NOTE: legacy variable names (--blue-primary, etc.) are retained so all
+   components keep working; their VALUES now follow the roles above.
+   ============================================================ */
+:root {
+  /* ---- Core brand palette ---- */
+  --blue-principal: #446684;  /* PRINCIPAL — main brand color */
+  --blue-secondary: #0044BA;  /* SECONDARY — links, accents, focus */
+  --gray-text:      #A6A6A6;  /* TEXT — body/metadata only, never headings */
+  --green-realce:   #0ACE00;  /* REALCE — success/conversion highlight */
+
+  /* ---- Legacy aliases (mapped to the roles above) ---- */
+  --blue-primary:   var(--blue-principal);  /* dominant interactive color = Principal */
+  --blue-tertiary:  var(--blue-secondary);  /* supporting accent = Secondary */
+  --gray-secondary: var(--blue-principal);  /* depth, dividers, footers = Principal */
+  --green-accent:   var(--green-realce);
+
+  /* ---- Interaction states ---- */
+  --blue-primary-hover:  #3A586F;  /* Principal hover (≈ darken 8%) */
+  --blue-primary-active: #324E63;  /* Principal active */
+  --blue-secondary-hover:#0033A5;  /* Secondary hover */
+  --green-accent-hover:  #09B900;  /* Realce hover */
+  --blue-tint:           #EFF3F7;  /* Principal tint — secondary/ghost hover, selected chips */
+  --blue-tint-active:    #E4EAF1;  /* Principal tint, active */
+
+  /* ---- Neutrals ---- */
+  --white:        #FFFFFF;
+  --ink:          #1A1A1A;  /* Primary text / headings */
+  --gray-900:     #2B2B2B;
+  --gray-700:     #555555;  /* Body text */
+  --gray-500:     #A6A6A6;  /* == --gray-text */
+  --gray-400:     #CCCCCC;  /* Input borders */
+  --gray-300:     #DDDDDD;  /* Placeholder text */
+  --gray-200:     #E8E8E8;
+  --gray-100:     #F3F5F8;  /* App background tint */
+  --gray-50:      #F8FAFC;
+
+  /* ---- Semantic aliases (use these in product/UI code) ---- */
+  --color-bg:              var(--white);
+  --color-bg-muted:        var(--gray-100);
+  --surface-card:          var(--white);
+  --surface-footer:        var(--blue-principal);
+
+  --text-heading:          var(--ink);
+  --text-body:             var(--gray-700);
+  --text-muted:            var(--gray-text);
+  --text-on-brand:         var(--white);
+  --text-link:             var(--blue-secondary);
+
+  --border-subtle:         var(--gray-200);
+  --border-input:          var(--gray-400);
+  --border-divider:        var(--blue-principal);
+  --border-card-accent:    var(--blue-secondary);
+
+  --action-primary:        var(--blue-principal);
+  --action-primary-hover:  var(--blue-primary-hover);
+  --action-primary-active: var(--blue-primary-active);
+  --action-secondary:      var(--blue-secondary);
+  --action-success:        var(--green-realce);
+  --action-success-hover:  var(--green-accent-hover);
+
+  --focus-ring:            var(--blue-secondary);
+
+  /* ---- Brand gradient (hero / email headers) ---- */
+  --gradient-brand: linear-gradient(135deg, var(--blue-principal) 0%, var(--blue-secondary) 100%);  /* @kind color */
+}
