@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento } from "@/lib/regua";
 import { dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail } from "@/lib/email";
+import { removerDeContratosCancelados, contratoCancelado } from "@/lib/cancelamento";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
   const { data: parcelas, error } = await supabase
     .from("parcelas")
     .select(
-      "id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, titular:titulares(email, nome_completo))"
+      "id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo))"
     )
     .neq("status", "pago")
     .is("paid_at", null)
@@ -80,9 +81,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, erro: "Falha ao ler parcelas: " + error.message }, { status: 500 });
   }
 
+  // Contrato cancelado nao gera cobranca. Sem este filtro, quem desistia
+  // continuava recebendo lembrete de parcela pela regua automatica — nao havia
+  // nada no modelo de dados que representasse o cancelamento.
+  const parcelasAtivas = removerDeContratosCancelados((parcelas || []) as any[]);
+  const puladasPorCancelamento = (parcelas || []).length - parcelasAtivas.length;
+
   const resultado = {
     data: hojeISO,
-    analisadas: (parcelas || []).length,
+    analisadas: parcelasAtivas.length,
+    contrato_cancelado: puladasPorCancelamento,
     enviados: 0,
     fora_da_janela: 0,
     sem_email: 0,
@@ -90,8 +98,8 @@ export async function GET(request: Request) {
     erros: 0,
   };
 
-  for (const p of parcelas || []) {
-    const janela = janelaLembrete(hojeISO, p.vencimento);
+  for (const p of parcelasAtivas) {
+    const janela = janelaLembrete(hojeISO, (p as any).vencimento);
     if (!janela) {
       resultado.fora_da_janela++;
       continue;
@@ -149,18 +157,25 @@ export async function GET(request: Request) {
   // inicio). As janelas caem em dataInicio - 60/45/35; filtramos os contratos
   // por data_inicio nessa faixa para varrer poucos registros. Cessa quando o
   // saldo devedor chega a zero. Idempotente por (contrato, janela).
-  const quitacao = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, erros: 0 };
+  const quitacao = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, erros: 0 };
   const inicioMin = isoMaisDias(hoje, 35);
   const inicioMax = isoMaisDias(hoje, 60);
 
   const { data: contratos } = await supabase
     .from("contratos")
-    .select("id, moeda, data_inicio, titular:titulares(email, nome_completo)")
+    .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo)")
+    .is("cancelado_em", null)
     .not("data_inicio", "is", null)
     .gte("data_inicio", inicioMin)
     .lte("data_inicio", inicioMax);
 
   for (const c of contratos || []) {
+    // Cinto e suspensorio: o filtro ja roda na query, mas contrato cancelado
+    // tambem nao pode receber lembrete de quitacao se a query mudar um dia.
+    if (contratoCancelado(c as any)) {
+      quitacao.contrato_cancelado++;
+      continue;
+    }
     const dataLimite = dataLimiteQuitacao((c as any).data_inicio);
     const janela = janelaQuitacao(hojeISO, dataLimite);
     if (!janela) continue;

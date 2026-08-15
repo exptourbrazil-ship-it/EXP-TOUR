@@ -28,6 +28,7 @@ export default async function EmbarquePage() {
   const { data: contratos } = await supabase
     .from("contratos")
     .select("id, nome, estudante_nome, pais_destino")
+    .is("cancelado_em", null)
     .eq("titular_id", sessao.titularId)
     .order("id", { ascending: false });
   const contrato = (contratos && contratos[0]) || null;

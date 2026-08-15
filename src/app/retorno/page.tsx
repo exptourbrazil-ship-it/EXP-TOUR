@@ -28,6 +28,7 @@ export default async function RetornoPage() {
   const { data: contratos } = await supabase
     .from("contratos")
     .select("id, nome, estudante_nome, estudante_sexo")
+    .is("cancelado_em", null)
     .eq("titular_id", sessao.titularId)
     .order("id", { ascending: false });
   const contrato = (contratos && contratos[0]) || null;
