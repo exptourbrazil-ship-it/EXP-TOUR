@@ -1,7 +1,9 @@
 # CLAUDE.md — Portal EXP Tour (Área do Cliente)
 
 Orientação para o Claude Code trabalhar neste repositório. Leia junto com os
-documentos em [`/docs`](./docs/README.md).
+documentos em [`/docs`](./docs/README.md) — em especial
+[`docs/estado-do-portal.md`](./docs/estado-do-portal.md), que é o retrato do que
+existe em produção hoje e do que falta.
 
 ## O que é
 
@@ -15,11 +17,12 @@ regressiva e regras de negócio (ex.: "regra dos 30 dias" para a quitação).
 - **Next.js 16** (App Router) + **TypeScript** + **Tailwind**.
 - **Supabase** (Postgres + Storage) — **fonte de verdade operacional**.
 - **Vercel** (deploy + Cron).
-- **Resend** (e-mails) — hoje envia códigos de acesso; motor de régua de
-  cobrança ainda por construir.
+- **Resend** (e-mails) — códigos de acesso, régua de cobrança, lembretes de
+  quitação, recibos de pagamento e alertas internos. Log em `email_logs`.
 - **Mercado Pago** (Pix, QR Code dinâmico) — pagamentos.
-- **Zoho** (CRM / Sign / Books) — camada comercial, **ainda inativa**
-  (aguardando credenciais). Não está no caminho crítico.
+- **Zoho** (CRM / Sign / Books) — camada comercial. O CRM provisiona titulares
+  e contratos por webhook; o Sign ainda está inativo (falta template). Não está
+  no caminho crítico.
 
 ## Decisão de arquitetura (ver `docs/plano-desenvolvimento-v2.md`, Seção 1)
 
@@ -35,9 +38,12 @@ Consequência: as credenciais do Zoho não bloqueiam o caminho crítico.
     com validação de assinatura; ver "Barramento de eventos" abaixo).
   - `src/app/api/parcelas/` — gerar/cancelar cobrança, ajustar, restaurar.
   - `src/app/api/admin/` — rotas administrativas (protegidas por sessão admin).
-  - `src/app/api/cron/atualizar-cambio/` — job diário de câmbio (Vercel Cron,
-    ver `vercel.json`).
-  - `src/app/api/integrations/zoho/` — integração Zoho (inativa).
+  - `src/app/api/cron/` — 5 jobs diários (Vercel Cron, ver `vercel.json`):
+    câmbio, régua de cobrança, conciliação de pagamentos, alerta de eventos e
+    limpeza. Todos exigem `Bearer CRON_SECRET` e **recusam** se a variável
+    faltar.
+  - `src/app/api/integrations/zoho/` — webhook do CRM (exige
+    `ZOHO_WEBHOOK_SECRET`).
 - `src/lib/` — integrações e utilitários.
   - `mercadopago.ts` — chamadas à API do MP (criar/consultar pagamento).
   - `mp-events.ts` — helpers puros do webhook: validação de assinatura HMAC,
@@ -73,6 +79,16 @@ etc.) devem seguir o mesmo padrão.
   banner promocional).
 - Rotas admin autenticam com `checarAdminCookie()` (cookie de sessão admin);
   algumas aceitam, por compatibilidade, um Bearer secret de env.
+- **Falha fechada**: rota protegida por segredo de ambiente RECUSA quando a
+  variável falta, em vez de degradar para "sem autenticação". Não reintroduzir
+  o padrão `if (secret && ...)`.
+- **Toda autorização é feita em código.** As 26 tabelas têm RLS habilitado sem
+  policies e as rotas usam a service role: o banco não é rede de proteção. Rota
+  que recebe um id do cliente precisa checar posse explicitamente.
+- Nunca gravar credencial em texto claro (códigos de acesso são HMAC) nem PII
+  em `console.log`.
+- `npm run build` imprime `Compiled successfully` ANTES do type-check. Conferir
+  o **exit code**, não a mensagem — foi assim que uma quebra chegou na main.
 
 ## Comandos
 
