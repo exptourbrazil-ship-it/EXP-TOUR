@@ -233,6 +233,34 @@ create table if not exists admin_users (
   created_at timestamptz not null default now()
   );
 
+-- Fila do Dia: tarefas operacionais do admin (doc 07, Secoes 3.1 e 5). Fontes
+-- automaticas (documento enviado, parcela em D+10, SLA estourado) e manuais.
+-- A v1 da tela tambem compoe a fila por consulta ao vivo; esta tabela guarda
+-- tarefas materializadas/manuais e o estado. Ver src/lib/fila-do-dia.ts.
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  categoria text not null
+    check (categoria in ('documento','parcela','proposta','fornecedor','excecao','sistema','outro')),
+  titulo text not null,
+  contexto text,
+  alvo_tipo text,
+  alvo_id uuid,
+  href text,
+  dono text,
+  papel text,
+  estado text not null default 'aberto'
+    check (estado in ('aberto','em_andamento','concluido')),
+  prazo timestamptz,
+  origem text not null default 'manual',
+  chave_dedupe text unique,
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  concluido_em timestamptz
+  );
+
+create index if not exists idx_tasks_estado on tasks(estado, criado_em desc);
+create index if not exists idx_tasks_dono on tasks(dono) where estado <> 'concluido';
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via
@@ -316,6 +344,7 @@ alter table if exists lembretes_cobranca enable row level security;
 alter table if exists rate_limit_hits    enable row level security;
 alter table if exists admin_audit        enable row level security;
 alter table if exists admin_users        enable row level security;
+alter table if exists tasks              enable row level security;
 alter table if exists nps_respostas      enable row level security;
 alter table if exists embarque_checklist enable row level security;
 alter table if exists viagem_info        enable row level security;
