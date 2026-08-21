@@ -30,6 +30,7 @@ export type ItemFila = {
   criadoEm: string; // ISO
   idadeDias: number;
   estado: EstadoPrazo;
+  chaveDedupe?: string; // chave estavel da fonte (ex.: "documento:<id>"), evita duplicar live x task materializada
 };
 
 // Idade em dias inteiros de um timestamp ISO ate "agora" (nunca negativa).
@@ -93,3 +94,27 @@ export const ESTADO_LABEL: Record<EstadoPrazo, string> = {
   hoje: "Vence hoje",
   estourado: "SLA estourado",
 };
+
+// Categorias que cada papel enxerga na Fila do Dia. Deriva da divisao de
+// responsabilidades do doc 07 (RBAC): financeiro cuida do dinheiro, operacao dos
+// documentos/fornecedores, consultor das propostas, gestor ve tudo. Mantido aqui
+// (e nao importando admin-roles) para o modulo seguir puro e testavel. `papel` e
+// string para nao acoplar ao tipo em runtime; valores estranhos nao veem nada.
+const CATEGORIAS_POR_PAPEL: Record<string, ReadonlySet<CategoriaFila> | "todas"> = {
+  gestor: "todas",
+  operacao: new Set<CategoriaFila>(["documento", "fornecedor", "excecao", "sistema", "outro"]),
+  financeiro: new Set<CategoriaFila>(["parcela"]),
+  consultor: new Set<CategoriaFila>(["proposta"]),
+};
+
+export function papelVeCategoria(papel: string, categoria: CategoriaFila): boolean {
+  const permitidas = CATEGORIAS_POR_PAPEL[papel];
+  if (!permitidas) return false;
+  if (permitidas === "todas") return true;
+  return permitidas.has(categoria);
+}
+
+// Filtra a fila para o que o papel enxerga. Nao muta o array recebido.
+export function filtrarPorPapel(itens: ItemFila[], papel: string): ItemFila[] {
+  return itens.filter((i) => papelVeCategoria(papel, i.categoria));
+}

@@ -7,6 +7,8 @@ import {
   entrouEmCobrancaHumana,
   estadoPrazo,
   ordenarFila,
+  papelVeCategoria,
+  filtrarPorPapel,
   DIAS_COBRANCA_HUMANA,
   type ItemFila,
 } from "./fila-do-dia.ts";
@@ -70,4 +72,38 @@ test("ordenarFila: excecoes no topo, depois estourado>hoje>no_prazo, depois idad
 
   // nao muta o array original
   assert.equal(entrada[0].titulo, "documento-no_prazo-1");
+});
+
+test("papelVeCategoria: gestor tudo; demais so a sua area", () => {
+  // gestor ve tudo
+  for (const c of ["documento", "parcela", "proposta", "fornecedor", "excecao", "sistema", "outro"] as const) {
+    assert.equal(papelVeCategoria("gestor", c), true);
+  }
+  // financeiro: so parcela
+  assert.equal(papelVeCategoria("financeiro", "parcela"), true);
+  assert.equal(papelVeCategoria("financeiro", "documento"), false);
+  // operacao: documentos e fornecedores, nao parcela
+  assert.equal(papelVeCategoria("operacao", "documento"), true);
+  assert.equal(papelVeCategoria("operacao", "fornecedor"), true);
+  assert.equal(papelVeCategoria("operacao", "parcela"), false);
+  // consultor: so proposta
+  assert.equal(papelVeCategoria("consultor", "proposta"), true);
+  assert.equal(papelVeCategoria("consultor", "parcela"), false);
+  // papel desconhecido nao ve nada (falha fechada)
+  assert.equal(papelVeCategoria("root", "documento"), false);
+});
+
+test("filtrarPorPapel: financeiro so ve parcelas; nao muta a entrada", () => {
+  const item = (categoria: ItemFila["categoria"]): ItemFila => ({
+    categoria,
+    titulo: categoria,
+    criadoEm: "2026-08-01T00:00:00Z",
+    idadeDias: 1,
+    estado: "no_prazo",
+  });
+  const entrada = [item("documento"), item("parcela"), item("proposta")];
+  const soFinanceiro = filtrarPorPapel(entrada, "financeiro").map((i) => i.categoria);
+  assert.deepEqual(soFinanceiro, ["parcela"]);
+  assert.equal(filtrarPorPapel(entrada, "gestor").length, 3);
+  assert.equal(entrada.length, 3); // intacta
 });

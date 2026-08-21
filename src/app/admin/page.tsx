@@ -5,6 +5,7 @@ import { carregarFinanceiro } from "@/lib/admin-financeiro";
 import { contarDocumentosPendentes } from "@/lib/admin-operacao";
 import { carregarFilaDoDia, type FilaDoDia } from "@/lib/admin-fila";
 import { ESTADO_LABEL, type EstadoPrazo, type ItemFila } from "@/lib/fila-do-dia";
+import { PAPEL_LABEL } from "@/lib/admin-roles";
 import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 // Mostra os indicadores financeiros reais (Fase 1) com link para o Financeiro;
 // a fila de documentos (Fase 2) segue como espaco reservado.
 export default async function AdminHomePage() {
-  const { usuario } = await exigirAdmin("/admin");
+  const { usuario, papel } = await exigirAdmin("/admin");
 
   // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
   let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
@@ -34,10 +35,11 @@ export default async function AdminHomePage() {
     docsPendentes = 0;
   }
 
-  // Fila do Dia. Best-effort: se falhar, a home ainda renderiza sem a fila.
+  // Fila do Dia, filtrada pelo papel do usuario (gestor ve tudo). Best-effort:
+  // se falhar, a home ainda renderiza sem a fila.
   let fila = null as FilaDoDia | null;
   try {
-    fila = await carregarFilaDoDia();
+    fila = await carregarFilaDoDia(Date.now(), papel);
   } catch {
     fila = null;
   }
@@ -59,7 +61,12 @@ export default async function AdminHomePage() {
       {/* Fila do Dia: o que precisa de atenção, priorizado (doc 07, 3.1) */}
       <section aria-label="Fila do Dia" className="mb-10">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-brand">Fila do Dia</h2>
+          <h2 className="text-sm font-semibold text-brand">
+            Fila do Dia
+            {papel !== "gestor" ? (
+              <span className="ml-2 font-normal text-neutral-400">· {PAPEL_LABEL[papel]}</span>
+            ) : null}
+          </h2>
           {fila && fila.contadores.total > 0 ? (
             <span className="text-xs text-neutral-500">
               {fila.contadores.total} item(ns)
