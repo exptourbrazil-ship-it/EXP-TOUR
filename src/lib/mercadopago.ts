@@ -1,16 +1,22 @@
 const MP_API_URL = "https://api.mercadopago.com";
 
-// URL de notificacao enviada junto com cada cobranca.
+// Deriva a URL publica do webhook a partir do ambiente. MANTIDA como helper
+// (testada em mercadopago.test.ts), mas NAO e mais enviada em cada cobranca
+// (ver criarCobrancaPix).
 //
-// Historico do bug: a entrega das notificacoes dependia exclusivamente do
-// webhook cadastrado no painel da aplicacao no Mercado Pago. O painel estava
-// configurado na aplicacao errada (o access token pertencia a outra), entao o
-// MP nunca tinha para onde avisar e nenhum pagamento aprovado chegava ao
-// portal. Mandando notification_url na propria cobranca, a entrega deixa de
-// depender de configuracao manual de painel.
+// Historico: quando o webhook do painel estava cadastrado na aplicacao errada
+// (o access token pertencia a outra), o MP nao tinha para onde avisar. Como
+// paliativo, passamos a enviar notification_url na propria cobranca. Depois de
+// cadastrar o webhook do painel na aplicacao DONA do pagamento, os dois canais
+// passaram a entregar a MESMA notificacao: a do painel validava a assinatura e
+// a do notification_url caia como "assinatura-invalida", poluindo o ledger de
+// eventos e disparando o alerta diario a toa. Com um unico canal (o painel,
+// cuja assinatura ja conferimos), o ruido some. A rede de seguranca contra
+// webhook perdido passa a ser o cron de conciliacao, que reconsulta o MP
+// independentemente de notificacao.
 //
-// O MP recusa a criacao do pagamento se a URL nao for https publica, entao em
-// dev (localhost) ou sem NEXT_PUBLIC_APP_URL simplesmente omitimos o campo.
+// O MP recusaria a criacao do pagamento se a URL nao fosse https publica, entao
+// esta funcao retorna null em dev (localhost) ou sem NEXT_PUBLIC_APP_URL.
 export function notificationUrl(): string | null {
   const base = (process.env.MP_NOTIFICATION_URL || process.env.NEXT_PUBLIC_APP_URL || "").trim();
   if (!base) return null;
@@ -45,13 +51,13 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
   // um valor diferente gera uma cobranca nova; o mesmo valor continua idempotente
   // (protege contra duplo-clique).
   //
-  // O sufixo de versao entra na chave porque o FORMATO da requisicao mudou (a
-  // notification_url passou a ser enviada). Sem ele, regerar a cobranca de uma
-  // parcela que ja tinha Pix no mesmo valor faria o MP devolver o pagamento
-  // ANTIGO, criado sem notification_url — ou seja, a correcao nao alcancaria
-  // justamente as cobrancas que hoje estao quebradas, e em silencio. Ao mudar
-  // o formato da requisicao de novo, incrementar a versao.
-  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}:v2`;
+  // O sufixo de versao entra na chave porque o FORMATO da requisicao ja mudou
+  // duas vezes: v2 passou a enviar notification_url; v3 parou de envia-la (a
+  // entrega ficou so no webhook do painel, evitando a notificacao duplicada que
+  // caia como assinatura-invalida). Sem bumpar a versao, regerar a cobranca de
+  // uma parcela no mesmo valor faria o MP devolver o pagamento ANTIGO (no
+  // formato anterior) em vez de um novo. Ao mudar o formato de novo, incrementar.
+  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}:v3`;
 
   const response = await fetch(`${MP_API_URL}/v1/payments`, {
         method: "POST",
@@ -65,7 +71,6 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
                 description: params.descricao,
                 payment_method_id: "pix",
                 external_reference: params.externalReference,
-                ...(notificationUrl() ? { notification_url: notificationUrl() } : {}),
                 payer: {
                           email: params.payerEmail || "cliente@exp-tour.com",
                 },
@@ -117,6 +122,7 @@ export async function cancelarPagamento(paymentId: string) {
 }
 
 // Consulta o status atual de um pagamento no Mercado Pago (usado pelo webhook).
+// Retorna null quando o pagamento NAO existe (404); lanca nos demais erros.
 export async function consultarPagamento(paymentId: string) {
     const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
     if (!accessToken) {
@@ -126,6 +132,15 @@ export async function consultarPagamento(paymentId: string) {
   const response = await fetch(`${MP_API_URL}/v1/payments/${paymentId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
   });
+
+  // Pagamento inexistente e condicao PERMANENTE, nao transitoria: retentar
+  // nunca vai encontra-lo. Devolvemos null para o chamador tratar como
+  // "ignorado" (200), em vez de lancar -> 500 -> MP reentregar em loop. Foi
+  // isso que gerou as 3 tentativas do id ficticio 123456 do "Simular
+  // notificacao" do painel.
+  if (response.status === 404) {
+        return null;
+  }
 
   if (!response.ok) {
         throw new Error("Nao foi possivel consultar o pagamento");
