@@ -485,3 +485,155 @@ alter table if exists codigos_acesso add column if not exists codigo_hash text;
 alter table if exists codigos_acesso alter column codigo drop not null;
 create index if not exists idx_codigos_acesso_titular_ativo
   on codigos_acesso(titular_id, used_at, created_at desc);
+
+-- ============================================================================
+-- Modulo Catalogo/Preco/Cotacao — Marco 1 (spec-catalogo-preco-cotacao.md 3.1-3.3)
+-- Adaptado ao ADR-001: identificadores em ingles, tenant_id em toda tabela
+-- (single-tenant hoje, multi-tenant preparado), RLS habilitado sem policies
+-- (autorizacao em codigo/service role). Enums via text + CHECK.
+-- ============================================================================
+
+create table if not exists tenant (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text not null unique,
+  default_locale text not null default 'pt-BR',
+  default_presentment_currency char(3) not null default 'BRL',
+  logo_url text, brand_color text,
+  contact_email text, contact_phone text, website text, address text,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+
+create table if not exists tenant_fx_policy (
+  tenant_id uuid primary key references tenant(id) on delete cascade,
+  markup_percent numeric(6,4) not null default 0,
+  rounding_mode text not null default 'none' check (rounding_mode in ('none','up_1','up_10','up_100')),
+  rate_source text not null default 'manual',
+  max_rate_age_hours int not null default 24,
+  disclaimer text not null default '',
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+
+create table if not exists supplier (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  display_name text not null, legal_name text, country_code char(2), website text, logo_url text,
+  relationship_status text not null default 'prospect'
+    check (relationship_status in ('prospect','requested','connected','paused','declined','disconnected')),
+  is_preferred boolean not null default false,
+  verified_at timestamptz, internal_notes text, owner_user_id uuid,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_supplier_tenant_status on supplier(tenant_id, relationship_status);
+
+create table if not exists supplier_group (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  name text not null,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create table if not exists supplier_group_member (
+  supplier_group_id uuid not null references supplier_group(id) on delete cascade,
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  primary key (supplier_group_id, supplier_id)
+);
+
+create table if not exists supplier_agreement (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  valid_from date not null, valid_until date,
+  commission_basis text not null check (commission_basis in ('tuition','tuition_plus_fees','total','none')),
+  commission_type text not null check (commission_type in ('percent','fixed_per_sale','fixed_per_week')),
+  commission_value numeric(14,4) not null, currency char(3),
+  payment_terms text, document_url text, notes text,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_supplier_agreement_supplier on supplier_agreement(supplier_id, valid_from desc);
+
+create table if not exists campus (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  name text not null, country_code char(2) not null, region text, city text not null,
+  address text, postal_code text, latitude numeric(9,6), longitude numeric(9,6),
+  timezone text not null, base_currency char(3) not null,
+  phone text, email text, website text, logo_url text, cover_image_url text,
+  status text not null default 'draft' check (status in ('draft','active','inactive')),
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_campus_tenant_supplier_status on campus(tenant_id, supplier_id, status);
+
+create table if not exists campus_settings (
+  campus_id uuid primary key references campus(id) on delete cascade,
+  units_enabled text[] not null default '{week}',
+  lesson_minutes int, course_min_age int, course_max_age int,
+  course_min_duration int, course_max_duration int, course_language_level_required text,
+  accommodation_min_age int, accommodation_max_age int,
+  accommodation_min_duration int, accommodation_max_duration int, accommodation_checkout_weekday int,
+  multi_course_fee_rule text not null default 'charge_highest'
+    check (multi_course_fee_rule in ('charge_highest','charge_lowest','charge_all')),
+  default_unit text not null default 'week',
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+
+create table if not exists campus_content (
+  campus_id uuid not null references campus(id) on delete cascade,
+  locale text not null,
+  highlights jsonb, highlights_footer text, description_html text,
+  is_machine_translated boolean not null default false,
+  created_at timestamptz not null default now(), updated_at timestamptz,
+  primary key (campus_id, locale)
+);
+
+create table if not exists campus_media (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  url text not null, kind text check (kind in ('photo','video','brochure')),
+  sort int not null default 0, caption text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists campus_document (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  locale text not null,
+  kind text not null check (kind in ('terms_and_conditions','payment_refund_policy','application_instructions')),
+  body_html text not null, version int not null default 1, published_at timestamptz,
+  created_at timestamptz not null default now(), updated_at timestamptz,
+  unique (campus_id, locale, kind)
+);
+
+create table if not exists campus_calendar_entry (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  kind text not null check (kind in ('course_start','accommodation_arrival','holiday','closure')),
+  date date not null, label text, applies_to_product_ids uuid[],
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_campus_calendar on campus_calendar_entry(campus_id, kind, date);
+
+create table if not exists market (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  name text not null, country_codes char(2)[] not null, is_default boolean not null default false,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_market_tenant on market(tenant_id);
+
+alter table if exists tenant                 enable row level security;
+alter table if exists tenant_fx_policy       enable row level security;
+alter table if exists supplier               enable row level security;
+alter table if exists supplier_group         enable row level security;
+alter table if exists supplier_group_member  enable row level security;
+alter table if exists supplier_agreement     enable row level security;
+alter table if exists campus                 enable row level security;
+alter table if exists campus_settings        enable row level security;
+alter table if exists campus_content         enable row level security;
+alter table if exists campus_media           enable row level security;
+alter table if exists campus_document        enable row level security;
+alter table if exists campus_calendar_entry  enable row level security;
+alter table if exists market                 enable row level security;
