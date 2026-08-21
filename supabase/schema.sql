@@ -217,6 +217,22 @@ create table if not exists admin_audit (
 create index if not exists idx_admin_audit_criado on admin_audit(criado_em desc);
 create index if not exists idx_admin_audit_acao on admin_audit(acao);
 
+-- Contas administrativas individuais com papel (RBAC). Evolui o login por codigo
+-- de e-mail: em vez de um destinatario fixo (ADMIN_EMAIL), o login passa a
+-- aceitar qualquer e-mail ativo aqui, e o papel entra na sessao admin.
+-- Ver docs/07-arquitetura-area-administrativa.md (Secao 2) e src/lib/admin-roles.ts.
+-- RLS habilitado sem policies: autorizacao e feita em codigo (service role).
+create table if not exists admin_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  nome text,
+  papel text not null default 'operacao'
+    check (papel in ('gestor','operacao','financeiro','consultor')),
+  ativo boolean not null default true,
+  criado_por text,
+  created_at timestamptz not null default now()
+  );
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via
@@ -299,6 +315,7 @@ alter table if exists whatsapp_logs      enable row level security;
 alter table if exists lembretes_cobranca enable row level security;
 alter table if exists rate_limit_hits    enable row level security;
 alter table if exists admin_audit        enable row level security;
+alter table if exists admin_users        enable row level security;
 alter table if exists nps_respostas      enable row level security;
 alter table if exists embarque_checklist enable row level security;
 alter table if exists viagem_info        enable row level security;
