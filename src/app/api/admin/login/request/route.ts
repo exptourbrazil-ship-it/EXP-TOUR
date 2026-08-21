@@ -11,9 +11,11 @@ export const dynamic = "force-dynamic";
 const RL_JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
 const RL_ADMIN_IP = Number(process.env.RATE_LIMIT_ADMIN_REQUEST_IP || "5");
 
-// Passo 1 do login do admin: gera um código de 6 dígitos, envia para o e-mail
-// administrativo FIXO (definido no servidor, nunca informado pelo cliente) e
-// grava um token assinado do código num cookie httpOnly de 10 minutos.
+// Passo 1 do login do admin: o staff informa o e-mail; se ele for um admin
+// ativo (tabela admin_users), gera um código de 6 dígitos, envia PARA ESSE
+// e-mail e grava um token assinado (com o e-mail embutido) num cookie httpOnly
+// de 10 minutos. O e-mail vai no token para o /verify saber quem loga e buscar
+// o papel — o cliente nunca reinforma o e-mail depois.
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -27,13 +29,33 @@ export async function POST(request: Request) {
     );
   }
 
-  const destinatario = process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com";
+  const body = await request.json().catch(() => ({} as Record<string, unknown>));
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!email || !email.includes("@")) {
+    return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
+  }
+
+  // Resposta uniforme: nao revela se o e-mail e (ou nao) de um admin. So enviamos
+  // o codigo e gravamos o cookie quando o e-mail e um admin ativo.
+  const respostaNeutra = NextResponse.json({ success: true });
+
+  const { data: admin } = await supabase
+    .from("admin_users")
+    .select("email")
+    .eq("email", email)
+    .eq("ativo", true)
+    .maybeSingle();
+
+  if (!admin) {
+    // E-mail nao e admin ativo: responde igual, sem enviar nada.
+    return respostaNeutra;
+  }
 
   const codigo = gerarCodigo();
 
   let token: string;
   try {
-    token = criarTokenCodigo(codigo);
+    token = criarTokenCodigo(codigo, email);
   } catch {
     return NextResponse.json(
       { error: "Login de admin nao configurado no servidor." },
@@ -42,7 +64,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await enviarCodigoAcessoEmail(destinatario, "Equipe EXP Tour", codigo);
+    await enviarCodigoAcessoEmail(email, "Equipe EXP Tour", codigo);
   } catch (err) {
     console.error("Falha ao enviar codigo de admin por email", err);
     return NextResponse.json(
