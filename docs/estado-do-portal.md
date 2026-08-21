@@ -61,7 +61,6 @@ cliente pede cobrança
   └─ POST /api/parcelas/[id]/gerar-cobranca   (sessão do titular; checa posse)
        ├─ converte a parcela para BRL pela cotação VET do dia
        ├─ cria pagamento Pix na API do MP, com external_reference = parcela.id
-       │                                   e notification_url = <app>/api/webhooks/mercadopago
        └─ grava external_payment_id, QR code e valor_cobrado_brl na parcela
 
 cliente paga
@@ -77,11 +76,22 @@ rede de segurança
      external_payment_id e regulariza o que estiver aprovado
 ```
 
-**Por que a redundância existe:** em agosto de 2026 o webhook estava cadastrado
-na aplicação errada do Mercado Pago (a conta tem duas), então o MP nunca teve
-para onde notificar. Oito pagamentos aprovados — R$ 13.116,18 — ficaram sem
-registro por semanas. A `notification_url` por cobrança e o cron de conciliação
-existem para que a entrega não dependa de um único ponto de configuração.
+**Por que a rede de segurança existe:** em agosto de 2026 o webhook estava
+cadastrado na aplicação errada do Mercado Pago (a conta tem duas), então o MP
+nunca teve para onde notificar. Oito pagamentos aprovados — R$ 13.116,18 —
+ficaram sem registro por semanas. O cron de conciliação existe para que a
+entrega não dependa de um único ponto de configuração: ele varre o MP
+independentemente de webhook.
+
+Durante o incidente também enviávamos uma `notification_url` em cada cobrança,
+como segundo canal de entrega. Depois que o webhook do painel foi cadastrado na
+aplicação **dona do pagamento** (a `EXP Tour - Pix`), os dois canais passaram a
+entregar a MESMA notificação: a do painel validava a assinatura e a do
+`notification_url` caía como `assinatura-invalida`, poluindo o ledger e
+disparando o alerta diário. Por isso o `notification_url` foi **removido** — a
+entrega ficou só no webhook do painel (assinatura conferida) e o cron cobre a
+falha. O helper `notificationUrl()` continua no código, testado, mas não é mais
+enviado.
 
 ### 4.2 Autenticação
 
@@ -174,7 +184,7 @@ Ausência faz a rota correspondente recusar (503), não degradar:
 | `ZOHO_WEBHOOK_SECRET` | Webhook do Zoho CRM recusa |
 | `ZOHO_SIGN_WEBHOOK_SECRET` | Webhook do Zoho Sign recusa |
 | `WHATSAPP_APP_SECRET` | Webhook do WhatsApp recusa |
-| `NEXT_PUBLIC_APP_URL` | Logo dos e-mails cai para texto; `notification_url` é omitida |
+| `NEXT_PUBLIC_APP_URL` | Logo dos e-mails cai para texto |
 | `SESSION_SECRET` | Sessões e hash de código quebram |
 
 O segredo do webhook do Mercado Pago precisa ser o da **mesma aplicação** do
@@ -252,6 +262,20 @@ notifica pela aplicação dona do pagamento. Oito pagamentos aprovados ficaram
 sem registro; os clientes viam a parcela em aberto. Agravante: a rota devolvia
 401 sem gravar nada, então a falha era invisível. Hoje a rejeição vira linha em
 `events`, o cron de conciliação cobre a lacuna e o alerta diário avisa.
+
+**Access token trocado por chave de outro serviço (ago/2026).** O
+`MERCADOPAGO_ACCESS_TOKEN` na Vercel foi substituído por uma chave `sk_live_…`
+(formato de outro provedor, não do MP). Como não é um token válido do Mercado
+Pago (produção começa com `APP_USR-`), o portal não conseguia consultar
+pagamentos nem gerar cobrança — "Mercado Pago não conectado". Correção: pegar o
+Access Token e a Assinatura secreta **da mesma aplicação dona do pagamento**
+(`EXP Tour - Pix`) e fazer redeploy. **Lição:** o token de produção do MP começa
+sempre com `APP_USR-`; qualquer outro prefixo é a variável errada. Na mesma
+apuração, removeu-se o `notification_url` por cobrança (ver Seção 4.1): com o
+webhook do painel correto, ele virou entrega duplicada que caía como
+`assinatura-invalida`. E o webhook passou a tratar pagamento inexistente (404)
+como "ignorado" (200), em vez de 500, para o MP não reentregar em loop (era o que
+inflava as tentativas do id fictício do "Simular notificação").
 
 **Build quebrado por `npm audit fix` (14/08/2026).** A correção de segurança
 subiu o Next de 16.2.11 para 16.3.1, e a versão nova passou a type-checkar os

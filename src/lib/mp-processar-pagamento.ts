@@ -19,11 +19,18 @@ export async function processarPagamentoMercadoPago(
   supabase: SupabaseClient,
   paymentId: string
 ): Promise<ResultadoProcessamento> {
-  let pagamento: { status?: string; transaction_amount?: number | string | null };
+  let pagamento: { status?: string; transaction_amount?: number | string | null } | null;
   try {
     pagamento = await consultarPagamento(paymentId);
   } catch (err) {
     return { status: "erro", erro: err instanceof Error ? err.message : String(err) };
+  }
+
+  // Pagamento nao encontrado no MP (404): nada a fazer e nao adianta retentar.
+  // Tratamos como "ignorado" para o webhook responder 200 e o MP parar de
+  // reentregar (ex.: id ficticio do "Simular notificacao").
+  if (!pagamento) {
+    return { status: "ignorado", paymentStatus: "nao_encontrado" };
   }
 
   const paymentStatus = String(pagamento?.status || "desconhecido");
