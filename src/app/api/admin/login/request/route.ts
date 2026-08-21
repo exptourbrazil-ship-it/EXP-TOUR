@@ -35,9 +35,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
   }
 
-  // Resposta uniforme: nao revela se o e-mail e (ou nao) de um admin. So enviamos
-  // o codigo e gravamos o cookie quando o e-mail e um admin ativo.
-  const respostaNeutra = NextResponse.json({ success: true });
+  // Grava o cookie do codigo (10 min). Usado nos dois caminhos: para o e-mail
+  // admin, com o codigo real enviado; para o nao-admin, com um token "decoy"
+  // (codigo nunca enviado). Assim a resposta — inclusive o header Set-Cookie — e
+  // indistinguivel entre admin e nao-admin (anti-enumeracao).
+  function responderComCookie(tokenCookie: string) {
+    const res = NextResponse.json({ success: true });
+    res.cookies.set(ADMIN_CODIGO_COOKIE, tokenCookie, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 10 * 60,
+    });
+    return res;
+  }
 
   const { data: admin } = await supabase
     .from("admin_users")
@@ -47,8 +59,18 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!admin) {
-    // E-mail nao e admin ativo: responde igual, sem enviar nada.
-    return respostaNeutra;
+    // E-mail nao e admin ativo: responde IGUAL (mesmo header Set-Cookie), mas com
+    // um token decoy cujo codigo nunca foi enviado — o /verify nunca vai conferir.
+    // Residual conhecido: o envio de e-mail (so no caminho admin) ainda cria uma
+    // pequena diferenca de tempo; mitigada pelo rate-limit por IP e pelo numero
+    // pequeno de admins. Ver docs/decisions.md se for necessario zerar o timing.
+    let decoy: string;
+    try {
+      decoy = criarTokenCodigo(gerarCodigo(), email);
+    } catch {
+      return NextResponse.json({ success: true });
+    }
+    return responderComCookie(decoy);
   }
 
   const codigo = gerarCodigo();
@@ -66,20 +88,13 @@ export async function POST(request: Request) {
   try {
     await enviarCodigoAcessoEmail(email, "Equipe EXP Tour", codigo);
   } catch (err) {
-    console.error("Falha ao enviar codigo de admin por email", err);
+    // Nao logar o err cru (pode conter o e-mail do destinatario). So a mensagem.
+    console.error("Falha ao enviar codigo de admin por email:", err instanceof Error ? err.message : "erro");
     return NextResponse.json(
       { error: "Nao foi possivel enviar o e-mail. Tente novamente." },
       { status: 502 }
     );
   }
 
-  const res = NextResponse.json({ success: true });
-  res.cookies.set(ADMIN_CODIGO_COOKIE, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 10 * 60,
-  });
-  return res;
+  return responderComCookie(token);
 }

@@ -50,6 +50,18 @@ export async function POST(request: Request) {
   const ip = obterIp(request);
   const supabase = getSupabase();
 
+  // Falha FECHADO: sem Supabase nao ha como limitar tentativas nem confirmar o
+  // admin ativo. Antes, todo o bloco de defesa vivia dentro de `if (supabase)` e,
+  // sem as envs, o /verify abria sessao como gestor sem rate-limit nem checagem —
+  // exatamente o padrao que o CLAUDE.md proibe. Agora recusa.
+  if (!supabase) {
+    console.error("Supabase nao configurado: /verify recusado.");
+    return NextResponse.json(
+      { error: "Login de admin nao configurado no servidor." },
+      { status: 503 }
+    );
+  }
+
   // Contadores de tentativa. Falham FECHADO: sem o contador nao existe defesa
   // contra forca bruta, e liberar "para nao atrapalhar" e exatamente o que
   // abriria a porta.
