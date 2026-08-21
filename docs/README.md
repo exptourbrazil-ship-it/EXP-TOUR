@@ -10,8 +10,27 @@
 | [`contrato-arquitetura.md`](./contrato-arquitetura.md) | Análise do Contrato de Prestação de Serviços × arquitetura da Área do Cliente: mapa cláusula → estado atual → ajuste. Decisões de câmbio, Saldo Devedor, aceite/assinatura e Zoho Sign. |
 | [`plano-zoho-sign.md`](./plano-zoho-sign.md) | Plano do Zoho Sign (Bloco 3): assinatura da Ficha de matrícula via barramento de eventos + cópia de documentos no CRM. Passos feitos e o que falta para ativar. |
 | [`sessao-area-cliente.md`](./sessao-area-cliente.md) | Registro da 1ª sessão (parcelas, UX, responsivo, logo, documentos). |
-| [`sessao-area-cliente-2.md`](./sessao-area-cliente-2.md) | Registro da 2ª sessão (contrato, financeiro, Zoho, aceite, réguas, antecipação, Anexo III, UX). **Handoff mais recente — comece por aqui.** |
-| `arquitetura-mestre-v4.md` | _(pendente)_ A arquitetura-mestre v4 referenciada pelo plano v2 ainda não está no repositório. Quando disponível, colocá-la aqui com este nome, para que o plano e o CLAUDE.md apontem para ela. |
+| [`sessao-area-cliente-2.md`](./sessao-area-cliente-2.md) | Registro da 2ª sessão (contrato, financeiro, Zoho, aceite, réguas, antecipação, Anexo III, UX). |
+
+## Handoff de arquitetura (visão-alvo — Cliente + Admin + Fornecedor)
+
+Pacote consolidado da sessão de arquitetura (21/08/2026). Descreve o **destino** do
+produto (não o estado atual — para isso, `estado-do-portal.md`). Onde houver
+conflito com a realidade implementada, valem `estado-do-portal.md` e
+`plano-desenvolvimento-v2.md` (em especial: **Supabase é a fonte de verdade**, não o CRM).
+
+| Documento | O que é |
+|---|---|
+| [`00-LEIA-PRIMEIRO.md`](./00-LEIA-PRIMEIRO.md) | **Entrada do handoff.** Ordem de leitura, adendo Leads/Clientes, mockups aprovados, ordem de execução por blocos, padrões obrigatórios. |
+| [`01-arquitetura-mestre-v4.md`](./01-arquitetura-mestre-v4.md) | Visão completa: princípios, cenários de cliente (C1–C10), máquina de estados, exceções (E1–E11), catálogo de eventos. _(traz nota de reconciliação: Supabase, não CRM, é a fonte de verdade.)_ |
+| [`03-motor-area-do-cliente-v3.md`](./03-motor-area-do-cliente-v3.md) | Checkout próprio, Termo de Adesão, fluxo Mercado Pago, réguas. |
+| [`04-motor-financeiro-parcelamento.md`](./04-motor-financeiro-parcelamento.md) | Dívida na moeda do programa, editor de parcelas (Marcos 1 e 2), repactuação com aceite-aditivo, tesouraria cambial. |
+| [`05-modulo-fornecedores-v2.md`](./05-modulo-fornecedores-v2.md) | Conferência de uploads, pagamento a escolas (D-30 configurável), ficha de matrícula bilíngue. |
+| [`06-portal-fornecedor-especificacao-funcional.md`](./06-portal-fornecedor-especificacao-funcional.md) | Portal do fornecedor: login por código, matriz de alertas, materiais, catálogo, disponibilidade, modelo de dados. |
+| [`07-arquitetura-area-administrativa.md`](./07-arquitetura-area-administrativa.md) | Admin: Fila do Dia, RBAC (4 papéis), Caso 360, padrão de mutação com audit. |
+| [`08-arquitetura-experiencia-area-cliente.md`](./08-arquitetura-experiencia-area-cliente.md) | UX da Área do Cliente: princípios, navegação (5 abas), serviços integrados, linguagem visual. |
+| [`09-auditoria-lacunas-automacao.md`](./09-auditoria-lacunas-automacao.md) | Raciocínio por trás das exceções e prioridades (contexto). |
+| [`10-briefing-contador-tributarista.md`](./10-briefing-contador-tributarista.md) | Contexto do handler de NFS-e (não é tarefa de código; fica pronto e desligado até o contador devolver parâmetros). |
 
 ## Como trabalhar a partir daqui
 
