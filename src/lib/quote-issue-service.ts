@@ -271,7 +271,9 @@ export async function issueQuote(
     (quote.valid_until as string | null) ?? validadePadraoISO(issueDate, args.validadeDias ?? VALIDADE_PADRAO_DIAS);
   const token = randomBytes(32).toString("base64url");
 
-  const { error: upErr } = await supabase
+  // Guard de corrida: so emite se ainda estiver em draft. Duas emissoes
+  // concorrentes leriam 'draft'; a segunda casa 0 linhas e nao gera token orfao.
+  const { data: emitidas, error: upErr } = await supabase
     .from("quote")
     .update({
       status: "issued",
@@ -287,8 +289,30 @@ export async function issueQuote(
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", args.tenantId)
-    .eq("id", args.quoteId);
+    .eq("id", args.quoteId)
+    .eq("status", "draft")
+    .select("id");
   if (upErr) throw new Error(`Falha ao emitir cotacao: ${upErr.message}`);
+  if (!emitidas || emitidas.length !== 1) {
+    // Perdeu a corrida: outra emissao ja rodou. Devolve o token vigente (idempotente).
+    const { data: atual } = await supabase
+      .from("quote")
+      .select("status, public_token, issue_date, valid_until, fx_rate")
+      .eq("tenant_id", args.tenantId)
+      .eq("id", args.quoteId)
+      .maybeSingle();
+    if (atual?.public_token) {
+      return {
+        token: atual.public_token as string,
+        status: atual.status as string,
+        issueDate: (atual.issue_date as string) ?? issueDate,
+        validUntil: (atual.valid_until as string) ?? validUntil,
+        fxRate: atual.fx_rate != null ? toNum(atual.fx_rate) : null,
+        reused: true,
+      };
+    }
+    throw new Error("Nao foi possivel emitir a cotacao (estado mudou durante a emissao).");
+  }
 
   await supabase.from("quote_event").insert({
     tenant_id: args.tenantId,
@@ -378,6 +402,13 @@ export async function reissueQuote(
     })
     .eq("tenant_id", args.tenantId)
     .eq("id", args.quoteId);
+
+  // Higiene: limpa a marca de escolha das opcoes; a reemissao zera a escolha.
+  await supabase
+    .from("quote_option")
+    .update({ selected_at: null })
+    .eq("tenant_id", args.tenantId)
+    .eq("quote_id", args.quoteId);
 
   const emitido = await issueQuote(supabase, args, actor);
 
@@ -632,12 +663,21 @@ export async function selectQuoteOption(
   const chosen = lista[optionIndex].id as string;
 
   const agora = new Date().toISOString();
-  const { error } = await supabase
+  // Corrida: so o primeiro grava. Um update que casa 0 linhas NAO retorna erro
+  // no supabase-js, entao conferimos as linhas afetadas (.select) ANTES de tocar
+  // opcao/evento/e-mail — senao uma segunda escolha concorrente daria sucesso
+  // falso e dispararia evento/e-mail para uma opcao que nao foi registrada.
+  const { data: gravadas, error } = await supabase
     .from("quote")
     .update({ status: "option_selected", selected_option_id: chosen, updated_at: agora })
     .eq("id", quote.id as string)
-    .neq("status", "option_selected"); // corrida: so o primeiro grava
+    .neq("status", "option_selected")
+    .select("id");
   if (error) throw new Error(`Falha ao registrar escolha: ${error.message}`);
+  if (!gravadas || gravadas.length !== 1) {
+    // Outra requisicao ja escolheu entre a leitura e a gravacao.
+    throw new Error("Uma opcao ja foi escolhida. A escolha e irreversivel pelo portal.");
+  }
 
   await supabase.from("quote_option").update({ selected_at: agora }).eq("id", chosen);
 

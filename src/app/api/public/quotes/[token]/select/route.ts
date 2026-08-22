@@ -1,5 +1,5 @@
 import { selectQuoteOption } from "@/lib/quote-issue-service";
-import { guardPortal, portalErro, portalOk } from "@/lib/portal-route";
+import { guardPortal, portalErro, portalOk, portalErroDeExcecao } from "@/lib/portal-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +26,6 @@ export async function POST(
     const res = await selectQuoteOption(g.supabase, token, optionIndex, confirmar);
     return portalOk(res);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro.";
-    return portalErro(msg, "invalido", 400);
+    return portalErroDeExcecao(err);
   }
 }

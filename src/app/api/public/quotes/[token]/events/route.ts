@@ -1,5 +1,11 @@
 import { recordQuoteEvent } from "@/lib/quote-issue-service";
-import { guardPortal, portalErro, portalOk } from "@/lib/portal-route";
+import {
+  guardPortal,
+  portalErro,
+  portalOk,
+  portalErroDeExcecao,
+  sanitizarMetadata,
+} from "@/lib/portal-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,15 +22,13 @@ export async function POST(
 
   const b = (await request.json().catch(() => ({}))) ?? {};
   const kind = typeof b.kind === "string" ? b.kind : "";
-  const metadata =
-    b.metadata && typeof b.metadata === "object" ? (b.metadata as Record<string, unknown>) : undefined;
+  const metadata = sanitizarMetadata(b.metadata);
 
   try {
     const res = await recordQuoteEvent(g.supabase, token, kind, metadata);
     if (!res.ok) return portalErro("Nao encontrado.", "nao_encontrado", 404);
     return portalOk(res);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro.";
-    return portalErro(msg, "invalido", 400);
+    return portalErroDeExcecao(err);
   }
 }
