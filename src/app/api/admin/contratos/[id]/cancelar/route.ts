@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { TIPOS_CANCELAMENTO, type TipoCancelamento } from "@/lib/cancelamento";
@@ -28,7 +28,7 @@ function getSupabase() {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 
@@ -114,7 +114,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 // Reativa um contrato cancelado. Cancelamento por engano acontece, e a
 // alternativa seria mexer no banco na mao.
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checarAdminRequest } from "@/lib/admin-guard";
+import { checarCapacidadeRequest } from "@/lib/admin-guard";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // checamos a sessao e devolvemos o JSON. Autenticacao: sessao de admin (ou
 // Bearer de compatibilidade).
 export async function GET(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "financeiro.ver"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

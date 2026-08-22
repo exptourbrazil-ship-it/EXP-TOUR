@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -11,7 +11,7 @@ const STATUS_VALIDOS = ["pendente", "aprovado", "rejeitado"];
 // Permite que o admin (autenticado com ADMIN_CAMBIO_SECRET) aprove ou
 // rejeite um documento enviado pelo titular.
 export async function PATCH(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
     return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
   }
 

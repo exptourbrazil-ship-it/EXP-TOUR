@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { usuarioAdminAtual } from "@/lib/admin-guard";
-import { checarAdminRequest } from "@/lib/admin-guard";
+import { checarCapacidadeRequest } from "@/lib/admin-guard";
 import { getZohoAttachmentContent } from "@/lib/zoho";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ const BUCKET_POR_ORIGEM: Record<string, string> = {
 };
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
     return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
   }
 

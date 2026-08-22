@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminCookie, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
+import type { CapacidadeAdmin } from "@/lib/admin-roles";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -11,8 +12,8 @@ export const runtime = "nodejs";
 //
 // Autenticacao: cookie de sessao de admin (login em /admin/login), com
 // fallback ao Bearer ADMIN_CAMBIO_SECRET.
-async function checarAuth(request: Request): Promise<boolean> {
-  if (await checarAdminCookie()) return true;
+async function checarAuth(request: Request, capacidade: CapacidadeAdmin): Promise<boolean> {
+  if (await checarCapacidadeAdmin(capacidade)) return true;
   const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
   const authHeader = request.headers.get("authorization");
   if (!adminSecret) return false;
@@ -28,7 +29,7 @@ function getSupabase() {
 // Lista os contratos com o nome do titular/estudante e os dados de viagem ja
 // preenchidos (se houver), para o seletor do painel.
 export async function GET(request: Request) {
-  if (!(await checarAuth(request))) {
+  if (!(await checarAuth(request, "casos.ver"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
 
 // Salva (cria ou atualiza) os dados de viagem de um contrato.
 export async function POST(request: Request) {
-  if (!(await checarAuth(request))) {
+  if (!(await checarAuth(request, "casos.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

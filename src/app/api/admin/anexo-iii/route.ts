@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -24,7 +24,7 @@ function getSupabase() {
 }
 
 export async function GET(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
   const contratoId = new URL(request.url).searchParams.get("contratoId");
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
   const b = await request.json().catch(() => null);
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
   const id = new URL(request.url).searchParams.get("id");
