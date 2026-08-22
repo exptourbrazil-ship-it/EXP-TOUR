@@ -21,6 +21,9 @@ export type QuoteHeader = {
   status: string;
   presentmentCurrency: string;
   studentName: string;
+  publicToken: string | null;
+  tokenRevoked: boolean;
+  validUntil: string | null;
 };
 
 type SearchResult = {
@@ -130,6 +133,48 @@ export default function ConstrutorClient({
       router.refresh();
     });
 
+  const emitir = () =>
+    comBusy(async () => {
+      await postJson(`/api/admin/quotes/${header.id}/issue`, {});
+      router.refresh();
+    });
+
+  const reemitir = () =>
+    comBusy(async () => {
+      if (typeof window !== "undefined" && !window.confirm("Reemitir gera um NOVO link e invalida o anterior. Continuar?")) {
+        return;
+      }
+      await postJson(`/api/admin/quotes/${header.id}/reissue`, {});
+      router.refresh();
+    });
+
+  const revogar = () =>
+    comBusy(async () => {
+      if (typeof window !== "undefined" && !window.confirm("Revogar desativa o link do estudante. Continuar?")) {
+        return;
+      }
+      await postJson(`/api/admin/quotes/${header.id}/revoke-token`, {});
+      router.refresh();
+    });
+
+  const linkPublico =
+    header.publicToken && typeof window !== "undefined"
+      ? `${window.location.origin}/p/${header.publicToken}`
+      : header.publicToken
+        ? `/p/${header.publicToken}`
+        : null;
+
+  const copiarLink = async () => {
+    if (!linkPublico) return;
+    try {
+      await navigator.clipboard.writeText(linkPublico);
+      setErro(null);
+      alert("Link copiado.");
+    } catch {
+      setErro("Nao foi possivel copiar o link.");
+    }
+  };
+
   async function buscar() {
     setBuscando(true);
     setErro(null);
@@ -227,8 +272,72 @@ export default function ConstrutorClient({
           >
             Adicionar opção
           </button>
+          {isDraft ? (
+            <button
+              type="button"
+              onClick={emitir}
+              disabled={busy}
+              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              title="Congela o câmbio e gera o link do estudante"
+            >
+              {busy ? "…" : "Emitir"}
+            </button>
+          ) : header.status === "expired" || header.status === "cancelled" ? null : (
+            <button
+              type="button"
+              onClick={reemitir}
+              disabled={busy}
+              className="rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand-cream/60 disabled:opacity-50"
+              title="Recongela o câmbio e gera um novo link"
+            >
+              Reemitir
+            </button>
+          )}
         </div>
       </header>
+
+      {header.publicToken && !header.tokenRevoked ? (
+        <div className="mb-4 rounded-xl border border-brand/20 bg-brand-cream/50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-golddark">
+            Link do estudante
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <code className="max-w-full truncate rounded bg-white px-2 py-1 text-xs text-neutral-700">
+              {linkPublico}
+            </code>
+            <button
+              type="button"
+              onClick={copiarLink}
+              className="rounded-lg border border-neutral-300 px-3 py-1 text-xs font-medium text-brand hover:bg-white"
+            >
+              Copiar
+            </button>
+            <a
+              href={linkPublico ?? "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-neutral-300 px-3 py-1 text-xs font-medium text-brand hover:bg-white"
+            >
+              Abrir
+            </a>
+            <button
+              type="button"
+              onClick={revogar}
+              disabled={busy}
+              className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              Revogar
+            </button>
+          </div>
+          {header.validUntil ? (
+            <p className="mt-1 text-[11px] text-neutral-500">Válida até {header.validUntil}.</p>
+          ) : null}
+        </div>
+      ) : header.publicToken && header.tokenRevoked ? (
+        <p className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600">
+          O link do estudante foi revogado. Use “Reemitir” para gerar um novo.
+        </p>
+      ) : null}
 
       {!isDraft ? (
         <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
