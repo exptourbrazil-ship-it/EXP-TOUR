@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { ClienteCarteira } from "@/lib/clientes";
 import { fmtPorMoeda, fmtData } from "@/lib/formato";
 
@@ -91,6 +92,7 @@ export default function ClientesClient({ clientes }: { clientes: ClienteCarteira
               <th className="px-4 py-3 font-medium">Parcelas</th>
               <th className="px-4 py-3 text-right font-medium">Saldo em aberto</th>
               <th className="px-4 py-3 font-medium">Atraso</th>
+              <th className="px-4 py-3 font-medium"></th>
             </tr>
           </thead>
           <tbody>
@@ -134,11 +136,19 @@ export default function ClientesClient({ clientes }: { clientes: ClienteCarteira
                     <span className="text-xs text-neutral-400">em dia</span>
                   )}
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/admin/clientes/${c.id}`}
+                    className="inline-block rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand-cream/40"
+                  >
+                    Abrir
+                  </Link>
+                </td>
               </tr>
             ))}
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-neutral-500">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-neutral-500">
                   Nenhum cliente para os filtros selecionados.
                 </td>
               </tr>
