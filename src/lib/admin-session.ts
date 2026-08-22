@@ -1,4 +1,8 @@
 import crypto from "crypto";
+// Import de TIPO apenas (apagado em runtime). A validade do papel e garantida
+// por quem assina a sessao (login/verify checa admin_users via
+// admin-roles.papelValido antes de chamar criarSessaoAdmin).
+import type { PapelAdmin } from "./admin-roles";
 
 // Sessao de administrador, assinada com HMAC-SHA256, guardada em um cookie
 // httpOnly separado da sessao dos clientes. Mesmo formato do lib/session.ts:
@@ -23,17 +27,23 @@ function assinar(payload: string): string {
   return crypto.createHmac("sha256", getSecret()).update(payload).digest("hex");
 }
 
-// Cria um token de sessao de admin, valido por 12 horas.
-export function criarSessaoAdmin(usuario: string): string {
+// Cria um token de sessao de admin, valido por 12 horas. O papel entra no
+// payload assinado para a autorizacao por capacidade (ver admin-roles.ts).
+export function criarSessaoAdmin(usuario: string, papel: PapelAdmin = "gestor"): string {
   const exp = Math.floor(Date.now() / 1000) + ADMIN_SESSION_DURATION_SECONDS;
-  const payloadJson = JSON.stringify({ usuario, admin: true, exp });
+  const payloadJson = JSON.stringify({ usuario, papel, admin: true, exp });
   const payload = Buffer.from(payloadJson, "utf8").toString("base64url");
   const assinatura = assinar(payload);
   return payload + "." + assinatura;
 }
 
-// Verifica um token de sessao de admin. Retorna { usuario } se valido, ou null.
-export function verificarSessaoAdmin(token: string | undefined | null): { usuario: string } | null {
+// Verifica um token de sessao de admin. Retorna { usuario, papel } se valido,
+// ou null. Compatibilidade: tokens antigos (emitidos antes do multiusuario) nao
+// tem papel — como o unico admin de entao era o Gestor semeado, o padrao e
+// "gestor" e esses tokens expiram em ate 12h.
+export function verificarSessaoAdmin(
+  token: string | undefined | null
+): { usuario: string; papel: PapelAdmin } | null {
   if (!token) return null;
 
   const partes = token.split(".");
@@ -57,7 +67,11 @@ export function verificarSessaoAdmin(token: string | undefined | null): { usuari
     const agora = Math.floor(Date.now() / 1000);
     if (!dados || dados.admin !== true) return null;
     if (typeof dados.exp !== "number" || dados.exp < agora) return null;
-    return { usuario: String(dados.usuario || "admin") };
+    // Papel ausente => token antigo (pre-multiusuario), do Gestor semeado.
+    // Papel desconhecido nao vira gestor: a autorizacao (podeAdmin) so libera
+    // capacidades de papeis conhecidos, entao um valor estranho falha fechado.
+    const papel = (typeof dados.papel === "string" && dados.papel ? dados.papel : "gestor") as PapelAdmin;
+    return { usuario: String(dados.usuario || "admin"), papel };
   } catch {
     return null;
   }

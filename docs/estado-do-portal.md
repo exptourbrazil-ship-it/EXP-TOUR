@@ -224,8 +224,15 @@ incidente de agosto.
    resto não. Hoje só `descricao` é alcançável por cliente, e o e-mail vai para
    ele mesmo — mas falta um helper compartilhado.
 
-7. **Contas de admin individuais.** Hoje o painel é uma credencial única; a
-   auditoria registra `rodrigo@exp-tour.com` ou `bearer-secret` para tudo.
+7. **Contas de admin individuais — fundação entregue.** O login por código
+   agora valida o e-mail contra a tabela `admin_users` (contas individuais com
+   papel), e o papel entra na sessão admin. RBAC em `src/lib/admin-roles.ts`
+   (4 papéis: gestor/operação/financeiro/consultor; a rota checa
+   `podeAdmin(papel, capacidade)`). A auditoria (`admin_audit`) passa a registrar
+   o e-mail real de quem logou. **Falta migrar cada rota admin** de
+   `checarAdminCookie` (qualquer admin) para `checarCapacidadeAdmin(...)` — hoje
+   só existe o Gestor semeado, então sem exposição; a migração é incremental
+   conforme os módulos do doc 07 forem construídos.
 
 ### Produto (do plano v2, ainda abertos)
 

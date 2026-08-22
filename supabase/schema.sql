@@ -217,6 +217,50 @@ create table if not exists admin_audit (
 create index if not exists idx_admin_audit_criado on admin_audit(criado_em desc);
 create index if not exists idx_admin_audit_acao on admin_audit(acao);
 
+-- Contas administrativas individuais com papel (RBAC). Evolui o login por codigo
+-- de e-mail: em vez de um destinatario fixo (ADMIN_EMAIL), o login passa a
+-- aceitar qualquer e-mail ativo aqui, e o papel entra na sessao admin.
+-- Ver docs/07-arquitetura-area-administrativa.md (Secao 2) e src/lib/admin-roles.ts.
+-- RLS habilitado sem policies: autorizacao e feita em codigo (service role).
+create table if not exists admin_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  nome text,
+  papel text not null default 'operacao'
+    check (papel in ('gestor','operacao','financeiro','consultor')),
+  ativo boolean not null default true,
+  criado_por text,
+  created_at timestamptz not null default now()
+  );
+
+-- Fila do Dia: tarefas operacionais do admin (doc 07, Secoes 3.1 e 5). Fontes
+-- automaticas (documento enviado, parcela em D+10, SLA estourado) e manuais.
+-- A v1 da tela tambem compoe a fila por consulta ao vivo; esta tabela guarda
+-- tarefas materializadas/manuais e o estado. Ver src/lib/fila-do-dia.ts.
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  categoria text not null
+    check (categoria in ('documento','parcela','proposta','fornecedor','excecao','sistema','outro')),
+  titulo text not null,
+  contexto text,
+  alvo_tipo text,
+  alvo_id uuid,
+  href text,
+  dono text,
+  papel text,
+  estado text not null default 'aberto'
+    check (estado in ('aberto','em_andamento','concluido')),
+  prazo timestamptz,
+  origem text not null default 'manual',
+  chave_dedupe text unique,
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  concluido_em timestamptz
+  );
+
+create index if not exists idx_tasks_estado on tasks(estado, criado_em desc);
+create index if not exists idx_tasks_dono on tasks(dono) where estado <> 'concluido';
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via
@@ -299,6 +343,8 @@ alter table if exists whatsapp_logs      enable row level security;
 alter table if exists lembretes_cobranca enable row level security;
 alter table if exists rate_limit_hits    enable row level security;
 alter table if exists admin_audit        enable row level security;
+alter table if exists admin_users        enable row level security;
+alter table if exists tasks              enable row level security;
 alter table if exists nps_respostas      enable row level security;
 alter table if exists embarque_checklist enable row level security;
 alter table if exists viagem_info        enable row level security;
@@ -439,3 +485,516 @@ alter table if exists codigos_acesso add column if not exists codigo_hash text;
 alter table if exists codigos_acesso alter column codigo drop not null;
 create index if not exists idx_codigos_acesso_titular_ativo
   on codigos_acesso(titular_id, used_at, created_at desc);
+
+-- ============================================================================
+-- Modulo Catalogo/Preco/Cotacao — Marco 1 (spec-catalogo-preco-cotacao.md 3.1-3.3)
+-- Adaptado ao ADR-001: identificadores em ingles, tenant_id em toda tabela
+-- (single-tenant hoje, multi-tenant preparado), RLS habilitado sem policies
+-- (autorizacao em codigo/service role). Enums via text + CHECK.
+-- ============================================================================
+
+create table if not exists tenant (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text not null unique,
+  default_locale text not null default 'pt-BR',
+  default_presentment_currency char(3) not null default 'BRL',
+  logo_url text, brand_color text,
+  contact_email text, contact_phone text, website text, address text,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+
+create table if not exists tenant_fx_policy (
+  tenant_id uuid primary key references tenant(id) on delete cascade,
+  markup_percent numeric(6,4) not null default 0,
+  rounding_mode text not null default 'none' check (rounding_mode in ('none','up_1','up_10','up_100')),
+  rate_source text not null default 'manual',
+  max_rate_age_hours int not null default 24,
+  disclaimer text not null default '',
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+
+create table if not exists supplier (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  display_name text not null, legal_name text, country_code char(2), website text, logo_url text,
+  relationship_status text not null default 'prospect'
+    check (relationship_status in ('prospect','requested','connected','paused','declined','disconnected')),
+  is_preferred boolean not null default false,
+  verified_at timestamptz, internal_notes text, owner_user_id uuid,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_supplier_tenant_status on supplier(tenant_id, relationship_status);
+
+create table if not exists supplier_group (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  name text not null,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create table if not exists supplier_group_member (
+  supplier_group_id uuid not null references supplier_group(id) on delete cascade,
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  primary key (supplier_group_id, supplier_id)
+);
+
+create table if not exists supplier_agreement (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  valid_from date not null, valid_until date,
+  commission_basis text not null check (commission_basis in ('tuition','tuition_plus_fees','total','none')),
+  commission_type text not null check (commission_type in ('percent','fixed_per_sale','fixed_per_week')),
+  commission_value numeric(14,4) not null, currency char(3),
+  payment_terms text, document_url text, notes text,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_supplier_agreement_supplier on supplier_agreement(supplier_id, valid_from desc);
+
+create table if not exists campus (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  name text not null, country_code char(2) not null, region text, city text not null,
+  address text, postal_code text, latitude numeric(9,6), longitude numeric(9,6),
+  timezone text not null, base_currency char(3) not null,
+  phone text, email text, website text, logo_url text, cover_image_url text,
+  status text not null default 'draft' check (status in ('draft','active','inactive')),
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_campus_tenant_supplier_status on campus(tenant_id, supplier_id, status);
+
+create table if not exists campus_settings (
+  campus_id uuid primary key references campus(id) on delete cascade,
+  units_enabled text[] not null default '{week}',
+  lesson_minutes int, course_min_age int, course_max_age int,
+  course_min_duration int, course_max_duration int, course_language_level_required text,
+  accommodation_min_age int, accommodation_max_age int,
+  accommodation_min_duration int, accommodation_max_duration int, accommodation_checkout_weekday int,
+  multi_course_fee_rule text not null default 'charge_highest'
+    check (multi_course_fee_rule in ('charge_highest','charge_lowest','charge_all')),
+  default_unit text not null default 'week',
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+
+create table if not exists campus_content (
+  campus_id uuid not null references campus(id) on delete cascade,
+  locale text not null,
+  highlights jsonb, highlights_footer text, description_html text,
+  is_machine_translated boolean not null default false,
+  created_at timestamptz not null default now(), updated_at timestamptz,
+  primary key (campus_id, locale)
+);
+
+create table if not exists campus_media (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  url text not null, kind text check (kind in ('photo','video','brochure')),
+  sort int not null default 0, caption text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists campus_document (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  locale text not null,
+  kind text not null check (kind in ('terms_and_conditions','payment_refund_policy','application_instructions')),
+  body_html text not null, version int not null default 1, published_at timestamptz,
+  created_at timestamptz not null default now(), updated_at timestamptz,
+  unique (campus_id, locale, kind)
+);
+
+create table if not exists campus_calendar_entry (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  kind text not null check (kind in ('course_start','accommodation_arrival','holiday','closure')),
+  date date not null, label text, applies_to_product_ids uuid[],
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_campus_calendar on campus_calendar_entry(campus_id, kind, date);
+
+create table if not exists market (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  name text not null, country_codes char(2)[] not null, is_default boolean not null default false,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_market_tenant on market(tenant_id);
+
+alter table if exists tenant                 enable row level security;
+alter table if exists tenant_fx_policy       enable row level security;
+alter table if exists supplier               enable row level security;
+alter table if exists supplier_group         enable row level security;
+alter table if exists supplier_group_member  enable row level security;
+alter table if exists supplier_agreement     enable row level security;
+alter table if exists campus                 enable row level security;
+alter table if exists campus_settings        enable row level security;
+alter table if exists campus_content         enable row level security;
+alter table if exists campus_media           enable row level security;
+alter table if exists campus_document        enable row level security;
+alter table if exists campus_calendar_entry  enable row level security;
+alter table if exists market                 enable row level security;
+
+-- ============================================================================
+-- Modulo Catalogo/Preco/Cotacao — Marco 3 (spec 3.4-3.6): produtos, elegibilidade,
+-- preco, taxas, promocoes. Mesmas convencoes do Marco 1 (ingles, tenant_id, RLS
+-- sem policies, enums text+CHECK). Ligavel ao motor de preco (src/lib/pricing.ts)
+-- e aos helpers puros (src/lib/catalog.ts: resolveMarket, evaluateEligibility).
+-- ============================================================================
+
+create table if not exists product (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  kind text not null check (kind in ('program','accommodation','insurance','other','package')),
+  name text not null, internal_code text,
+  source text not null default 'internal' check (source in ('internal','supplier')),
+  visibility text not null default 'internal' check (visibility in ('hidden','internal','quotable','sellable')),
+  status text not null default 'draft' check (status in ('draft','active','inactive')),
+  default_unit text not null default 'week', min_duration int, max_duration int,
+  available_from date, available_until date,
+  attributes jsonb not null default '{}', created_by_user_id uuid,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_product_catalog on product(tenant_id, campus_id, kind, status);
+create index if not exists idx_product_attributes on product using gin (attributes);
+
+create table if not exists product_type_schema (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  kind text not null, key text not null, label text not null,
+  json_schema jsonb not null, search_facets text[] not null default '{}',
+  created_at timestamptz not null default now(), updated_at timestamptz,
+  unique (tenant_id, kind, key)
+);
+
+create table if not exists program_detail (
+  product_id uuid primary key references product(id) on delete cascade,
+  education_type text, subject text, language text,
+  delivery_method text check (delivery_method in ('in_person','online','hybrid')),
+  format text, institution_type text, grades text[],
+  lessons_per_week int, hours_per_week numeric(5,2),
+  is_pathway boolean, includes_activities boolean, timetable jsonb
+);
+create table if not exists accommodation_detail (
+  product_id uuid primary key references product(id) on delete cascade,
+  accommodation_type text check (accommodation_type in ('homestay','residence','shared_apartment','studio','hotel','other')),
+  room_type text check (room_type in ('private','shared_2','shared_3plus')),
+  bathroom_type text check (bathroom_type in ('private','shared')),
+  meal_plan text check (meal_plan in ('none','breakfast','half_board','full_board','self_catering')),
+  distance_to_campus_minutes int, check_in_weekday int, check_out_weekday int
+);
+create table if not exists insurance_detail (
+  product_id uuid primary key references product(id) on delete cascade,
+  provider_name text, coverage_summary text,
+  policy_unit text check (policy_unit in ('day','week','month')), max_duration_days int
+);
+create table if not exists other_product_detail (
+  product_id uuid primary key references product(id) on delete cascade,
+  charge_unit text not null check (charge_unit in ('once','day','night','week','person','unit')), category text
+);
+create table if not exists package (
+  product_id uuid primary key references product(id) on delete cascade,
+  valid_from date, valid_until date,
+  pricing_mode text not null check (pricing_mode in ('sum_of_items','fixed_price'))
+);
+create table if not exists package_item (
+  id uuid primary key default gen_random_uuid(),
+  package_product_id uuid not null references product(id) on delete cascade,
+  item_product_id uuid not null references product(id) on delete cascade,
+  quantity numeric(10,2), unit text, is_optional boolean not null default false, sort int not null default 0
+);
+create table if not exists product_content (
+  product_id uuid not null references product(id) on delete cascade,
+  locale text not null,
+  description_html text, highlights jsonb, inclusions jsonb, exclusions jsonb,
+  is_machine_translated boolean not null default false,
+  created_at timestamptz not null default now(), updated_at timestamptz,
+  primary key (product_id, locale)
+);
+create table if not exists product_media (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  product_id uuid not null references product(id) on delete cascade,
+  url text not null, kind text, sort int not null default 0, caption text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists eligibility_rule (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  product_id uuid not null references product(id) on delete cascade,
+  group_index int not null default 0,
+  attribute text not null check (attribute in
+    ('age_at_start','nationality','residence_country','language_level','education_level','onshore_status','has_visa')),
+  operator text not null check (operator in ('between','in','not_in','gte','lte','eq')),
+  value jsonb not null, is_blocking boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_eligibility_product on eligibility_rule(product_id, group_index);
+
+create table if not exists price_template (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  name text not null,
+  price_basis text not null check (price_basis in ('duration','quantity','fixed','per_person')),
+  duration_type text not null default 'flexible' check (duration_type in ('flexible','fixed_sessions')),
+  unit text not null, currency char(3) not null,
+  min_quantity int, max_quantity int,
+  charge_in_tiers boolean not null default false,
+  market_id uuid references market(id),
+  valid_from date not null, valid_until date,
+  status text not null default 'draft' check (status in ('draft','active','expired')),
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_price_template_campus on price_template(campus_id, market_id, status);
+create table if not exists price_tier (
+  id uuid primary key default gen_random_uuid(),
+  price_template_id uuid not null references price_template(id) on delete cascade,
+  min_quantity int not null, unit_price numeric(14,2) not null, sort int not null default 0,
+  unique (price_template_id, min_quantity)
+);
+create table if not exists price_template_product (
+  price_template_id uuid not null references price_template(id) on delete cascade,
+  product_id uuid not null references product(id) on delete cascade,
+  primary key (price_template_id, product_id)
+);
+create table if not exists price_transition_rule (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid references campus(id) on delete cascade,
+  strategy text not null check (strategy in ('split_by_period','use_start_date_price','use_booking_date_price')),
+  applies_to_kind text, created_at timestamptz not null default now()
+);
+
+create table if not exists fee (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  name text not null,
+  fee_type text not null check (fee_type in
+    ('registration','material','bank','placement','service','courier','courier_of_documents','custom')),
+  charge_basis text not null check (charge_basis in ('once_per_quote','once_per_item','per_unit','per_person')),
+  amount numeric(14,2), currency char(3), price_template_id uuid references price_template(id),
+  is_refundable boolean, is_mandatory boolean not null default true,
+  applies_to_kinds text[] not null default '{}', valid_from date, valid_until date,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz,
+  constraint fee_amount_xor_template check ((amount is not null) <> (price_template_id is not null))
+);
+create table if not exists fee_product (
+  fee_id uuid not null references fee(id) on delete cascade,
+  product_id uuid not null references product(id) on delete cascade,
+  primary key (fee_id, product_id)
+);
+
+create table if not exists promotion (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid references campus(id) on delete cascade,
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  name text not null,
+  promo_type text not null check (promo_type in
+    ('percent_off','fixed_off','free_units','waive_fee','free_product','override_price')),
+  value numeric(14,4),
+  free_units_semantics text check (free_units_semantics in ('bonus_on_top','discount_on_booked')),
+  applies_to text not null check (applies_to in
+    ('tuition','accommodation','insurance','fees','specific_fee','total','specific_product')),
+  applies_to_ref_id uuid, min_quantity int, max_discount_amount numeric(14,2),
+  is_stackable boolean not null default false, priority int not null default 100,
+  booking_from date, booking_until date, travel_from date, travel_until date,
+  status text not null default 'draft' check (status in ('draft','active','expired')),
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_promotion_supplier on promotion(tenant_id, supplier_id, status);
+create table if not exists promotion_target (
+  id uuid primary key default gen_random_uuid(),
+  promotion_id uuid not null references promotion(id) on delete cascade,
+  dimension text not null check (dimension in ('market','nationality','campus','partner','product','education_type')),
+  value text not null
+);
+create index if not exists idx_promotion_target on promotion_target(promotion_id, dimension);
+
+alter table if exists product                enable row level security;
+alter table if exists product_type_schema    enable row level security;
+alter table if exists program_detail         enable row level security;
+alter table if exists accommodation_detail   enable row level security;
+alter table if exists insurance_detail       enable row level security;
+alter table if exists other_product_detail   enable row level security;
+alter table if exists package                enable row level security;
+alter table if exists package_item           enable row level security;
+alter table if exists product_content        enable row level security;
+alter table if exists product_media          enable row level security;
+alter table if exists eligibility_rule       enable row level security;
+alter table if exists price_template         enable row level security;
+alter table if exists price_tier             enable row level security;
+alter table if exists price_template_product enable row level security;
+alter table if exists price_transition_rule  enable row level security;
+alter table if exists fee                    enable row level security;
+alter table if exists fee_product            enable row level security;
+alter table if exists promotion              enable row level security;
+alter table if exists promotion_target       enable row level security;
+
+-- ============================================================================
+-- Modulo Catalogo/Preco/Cotacao — Marco 4 (spec 3.7 estudante + 3.8 cotacao).
+-- Convencoes ADR-001. fx_rate e referencia global (sem tenant_id).
+-- ============================================================================
+
+create table if not exists student (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  first_name text not null, last_name text not null, preferred_name text,
+  email text, phone text, whatsapp text, birth_date date, gender text,
+  nationality_code char(2), residence_country_code char(2), city text,
+  language_level text, education_level text,
+  passport_number text, visa_country_code char(2), visa_type text, visa_expiry date,
+  onshore_status text check (onshore_status in ('onshore','offshore')),
+  source text, owner_user_id uuid, consent jsonb,
+  status text not null default 'lead' check (status in ('lead','active','archived')),
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_student_tenant on student(tenant_id, status);
+create table if not exists student_contact (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  student_id uuid not null references student(id) on delete cascade,
+  relationship text check (relationship in ('parent','guardian','spouse','other')),
+  name text not null, email text, phone text, is_payer boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table if not exists custom_field_definition (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  entity text not null check (entity in ('student','quote','supplier')),
+  key text not null, label text not null, field_type text not null,
+  options jsonb, sort int not null default 0,
+  created_at timestamptz not null default now(),
+  unique (tenant_id, entity, key)
+);
+create table if not exists custom_field_value (
+  id uuid primary key default gen_random_uuid(),
+  definition_id uuid not null references custom_field_definition(id) on delete cascade,
+  record_id uuid not null, value jsonb not null,
+  unique (definition_id, record_id)
+);
+
+create table if not exists quote (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  reference text not null,
+  student_id uuid not null references student(id),
+  owner_user_id uuid not null,
+  locale text not null default 'pt-BR',
+  source_currency char(3), presentment_currency char(3) not null default 'BRL',
+  fx_rate numeric(18,8), fx_rate_at timestamptz, fx_source text, fx_markup_percent numeric(6,4),
+  issue_date date, valid_until date,
+  status text not null default 'draft'
+    check (status in ('draft','issued','viewed','option_selected','expired','cancelled','converted')),
+  public_token text unique, token_revoked_at timestamptz,
+  student_context jsonb not null default '{}',
+  notes_html text, selected_option_id uuid,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz,
+  unique (tenant_id, reference)
+);
+create index if not exists idx_quote_tenant_status on quote(tenant_id, status);
+create index if not exists idx_quote_owner on quote(owner_user_id);
+create table if not exists quote_option (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_id uuid not null references quote(id) on delete cascade,
+  label text not null, sort int not null default 0,
+  deposit_amount numeric(14,2), deposit_currency char(3),
+  is_recommended boolean not null default false, selected_at timestamptz,
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create index if not exists idx_quote_option_quote on quote_option(quote_id, sort);
+create table if not exists quote_item (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_option_id uuid not null references quote_option(id) on delete cascade,
+  "group" text not null check ("group" in ('program','accommodation','insurance','other','package')),
+  product_id uuid references product(id), campus_id uuid references campus(id),
+  product_snapshot jsonb not null default '{}',
+  start_date date, end_date date,
+  quantity numeric(10,2) not null, delivered_quantity numeric(10,2) not null,
+  unit text not null, unit_price numeric(14,2) not null, gross_amount numeric(14,2) not null,
+  currency char(3) not null, price_breakdown jsonb not null default '{}', sort int not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create index if not exists idx_quote_item_option on quote_item(quote_option_id, sort);
+create table if not exists quote_item_fee (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_item_id uuid not null references quote_item(id) on delete cascade,
+  fee_id uuid references fee(id),
+  name text not null, amount numeric(14,2) not null, currency char(3) not null,
+  is_refundable boolean, basis text not null
+);
+create table if not exists quote_discount (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_option_id uuid not null references quote_option(id) on delete cascade,
+  quote_item_id uuid references quote_item(id) on delete cascade,
+  promotion_id uuid references promotion(id),
+  name text not null,
+  discount_type text not null check (discount_type in ('percent','fixed','free_units')),
+  value numeric(14,4) not null, applies_to text not null,
+  amount numeric(14,2) not null, currency char(3) not null, is_manual boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table if not exists quote_payment_plan (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_option_id uuid not null unique references quote_option(id) on delete cascade,
+  installments_count int not null, first_due_date date,
+  method text check (method in ('pix','boleto','card','bank_transfer','mixed')), notes text,
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create table if not exists quote_payment_installment (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references quote_payment_plan(id) on delete cascade,
+  sequence int not null, due_date date not null,
+  amount numeric(14,2) not null, currency char(3) not null, description text,
+  unique (plan_id, sequence)
+);
+create table if not exists quote_event (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_id uuid not null references quote(id) on delete cascade,
+  kind text not null check (kind in
+    ('created','issued','sent','opened','option_viewed','downloaded','option_selected','expired','reissued')),
+  actor_type text check (actor_type in ('user','student','system')),
+  actor_user_id uuid, metadata jsonb, occurred_at timestamptz not null default now()
+);
+create index if not exists idx_quote_event_quote on quote_event(quote_id, occurred_at desc);
+create table if not exists saved_note (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  title text not null, body_html text not null, locale text not null default 'pt-BR',
+  created_by_user_id uuid, created_at timestamptz not null default now()
+);
+create table if not exists fx_rate (
+  id uuid primary key default gen_random_uuid(),
+  base_currency char(3) not null, quote_currency char(3) not null,
+  rate numeric(18,8) not null, source text not null, effective_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_fx_rate_lookup on fx_rate(base_currency, quote_currency, effective_at desc);
+
+alter table if exists student                   enable row level security;
+alter table if exists student_contact           enable row level security;
+alter table if exists custom_field_definition   enable row level security;
+alter table if exists custom_field_value        enable row level security;
+alter table if exists quote                     enable row level security;
+alter table if exists quote_option              enable row level security;
+alter table if exists quote_item                enable row level security;
+alter table if exists quote_item_fee            enable row level security;
+alter table if exists quote_discount            enable row level security;
+alter table if exists quote_payment_plan        enable row level security;
+alter table if exists quote_payment_installment enable row level security;
+alter table if exists quote_event               enable row level security;
+alter table if exists saved_note                enable row level security;
+alter table if exists fx_rate                   enable row level security;

@@ -13,6 +13,7 @@ export default function AdminLoginPage() {
   const next = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("next") || "/admin") : "/admin";
 
   const [etapa, setEtapa] = useState("solicitar" as "solicitar" | "codigo");
+  const [email, setEmail] = useState("");
   const [codigo, setCodigo] = useState("");
   const [erro, setErro] = useState(null as string | null);
   const [info, setInfo] = useState(null as string | null);
@@ -24,13 +25,17 @@ export default function AdminLoginPage() {
     setInfo(null);
     setCarregando(true);
     try {
-      const res = await fetch("/api/admin/login/request", { method: "POST" });
+      const res = await fetch("/api/admin/login/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErro(json.error || "Não foi possível enviar o código.");
       } else {
         setEtapa("codigo");
-        setInfo("Enviamos um código para o e-mail administrativo. Verifique a caixa de entrada.");
+        setInfo("Se este e-mail for de um administrador, enviamos um código. Verifique a caixa de entrada.");
       }
     } catch {
       setErro("Erro de rede. Tente novamente.");
@@ -71,6 +76,16 @@ export default function AdminLoginPage() {
     fontSize: 20,
     letterSpacing: 6,
     textAlign: "center" as const,
+    boxSizing: "border-box" as const,
+    marginBottom: 14,
+  };
+
+  const emailInputStyle = {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 8,
+    border: "1px solid #d8ccb4",
+    fontSize: 15,
     boxSizing: "border-box" as const,
     marginBottom: 14,
   };
@@ -124,9 +139,21 @@ export default function AdminLoginPage() {
         </h1>
         <p style={{ color: "#042f1b", opacity: 0.7, fontSize: 13, textAlign: "center", marginTop: 0, marginBottom: 22 }}>
           {etapa === "solicitar"
-            ? "Enviaremos um código de acesso ao e-mail administrativo."
+            ? "Informe seu e-mail de administrador para receber um código de acesso."
             : "Digite o código de 6 dígitos que enviamos por e-mail."}
         </p>
+
+        {etapa === "solicitar" ? (
+          <input
+            type="email"
+            autoFocus
+            autoComplete="email"
+            placeholder="seu.email@exp-tour.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={emailInputStyle}
+          />
+        ) : null}
 
         {etapa === "codigo" ? (
           <input

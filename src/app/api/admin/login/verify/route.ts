@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { verificarTokenCodigo, ADMIN_CODIGO_COOKIE } from "@/lib/admin-codigo";
+import { conferirTokenCodigo, ADMIN_CODIGO_COOKIE } from "@/lib/admin-codigo";
 import { criarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
+import { papelValido, type PapelAdmin } from "@/lib/admin-roles";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
 import crypto from "node:crypto";
@@ -49,6 +50,18 @@ export async function POST(request: Request) {
   const ip = obterIp(request);
   const supabase = getSupabase();
 
+  // Falha FECHADO: sem Supabase nao ha como limitar tentativas nem confirmar o
+  // admin ativo. Antes, todo o bloco de defesa vivia dentro de `if (supabase)` e,
+  // sem as envs, o /verify abria sessao como gestor sem rate-limit nem checagem —
+  // exatamente o padrao que o CLAUDE.md proibe. Agora recusa.
+  if (!supabase) {
+    console.error("Supabase nao configurado: /verify recusado.");
+    return NextResponse.json(
+      { error: "Login de admin nao configurado no servidor." },
+      { status: 503 }
+    );
+  }
+
   // Contadores de tentativa. Falham FECHADO: sem o contador nao existe defesa
   // contra forca bruta, e liberar "para nao atrapalhar" e exatamente o que
   // abriria a porta.
@@ -92,9 +105,9 @@ export async function POST(request: Request) {
     }
   }
 
-  let valido = false;
+  let resultado: { ok: boolean; email: string | null } = { ok: false, email: null };
   try {
-    valido = verificarTokenCodigo(token ? decodeURIComponent(token) : null, codigo);
+    resultado = conferirTokenCodigo(token ? decodeURIComponent(token) : null, codigo);
   } catch {
     return NextResponse.json(
       { error: "Login de admin nao configurado no servidor." },
@@ -102,7 +115,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!valido) {
+  if (!resultado.ok) {
     // Falha de autenticacao passa a deixar rastro. Antes, uma campanha de forca
     // bruta contra o painel era invisivel ao vivo e na apuracao posterior.
     if (supabase) {
@@ -117,15 +130,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Código inválido ou expirado." }, { status: 401 });
   }
 
-  const usuario = process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com";
-  const sessao = criarSessaoAdmin(usuario);
+  // Quem loga vem do token ASSINADO (nao do cliente). Tokens antigos, sem
+  // e-mail, caem no ADMIN_EMAIL (o Gestor de antes do multiusuario).
+  const usuario = (resultado.email || process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com").toLowerCase();
+
+  // Confirma que o admin ainda esta ativo e obtem o papel (pode ter sido
+  // desativado entre o /request e o /verify). Falha fechada: sem admin ativo,
+  // nao abre sessao.
+  let papel: PapelAdmin = "gestor";
+  if (supabase) {
+    const { data: admin } = await supabase
+      .from("admin_users")
+      .select("papel, ativo")
+      .eq("email", usuario)
+      .eq("ativo", true)
+      .maybeSingle();
+
+    if (!admin) {
+      await registrarAuditoriaAdmin(supabase, {
+        usuario,
+        acao: "admin.login.negado",
+        alvo: null,
+        detalhe: { metodo: "codigo_email", motivo: "inativo_ou_inexistente" },
+        ip,
+      });
+      return NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 });
+    }
+    papel = papelValido(admin.papel) ? admin.papel : "operacao";
+  }
+
+  const sessao = criarSessaoAdmin(usuario, papel);
 
   if (supabase) {
     await registrarAuditoriaAdmin(supabase, {
       usuario,
       acao: "admin.login",
       alvo: null,
-      detalhe: { metodo: "codigo_email" },
+      detalhe: { metodo: "codigo_email", papel },
       ip,
     });
   }

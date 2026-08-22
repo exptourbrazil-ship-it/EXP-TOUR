@@ -1,11 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verificarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
+import { podeAdmin, type CapacidadeAdmin, type PapelAdmin } from "@/lib/admin-roles";
 
 // Guarda server-side para paginas de admin: verifica a assinatura completa
 // do cookie de sessao (HMAC) no runtime Node. Se invalido/ausente,
-// redireciona para /admin/login. Retorna o usuario autenticado.
-export async function exigirAdmin(next?: string): Promise<{ usuario: string }> {
+// redireciona para /admin/login. Retorna o usuario e o papel autenticados.
+export async function exigirAdmin(next?: string): Promise<{ usuario: string; papel: PapelAdmin }> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   const sessao = verificarSessaoAdmin(token);
   if (!sessao) {
@@ -15,10 +16,38 @@ export async function exigirAdmin(next?: string): Promise<{ usuario: string }> {
   return sessao;
 }
 
+// Guarda de PAGINA por capacidade: exige sessao E o papel poder a capacidade.
+// Sem sessao -> login; sem permissao -> /admin (com aviso). Ver admin-roles.ts.
+export async function exigirCapacidade(
+  capacidade: CapacidadeAdmin,
+  next?: string
+): Promise<{ usuario: string; papel: PapelAdmin }> {
+  const sessao = await exigirAdmin(next);
+  if (!podeAdmin(sessao.papel, capacidade)) {
+    redirect("/admin?erro=sem_permissao");
+  }
+  return sessao;
+}
+
 // Versao para rotas de API: retorna true/false sem redirecionar.
 export async function checarAdminCookie(): Promise<boolean> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   return !!verificarSessaoAdmin(token);
+}
+
+// Sessao completa (usuario + papel) para rotas de API, ou null se nao houver
+// sessao valida.
+export async function sessaoAdminAtual(): Promise<{ usuario: string; papel: PapelAdmin } | null> {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  return verificarSessaoAdmin(token);
+}
+
+// Guarda de ROTA DE API por capacidade: true so se ha sessao valida E o papel
+// pode a capacidade. Use nas rotas novas/refatoradas; as rotas legadas seguem
+// com checarAdminCookie (qualquer admin) ate serem migradas para capacidades.
+export async function checarCapacidadeAdmin(capacidade: CapacidadeAdmin): Promise<boolean> {
+  const sessao = await sessaoAdminAtual();
+  return !!sessao && podeAdmin(sessao.papel, capacidade);
 }
 
 // Auth padrao das rotas de API admin: aceita a sessao de admin (cookie) e,

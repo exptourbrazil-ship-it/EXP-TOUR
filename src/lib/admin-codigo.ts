@@ -26,23 +26,36 @@ function hashCodigo(codigo: string): string {
   return crypto.createHmac("sha256", getSecret()).update("codigo:" + codigo).digest("hex");
 }
 
-// Cria um token assinado que representa o código enviado por e-mail.
-export function criarTokenCodigo(codigo: string): string {
+// Cria um token assinado que representa o código enviado por e-mail. O e-mail
+// do destinatário entra no payload ASSINADO para que o /verify saiba, de forma
+// confiável, QUEM está logando (e busque o papel em admin_users) — o cliente
+// nunca informa o e-mail no /verify, só o código.
+export function criarTokenCodigo(codigo: string, email?: string | null): string {
   const exp = Math.floor(Date.now() / 1000) + CODIGO_DURACAO_SEGUNDOS;
-  const payloadJson = JSON.stringify({ h: hashCodigo(codigo), exp, tipo: "admin_codigo" });
+  const payloadJson = JSON.stringify({
+    h: hashCodigo(codigo),
+    email: email ? email.trim().toLowerCase() : null,
+    exp,
+    tipo: "admin_codigo",
+  });
   const payload = Buffer.from(payloadJson, "utf8").toString("base64url");
   const assinatura = assinar(payload);
   return payload + "." + assinatura;
 }
 
-// Confere o código enviado pelo usuário contra o token assinado do cookie.
-// Retorna true somente se a assinatura for válida, não estiver expirado e o
-// hash do código bater.
-export function verificarTokenCodigo(token: string | undefined | null, codigo: string): boolean {
-  if (!token || !codigo) return false;
+// Confere o código contra o token assinado do cookie e devolve o e-mail que o
+// token carrega (quando válido). `ok` só é true com assinatura válida, sem
+// expirar e com o hash do código batendo. `email` é null em tokens antigos
+// (criados antes do login multiusuário).
+export function conferirTokenCodigo(
+  token: string | undefined | null,
+  codigo: string
+): { ok: boolean; email: string | null } {
+  const falha = { ok: false, email: null };
+  if (!token || !codigo) return falha;
 
   const partes = token.split(".");
-  if (partes.length !== 2) return false;
+  if (partes.length !== 2) return falha;
   const [payload, assinatura] = partes;
 
   const assinaturaEsperada = assinar(payload);
@@ -52,22 +65,29 @@ export function verificarTokenCodigo(token: string | undefined | null, codigo: s
     bufferRecebido.length !== bufferEsperado.length ||
     !crypto.timingSafeEqual(bufferRecebido, bufferEsperado)
   ) {
-    return false;
+    return falha;
   }
 
   try {
     const dados = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    if (dados.tipo !== "admin_codigo") return false;
+    if (dados.tipo !== "admin_codigo") return falha;
     const agora = Math.floor(Date.now() / 1000);
-    if (typeof dados.exp !== "number" || dados.exp < agora) return false;
+    if (typeof dados.exp !== "number" || dados.exp < agora) return falha;
 
     const hashRecebido = Buffer.from(hashCodigo(codigo));
     const hashEsperado = Buffer.from(String(dados.h));
-    if (hashRecebido.length !== hashEsperado.length) return false;
-    return crypto.timingSafeEqual(hashRecebido, hashEsperado);
+    if (hashRecebido.length !== hashEsperado.length) return falha;
+    if (!crypto.timingSafeEqual(hashRecebido, hashEsperado)) return falha;
+
+    return { ok: true, email: typeof dados.email === "string" ? dados.email : null };
   } catch {
-    return false;
+    return falha;
   }
+}
+
+// Compatibilidade: mantém a checagem booleana (delegando à conferirTokenCodigo).
+export function verificarTokenCodigo(token: string | undefined | null, codigo: string): boolean {
+  return conferirTokenCodigo(token, codigo).ok;
 }
 
 // Ver a nota em auth/request-code: Math.random nao serve para material de

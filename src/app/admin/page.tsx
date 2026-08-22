@@ -3,6 +3,9 @@ import { exigirAdmin } from "@/lib/admin-guard";
 import { ADMIN_NAV } from "@/lib/admin-nav";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
 import { contarDocumentosPendentes } from "@/lib/admin-operacao";
+import { carregarFilaDoDia, type FilaDoDia } from "@/lib/admin-fila";
+import { ESTADO_LABEL, type EstadoPrazo, type ItemFila } from "@/lib/fila-do-dia";
+import { PAPEL_LABEL } from "@/lib/admin-roles";
 import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
 
 export const runtime = "nodejs";
@@ -13,7 +16,7 @@ export const dynamic = "force-dynamic";
 // Mostra os indicadores financeiros reais (Fase 1) com link para o Financeiro;
 // a fila de documentos (Fase 2) segue como espaco reservado.
 export default async function AdminHomePage() {
-  const { usuario } = await exigirAdmin("/admin");
+  const { usuario, papel } = await exigirAdmin("/admin");
 
   // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
   let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
@@ -32,6 +35,15 @@ export default async function AdminHomePage() {
     docsPendentes = 0;
   }
 
+  // Fila do Dia, filtrada pelo papel do usuario (gestor ve tudo). Best-effort:
+  // se falhar, a home ainda renderiza sem a fila.
+  let fila = null as FilaDoDia | null;
+  try {
+    fila = await carregarFilaDoDia(Date.now(), papel);
+  } catch {
+    fila = null;
+  }
+
   // Secoes navegaveis (exclui a propria home).
   const secoes = ADMIN_NAV.filter((i) => i.href !== "/admin");
 
@@ -41,10 +53,44 @@ export default async function AdminHomePage() {
         <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Painel</p>
         <h1 className="mt-1 font-serif text-3xl text-brand">Olá, {primeiroNome(usuario)}</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Visão geral da operação. Os indicadores financeiros já estão ativos; as filas de
-          documentos e a saúde do sistema entram nas próximas fases.
+          O que precisa da sua atenção hoje, priorizado automaticamente. Os indicadores
+          financeiros e as ferramentas ficam logo abaixo.
         </p>
       </header>
+
+      {/* Fila do Dia: o que precisa de atenção, priorizado (doc 07, 3.1) */}
+      <section aria-label="Fila do Dia" className="mb-10">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-brand">
+            Fila do Dia
+            {papel !== "gestor" ? (
+              <span className="ml-2 font-normal text-neutral-400">· {PAPEL_LABEL[papel]}</span>
+            ) : null}
+          </h2>
+          {fila && fila.contadores.total > 0 ? (
+            <span className="text-xs text-neutral-500">
+              {fila.contadores.total} item(ns)
+              {fila.contadores.estourados > 0 ? (
+                <span className="text-red-700"> · {fila.contadores.estourados} com SLA estourado</span>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
+
+        {!fila || fila.itens.length === 0 ? (
+          <div className="rounded-2xl border border-neutral-200 bg-white p-6 text-center">
+            <p className="text-sm text-neutral-600">
+              {fila ? "Nada pendente por aqui. Fila zerada. 🎉" : "Não foi possível carregar a fila agora."}
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {fila.itens.map((item, i) => (
+              <FilaLinha key={i} item={item} />
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* Indicadores financeiros (Fase 1) + reservado (Fase 2) */}
       <section aria-label="Indicadores" className="mb-10">
@@ -169,6 +215,72 @@ function CardMetrica({
       </p>
       <p className="mt-1 text-xs text-neutral-400">{legenda ?? " "}</p>
     </Link>
+  );
+}
+
+// Icone por categoria da fila (path do SVG). "outro" e o fallback.
+const ICONE_CATEGORIA: Record<string, string> = {
+  documento:
+    "M14 3v4a1 1 0 0 0 1 1h4M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z",
+  parcela: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  excecao:
+    "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
+  outro: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 8v4M12 16h.01",
+};
+
+function ChipEstado({ estado }: { estado: EstadoPrazo }) {
+  const cor =
+    estado === "estourado" ? "bg-red-500" : estado === "hoje" ? "bg-brand-gold" : "bg-emerald-500";
+  const texto =
+    estado === "estourado"
+      ? "text-red-700"
+      : estado === "hoje"
+      ? "text-brand-golddark"
+      : "text-emerald-700";
+  return (
+    <span
+      className={`hidden shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${texto}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${cor}`} aria-hidden="true" />
+      {ESTADO_LABEL[estado]}
+    </span>
+  );
+}
+
+function FilaLinha({ item }: { item: ItemFila }) {
+  const icone = ICONE_CATEGORIA[item.categoria] ?? ICONE_CATEGORIA.outro;
+  return (
+    <li className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-4">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-cream text-brand">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+          aria-hidden="true"
+        >
+          <path d={icone} />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-brand">{item.titulo}</p>
+        <p className="mt-0.5 truncate text-xs text-neutral-500">
+          {item.contexto ? item.contexto + " · " : ""}há {item.idadeDias} dia(s)
+        </p>
+      </div>
+      <ChipEstado estado={item.estado} />
+      {item.href ? (
+        <Link
+          href={item.href}
+          className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-brand-cream hover:opacity-90"
+        >
+          Abrir
+        </Link>
+      ) : null}
+    </li>
   );
 }
 

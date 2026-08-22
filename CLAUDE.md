@@ -5,6 +5,13 @@ documentos em [`/docs`](./docs/README.md) — em especial
 [`docs/estado-do-portal.md`](./docs/estado-do-portal.md), que é o retrato do que
 existe em produção hoje e do que falta.
 
+Para a **visão-alvo** (Área do Cliente + Área Administrativa + Portal do
+Fornecedor, instâncias EXP Tour e Forio), o handoff de arquitetura está em
+[`docs/00-LEIA-PRIMEIRO.md`](./docs/00-LEIA-PRIMEIRO.md) e nos docs numerados
+`01`–`10`. **Precedência quando houver conflito:** `estado-do-portal.md` e
+`plano-desenvolvimento-v2.md` descrevem a realidade e a decisão vigentes (ex.:
+**Supabase é a fonte de verdade**, não o CRM); os docs de handoff são o destino.
+
 ## O que é
 
 Portal em produção da **Área do Cliente** da EXP Tour (projeto "Forio"): login
@@ -89,6 +96,24 @@ etc.) devem seguir o mesmo padrão.
   em `console.log`.
 - `npm run build` imprime `Compiled successfully` ANTES do type-check. Conferir
   o **exit code**, não a mensagem — foi assim que uma quebra chegou na main.
+
+## Padrões para código novo (visão-alvo — handoff)
+
+Valem a partir da construção da Área Administrativa e dos módulos seguintes
+(ver `docs/00-LEIA-PRIMEIRO.md`, Seção 4):
+
+- **Toda mutação passa por uma função nomeada única** que: valida o papel do
+  autor → executa em transação → grava o evento em `events` → grava a trilha em
+  `audit_log` (antes/depois) → enfileira a notificação. Nada de mutação solta na
+  rota.
+- **Dinheiro só muda de estado por webhook confirmado (idempotente), nunca por
+  tela.** (Já é assim no pagamento; manter para todo fluxo financeiro novo.)
+- **Parâmetros de negócio por instância (TENANT), nunca hardcoded**: spread
+  (6,6%), IOF (3,5%), buffers, SLAs, D-30 de fornecedor etc. vêm de config.
+- **RBAC**: a Área Administrativa tem papéis (ver `docs/07`); rota admin checa o
+  papel, não só a sessão. Overrides sensíveis exigem justificativa registrada.
+- **Marca**: vermelho **apenas no admin**, nunca na Área do Cliente; dourado
+  (`#c9a35e`) só para "próxima ação"/atenção; estados sempre ícone + cor + texto.
 
 ## Comandos
 
