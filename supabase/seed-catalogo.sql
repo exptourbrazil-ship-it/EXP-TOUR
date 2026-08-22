@@ -444,6 +444,22 @@ insert into fx_rate (id, base_currency, quote_currency, rate, source, effective_
   ('f0000000-0000-0000-0000-000000000003','AUD','BRL',3.5800,'seed', now())
 on conflict (id) do nothing;
 
+-- ===========================================================================
+-- OCULTAR produtos sem tabela de preco: sem preco vinculado, eles cotariam
+-- CA$ 0,00 no construtor. Este seed vincula preco apenas aos produtos da unidade
+-- showcase (Toronto: tuition + acomodacao); os demais (seguros, avulsos, pacotes
+-- e os produtos das unidades Vancouver/Dublin/Sydney/Perth) nascem INATIVOS e
+-- nao aparecem na busca do construtor (searchProducts filtra status='active').
+-- Para ativar algum: vincule uma tabela de preco a ele e faca status='active'.
+-- ===========================================================================
+update product p
+set status = 'inactive'
+where p.tenant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002'
+)
+and not exists (select 1 from price_template_product ptp where ptp.product_id = p.id);
+
 commit;
 
 -- ============================================================================
