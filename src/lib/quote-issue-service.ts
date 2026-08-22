@@ -622,6 +622,7 @@ export async function recordQuoteEvent(
     await supabase
       .from("quote")
       .update({ status: "viewed", updated_at: new Date().toISOString() })
+      .eq("tenant_id", quote.tenant_id as string)
       .eq("id", quote.id as string)
       .eq("status", "issued"); // condicional: nao regride de option_selected
   }
@@ -670,6 +671,7 @@ export async function selectQuoteOption(
   const { data: gravadas, error } = await supabase
     .from("quote")
     .update({ status: "option_selected", selected_option_id: chosen, updated_at: agora })
+    .eq("tenant_id", quote.tenant_id as string)
     .eq("id", quote.id as string)
     .neq("status", "option_selected")
     .select("id");
@@ -679,7 +681,11 @@ export async function selectQuoteOption(
     throw new Error("Uma opcao ja foi escolhida. A escolha e irreversivel pelo portal.");
   }
 
-  await supabase.from("quote_option").update({ selected_at: agora }).eq("id", chosen);
+  await supabase
+    .from("quote_option")
+    .update({ selected_at: agora })
+    .eq("tenant_id", tenantId)
+    .eq("id", chosen);
 
   await supabase.from("quote_event").insert({
     tenant_id: tenantId,

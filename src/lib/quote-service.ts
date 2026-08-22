@@ -256,6 +256,7 @@ export async function addQuoteOption(
   const { count } = await supabase
     .from("quote_option")
     .select("id", { count: "exact", head: true })
+    .eq("tenant_id", args.tenantId)
     .eq("quote_id", args.quoteId);
   const sort = count ?? 0;
   const label = args.label ?? `Opcao ${sort + 1}`;
@@ -465,6 +466,7 @@ export async function addQuoteItem(
   const { count } = await supabase
     .from("quote_item")
     .select("id", { count: "exact", head: true })
+    .eq("tenant_id", args.tenantId)
     .eq("quote_option_id", args.optionId);
   const sort = count ?? 0;
 
@@ -869,6 +871,7 @@ export async function recalculateQuote(
           price_breakdown: priced.breakdown,
           updated_at: new Date().toISOString(),
         })
+        .eq("tenant_id", args.tenantId)
         .eq("id", item.id);
 
       total += priced.grossAmount;
