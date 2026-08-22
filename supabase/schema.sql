@@ -70,6 +70,13 @@ create table if not exists parcelas (
 create index if not exists idx_parcelas_contrato on parcelas(contrato_id);
 create index if not exists idx_contratos_titular on contratos(titular_id);
 
+-- Disputa de pagamento (processo E9, doc 01 §4). Sinaliza que uma parcela paga
+-- teve o pagamento CONTESTADO no Mercado Pago (MED Pix / chargeback). O status
+-- 'pago' e preservado (o ledger de pagamentos e imutavel); a flag congela o
+-- "efeito" e alimenta o processo E9 (aberto pelo webhook). Ver disputa-service.ts.
+alter table if exists parcelas add column if not exists em_disputa boolean not null default false;
+alter table if exists parcelas add column if not exists disputa_status text; -- status do MP: in_mediation | charged_back
+
 -- Ledger de pagamentos: um lancamento imutavel por parcela paga, com o cambio
 -- aplicado e o montante em BRL efetivamente pago (do transaction_amount do
 -- Mercado Pago), alem do montante na moeda do programa. A divida vive sempre

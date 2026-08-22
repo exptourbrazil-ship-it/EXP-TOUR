@@ -9,9 +9,11 @@ import { consultarPagamento } from "@/lib/mercadopago";
 import { montarLancamentoPagamento } from "@/lib/pagamento-ledger";
 import { itemizarRecibo } from "@/lib/cambio";
 import { enviarReciboPagamentoEmail } from "@/lib/email";
+import { ehStatusDisputaMP } from "@/lib/mp-disputa";
 
 export type ResultadoProcessamento =
   | { status: "processado"; paymentStatus: string; parcelasAtualizadas: number }
+  | { status: "disputa"; paymentStatus: string } // contestado (MED Pix/chargeback) -> E9
   | { status: "ignorado"; paymentStatus: string }
   | { status: "erro"; erro: string };
 
@@ -34,6 +36,12 @@ export async function processarPagamentoMercadoPago(
   }
 
   const paymentStatus = String(pagamento?.status || "desconhecido");
+  // Contestacao (MED Pix / chargeback): nao aplica nem reverte o efeito aqui —
+  // sinaliza para o chamador (webhook) abrir o processo E9 sob o seu proprio
+  // ledger de idempotencia (dispute:<id>), separado do de pagamento.
+  if (ehStatusDisputaMP(paymentStatus)) {
+    return { status: "disputa", paymentStatus };
+  }
   if (paymentStatus !== "approved") {
     return { status: "ignorado", paymentStatus };
   }

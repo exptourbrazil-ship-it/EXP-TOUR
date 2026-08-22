@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { montarIdempotencyKey } from "@/lib/mp-events";
 import { processarPagamentoMercadoPago } from "@/lib/mp-processar-pagamento";
+import { tratarDisputaLedger } from "@/lib/disputa-service";
 
 export const runtime = "nodejs";
 
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
     ...new Set((parcelas ?? []).map((p) => String(p.external_payment_id)).filter(Boolean)),
   ];
 
-  const resumo = { verificados: 0, conciliados: 0, aindaPendentes: 0, erros: 0 };
+  const resumo = { verificados: 0, conciliados: 0, aindaPendentes: 0, disputas: 0, erros: 0 };
   const detalhes: Array<{ paymentId: string; resultado: string; parcelas?: number; erro?: string }> = [];
 
   for (const paymentId of paymentIds) {
@@ -104,6 +105,25 @@ export async function GET(request: Request) {
       continue;
     }
 
+    if (resultado.status === "disputa") {
+      // So alcancavel quando a parcela AINDA nao esta paga e o MP ja retorna
+      // disputa (a varredura filtra status != pago). O caso comum — contestacao
+      // DEPOIS da aprovacao — nao entra aqui (parcela fica 'pago'); esse e
+      // coberto pelo webhook e pela 2a passada abaixo (reprocessa disputas
+      // presas). Idempotente via ledger dispute:<id>.
+      const res = await tratarDisputaLedger(supabase, paymentId, resultado.paymentStatus, {
+        origem: "cron:conciliar-pagamentos",
+      });
+      if (res.outcome === "erro") {
+        resumo.erros++;
+        detalhes.push({ paymentId, resultado: "disputa:erro", erro: res.erro });
+      } else {
+        resumo.disputas++;
+        detalhes.push({ paymentId, resultado: `disputa:${resultado.paymentStatus}` });
+      }
+      continue;
+    }
+
     if (resultado.status === "ignorado") {
       // Pagamento existe no MP mas ainda nao esta aprovado (pendente, expirado,
       // cancelado). Nada a fazer: quando aprovar, o webhook ou a proxima
@@ -124,6 +144,55 @@ export async function GET(request: Request) {
     resumo.conciliados++;
     detalhes.push({ paymentId, resultado: "processado", parcelas: resultado.parcelasAtualizadas });
     await registrarEvento(supabase, existente?.id, idempotencyKey, paymentId, "processado", null);
+  }
+
+  // 2a passada — rede de seguranca das DISPUTAS: reprocessa eventos de disputa
+  // que ficaram presos ('erro'/'pendente') porque o webhook detectou a
+  // contestacao mas a abertura do E9 falhou (erro transitorio). E o caminho real
+  // de recuperacao do E9, ja que a 1a passada nao reve parcelas 'pago' (o caso
+  // comum de contestacao pos-aprovacao). Idempotente via tratarDisputaLedger.
+  const { data: disputasPresas } = await supabase
+    .from("events")
+    .select("id, external_id")
+    .eq("source", "mercadopago")
+    .eq("event_type", "dispute")
+    .in("status", ["pendente", "erro"])
+    .limit(LIMITE_POR_EXECUCAO);
+
+  for (const d of disputasPresas ?? []) {
+    const pid = d.external_id ? String(d.external_id) : "";
+    if (!pid) continue;
+    // Reconsulta o status atual no MP (a disputa pode ter evoluido).
+    const chk = await processarPagamentoMercadoPago(supabase, pid);
+    if (chk.status === "erro") {
+      // Erro transitorio na consulta: deixa preso para o proximo cron retentar.
+      continue;
+    }
+    if (chk.status !== "disputa") {
+      // A disputa saiu de disputa no MP (ex.: resolvida -> approved/refunded). O
+      // E9 nao se aplica mais por este caminho: encerra o evento como 'ignorado'
+      // para sair da fila de retry (senao seria reconsultado todo dia p/ sempre).
+      await supabase
+        .from("events")
+        .update({
+          status: "ignorado",
+          erro: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", d.id);
+      detalhes.push({ paymentId: pid, resultado: `disputa:retry:encerrada:${chk.status}` });
+      continue;
+    }
+    const res = await tratarDisputaLedger(supabase, pid, chk.paymentStatus, {
+      origem: "cron:conciliar-pagamentos:retry",
+    });
+    if (res.outcome === "erro") {
+      resumo.erros++;
+      detalhes.push({ paymentId: pid, resultado: "disputa:retry:erro", erro: res.erro });
+    } else if (res.outcome !== "duplicado") {
+      resumo.disputas++;
+      detalhes.push({ paymentId: pid, resultado: `disputa:retry:${res.outcome}` });
+    }
   }
 
   // Um pagamento conciliado aqui e, por definicao, um que o webhook deixou

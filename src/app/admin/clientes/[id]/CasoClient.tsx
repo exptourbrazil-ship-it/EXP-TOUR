@@ -12,6 +12,7 @@ import {
   type DesfechoExcecao,
 } from "@/lib/excecao";
 import { STATUS_VISTO, labelStatusVisto } from "@/lib/visto";
+import { labelStatusDisputaMP } from "@/lib/mp-disputa";
 import {
   CATEGORIAS_DOCUMENTO,
   MOTIVOS_REJEICAO_DOCUMENTO,
@@ -436,7 +437,15 @@ function AbaFinanceiro({ caso }: { caso: Caso }) {
                           <span className="font-medium">{fmtMoeda(atual, moeda)}</span>
                         </td>
                         <td className="px-3 py-2">
-                          <BadgeParcela status={p.status} />
+                          <div className="flex flex-wrap items-center gap-1">
+                            <BadgeParcela status={p.status} />
+                            {p.em_disputa ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
+                                <span aria-hidden>⚠</span>
+                                {labelStatusDisputaMP(p.disputa_status)}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
