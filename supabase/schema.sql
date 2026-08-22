@@ -261,6 +261,46 @@ create table if not exists tasks (
 create index if not exists idx_tasks_estado on tasks(estado, criado_em desc);
 create index if not exists idx_tasks_dono on tasks(dono) where estado <> 'concluido';
 
+-- Processos de EXCECAO (doc 01, Secao 4; doc 07, Secao 3.2). Uma excecao NAO e
+-- um estado da linha principal: e um processo paralelo, com maquina propria,
+-- que ao abrir SUSPENDE partes do motor (cobranca/lembretes/avanco) e ao fechar
+-- retoma/redireciona/encerra a jornada. Ancorada no CONTRATO (visto negado,
+-- deferral etc. sao por estudante/contrato); titular_id denormalizado para o
+-- Caso 360 agregar. O "processo ativo" de um contrato e a excecao nao-terminal.
+-- Vocabulario e maquina de estados vivem em src/lib/excecao.ts (puro, testado).
+-- RLS habilitado sem policies: autorizacao e feita em codigo (service role).
+create table if not exists case_exceptions (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  tipo text not null,                       -- slug E1..E11 (ver src/lib/excecao.ts)
+  status text not null default 'aberta'
+    check (status in ('aberta','em_andamento','resolvida','cancelada')),
+  suspende jsonb not null default '[]'::jsonb, -- dominios suspensos: cobranca/lembretes/avanco
+  etapa text,                               -- ponto de decisao atual dentro do processo
+  motivo text,                              -- por que foi aberta
+  desfecho text                             -- ao resolver: retomada/redirecionamento/encerramento
+    check (desfecho is null or desfecho in ('retomada','redirecionamento','encerramento')),
+  resolucao text,                           -- nota de resolucao
+  aberta_por text,                          -- admin_users.email (ou 'sistema' quando automatica)
+  resolvida_por text,
+  aberta_em timestamptz not null default now(),
+  resolvida_em timestamptz,
+  atualizada_em timestamptz not null default now()
+  );
+
+create index if not exists idx_case_exceptions_contrato on case_exceptions(contrato_id);
+create index if not exists idx_case_exceptions_titular on case_exceptions(titular_id);
+-- Fila "excecoes abertas por idade" (doc 07, Secao 1) e "processo ativo" do caso.
+create index if not exists idx_case_exceptions_ativas on case_exceptions(status, aberta_em desc)
+  where status in ('aberta','em_andamento');
+-- No maximo UMA excecao ativa do mesmo tipo por contrato: o pre-check em codigo
+-- (abrirExcecao) e read-then-insert e nao segura duas aberturas concorrentes;
+-- este indice unico parcial e a garantia real no banco.
+create unique index if not exists uidx_case_exceptions_ativa
+  on case_exceptions(contrato_id, tipo) where status in ('aberta','em_andamento');
+alter table if exists case_exceptions enable row level security;
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via

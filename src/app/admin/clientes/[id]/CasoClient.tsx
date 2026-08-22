@@ -3,8 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Caso, CasoContrato, CasoDocumento } from "@/lib/admin-caso";
+import type { Caso, CasoContrato, CasoDocumento, CasoExcecao } from "@/lib/admin-caso";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
+import {
+  TIPOS_EXCECAO,
+  DESFECHOS_EXCECAO,
+  labelTipoExcecao,
+  type DesfechoExcecao,
+} from "@/lib/excecao";
 import {
   CATEGORIAS_DOCUMENTO,
   MOTIVOS_REJEICAO_DOCUMENTO,
@@ -98,6 +104,28 @@ function BadgeEnvio({ sucesso }: { sucesso: boolean | null }) {
     </span>
   );
 }
+
+function BadgeExcecao({ status }: { status: string }) {
+  const mapa: Record<string, { icone: string; texto: string; cls: string }> = {
+    aberta: { icone: "○", texto: "Aberta", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    em_andamento: { icone: "◐", texto: "Em andamento", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    resolvida: { icone: "✓", texto: "Resolvida", cls: "bg-emerald-100 text-emerald-800" },
+    cancelada: { icone: "×", texto: "Cancelada", cls: "bg-neutral-100 text-neutral-500" },
+  };
+  const m = mapa[status] || { icone: "•", texto: status || "—", cls: "bg-neutral-100 text-neutral-600" };
+  return (
+    <span className={"inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium " + m.cls}>
+      <span aria-hidden>{m.icone}</span>
+      {m.texto}
+    </span>
+  );
+}
+
+const LABEL_DESFECHO: Record<string, string> = {
+  retomada: "Jornada retomada",
+  redirecionamento: "Jornada redirecionada",
+  encerramento: "Jornada encerrada",
+};
 
 // ---- Utilidades locais ------------------------------------------------------
 
@@ -230,6 +258,36 @@ export default function CasoClient({
             </span>
           )}
         </div>
+
+        {/* Processo(s) de excecao ativo(s) — doc 01 §4: enquanto ha excecao
+            aberta, o caso esta num processo paralelo. */}
+        {caso.excecoesAtivas.length > 0 ? (
+          <div className="mt-3 rounded-xl border border-[#c9a35e]/50 bg-[#c9a35e]/10 p-3">
+            <div className="flex items-center gap-2">
+              <span aria-hidden className="text-[#8a6a2f]">
+                ⚑
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#8a6a2f]">
+                {caso.excecoesAtivas.length === 1
+                  ? "Processo de exceção ativo"
+                  : `${caso.excecoesAtivas.length} processos de exceção ativos`}
+              </span>
+            </div>
+            <ul className="mt-2 space-y-1">
+              {caso.excecoesAtivas.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center gap-2 text-sm text-[#6f551f]">
+                  <span className="font-medium">{labelTipoExcecao(e.tipo)}</span>
+                  <BadgeExcecao status={e.status} />
+                  {Array.isArray(e.suspende) && e.suspende.length > 0 ? (
+                    <span className="text-xs text-[#8a6a2f]">
+                      suspende: {e.suspende.join(", ")}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </header>
 
       {/* Abas */}
@@ -737,6 +795,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         )}
       </div>
 
+      {/* Processos de excecao (doc 01 §4) */}
+      <SecaoExcecoes caso={caso} podeGerir={permissoes.gerirCaso} />
+
       {/* Analise de documentos: vive na aba Documentos */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
         <h2 className="mb-1 font-serif text-xl text-brand">Analisar documentos</h2>
@@ -755,7 +816,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
           </span>
         </div>
         <ul className="space-y-2">
-          {["Iniciar exceção operacional", "Override com justificativa registrada"].map((f) => (
+          {["Override com justificativa registrada"].map((f) => (
             <li key={f} className="flex items-center gap-2">
               <button
                 type="button"
@@ -769,5 +830,302 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         </ul>
       </div>
     </div>
+  );
+}
+
+// ---- Processos de excecao (abrir / conduzir / resolver) ---------------------
+
+function SecaoExcecoes({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const contratosAtivos = caso.contratos;
+  const [contratoId, setContratoId] = useState(contratosAtivos[0]?.id || "");
+  const [tipo, setTipo] = useState(TIPOS_EXCECAO[0].valor);
+  const [motivo, setMotivo] = useState("");
+  const [abrindo, setAbrindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function abrir() {
+    setErro(null);
+    if (!contratoId) {
+      setErro("Selecione o contrato.");
+      return;
+    }
+    setAbrindo(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/excecoes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, tipo, motivo: motivo.trim() || null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao abrir a exceção.");
+        return;
+      }
+      setMotivo("");
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setAbrindo(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Processos de exceção</h2>
+      <p className="mb-4 text-xs text-neutral-500">
+        Um processo paralelo que suspende partes do motor (cobrança, lembretes, avanço) e, ao
+        fechar, retoma, redireciona ou encerra a jornada.
+      </p>
+
+      {/* Abrir nova excecao */}
+      {podeGerir ? (
+        <div className="mb-5 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+          <p className="mb-2 text-sm font-medium text-brand">Iniciar exceção</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs text-neutral-500">Contrato</span>
+              <select
+                value={contratoId}
+                onChange={(e) => setContratoId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+              >
+                {contratosAtivos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {nomeContrato(c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs text-neutral-500">Tipo</span>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+              >
+                {TIPOS_EXCECAO.map((t) => (
+                  <option key={t.valor} value={t.valor}>
+                    {t.codigo} · {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="mt-3 block">
+            <span className="text-xs text-neutral-500">Motivo (opcional)</span>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={abrir}
+              disabled={abrindo || contratosAtivos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {abrindo ? "Abrindo…" : "Abrir exceção"}
+            </button>
+            {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Lista de excecoes do caso */}
+      {caso.excecoes.length === 0 ? (
+        <p className="text-sm text-neutral-500">Nenhum processo de exceção neste caso.</p>
+      ) : (
+        <ul className="space-y-3">
+          {caso.excecoes.map((e) => (
+            <LinhaExcecao key={e.id} exc={e} caso={caso} podeGerir={podeGerir} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function LinhaExcecao({
+  exc,
+  caso,
+  podeGerir,
+}: {
+  exc: CasoExcecao;
+  caso: Caso;
+  podeGerir: boolean;
+}) {
+  const router = useRouter();
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [formResolver, setFormResolver] = useState(false);
+  const [desfecho, setDesfecho] = useState<DesfechoExcecao>(DESFECHOS_EXCECAO[0]);
+  const [resolucao, setResolucao] = useState("");
+
+  const contrato = caso.contratos.find((c) => c.id === exc.contrato_id);
+  const terminal = exc.status === "resolvida" || exc.status === "cancelada";
+
+  async function mudar(para: string, extra?: Record<string, unknown>) {
+    setErro(null);
+    setOcupado(true);
+    try {
+      const res = await fetch(`/api/admin/excecoes/${exc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ para, ...(extra || {}) }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao atualizar a exceção.");
+        return;
+      }
+      setFormResolver(false);
+      setResolucao("");
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <li className="rounded-xl border border-neutral-200 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-brand">{labelTipoExcecao(exc.tipo)}</span>
+          <BadgeExcecao status={exc.status} />
+        </div>
+        <span className="text-xs text-neutral-400">{fmtDataHora(exc.aberta_em)}</span>
+      </div>
+      <div className="mt-1 space-y-0.5 text-xs text-neutral-500">
+        {contrato ? <div>Contrato: {nomeContrato(contrato)}</div> : null}
+        {Array.isArray(exc.suspende) && exc.suspende.length > 0 ? (
+          <div>Suspende: {exc.suspende.join(", ")}</div>
+        ) : (
+          <div>Não suspende o motor.</div>
+        )}
+        {exc.etapa ? <div>Etapa: {exc.etapa}</div> : null}
+        {exc.motivo ? <div>Motivo: {exc.motivo}</div> : null}
+        {exc.aberta_por ? <div className="text-neutral-400">Aberta por: {exc.aberta_por}</div> : null}
+        {terminal && exc.desfecho ? (
+          <div className="text-neutral-600">
+            {LABEL_DESFECHO[exc.desfecho] || exc.desfecho}
+            {exc.resolucao ? ` — ${exc.resolucao}` : ""}
+            {exc.resolvida_por ? ` (${exc.resolvida_por})` : ""}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Acoes da maquina de estados */}
+      {podeGerir && !terminal ? (
+        <div className="mt-2">
+          {!formResolver ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {exc.status === "aberta" ? (
+                <button
+                  type="button"
+                  onClick={() => mudar("em_andamento")}
+                  disabled={ocupado}
+                  className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Assumir
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setErro(null);
+                  setFormResolver(true);
+                }}
+                disabled={ocupado}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                Resolver
+              </button>
+              <button
+                type="button"
+                onClick={() => mudar("cancelada")}
+                disabled={ocupado}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-500 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancelar exceção
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <label className="block text-xs font-medium text-emerald-800">Desfecho</label>
+              <select
+                value={desfecho}
+                onChange={(e) => setDesfecho(e.target.value as DesfechoExcecao)}
+                className="mt-1 w-full rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-sm"
+              >
+                {DESFECHOS_EXCECAO.map((d) => (
+                  <option key={d} value={d}>
+                    {LABEL_DESFECHO[d]}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={resolucao}
+                onChange={(e) => setResolucao(e.target.value)}
+                rows={2}
+                maxLength={2000}
+                placeholder="Como foi resolvido?"
+                className="mt-2 w-full rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-sm"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!resolucao.trim()) {
+                      setErro("Informe a resolução.");
+                      return;
+                    }
+                    mudar("resolvida", { desfecho, resolucao: resolucao.trim() });
+                  }}
+                  disabled={ocupado}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Confirmar resolução
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormResolver(false);
+                    setErro(null);
+                  }}
+                  disabled={ocupado}
+                  className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          {erro ? <p className="mt-1 text-xs text-red-600">{erro}</p> : null}
+        </div>
+      ) : null}
+
+      {/* Reabrir uma resolvida (correcao de fechamento precoce) */}
+      {podeGerir && exc.status === "resolvida" ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => mudar("em_andamento")}
+            disabled={ocupado}
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            Reabrir
+          </button>
+          {erro ? <p className="mt-1 text-xs text-red-600">{erro}</p> : null}
+        </div>
+      ) : null}
+    </li>
   );
 }

@@ -15,6 +15,7 @@ import {
   saldoPorMoedaAberto,
   estimarSaldoBRL,
 } from "@/lib/caso";
+import { excecaoAtiva, type StatusExcecao } from "@/lib/excecao";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -84,6 +85,22 @@ export type CasoDocumento = {
   created_at: string | null;
 };
 
+export type CasoExcecao = {
+  id: string;
+  contrato_id: string;
+  tipo: string;
+  status: string;
+  suspende: string[] | null;
+  etapa: string | null;
+  motivo: string | null;
+  desfecho: string | null;
+  resolucao: string | null;
+  aberta_por: string | null;
+  resolvida_por: string | null;
+  aberta_em: string | null;
+  resolvida_em: string | null;
+};
+
 export type CasoComunicacao = {
   canal: "email" | "whatsapp";
   tipo_mensagem: string | null;
@@ -109,7 +126,9 @@ export type Caso = {
   documentos: CasoDocumento[];
   comunicacao: CasoComunicacao[];
   eventos: CasoEvento[];
+  excecoes: CasoExcecao[];
   // Derivados
+  excecoesAtivas: CasoExcecao[]; // processos ativos (nao terminais) — "processo ativo" do caso
   jornada: EtapaJornada[];
   etapaAtual: number; // indice da primeira etapa nao concluida
   saldoPorMoeda: Record<string, number>; // em aberto, por moeda do programa
@@ -176,6 +195,18 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });
   const documentos = (documentosData || []) as CasoDocumento[];
+
+  // Processos de excecao do titular (doc 01, Secao 4). Ordenados por abertura
+  // desc; a UI separa os ativos (nao terminais) para o cabecalho do caso.
+  const { data: excecoesData } = await supabase
+    .from("case_exceptions")
+    .select(
+      "id, contrato_id, tipo, status, suspende, etapa, motivo, desfecho, resolucao, aberta_por, resolvida_por, aberta_em, resolvida_em"
+    )
+    .eq("titular_id", titularId)
+    .order("aberta_em", { ascending: false });
+  const excecoes = (excecoesData || []) as CasoExcecao[];
+  const excecoesAtivas = excecoes.filter((e) => excecaoAtiva(e.status as StatusExcecao));
 
   // Comunicacao: e-mail (por destinatario = e-mail do titular) + WhatsApp (por
   // destinatario = telefone do titular). So consulta se houver o contato.
@@ -258,6 +289,8 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     documentos,
     comunicacao,
     eventos,
+    excecoes,
+    excecoesAtivas,
     jornada,
     etapaAtual,
     saldoPorMoeda,
