@@ -60,6 +60,15 @@ export async function checarAdminRequest(request: Request): Promise<boolean> {
   return request.headers.get("authorization") === "Bearer " + adminSecret;
 }
 
+// Mesma compat Bearer do checarAdminRequest, mas com a sessao de cookie gateada
+// por capacidade (RBAC). Use nas rotas de API que ja tem uma capacidade definida.
+export async function checarCapacidadeRequest(request: Request, capacidade: CapacidadeAdmin): Promise<boolean> {
+  if (await checarCapacidadeAdmin(capacidade)) return true;
+  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
+  if (!adminSecret) return false;
+  return request.headers.get("authorization") === "Bearer " + adminSecret;
+}
+
 // Retorna o usuario da sessao de admin (cookie), ou null se nao houver sessao
 // valida. Usado pela trilha de auditoria para saber QUEM executou a acao.
 export async function usuarioAdminAtual(): Promise<string | null> {

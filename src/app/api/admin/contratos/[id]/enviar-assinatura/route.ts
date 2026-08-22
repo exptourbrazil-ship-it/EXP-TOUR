@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 // idade e com e-mail), cria o envelope e registra em contratos_assinatura.
 // Autenticacao: sessao de admin (ou Bearer de compatibilidade).
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "propostas.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

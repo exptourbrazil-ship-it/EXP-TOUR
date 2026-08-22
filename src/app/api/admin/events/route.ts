@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminCookie } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 // Autenticacao: cookie de sessao de admin, com fallback ao Bearer
 // ADMIN_CAMBIO_SECRET (mesmo padrao das demais rotas admin).
 async function checarAuth(request: Request): Promise<boolean> {
-  if (await checarAdminCookie()) return true;
+  if (await checarCapacidadeAdmin("config.gerir")) return true;
   const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
   if (!adminSecret) return false;
   return request.headers.get("authorization") === "Bearer " + adminSecret;

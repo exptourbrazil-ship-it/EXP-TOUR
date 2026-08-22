@@ -31,10 +31,12 @@ test("Gestor pode TODAS as capacidades", () => {
 
 test("Operacao: documentos e fornecedores sim; financeiro e config nao", () => {
   assert.equal(podeAdmin("operacao", "casos.ver"), true);
+  assert.equal(podeAdmin("operacao", "casos.gerir"), true);
   assert.equal(podeAdmin("operacao", "documentos.analisar"), true);
   assert.equal(podeAdmin("operacao", "fornecedores.gerir"), true);
   assert.equal(podeAdmin("operacao", "financeiro.gerir"), false);
   assert.equal(podeAdmin("operacao", "financeiro.ver"), false);
+  assert.equal(podeAdmin("operacao", "cancelamento.gerir"), false);
   assert.equal(podeAdmin("operacao", "config.gerir"), false);
   assert.equal(podeAdmin("operacao", "override"), false);
 });
@@ -43,13 +45,17 @@ test("Financeiro: dinheiro sim; documentos e config nao", () => {
   assert.equal(podeAdmin("financeiro", "casos.ver"), true);
   assert.equal(podeAdmin("financeiro", "financeiro.ver"), true);
   assert.equal(podeAdmin("financeiro", "financeiro.gerir"), true);
+  assert.equal(podeAdmin("financeiro", "cancelamento.gerir"), true);
   assert.equal(podeAdmin("financeiro", "documentos.analisar"), false);
+  assert.equal(podeAdmin("financeiro", "casos.gerir"), false);
   assert.equal(podeAdmin("financeiro", "config.gerir"), false);
 });
 
 test("Consultor: propostas e casos sim; financeiro e config nao", () => {
   assert.equal(podeAdmin("consultor", "casos.ver"), true);
   assert.equal(podeAdmin("consultor", "propostas.gerir"), true);
+  assert.equal(podeAdmin("consultor", "cancelamento.gerir"), true);
+  assert.equal(podeAdmin("consultor", "casos.gerir"), false);
   assert.equal(podeAdmin("consultor", "financeiro.ver"), false);
   assert.equal(podeAdmin("consultor", "financeiro.gerir"), false);
   assert.equal(podeAdmin("consultor", "config.gerir"), false);

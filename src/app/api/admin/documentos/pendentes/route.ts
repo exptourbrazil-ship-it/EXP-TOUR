@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest } from "@/lib/admin-guard";
+import { checarCapacidadeRequest } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 // 'admin' -> documentos-admin. Documentos vindos do Zoho (outra origem) nao tem
 // arquivo no Storage aqui; nesse caso a URL vem nula.
 export async function GET(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
     return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
   }
 

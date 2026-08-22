@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarAdminRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { comporCotacaoVet } from "@/lib/cambio";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 // autenticacao real de staff ainda nao foi construida.
 
 export async function POST(request: Request) {
-  if (!(await checarAdminRequest(request))) {
+  if (!(await checarCapacidadeRequest(request, "financeiro.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

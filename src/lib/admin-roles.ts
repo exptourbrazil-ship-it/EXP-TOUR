@@ -25,9 +25,11 @@ export function papelValido(p: unknown): p is PapelAdmin {
 // de permissoes do doc 07 (Ve / Faz / Nao faz).
 export const CAPACIDADES_ADMIN = [
   "casos.ver", // Caso 360 / lista de clientes (consulta)
+  "casos.gerir", // escritas operacionais de caso — data de inicio, info de viagem, excecoes
   "documentos.analisar", // aprovar/rejeitar documentos, publicar docs de escola
   "financeiro.ver", // parcelas, repactuacoes, contas a pagar, tesouraria
   "financeiro.gerir", // cobranca D+10, acertos/reembolsos, pagamento a fornecedor, disputas MP
+  "cancelamento.gerir", // cancelar/reativar contrato — acerto (Financeiro) + retencao (Consultor)
   "fornecedores.gerir", // cadastro/estagio/pendencias de fornecedor
   "propostas.gerir", // criar proposta/link de checkout, retrabalhar expiradas
   "config.gerir", // parametros da instancia, templates, gestao de usuarios (so Gestor)
@@ -39,11 +41,12 @@ export type CapacidadeAdmin = (typeof CAPACIDADES_ADMIN)[number];
 // Matriz por papel. O Gestor faz tudo (tratado a parte, nao precisa listar).
 // Os demais recebem exatamente o recorte do doc 07:
 //  - Operacao: casos, analise de documentos, fornecedores (nao ve financeiro nem config)
-//  - Financeiro: casos, todo o dinheiro (nao edita documentos nem config)
-//  - Consultor: casos (leitura) e propostas (nao ve financeiro nem config)
+//  - Financeiro: casos, todo o dinheiro, cancelamento (acerto)
+//  - Consultor: casos (leitura), propostas e cancelamento (retencao) — nao ve financeiro nem config
 const CAPACIDADES_POR_PAPEL: Record<Exclude<PapelAdmin, "gestor">, ReadonlySet<CapacidadeAdmin>> = {
   operacao: new Set<CapacidadeAdmin>([
     "casos.ver",
+    "casos.gerir",
     "documentos.analisar",
     "fornecedores.gerir",
   ]),
@@ -51,10 +54,12 @@ const CAPACIDADES_POR_PAPEL: Record<Exclude<PapelAdmin, "gestor">, ReadonlySet<C
     "casos.ver",
     "financeiro.ver",
     "financeiro.gerir",
+    "cancelamento.gerir",
   ]),
   consultor: new Set<CapacidadeAdmin>([
     "casos.ver",
     "propostas.gerir",
+    "cancelamento.gerir",
   ]),
 };
 
