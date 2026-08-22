@@ -9,9 +9,15 @@ import {
   isUuid,
   resolverAdminUserId,
 } from "@/lib/catalog-route";
+import { checarELimitar } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Teto de criacao de cotacao por ator: evita criacao em massa e alivia a corrida
+// no calculo sequencial da `reference` (TODO de atomicidade em quote-service).
+const LIMITE_CRIACAO = 30;
+const JANELA_SEGUNDOS = 5 * 60;
 
 // POST /api/admin/quotes — cria uma cotacao (rascunho).
 // Body: studentId (uuid), ownerUserId? (uuid), locale?, presentmentCurrency?
@@ -38,6 +44,17 @@ export async function POST(request: Request) {
 
   try {
     const supabase = getSupabase();
+
+    const permitido = await checarELimitar(
+      supabase,
+      `catalog:quote:${g.usuario}`,
+      LIMITE_CRIACAO,
+      JANELA_SEGUNDOS,
+    );
+    if (!permitido) {
+      return bad("Muitas cotacoes em sequencia. Tente novamente em instantes.", "rate_limited", 429);
+    }
+
     const tenantId = await tenantIdAtual(supabase);
 
     // Dono: o uuid enviado, ou o id do admin da sessao (via e-mail).

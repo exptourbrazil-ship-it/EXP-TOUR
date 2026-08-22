@@ -189,7 +189,32 @@ export type AddQuoteOptionArgs = {
   quoteId: string;
   label?: string;
   copyFromOptionId?: string;
+  /** Teto (%) de desconto manual do ator; usado ao herdar descontos na copia. */
+  tetoPercent?: number;
+  /** Ator pode manter descontos manuais acima do teto (gestor). */
+  permitirOverride?: boolean;
 };
+
+/**
+ * Regra pura (testavel): um desconto MANUAL da opcao de origem so pode ser
+ * herdado numa duplicacao se o ator conseguiria recria-lo. Assim um consultor
+ * nao herda, via "Duplicar", um override que so um gestor poderia conceder.
+ *
+ * - Descontos nao-manuais (promocoes) nunca passam por aqui (sempre copiados).
+ * - Gestor (permitirOverride) herda qualquer manual.
+ * - Nao-gestor herda apenas `percent` com value <= teto. `fixed`/`free_units`
+ *   nao sao verificaveis sem a base aqui, entao sao descartados por seguranca.
+ */
+export function manualDiscountCopiavel(
+  disc: { discount_type: string; value: number | string },
+  opts: { tetoPercent?: number; permitirOverride?: boolean },
+): boolean {
+  if (opts.permitirOverride) return true;
+  if (disc.discount_type !== "percent") return false;
+  const teto = opts.tetoPercent;
+  if (teto == null || !Number.isFinite(teto)) return false;
+  return toNum(disc.value) <= teto;
+}
 
 /**
  * Adiciona uma opcao a uma cotacao. Com `copyFromOptionId`, duplica os itens da
@@ -214,6 +239,20 @@ export async function addQuoteOption(
   if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
   if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
 
+  // Posse da opcao de origem DENTRO da mesma cotacao: nao basta ser do tenant,
+  // senao daria para copiar itens/descontos de outra cotacao do tenant.
+  if (args.copyFromOptionId) {
+    const { data: src, error: srcErr } = await supabase
+      .from("quote_option")
+      .select("id")
+      .eq("tenant_id", args.tenantId)
+      .eq("id", args.copyFromOptionId)
+      .eq("quote_id", args.quoteId)
+      .maybeSingle();
+    if (srcErr) throw new Error(`Falha ao carregar opcao de origem: ${srcErr.message}`);
+    if (!src) throw new Error("Opcao de origem nao pertence a esta cotacao.");
+  }
+
   const { count } = await supabase
     .from("quote_option")
     .select("id", { count: "exact", head: true })
@@ -234,32 +273,77 @@ export async function addQuoteOption(
   if (insErr) throw new Error(`Falha ao criar opcao: ${insErr.message}`);
   const optionId = option.id as string;
 
+  let copia: CopySummary | null = null;
   if (args.copyFromOptionId) {
-    await copyOptionContents(supabase, args.tenantId, args.copyFromOptionId, optionId);
+    copia = await copyOptionContents(supabase, args.tenantId, args.copyFromOptionId, optionId, {
+      tetoPercent: args.tetoPercent,
+      permitirOverride: args.permitirOverride,
+    });
   }
 
   await registrarAuditoriaAdmin(supabase, {
     usuario: actor.usuario,
     acao: "quote.option.added",
     alvo: optionId,
-    detalhe: { quoteId: args.quoteId, copyFromOptionId: args.copyFromOptionId ?? null },
+    detalhe: {
+      quoteId: args.quoteId,
+      copyFromOptionId: args.copyFromOptionId ?? null,
+      // Trilha da herança de descontos manuais: quais foram copiados e quais
+      // descartados por estarem acima do que o ator poderia recriar (teto/papel).
+      manuaisCopiados: copia?.manuaisCopiados ?? [],
+      manuaisDescartados: copia?.manuaisDescartados ?? [],
+    },
     ip: actor.ip ?? null,
   });
 
   return { optionId };
 }
 
+type CopyOpts = { tetoPercent?: number; permitirOverride?: boolean };
+type CopySummary = { manuaisCopiados: string[]; manuaisDescartados: string[] };
+
+/**
+ * Decide e insere a copia de um desconto da origem, aplicando a politica de
+ * herança de descontos MANUAIS (ver `manualDiscountCopiavel`). Descontos
+ * nao-manuais sempre passam. Retorna o id de origem em `copiados`/`descartados`
+ * conforme o desfecho, para a trilha de auditoria.
+ */
+async function copiarDesconto(
+  supabase: SupabaseClient,
+  disc: any,
+  targetOptionId: string,
+  newItemId: string | null,
+  opts: CopyOpts,
+  sum: CopySummary,
+): Promise<void> {
+  const ehManual = disc.is_manual === true;
+  if (ehManual && !manualDiscountCopiavel(disc, opts)) {
+    sum.manuaisDescartados.push(disc.id as string);
+    return; // nao herda: o ator nao poderia recriar este desconto.
+  }
+  const { id, created_at: dc, ...drest } = disc as any;
+  await supabase.from("quote_discount").insert({
+    ...drest,
+    quote_option_id: targetOptionId,
+    quote_item_id: newItemId,
+  });
+  if (ehManual) sum.manuaisCopiados.push(id as string);
+}
+
 /**
  * Duplica itens (+ taxas + descontos de item) e descontos de opcao da origem
  * para a nova opcao. Inserts sequenciais; sem atomicidade.
- * TODO: mover para RPC/funcao Postgres para atomicidade.
+ * Descontos manuais so sao herdados se o ator conseguiria recria-los (teto/papel)
+ * — o resto e descartado e registrado. TODO: mover para RPC para atomicidade.
  */
 async function copyOptionContents(
   supabase: SupabaseClient,
   tenantId: string,
   sourceOptionId: string,
   targetOptionId: string,
-): Promise<void> {
+  opts: CopyOpts,
+): Promise<CopySummary> {
+  const sum: CopySummary = { manuaisCopiados: [], manuaisDescartados: [] };
   const { data: items } = await supabase
     .from("quote_item")
     .select("*")
@@ -296,12 +380,7 @@ async function copyOptionContents(
       .eq("tenant_id", tenantId)
       .eq("quote_item_id", oldItemId);
     for (const disc of itemDiscounts ?? []) {
-      const { id, created_at: dc, ...drest } = disc as any;
-      await supabase.from("quote_discount").insert({
-        ...drest,
-        quote_option_id: targetOptionId,
-        quote_item_id: newItemId,
-      });
+      await copiarDesconto(supabase, disc, targetOptionId, newItemId, opts, sum);
     }
   }
 
@@ -313,11 +392,10 @@ async function copyOptionContents(
     .eq("quote_option_id", sourceOptionId)
     .is("quote_item_id", null);
   for (const disc of optionDiscounts ?? []) {
-    const { id, created_at: dc, ...drest } = disc as any;
-    await supabase
-      .from("quote_discount")
-      .insert({ ...drest, quote_option_id: targetOptionId });
+    await copiarDesconto(supabase, disc, targetOptionId, null, opts, sum);
   }
+
+  return sum;
 }
 
 // ---------------------------------------------------------------------------

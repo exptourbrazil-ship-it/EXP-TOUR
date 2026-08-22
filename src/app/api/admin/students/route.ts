@@ -1,9 +1,15 @@
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { createStudent } from "@/lib/quote-service";
 import { getSupabase, guardCatalog, bad, fail, okData, isIsoDate } from "@/lib/catalog-route";
+import { checarELimitar } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Teto de criacao de estudante por ator: evita criacao em massa (admin
+// comprometido ou loop de UI). Janela curta, generosa para uso legitimo.
+const LIMITE_CRIACAO = 30;
+const JANELA_SEGUNDOS = 5 * 60;
 
 // POST /api/admin/students — quick-create de estudante (minimo para cotar).
 // Body: firstName, lastName, email?, nationalityCode?, birthDate?
@@ -29,6 +35,17 @@ export async function POST(request: Request) {
 
   try {
     const supabase = getSupabase();
+
+    const permitido = await checarELimitar(
+      supabase,
+      `catalog:student:${g.usuario}`,
+      LIMITE_CRIACAO,
+      JANELA_SEGUNDOS,
+    );
+    if (!permitido) {
+      return bad("Muitas criacoes em sequencia. Tente novamente em instantes.", "rate_limited", 429);
+    }
+
     const tenantId = await tenantIdAtual(supabase);
     const result = await createStudent(
       supabase,

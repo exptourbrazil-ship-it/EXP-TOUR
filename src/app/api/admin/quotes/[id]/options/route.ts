@@ -22,12 +22,22 @@ export async function POST(
   const copyFromOptionId =
     typeof b.copyFromOptionId === "string" ? b.copyFromOptionId : undefined;
 
+  // Herança de descontos manuais na cópia respeita o teto do papel do ator.
+  const teto = Number(process.env.TETO_DESCONTO_MANUAL_PERCENT ?? "15");
+
   try {
     const supabase = getSupabase();
     const tenantId = await tenantIdAtual(supabase);
     const result = await addQuoteOption(
       supabase,
-      { tenantId, quoteId, label, copyFromOptionId },
+      {
+        tenantId,
+        quoteId,
+        label,
+        copyFromOptionId,
+        tetoPercent: Number.isFinite(teto) ? teto : undefined,
+        permitirOverride: g.papel === "gestor",
+      },
       { usuario: g.usuario, ip: g.ip },
     );
     return okData(result);
