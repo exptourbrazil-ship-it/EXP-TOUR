@@ -31,6 +31,10 @@ export type ItemFila = {
   idadeDias: number;
   estado: EstadoPrazo;
   chaveDedupe?: string; // chave estavel da fonte (ex.: "documento:<id>"), evita duplicar live x task materializada
+  // Papel-alvo do item (quem e o dono). Quando presente, roteia por papel
+  // (nao por categoria) — necessario para exceptions, onde o dono varia por
+  // TIPO (E1->consultor, E9->financeiro) dentro da mesma categoria.
+  papelAlvo?: string;
 };
 
 // Idade em dias inteiros de um timestamp ISO ate "agora" (nunca negativa).
@@ -117,6 +121,15 @@ export function papelVeCategoria(papel: string, categoria: CategoriaFila): boole
 }
 
 // Filtra a fila para o que o papel enxerga. Nao muta o array recebido.
+//
+// Roteamento: o Gestor ve tudo. Um item COM papelAlvo e roteado pelo dono (so
+// esse papel o ve) — e o que faz E1 chegar so ao consultor e E9 so ao
+// financeiro, mesmo compartilhando a categoria 'excecao'. Um item SEM papelAlvo
+// cai na regra por categoria (documentos, parcelas, propostas, tarefas manuais).
 export function filtrarPorPapel(itens: ItemFila[], papel: string): ItemFila[] {
-  return itens.filter((i) => papelVeCategoria(papel, i.categoria));
+  return itens.filter((i) => {
+    if (papel === "gestor") return true;
+    if (i.papelAlvo) return i.papelAlvo === papel;
+    return papelVeCategoria(papel, i.categoria);
+  });
 }

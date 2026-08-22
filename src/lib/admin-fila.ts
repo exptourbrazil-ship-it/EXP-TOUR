@@ -15,6 +15,7 @@ import {
   type CategoriaFila,
   type EstadoPrazo,
 } from "@/lib/fila-do-dia";
+import { labelTipoExcecao, papelAlvoDoTipo, slaDiasDoTipo } from "@/lib/excecao";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -24,7 +25,7 @@ function getSupabase() {
 
 export type FilaDoDia = {
   itens: ItemFila[];
-  contadores: { total: number; documentos: number; parcelas: number; estourados: number };
+  contadores: { total: number; documentos: number; parcelas: number; excecoes: number; estourados: number };
 };
 
 // Item de uma fonte automatica ao vivo, com os campos extras que a
@@ -56,12 +57,17 @@ async function coletarFontesAoVivo(
 
   const fontes: FonteItem[] = [];
 
-  const { data: docs } = await supabase
+  // Falha FECHADA nas tres fontes: a reconciliacao do materializador conclui
+  // tasks cuja fonte "sumiu" da lista viva. Se uma query falhar em silencio, a
+  // lista fica parcial e a reconciliacao concluiria tasks indevidamente (ate o
+  // E1 "contato em 24h"). Por isso, qualquer erro de leitura ABORTA a coleta.
+  const { data: docs, error: errDocs } = await supabase
     .from("documentos")
     .select("id, created_at, titular:titulares(nome_completo)")
     .eq("origem", "titular")
     .eq("status", "pendente")
     .order("created_at", { ascending: true });
+  if (errDocs) throw new Error("Falha ao ler documentos da fila: " + errDocs.message);
 
   for (const d of docs ?? []) {
     const idade = idadeEmDias(d.created_at, agoraMs);
@@ -80,12 +86,13 @@ async function coletarFontesAoVivo(
     });
   }
 
-  const { data: parcelas } = await supabase
+  const { data: parcelas, error: errParcelas } = await supabase
     .from("parcelas")
     .select("id, vencimento, contrato:contratos(titular:titulares(nome_completo))")
     .neq("status", "pago")
     .lte("vencimento", limiteD10)
     .order("vencimento", { ascending: true });
+  if (errParcelas) throw new Error("Falha ao ler parcelas da fila: " + errParcelas.message);
 
   for (const p of parcelas ?? []) {
     if (!p.vencimento) continue;
@@ -102,6 +109,36 @@ async function coletarFontesAoVivo(
       papelAlvo: "financeiro",
       alvoTipo: "parcela",
       alvoId: p.id,
+    });
+  }
+
+  // Excecoes abertas por idade (doc 07 §1). Cada processo nao-terminal vira um
+  // item da fila, ordenado primeiro (ordenarFila prioriza 'excecao'), com o
+  // papel-alvo e o SLA do TIPO (E1 -> consultor/24h, E9 -> financeiro, etc.). A
+  // chave `excecao:<id>` coincide com a da tarefa dedicada do E1 (visto-service),
+  // entao o caso nao aparece duas vezes na fila.
+  const { data: excecoes, error: errExcecoes } = await supabase
+    .from("case_exceptions")
+    .select("id, tipo, aberta_em, titular_id, titular:titulares(nome_completo)")
+    .in("status", ["aberta", "em_andamento"])
+    .order("aberta_em", { ascending: true });
+  if (errExcecoes) throw new Error("Falha ao ler excecoes da fila: " + errExcecoes.message);
+
+  for (const e of excecoes ?? []) {
+    const criadoEm = e.aberta_em || new Date(agoraMs).toISOString();
+    const idade = idadeEmDias(criadoEm, agoraMs);
+    fontes.push({
+      categoria: "excecao",
+      titulo: `Exceção: ${labelTipoExcecao(e.tipo)}`,
+      contexto: nomeDe((e as { titular?: unknown }).titular),
+      href: `/admin/clientes/${e.titular_id}`,
+      criadoEm,
+      idadeDias: idade,
+      estado: estadoPrazo(idade, slaDiasDoTipo(e.tipo)),
+      chaveDedupe: `excecao:${e.id}`,
+      papelAlvo: papelAlvoDoTipo(e.tipo),
+      alvoTipo: "excecao",
+      alvoId: e.id,
     });
   }
 
@@ -129,12 +166,14 @@ export async function carregarFilaDoDia(
     idadeDias: f.idadeDias,
     estado: f.estado,
     chaveDedupe: f.chaveDedupe,
+    papelAlvo: f.papelAlvo,
   }));
 
   // Tarefas abertas: manuais, ou materializadas cuja fonte nao esta mais viva.
+  // `papel` roteia o item pelo dono (necessario para exceptions materializadas).
   const { data: tarefas } = await supabase
     .from("tasks")
-    .select("id, categoria, titulo, contexto, href, prazo, criado_em, chave_dedupe")
+    .select("id, categoria, titulo, contexto, href, papel, prazo, criado_em, chave_dedupe")
     .neq("estado", "concluido")
     .order("criado_em", { ascending: true });
 
@@ -144,6 +183,7 @@ export async function carregarFilaDoDia(
     const estourado = t.prazo ? Date.parse(t.prazo) < agoraMs : false;
     itens.push({
       categoria: (t.categoria ?? "outro") as CategoriaFila,
+      papelAlvo: (t.papel ?? undefined) as string | undefined,
       titulo: t.titulo,
       contexto: t.contexto ?? undefined,
       href: t.href ?? undefined,
@@ -163,6 +203,7 @@ export async function carregarFilaDoDia(
       total: ordenada.length,
       documentos: ordenada.filter((i) => i.categoria === "documento").length,
       parcelas: ordenada.filter((i) => i.categoria === "parcela").length,
+      excecoes: ordenada.filter((i) => i.categoria === "excecao").length,
       estourados: ordenada.filter((i) => i.estado === "estourado").length,
     },
   };
@@ -202,12 +243,15 @@ export async function materializarTasksDaFila(
     if (!error && data && data.length > 0) criadas += 1;
   }
 
-  // Reconcilia: fonte sumiu (documento aprovado, parcela paga) -> conclui a task.
+  // Reconcilia: fonte sumiu (documento aprovado, parcela paga, excecao
+  // resolvida) -> conclui a task. Inclui origem 'excecao' (a tarefa dedicada do
+  // E1) alem de 'automatica', para que a tarefa se feche sozinha quando a
+  // excecao e resolvida/cancelada — a fonte `excecao:<id>` deixa chavesLive.
   const chavesLive = new Set(fontes.map((f) => f.chaveDedupe));
   const { data: abertas } = await supabase
     .from("tasks")
     .select("id, chave_dedupe")
-    .eq("origem", "automatica")
+    .in("origem", ["automatica", "excecao"])
     .neq("estado", "concluido");
 
   let concluidas = 0;

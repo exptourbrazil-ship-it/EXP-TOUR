@@ -20,6 +20,8 @@ import {
   dominiosSuspensos,
   estaSuspenso,
   contratosComSuspensao,
+  papelAlvoDoTipo,
+  slaDiasDoTipo,
 } from "./excecao.ts";
 
 test("o catalogo cobre os 11 processos E1..E11 com slug e codigo unicos", () => {
@@ -38,6 +40,19 @@ test("todo tipo tem label e suspensoes padrao sao dominios validos", () => {
       assert.ok(dominioSuspensaoValido(d), `${t.valor}: dominio invalido ${d}`);
     }
   }
+});
+
+test("todo tipo tem papelAlvo valido e slaDias positivo (Fila do Dia)", () => {
+  const papeisValidos = new Set(["gestor", "operacao", "financeiro", "consultor"]);
+  for (const t of TIPOS_EXCECAO) {
+    assert.ok(papeisValidos.has(t.papelAlvo), `${t.valor}: papelAlvo invalido ${t.papelAlvo}`);
+    assert.ok(t.slaDias > 0, `${t.valor}: slaDias deve ser > 0`);
+  }
+  assert.equal(papelAlvoDoTipo("visto_negado"), "consultor");
+  assert.equal(slaDiasDoTipo("visto_negado"), 1);
+  // fallback seguro para tipo desconhecido
+  assert.equal(papelAlvoDoTipo("inexistente"), "operacao");
+  assert.equal(slaDiasDoTipo("inexistente"), 2);
 });
 
 test("tipoExcecaoValido e tipoExcecao/label", () => {

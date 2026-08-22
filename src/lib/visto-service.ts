@@ -137,10 +137,11 @@ export async function registrarStatusVisto(args: {
     return resultado;
   }
 
-  // 2. Tarefa prioritaria ao consultor (contato em 24h). origem 'excecao' para o
-  // materializador da fila NAO auto-concluir (ele so reconcilia 'automatica'). A
-  // dedupe e por INSTANCIA da excecao (id) — assim um E1 novo (apos o anterior
-  // ser resolvido) recria a tarefa, em vez de colidir com a linha antiga.
+  // 2. Tarefa prioritaria ao consultor (contato em 24h). origem 'excecao' e a
+  // dedupe por INSTANCIA da excecao (id): a mesma chave da fonte viva da fila, o
+  // que evita listar o caso duas vezes e faz o materializador auto-concluir esta
+  // tarefa quando a excecao E1 e resolvida/cancelada (a fonte deixa de existir).
+  // Um E1 novo (apos o anterior resolvido) tem id novo -> recria a tarefa.
   try {
     const { data: taskInsert } = await supabase
       .from("tasks")

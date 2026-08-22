@@ -40,6 +40,11 @@ export type TipoExcecao = {
   origem: OrigemExcecao;
   // Suspensoes padrao ao abrir. O operador pode ajustar no ato da abertura.
   suspendePadrao: DominioSuspensao[];
+  // Papel-alvo na Fila do Dia (quem conduz este processo) e SLA em dias para o
+  // envelhecimento (doc 07 §1: "exceções abertas ... com idade"). Defaults v1;
+  // TODO: mover para config por instancia (TENANT), como os demais parametros.
+  papelAlvo: string;
+  slaDias: number;
 };
 
 export const TIPOS_EXCECAO: TipoExcecao[] = [
@@ -49,6 +54,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Visto negado",
     origem: "ambas",
     suspendePadrao: ["cobranca", "lembretes"],
+    papelAlvo: "consultor",
+    slaDias: 1, // contato em 24h
   },
   {
     codigo: "E2",
@@ -56,6 +63,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Adiamento de início (deferral)",
     origem: "manual",
     suspendePadrao: ["avanco"],
+    papelAlvo: "operacao",
+    slaDias: 3,
   },
   {
     codigo: "E3",
@@ -63,6 +72,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Alteração de escopo (extensão, upgrade, troca)",
     origem: "manual",
     suspendePadrao: [],
+    papelAlvo: "operacao",
+    slaDias: 3,
   },
   {
     codigo: "E4",
@@ -70,6 +81,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Cancelamento pelo cliente",
     origem: "manual",
     suspendePadrao: ["cobranca", "lembretes"],
+    papelAlvo: "consultor", // conversa de retencao antes do acerto
+    slaDias: 1,
   },
   {
     codigo: "E5",
@@ -77,6 +90,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Cancelamento por inadimplência",
     origem: "ambas",
     suspendePadrao: [],
+    papelAlvo: "financeiro",
+    slaDias: 2,
   },
   {
     codigo: "E6",
@@ -84,6 +99,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Cancelamento pela escola",
     origem: "ambas",
     suspendePadrao: ["cobranca", "lembretes"],
+    papelAlvo: "operacao",
+    slaDias: 1,
   },
   {
     codigo: "E7",
@@ -91,6 +108,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Interrupção durante o programa",
     origem: "ambas",
     suspendePadrao: ["cobranca", "lembretes", "avanco"],
+    papelAlvo: "operacao",
+    slaDias: 1,
   },
   {
     codigo: "E8",
@@ -98,6 +117,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Força maior coletiva",
     origem: "ambas",
     suspendePadrao: ["cobranca", "lembretes"],
+    papelAlvo: "operacao",
+    slaDias: 1,
   },
   {
     codigo: "E9",
@@ -105,6 +126,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Contestação de pagamento (MED Pix / chargeback)",
     origem: "automatica",
     suspendePadrao: ["avanco"],
+    papelAlvo: "financeiro",
+    slaDias: 1,
   },
   {
     codigo: "E10",
@@ -112,6 +135,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Suspeita de fraude (hold de verificação)",
     origem: "ambas",
     suspendePadrao: ["avanco"],
+    papelAlvo: "operacao",
+    slaDias: 1,
   },
   {
     codigo: "E11",
@@ -119,6 +144,8 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     label: "Cliente incontactável / pendência eterna",
     origem: "ambas",
     suspendePadrao: [],
+    papelAlvo: "operacao",
+    slaDias: 2,
   },
 ];
 
@@ -138,6 +165,16 @@ export function labelTipoExcecao(valor: string): string {
 // o catalogo).
 export function suspendePadraoDoTipo(valor: string): DominioSuspensao[] {
   return [...(tipoExcecao(valor)?.suspendePadrao ?? [])];
+}
+
+// Papel-alvo e SLA de um tipo, com fallback seguro para tipos desconhecidos
+// (operacao conduz por padrao; SLA de 2 dias). Usados pela Fila do Dia.
+export function papelAlvoDoTipo(valor: string): string {
+  return tipoExcecao(valor)?.papelAlvo ?? "operacao";
+}
+
+export function slaDiasDoTipo(valor: string): number {
+  return tipoExcecao(valor)?.slaDias ?? 2;
 }
 
 // ---- Maquina de estados -----------------------------------------------------
