@@ -35,6 +35,63 @@ function toNum(v: unknown): number {
 }
 
 // ---------------------------------------------------------------------------
+// createStudent (quick-create minimo para cotar; spec 3.7)
+// ---------------------------------------------------------------------------
+
+export type CreateStudentArgs = {
+  tenantId: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  nationalityCode?: string;
+  birthDate?: string; // 'YYYY-MM-DD'
+};
+
+/**
+ * Cria um estudante minimo (status 'lead') para viabilizar a cotacao. Nao e a
+ * ficha completa (spec 3.7) — apenas o suficiente para cotar; a gestao de
+ * estudante fica para uma fatia futura.
+ */
+export async function createStudent(
+  supabase: SupabaseClient,
+  args: CreateStudentArgs,
+  actor: ServiceActor,
+): Promise<{ studentId: string }> {
+  const firstName = (args.firstName ?? "").trim();
+  const lastName = (args.lastName ?? "").trim();
+  if (!args.tenantId || !firstName || !lastName) {
+    throw new Error("tenantId, firstName e lastName sao obrigatorios.");
+  }
+
+  const { data: student, error } = await supabase
+    .from("student")
+    .insert({
+      tenant_id: args.tenantId,
+      first_name: firstName,
+      last_name: lastName,
+      email: args.email?.trim() || null,
+      nationality_code: args.nationalityCode?.trim().toUpperCase() || null,
+      birth_date: args.birthDate || null,
+      status: "lead",
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(`Falha ao criar estudante: ${error.message}`);
+  const studentId = student.id as string;
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: actor.usuario,
+    acao: "student.created",
+    alvo: studentId,
+    // Sem PII sensivel no detalhe: so a nacionalidade (dado nao identificante).
+    detalhe: { nationalityCode: args.nationalityCode ?? null },
+    ip: actor.ip ?? null,
+  });
+
+  return { studentId };
+}
+
+// ---------------------------------------------------------------------------
 // createQuote
 // ---------------------------------------------------------------------------
 
