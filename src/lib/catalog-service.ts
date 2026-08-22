@@ -32,6 +32,34 @@ import {
 } from "@/lib/catalog";
 
 // ---------------------------------------------------------------------------
+// Tenant atual (single-tenant hoje)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve o id do tenant vigente pelo slug em CATALOGO_TENANT_SLUG (default
+ * 'forio'). Single-tenant hoje: todas as rotas usam este id.
+ *
+ * ADR: quando o portal for multi-tenant, o tenant deixara de vir do ambiente e
+ * passara a sair do CONTEXTO DO USUARIO autenticado (sessao/membership), sem
+ * mudar a assinatura dos servicos (que ja recebem tenantId como argumento).
+ */
+export async function tenantIdAtual(supabase: SupabaseClient): Promise<string> {
+  const slug = process.env.CATALOGO_TENANT_SLUG ?? "forio";
+  const { data, error } = await supabase
+    .from("tenant")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao resolver tenant: ${error.message}`);
+  if (!data) {
+    throw new Error(
+      `Tenant '${slug}' nao encontrado (configure CATALOGO_TENANT_SLUG e o cadastro em 'tenant').`,
+    );
+  }
+  return data.id as string;
+}
+
+// ---------------------------------------------------------------------------
 // Utilitarios internos
 // ---------------------------------------------------------------------------
 
