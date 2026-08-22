@@ -109,7 +109,7 @@ function OpcaoBloco({
             <Text style={s.strike}>{fmtMoeda(op.bruto + op.taxas, op.currency)}</Text>
           ) : null}
           <Text style={s.total}>{fmtMoeda(op.liquido, op.currency)}</Text>
-          {conv ? <Text style={s.totalConv}>≈ {conv}</Text> : null}
+          {conv ? <Text style={s.totalConv}>~ {conv}</Text> : null}
         </View>
       </View>
 
