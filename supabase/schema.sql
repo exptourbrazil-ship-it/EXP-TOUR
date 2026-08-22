@@ -837,3 +837,164 @@ alter table if exists fee                    enable row level security;
 alter table if exists fee_product            enable row level security;
 alter table if exists promotion              enable row level security;
 alter table if exists promotion_target       enable row level security;
+
+-- ============================================================================
+-- Modulo Catalogo/Preco/Cotacao — Marco 4 (spec 3.7 estudante + 3.8 cotacao).
+-- Convencoes ADR-001. fx_rate e referencia global (sem tenant_id).
+-- ============================================================================
+
+create table if not exists student (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  first_name text not null, last_name text not null, preferred_name text,
+  email text, phone text, whatsapp text, birth_date date, gender text,
+  nationality_code char(2), residence_country_code char(2), city text,
+  language_level text, education_level text,
+  passport_number text, visa_country_code char(2), visa_type text, visa_expiry date,
+  onshore_status text check (onshore_status in ('onshore','offshore')),
+  source text, owner_user_id uuid, consent jsonb,
+  status text not null default 'lead' check (status in ('lead','active','archived')),
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+);
+create index if not exists idx_student_tenant on student(tenant_id, status);
+create table if not exists student_contact (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  student_id uuid not null references student(id) on delete cascade,
+  relationship text check (relationship in ('parent','guardian','spouse','other')),
+  name text not null, email text, phone text, is_payer boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table if not exists custom_field_definition (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  entity text not null check (entity in ('student','quote','supplier')),
+  key text not null, label text not null, field_type text not null,
+  options jsonb, sort int not null default 0,
+  created_at timestamptz not null default now(),
+  unique (tenant_id, entity, key)
+);
+create table if not exists custom_field_value (
+  id uuid primary key default gen_random_uuid(),
+  definition_id uuid not null references custom_field_definition(id) on delete cascade,
+  record_id uuid not null, value jsonb not null,
+  unique (definition_id, record_id)
+);
+
+create table if not exists quote (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  reference text not null,
+  student_id uuid not null references student(id),
+  owner_user_id uuid not null,
+  locale text not null default 'pt-BR',
+  source_currency char(3), presentment_currency char(3) not null default 'BRL',
+  fx_rate numeric(18,8), fx_rate_at timestamptz, fx_source text, fx_markup_percent numeric(6,4),
+  issue_date date, valid_until date,
+  status text not null default 'draft'
+    check (status in ('draft','issued','viewed','option_selected','expired','cancelled','converted')),
+  public_token text unique, token_revoked_at timestamptz,
+  student_context jsonb not null default '{}',
+  notes_html text, selected_option_id uuid,
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz,
+  unique (tenant_id, reference)
+);
+create index if not exists idx_quote_tenant_status on quote(tenant_id, status);
+create index if not exists idx_quote_owner on quote(owner_user_id);
+create table if not exists quote_option (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_id uuid not null references quote(id) on delete cascade,
+  label text not null, sort int not null default 0,
+  deposit_amount numeric(14,2), deposit_currency char(3),
+  is_recommended boolean not null default false, selected_at timestamptz,
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create index if not exists idx_quote_option_quote on quote_option(quote_id, sort);
+create table if not exists quote_item (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_option_id uuid not null references quote_option(id) on delete cascade,
+  "group" text not null check ("group" in ('program','accommodation','insurance','other','package')),
+  product_id uuid references product(id), campus_id uuid references campus(id),
+  product_snapshot jsonb not null default '{}',
+  start_date date, end_date date,
+  quantity numeric(10,2) not null, delivered_quantity numeric(10,2) not null,
+  unit text not null, unit_price numeric(14,2) not null, gross_amount numeric(14,2) not null,
+  currency char(3) not null, price_breakdown jsonb not null default '{}', sort int not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create index if not exists idx_quote_item_option on quote_item(quote_option_id, sort);
+create table if not exists quote_item_fee (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_item_id uuid not null references quote_item(id) on delete cascade,
+  fee_id uuid references fee(id),
+  name text not null, amount numeric(14,2) not null, currency char(3) not null,
+  is_refundable boolean, basis text not null
+);
+create table if not exists quote_discount (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_option_id uuid not null references quote_option(id) on delete cascade,
+  quote_item_id uuid references quote_item(id) on delete cascade,
+  promotion_id uuid references promotion(id),
+  name text not null,
+  discount_type text not null check (discount_type in ('percent','fixed','free_units')),
+  value numeric(14,4) not null, applies_to text not null,
+  amount numeric(14,2) not null, currency char(3) not null, is_manual boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table if not exists quote_payment_plan (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_option_id uuid not null unique references quote_option(id) on delete cascade,
+  installments_count int not null, first_due_date date,
+  method text check (method in ('pix','boleto','card','bank_transfer','mixed')), notes text,
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create table if not exists quote_payment_installment (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references quote_payment_plan(id) on delete cascade,
+  sequence int not null, due_date date not null,
+  amount numeric(14,2) not null, currency char(3) not null, description text,
+  unique (plan_id, sequence)
+);
+create table if not exists quote_event (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_id uuid not null references quote(id) on delete cascade,
+  kind text not null check (kind in
+    ('created','issued','sent','opened','option_viewed','downloaded','option_selected','expired','reissued')),
+  actor_type text check (actor_type in ('user','student','system')),
+  actor_user_id uuid, metadata jsonb, occurred_at timestamptz not null default now()
+);
+create index if not exists idx_quote_event_quote on quote_event(quote_id, occurred_at desc);
+create table if not exists saved_note (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  title text not null, body_html text not null, locale text not null default 'pt-BR',
+  created_by_user_id uuid, created_at timestamptz not null default now()
+);
+create table if not exists fx_rate (
+  id uuid primary key default gen_random_uuid(),
+  base_currency char(3) not null, quote_currency char(3) not null,
+  rate numeric(18,8) not null, source text not null, effective_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_fx_rate_lookup on fx_rate(base_currency, quote_currency, effective_at desc);
+
+alter table if exists student                   enable row level security;
+alter table if exists student_contact           enable row level security;
+alter table if exists custom_field_definition   enable row level security;
+alter table if exists custom_field_value        enable row level security;
+alter table if exists quote                     enable row level security;
+alter table if exists quote_option              enable row level security;
+alter table if exists quote_item                enable row level security;
+alter table if exists quote_item_fee            enable row level security;
+alter table if exists quote_discount            enable row level security;
+alter table if exists quote_payment_plan        enable row level security;
+alter table if exists quote_payment_installment enable row level security;
+alter table if exists quote_event               enable row level security;
+alter table if exists saved_note                enable row level security;
+alter table if exists fx_rate                   enable row level security;
