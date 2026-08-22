@@ -23,6 +23,7 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
   const permissoes = {
     analisarDocumentos: podeAdmin(papel, "documentos.analisar"),
     gerirCaso: podeAdmin(papel, "casos.gerir"),
+    gerirCancelamento: podeAdmin(papel, "cancelamento.gerir"),
   };
 
   return <CasoClient caso={caso} permissoes={permissoes} />;

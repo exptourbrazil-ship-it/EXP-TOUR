@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { dentroDoPrazoArrependimento } from "@/lib/termos";
 import { enviarAvisoInternoEmail } from "@/lib/email";
+import { abrirCancelamentoTitular } from "@/lib/e4-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Nenhum aceite para desistir." }, { status: 400 });
   }
   if (aceite.arrependido_em) {
+    // Ja arrependido: ainda assim (re)garante o E4 aberto. Se a abertura falhou
+    // numa tentativa anterior, este re-clique do cliente e o caminho de
+    // recuperacao (idempotente: excecao_ja_aberta = sucesso).
+    try {
+      await abrirCancelamentoTitular({
+        titularId,
+        origem: "portal_arrependimento",
+        motivo: `Arrependimento (CDC art. 49) — Termo versão ${termo.versao}`,
+        autor: "cliente:arrependimento",
+      });
+    } catch (err) {
+      console.error("[arrependimento] falha ao (re)abrir o processo E4");
+      void err;
+    }
     return NextResponse.json({ ok: true, jaArrependido: true });
   }
   if (!dentroDoPrazoArrependimento(aceite.data_hora, new Date().toISOString())) {
@@ -59,6 +74,22 @@ export async function POST(request: Request) {
   const { error } = await supabase.from("aceites").update({ arrependido_em: agora }).eq("id", aceite.id);
   if (error) {
     return NextResponse.json({ ok: false, error: "Falha ao registrar o arrependimento." }, { status: 500 });
+  }
+
+  // Abre o processo E4 (doc 01 §4): pausa a régua de cobrança/lembretes e cai na
+  // Fila do Dia (roteado ao Consultor, para a conversa de retenção antes do
+  // acerto). Best-effort: não desfaz o arrependimento já registrado. NÃO cancela
+  // nem reembolsa — isso é execução humana / motor de acerto (marco próprio).
+  try {
+    await abrirCancelamentoTitular({
+      titularId,
+      origem: "portal_arrependimento",
+      motivo: `Arrependimento (CDC art. 49) exercido no portal — Termo versão ${termo.versao}`,
+      autor: "cliente:arrependimento",
+    });
+  } catch (err) {
+    console.error("[arrependimento] falha ao abrir o processo E4");
+    void err;
   }
 
   // Avisa a equipe (best-effort): alguém precisa tratar o contrato/cobrança.

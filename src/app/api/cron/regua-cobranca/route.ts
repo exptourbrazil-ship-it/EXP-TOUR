@@ -92,17 +92,18 @@ export async function GET(request: Request) {
     .from("case_exceptions")
     .select("contrato_id, status, suspende")
     .in("status", ["aberta", "em_andamento"]);
-  // Falha ABERTA de proposito: um erro transitorio ao ler as excecoes nao pode
-  // paralisar toda a cobranca do dia. Mas registramos, para que uma falha
-  // persistente (que estaria enviando lembrete a quem tem processo aberto)
-  // apareca no log em vez de passar silenciosa.
+  // Falha FECHADA: sem a lista de suspensoes nao da para saber quem esta em
+  // processo (visto negado, cancelamento, forca maior...). Cobrar sem essa
+  // informacao mandaria lembrete justamente a quem NAO pode ser cobrado — a
+  // falha de empatia que o doc alerta. Melhor pular a execucao de hoje (a regua
+  // roda todo dia; um dia de atraso e recuperavel) do que cobrar suspensos.
   if (erroExcecoes) {
-    console.error(
-      "[regua-cobranca] falha ao ler excecoes ativas; regua segue SEM suspensao:",
-      erroExcecoes.message
+    console.error("[regua-cobranca] falha ao ler excecoes ativas; execucao abortada:", erroExcecoes.message);
+    return NextResponse.json(
+      { ok: false, erro: "Falha ao ler suspensoes (excecoes); execucao abortada" },
+      { status: 500 }
     );
   }
-  const excecoesIndisponiveis = !!erroExcecoes;
   const contratosSuspensos = contratosComSuspensao(
     (excecoesAtivas || []) as any[],
     ["cobranca", "lembretes"]
@@ -269,8 +270,5 @@ export async function GET(request: Request) {
     }
   }
 
-  // excecoes_indisponiveis sinaliza que a suspensao por excecao NAO pode ser
-  // aplicada nesta execucao (leitura falhou) — o monitor do cron captura uma
-  // falha persistente sem depender de alguem ler os logs.
-  return NextResponse.json({ ok: true, ...resultado, excecoes_indisponiveis: excecoesIndisponiveis, quitacao });
+  return NextResponse.json({ ok: true, ...resultado, quitacao });
 }

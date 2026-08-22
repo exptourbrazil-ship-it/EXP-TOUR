@@ -31,6 +31,7 @@ import {
 export type PermissoesCaso = {
   analisarDocumentos: boolean;
   gerirCaso: boolean;
+  gerirCancelamento: boolean;
 };
 
 type Aba = "jornada" | "financeiro" | "documentos" | "comunicacao" | "eventos" | "acoes";
@@ -816,6 +817,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       {/* Resultado do visto — dispara o E1 na transicao para negado */}
       <SecaoVisto caso={caso} podeGerir={permissoes.gerirCaso} />
 
+      {/* Pedido de cancelamento do cliente — abre o E4 */}
+      <SecaoCancelamento caso={caso} podeGerir={permissoes.gerirCancelamento} />
+
       {/* Processos de excecao (doc 01 §4) */}
       <SecaoExcecoes caso={caso} podeGerir={permissoes.gerirCaso} />
 
@@ -959,6 +963,106 @@ function SecaoVisto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
           </span>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// ---- Pedido de cancelamento do cliente (abre o E4) --------------------------
+
+function SecaoCancelamento({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [motivo, setMotivo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function registrar() {
+    setFeedback(null);
+    if (!contratoId) {
+      setFeedback({ ok: false, msg: "Selecione o contrato." });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/cancelamento`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, motivo: motivo.trim() || null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao registrar o pedido." });
+        return;
+      }
+      setFeedback({
+        ok: true,
+        msg: data.excecaoAberta
+          ? "Pedido registrado. Processo E4 aberto: cobrança pausada e caso na fila do consultor (retenção)."
+          : "Já havia um processo de cancelamento aberto para este contrato.",
+      });
+      setMotivo("");
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Pedido de cancelamento do cliente</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Abre o processo E4: pausa a régua de cobrança e coloca o caso na fila do consultor para a
+        conversa de retenção. Não cancela nem reembolsa — a execução/acerto é um passo à parte.
+      </p>
+      {podeGerir ? (
+        <>
+          <label className="block max-w-md">
+            <span className="text-xs text-neutral-500">Contrato</span>
+            <select
+              value={contratoId}
+              onChange={(e) => setContratoId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {caso.contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {nomeContrato(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 block max-w-md">
+            <span className="text-xs text-neutral-500">Motivo (opcional)</span>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={registrar}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Registrando…" : "Registrar pedido de cancelamento"}
+            </button>
+            {feedback ? (
+              <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+                {feedback.msg}
+              </span>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          Você não tem permissão para registrar cancelamento (Consultor, Financeiro ou Gestor).
+        </p>
+      )}
     </div>
   );
 }
