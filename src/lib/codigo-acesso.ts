@@ -27,6 +27,16 @@ export function hashCodigoAcesso(codigo: string): string {
   return crypto.createHmac("sha256", getSecret()).update("codigo:" + codigo).digest("hex");
 }
 
+// Gera um codigo de acesso de 6 digitos.
+//
+// crypto.randomInt, nao Math.random. O Math.random do V8 e xorshift128+, um
+// PRNG nao criptografico cujo estado de 128 bits e recuperavel a partir de
+// poucas saidas: quem pedisse codigos para o proprio CPF poderia prever os
+// codigos emitidos para outros na mesma instancia serverless.
+export function gerarCodigoAcesso(): string {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
 // Comparacao em tempo constante entre o codigo digitado e o hash guardado.
 export function conferirCodigoAcesso(
   codigoDigitado: string,

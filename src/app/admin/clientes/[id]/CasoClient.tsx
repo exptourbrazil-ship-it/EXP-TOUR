@@ -1,19 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Caso, CasoContrato, CasoDocumento } from "@/lib/admin-caso";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
   CATEGORIAS_DOCUMENTO,
+  MOTIVOS_REJEICAO_DOCUMENTO,
   labelDoTipoDocumento,
   categoriaDoTipoDocumento,
   type CategoriaDocumento,
 } from "@/lib/documentos";
 
-// Caso 360 (FATIA 1, somente leitura). Recebe dados JA planos do servidor
-// (sem service role) e organiza tudo do titular em abas. Vermelho e permitido
-// no admin; estados sempre com icone + cor + texto.
+// Caso 360. Recebe dados JA planos do servidor e organiza tudo do titular em
+// abas. FATIA 2 adiciona Acoes (analise de documento inline e reenvio de
+// acesso), gateadas por capacidade via `permissoes`. Vermelho e permitido no
+// admin; estados sempre com icone + cor + texto.
+
+// Espelho da matriz RBAC para a UI. A rota de API SEMPRE revalida — isto so
+// decide o que mostrar/habilitar.
+export type PermissoesCaso = {
+  analisarDocumentos: boolean;
+  gerirCaso: boolean;
+};
 
 type Aba = "jornada" | "financeiro" | "documentos" | "comunicacao" | "eventos" | "acoes";
 
@@ -112,7 +122,13 @@ function resumoDetalhe(detalhe: Record<string, unknown> | null): string {
 
 // ---- Componente principal ---------------------------------------------------
 
-export default function CasoClient({ caso }: { caso: Caso }) {
+export default function CasoClient({
+  caso,
+  permissoes,
+}: {
+  caso: Caso;
+  permissoes: PermissoesCaso;
+}) {
   const [aba, setAba] = useState<Aba>("jornada");
   const { titular, contratos } = caso;
 
@@ -238,10 +254,10 @@ export default function CasoClient({ caso }: { caso: Caso }) {
       <section>
         {aba === "jornada" ? <AbaJornada caso={caso} /> : null}
         {aba === "financeiro" ? <AbaFinanceiro caso={caso} /> : null}
-        {aba === "documentos" ? <AbaDocumentos caso={caso} /> : null}
+        {aba === "documentos" ? <AbaDocumentos caso={caso} permissoes={permissoes} /> : null}
         {aba === "comunicacao" ? <AbaComunicacao caso={caso} /> : null}
         {aba === "eventos" ? <AbaEventos caso={caso} /> : null}
-        {aba === "acoes" ? <AbaAcoes /> : null}
+        {aba === "acoes" ? <AbaAcoes caso={caso} permissoes={permissoes} /> : null}
       </section>
     </div>
   );
@@ -410,7 +426,7 @@ function AbaFinanceiro({ caso }: { caso: Caso }) {
   );
 }
 
-function AbaDocumentos({ caso }: { caso: Caso }) {
+function AbaDocumentos({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso }) {
   const porCategoria = (cat: CategoriaDocumento): CasoDocumento[] =>
     caso.documentos.filter((d) => categoriaDoTipoDocumento(d.tipo_documento) === cat);
 
@@ -426,25 +442,7 @@ function AbaDocumentos({ caso }: { caso: Caso }) {
             ) : (
               <ul className="divide-y divide-neutral-100">
                 {docs.map((d) => (
-                  <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-brand">{labelDoTipoDocumento(d.tipo_documento)}</p>
-                      <p className="truncate text-xs text-neutral-500">
-                        {d.nome_arquivo || "—"}
-                        {d.origem ? ` · origem: ${d.origem}` : ""}
-                        {d.created_at ? ` · ${fmtData(d.created_at.slice(0, 10))}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <BadgeDocumento status={d.status} />
-                      <a
-                        href={`/api/admin/documentos/${d.id}/download`}
-                        className="text-sm text-brand-golddark hover:underline"
-                      >
-                        Baixar
-                      </a>
-                    </div>
-                  </li>
+                  <LinhaDocumento key={d.id} doc={d} podeAnalisar={permissoes.analisarDocumentos} />
                 ))}
               </ul>
             )}
@@ -452,6 +450,166 @@ function AbaDocumentos({ caso }: { caso: Caso }) {
         );
       })}
     </div>
+  );
+}
+
+// Uma linha de documento com a analise inline (aprovar/rejeitar). O download e a
+// analise so aparecem para quem tem documentos.analisar (a rota tambem revalida).
+function LinhaDocumento({ doc, podeAnalisar }: { doc: CasoDocumento; podeAnalisar: boolean }) {
+  const router = useRouter();
+  const [enviando, setEnviando] = useState<null | "aprovado" | "rejeitado">(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [formRejeicao, setFormRejeicao] = useState(false);
+  const [motivoSel, setMotivoSel] = useState(MOTIVOS_REJEICAO_DOCUMENTO[0].valor);
+  const [detalhe, setDetalhe] = useState("");
+
+  async function definirStatus(status: "aprovado" | "rejeitado", motivo?: string) {
+    setErro(null);
+    setEnviando(status);
+    try {
+      const res = await fetch("/api/admin/documentos/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: doc.id, status, motivo }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao atualizar o documento.");
+        setEnviando(null);
+        return;
+      }
+      setFormRejeicao(false);
+      setDetalhe("");
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setEnviando(null);
+    }
+  }
+
+  function confirmarRejeicao() {
+    const sel = MOTIVOS_REJEICAO_DOCUMENTO.find((m) => m.valor === motivoSel);
+    const texto = detalhe.trim();
+    if (motivoSel === "outro") {
+      if (!texto) {
+        setErro("Descreva o motivo da rejeicao.");
+        return;
+      }
+      definirStatus("rejeitado", texto);
+      return;
+    }
+    const motivo = texto ? `${sel?.label} — ${texto}` : sel?.label || "";
+    definirStatus("rejeitado", motivo);
+  }
+
+  const ocupado = enviando !== null;
+
+  return (
+    <li className="py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-brand">{labelDoTipoDocumento(doc.tipo_documento)}</p>
+          <p className="truncate text-xs text-neutral-500">
+            {doc.nome_arquivo || "—"}
+            {doc.origem ? ` · origem: ${doc.origem}` : ""}
+            {doc.created_at ? ` · ${fmtData(doc.created_at.slice(0, 10))}` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <BadgeDocumento status={doc.status} />
+          {podeAnalisar ? (
+            <a
+              href={`/api/admin/documentos/${doc.id}/download`}
+              className="text-sm text-brand-golddark hover:underline"
+            >
+              Baixar
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Motivo de uma rejeicao anterior */}
+      {doc.status === "rejeitado" && doc.motivo_rejeicao ? (
+        <p className="mt-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
+          <span className="font-medium">Motivo da rejeição:</span> {doc.motivo_rejeicao}
+        </p>
+      ) : null}
+
+      {/* Acoes de analise (aprovar / rejeitar) */}
+      {podeAnalisar ? (
+        <div className="mt-2">
+          {!formRejeicao ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => definirStatus("aprovado")}
+                disabled={ocupado || doc.status === "aprovado"}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {enviando === "aprovado" ? "Aprovando…" : doc.status === "aprovado" ? "Aprovado" : "Aprovar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setErro(null);
+                  setFormRejeicao(true);
+                }}
+                disabled={ocupado}
+                className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Rejeitar
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+              <label className="block text-xs font-medium text-red-800">Motivo da rejeição</label>
+              <select
+                value={motivoSel}
+                onChange={(e) => setMotivoSel(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-sm text-neutral-700"
+              >
+                {MOTIVOS_REJEICAO_DOCUMENTO.map((m) => (
+                  <option key={m.valor} value={m.valor}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={detalhe}
+                onChange={(e) => setDetalhe(e.target.value)}
+                placeholder={motivoSel === "outro" ? "Descreva o motivo" : "Detalhe (opcional)"}
+                maxLength={500}
+                className="mt-2 w-full rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-sm text-neutral-700"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={confirmarRejeicao}
+                  disabled={ocupado}
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {enviando === "rejeitado" ? "Rejeitando…" : "Confirmar rejeição"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormRejeicao(false);
+                    setErro(null);
+                  }}
+                  disabled={ocupado}
+                  className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          {erro ? <p className="mt-1 text-xs text-red-600">{erro}</p> : null}
+        </div>
+      ) : null}
+    </li>
   );
 }
 
@@ -516,34 +674,100 @@ function AbaEventos({ caso }: { caso: Caso }) {
   );
 }
 
-function AbaAcoes() {
-  const futuras = [
-    "Analisar documento (aprovar / rejeitar com motivo)",
-    "Reenviar acesso ao cliente",
-    "Iniciar exceção operacional",
-    "Override com justificativa registrada",
-  ];
+function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso }) {
+  const { titular } = caso;
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function reenviarAcesso() {
+    setFeedback(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titular.id}/reenviar-acesso`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao reenviar o acesso." });
+        return;
+      }
+      setFeedback({ ok: true, msg: `Código de acesso reenviado para ${titular.email}.` });
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   return (
-    <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <h2 className="font-serif text-xl text-brand">Ações</h2>
-        <span className="rounded-full bg-[#c9a35e]/20 px-2.5 py-1 text-xs font-medium text-[#8a6a2f]">
-          Em breve (Fatia 2)
-        </span>
-      </div>
-      <ul className="space-y-2">
-        {futuras.map((f) => (
-          <li key={f} className="flex items-center gap-2">
+    <div className="space-y-5">
+      {/* Reenviar acesso ao cliente */}
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 font-serif text-xl text-brand">Reenviar acesso</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          Gera um novo código de acesso e envia para o e-mail do titular. Invalida os códigos
+          anteriores em aberto.
+        </p>
+        {permissoes.gerirCaso ? (
+          <>
             <button
               type="button"
-              disabled
-              className="cursor-not-allowed rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-left text-sm text-neutral-400"
+              onClick={reenviarAcesso}
+              disabled={enviando || !titular.email}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {f}
+              {enviando ? "Enviando…" : "Reenviar código de acesso"}
             </button>
-          </li>
-        ))}
-      </ul>
+            {!titular.email ? (
+              <p className="mt-2 text-xs text-neutral-500">
+                Este titular não tem e-mail cadastrado.
+              </p>
+            ) : null}
+            {feedback ? (
+              <p className={"mt-2 text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+                {feedback.msg}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-xs text-neutral-500">
+            Você não tem permissão para reenviar o acesso deste cliente.
+          </p>
+        )}
+      </div>
+
+      {/* Analise de documentos: vive na aba Documentos */}
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 font-serif text-xl text-brand">Analisar documentos</h2>
+        <p className="text-xs text-neutral-500">
+          A aprovação e a rejeição (com motivo) de cada documento ficam na aba{" "}
+          <span className="font-medium text-brand">Documentos</span>.
+        </p>
+      </div>
+
+      {/* Acoes ainda nao construidas (precisam de infraestrutura propria) */}
+      <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="font-serif text-xl text-brand">Ações avançadas</h2>
+          <span className="rounded-full bg-[#c9a35e]/20 px-2.5 py-1 text-xs font-medium text-[#8a6a2f]">
+            Em breve
+          </span>
+        </div>
+        <ul className="space-y-2">
+          {["Iniciar exceção operacional", "Override com justificativa registrada"].map((f) => (
+            <li key={f} className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-left text-sm text-neutral-400"
+              >
+                {f}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

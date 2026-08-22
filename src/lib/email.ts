@@ -476,6 +476,87 @@ export async function enviarLembreteQuitacaoEmail(destinatario: string, nome: st
   return data;
 }
 
+type DadosAvisoDocumento = {
+  tipoDocumento: string; // rotulo legivel, ex.: "Passaporte"
+  aprovado: boolean; // true = aprovado; false = rejeitado
+  motivo?: string | null; // motivo da rejeicao (obrigatorio quando rejeitado)
+  portalUrl?: string | null; // link para a Area do Cliente, se configurado
+};
+
+function templateAvisoDocumento(nome: string, d: DadosAvisoDocumento) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const motivoTxt = (d.motivo || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const corpo = d.aprovado
+    ? `<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Seu documento <strong>${d.tipoDocumento}</strong> foi <strong>aprovado</strong>. Nada mais é necessário para este item.</p>`
+    : `<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Seu documento <strong>${d.tipoDocumento}</strong> foi <strong>recusado</strong> e precisa ser reenviado.</p>
+${motivoTxt ? `<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;"><strong>Motivo:</strong> ${motivoTxt}</p>` : ""}
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 4px;">Reenvie o documento corrigido pela sua Área do Cliente.</p>`;
+  const botao = d.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+${corpo}
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Avisa o titular que um documento foi aprovado ou rejeitado (analise inline no
+// Caso 360). Best-effort: quem chama pode ignorar o erro (o status ja esta
+// gravado no banco). Lanca em caso de falha para o chamador contabilizar.
+export async function enviarAvisoDocumentoEmail(
+  destinatario: string,
+  nome: string,
+  dados: DadosAvisoDocumento
+) {
+  const { apiKey, fromEmail } = getConfig();
+  const assunto = dados.aprovado
+    ? "Documento aprovado - EXP Tour"
+    : "Documento recusado - reenvio necessário - EXP Tour";
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: assunto,
+        html: templateAvisoDocumento(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "aviso_documento", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "aviso_documento", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "aviso_documento", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

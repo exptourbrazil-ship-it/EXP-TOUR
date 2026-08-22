@@ -56,3 +56,15 @@ export const CATEGORIAS_DOCUMENTO: { valor: CategoriaDocumento; label: string }[
   { valor: "escola", label: "Documentos da Escola" },
   { valor: "financeiro", label: "Documentos Financeiros" },
   ];
+
+// Motivos padrao de rejeicao de um documento (Caso 360, analise inline).
+// Lista fechada + "outro" para texto livre. O motivo escolhido vai no e-mail
+// de aviso ao titular, entao precisa ser claro sobre o que refazer.
+export const MOTIVOS_REJEICAO_DOCUMENTO: { valor: string; label: string }[] = [
+  { valor: "ilegivel", label: "Ilegível / baixa qualidade" },
+  { valor: "cortado", label: "Cortado / incompleto" },
+  { valor: "vencido", label: "Documento vencido" },
+  { valor: "nome_divergente", label: "Nome divergente do cadastro" },
+  { valor: "documento_errado", label: "Documento errado para o tipo" },
+  { valor: "outro", label: "Outro (especificar)" },
+];

@@ -359,6 +359,10 @@ alter table if exists viagem_info        enable row level security;
 alter table if exists documentos add column if not exists contrato_id uuid references contratos(id);
 create index if not exists idx_documentos_contrato on documentos(contrato_id);
 
+-- Motivo da rejeicao de um documento (Caso 360, analise inline pelo admin).
+-- Preenchido quando status='rejeitado'; vai no e-mail de aviso ao titular.
+alter table if exists documentos add column if not exists motivo_rejeicao text;
+
 -- Dados do estudante necessarios ao Zoho Sign: a data de nascimento decide a
 -- regra multi-signatario por idade (menor -> so o pagante assina); o e-mail e
 -- para o estudante maior assinar. Ambos opcionais (podem ser preenchidos no
