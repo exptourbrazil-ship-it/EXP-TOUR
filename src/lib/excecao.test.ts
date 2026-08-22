@@ -19,6 +19,7 @@ import {
   desfechoValido,
   dominiosSuspensos,
   estaSuspenso,
+  contratosComSuspensao,
 } from "./excecao.ts";
 
 test("o catalogo cobre os 11 processos E1..E11 com slug e codigo unicos", () => {
@@ -133,4 +134,28 @@ test("dominiosSuspensos: dado sujo no jsonb suspende nao quebra", () => {
     { status: "aberta" as const, suspende: null },
   ];
   assert.deepEqual(dominiosSuspensos(excecoes), ["cobranca"]);
+});
+
+test("contratosComSuspensao: agrupa por contrato, so ativas, so dominios pedidos", () => {
+  const excecoes = [
+    { contrato_id: "c1", status: "aberta" as const, suspende: ["cobranca"] },
+    { contrato_id: "c2", status: "em_andamento" as const, suspende: ["avanco"] }, // fora do alvo
+    { contrato_id: "c3", status: "aberta" as const, suspende: ["lembretes"] },
+    { contrato_id: "c4", status: "resolvida" as const, suspende: ["cobranca"] }, // terminal
+  ];
+  const suspensos = contratosComSuspensao(excecoes, ["cobranca", "lembretes"]);
+  assert.equal(suspensos.has("c1"), true);
+  assert.equal(suspensos.has("c3"), true);
+  assert.equal(suspensos.has("c2"), false); // suspende avanco, nao cobranca/lembretes
+  assert.equal(suspensos.has("c4"), false); // resolvida nao suspende
+  assert.equal(suspensos.size, 2);
+});
+
+test("contratosComSuspensao: mesmo contrato com varias excecoes conta uma vez", () => {
+  const excecoes = [
+    { contrato_id: "c1", status: "aberta" as const, suspende: ["avanco"] },
+    { contrato_id: "c1", status: "em_andamento" as const, suspende: ["cobranca"] },
+  ];
+  const suspensos = contratosComSuspensao(excecoes, ["cobranca"]);
+  assert.deepEqual([...suspensos], ["c1"]);
 });

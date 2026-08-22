@@ -4,6 +4,7 @@ import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento } fro
 import { dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail } from "@/lib/email";
 import { removerDeContratosCancelados, contratoCancelado } from "@/lib/cancelamento";
+import { contratosComSuspensao } from "@/lib/excecao";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
   const { data: parcelas, error } = await supabase
     .from("parcelas")
     .select(
-      "id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo))"
+      "id, contrato_id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo))"
     )
     .neq("status", "pago")
     .is("paid_at", null)
@@ -80,6 +81,32 @@ export async function GET(request: Request) {
   if (error) {
     return NextResponse.json({ ok: false, erro: "Falha ao ler parcelas: " + error.message }, { status: 500 });
   }
+
+  // Suspensao por excecao (doc 01 §4): um processo ativo que suspende "cobranca"
+  // ou "lembretes" pausa a regua deste contrato — E1 (visto negado), E4/E6/E8
+  // etc. Carregamos as excecoes ativas uma vez e montamos o conjunto de
+  // contratos suspensos; a regua (parcela e quitacao) pula esses contratos. A
+  // pausa CESSA sozinha quando a excecao e resolvida/cancelada (deixa de ser
+  // ativa), sem precisar religar nada.
+  const { data: excecoesAtivas, error: erroExcecoes } = await supabase
+    .from("case_exceptions")
+    .select("contrato_id, status, suspende")
+    .in("status", ["aberta", "em_andamento"]);
+  // Falha ABERTA de proposito: um erro transitorio ao ler as excecoes nao pode
+  // paralisar toda a cobranca do dia. Mas registramos, para que uma falha
+  // persistente (que estaria enviando lembrete a quem tem processo aberto)
+  // apareca no log em vez de passar silenciosa.
+  if (erroExcecoes) {
+    console.error(
+      "[regua-cobranca] falha ao ler excecoes ativas; regua segue SEM suspensao:",
+      erroExcecoes.message
+    );
+  }
+  const excecoesIndisponiveis = !!erroExcecoes;
+  const contratosSuspensos = contratosComSuspensao(
+    (excecoesAtivas || []) as any[],
+    ["cobranca", "lembretes"]
+  );
 
   // Contrato cancelado nao gera cobranca. Sem este filtro, quem desistia
   // continuava recebendo lembrete de parcela pela regua automatica — nao havia
@@ -91,6 +118,7 @@ export async function GET(request: Request) {
     data: hojeISO,
     analisadas: parcelasAtivas.length,
     contrato_cancelado: puladasPorCancelamento,
+    suspensa_por_excecao: 0,
     enviados: 0,
     fora_da_janela: 0,
     sem_email: 0,
@@ -99,6 +127,12 @@ export async function GET(request: Request) {
   };
 
   for (const p of parcelasAtivas) {
+    // Contrato com processo de excecao suspendendo cobranca/lembretes: nao envia.
+    if (contratosSuspensos.has((p as any).contrato_id)) {
+      resultado.suspensa_por_excecao++;
+      continue;
+    }
+
     const janela = janelaLembrete(hojeISO, (p as any).vencimento);
     if (!janela) {
       resultado.fora_da_janela++;
@@ -157,7 +191,7 @@ export async function GET(request: Request) {
   // inicio). As janelas caem em dataInicio - 60/45/35; filtramos os contratos
   // por data_inicio nessa faixa para varrer poucos registros. Cessa quando o
   // saldo devedor chega a zero. Idempotente por (contrato, janela).
-  const quitacao = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, erros: 0 };
+  const quitacao = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, suspensa_por_excecao: 0, erros: 0 };
   const inicioMin = isoMaisDias(hoje, 35);
   const inicioMax = isoMaisDias(hoje, 60);
 
@@ -174,6 +208,11 @@ export async function GET(request: Request) {
     // tambem nao pode receber lembrete de quitacao se a query mudar um dia.
     if (contratoCancelado(c as any)) {
       quitacao.contrato_cancelado++;
+      continue;
+    }
+    // Mesma suspensao por excecao da regua de parcelas.
+    if (contratosSuspensos.has((c as any).id)) {
+      quitacao.suspensa_por_excecao++;
       continue;
     }
     const dataLimite = dataLimiteQuitacao((c as any).data_inicio);
@@ -230,5 +269,8 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, ...resultado, quitacao });
+  // excecoes_indisponiveis sinaliza que a suspensao por excecao NAO pode ser
+  // aplicada nesta execucao (leitura falhou) — o monitor do cron captura uma
+  // falha persistente sem depender de alguem ler os logs.
+  return NextResponse.json({ ok: true, ...resultado, excecoes_indisponiveis: excecoesIndisponiveis, quitacao });
 }

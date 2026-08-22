@@ -198,3 +198,27 @@ export function dominiosSuspensos(excecoes: ExcecaoParaSuspensao[]): DominioSusp
 export function estaSuspenso(excecoes: ExcecaoParaSuspensao[], dominio: DominioSuspensao): boolean {
   return dominiosSuspensos(excecoes).includes(dominio);
 }
+
+// Dado um lote de excecoes de VARIOS contratos, devolve o conjunto de
+// contrato_id que tem ALGUM dos `dominios` suspenso por uma excecao ativa.
+// Usado por consumidores da suspensao (ex.: a regua de cobranca pula os
+// contratos suspensos numa unica passada, sem consultar excecao por contrato).
+type ExcecaoDeContrato = { contrato_id: string; status: StatusExcecao; suspende: unknown };
+
+export function contratosComSuspensao(
+  excecoes: ExcecaoDeContrato[],
+  dominios: DominioSuspensao[]
+): Set<string> {
+  const alvo = new Set<DominioSuspensao>(dominios);
+  const out = new Set<string>();
+  for (const e of excecoes) {
+    if (!excecaoAtiva(e.status)) continue;
+    for (const d of sanitizarSuspensoes(e.suspende)) {
+      if (alvo.has(d)) {
+        out.add(e.contrato_id);
+        break;
+      }
+    }
+  }
+  return out;
+}
