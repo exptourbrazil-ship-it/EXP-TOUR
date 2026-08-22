@@ -104,7 +104,9 @@ const CATEGORIAS_POR_PAPEL: Record<string, ReadonlySet<CategoriaFila> | "todas">
   gestor: "todas",
   operacao: new Set<CategoriaFila>(["documento", "fornecedor", "excecao", "sistema", "outro"]),
   financeiro: new Set<CategoriaFila>(["parcela"]),
-  consultor: new Set<CategoriaFila>(["proposta"]),
+  // Consultor tambem ve excecoes: E1 (visto negado) abre tarefa de contato ao
+  // consultor, e a conversa de retencao em cancelamento (E4/E5) e dele.
+  consultor: new Set<CategoriaFila>(["proposta", "excecao"]),
 };
 
 export function papelVeCategoria(papel: string, categoria: CategoriaFila): boolean {

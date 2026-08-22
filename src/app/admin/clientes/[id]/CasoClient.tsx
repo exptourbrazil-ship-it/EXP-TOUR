@@ -11,6 +11,7 @@ import {
   labelTipoExcecao,
   type DesfechoExcecao,
 } from "@/lib/excecao";
+import { STATUS_VISTO, labelStatusVisto } from "@/lib/visto";
 import {
   CATEGORIAS_DOCUMENTO,
   MOTIVOS_REJEICAO_DOCUMENTO,
@@ -204,6 +205,14 @@ export default function CasoClient({
                   {c.pais_destino ? (
                     <div>
                       <span className="text-neutral-400">Destino:</span> {c.pais_destino}
+                    </div>
+                  ) : null}
+                  {c.visto_status ? (
+                    <div>
+                      <span className="text-neutral-400">Visto:</span>{" "}
+                      <span className={c.visto_status === "negado" ? "font-medium text-red-700" : ""}>
+                        {labelStatusVisto(c.visto_status)}
+                      </span>
                     </div>
                   ) : null}
                   {c.valor_total != null ? (
@@ -795,6 +804,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         )}
       </div>
 
+      {/* Resultado do visto — dispara o E1 na transicao para negado */}
+      <SecaoVisto caso={caso} podeGerir={permissoes.gerirCaso} />
+
       {/* Processos de excecao (doc 01 §4) */}
       <SecaoExcecoes caso={caso} podeGerir={permissoes.gerirCaso} />
 
@@ -828,6 +840,115 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+// ---- Resultado do visto (dispara E1 na transicao para negado) ---------------
+
+function SecaoVisto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [status, setStatus] = useState<(typeof STATUS_VISTO)[number]>("em_analise");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function registrar() {
+    setFeedback(null);
+    if (!contratoId) {
+      setFeedback({ ok: false, msg: "Selecione o contrato." });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/visto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, status }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao registrar o visto." });
+        return;
+      }
+      const msg = data.excecaoDisparada
+        ? "Visto negado registrado. Processo E1 aberto: cobrança pausada, tarefa ao consultor e aviso ao cliente."
+        : "Status do visto atualizado.";
+      setFeedback({ ok: true, msg });
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!podeGerir) {
+    return (
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 font-serif text-xl text-brand">Resultado do visto</h2>
+        <p className="text-xs text-neutral-500">
+          Você não tem permissão para registrar o resultado do visto.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Resultado do visto</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Marcar <span className="font-medium">Negado</span> dispara o processo E1: pausa a régua de
+        cobrança, abre tarefa de contato ao consultor (24h) e avisa o cliente.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs text-neutral-500">Contrato</span>
+          <select
+            value={contratoId}
+            onChange={(e) => setContratoId(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          >
+            {caso.contratos.map((c) => (
+              <option key={c.id} value={c.id}>
+                {nomeContrato(c)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs text-neutral-500">Resultado</span>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as (typeof STATUS_VISTO)[number])}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          >
+            {STATUS_VISTO.map((s) => (
+              <option key={s} value={s}>
+                {labelStatusVisto(s)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={registrar}
+          disabled={enviando || caso.contratos.length === 0}
+          className={
+            "rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 " +
+            (status === "negado" ? "bg-red-600" : "bg-brand")
+          }
+        >
+          {enviando ? "Registrando…" : "Registrar resultado"}
+        </button>
+        {feedback ? (
+          <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+            {feedback.msg}
+          </span>
+        ) : null}
       </div>
     </div>
   );

@@ -86,9 +86,11 @@ test("papelVeCategoria: gestor tudo; demais so a sua area", () => {
   assert.equal(papelVeCategoria("operacao", "documento"), true);
   assert.equal(papelVeCategoria("operacao", "fornecedor"), true);
   assert.equal(papelVeCategoria("operacao", "parcela"), false);
-  // consultor: so proposta
+  // consultor: proposta e excecao (E1 visto negado, retencao em cancelamento)
   assert.equal(papelVeCategoria("consultor", "proposta"), true);
+  assert.equal(papelVeCategoria("consultor", "excecao"), true);
   assert.equal(papelVeCategoria("consultor", "parcela"), false);
+  assert.equal(papelVeCategoria("consultor", "documento"), false);
   // papel desconhecido nao ve nada (falha fechada)
   assert.equal(papelVeCategoria("root", "documento"), false);
 });

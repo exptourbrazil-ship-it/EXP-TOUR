@@ -557,6 +557,79 @@ export async function enviarAvisoDocumentoEmail(
   return data;
 }
 
+function templateVistoNegado(nome: string, portalUrl?: string | null) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
+  const botao = portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  // Tom: informa e acolhe, mas a conversa (a emocao e a decisao) fica com o
+  // consultor humano — principio 5 do doc 01. Por isso a mensagem e sobria e
+  // deixa claro que uma pessoa vai entrar em contato.
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Recebemos a informação de que o seu pedido de visto foi <strong>negado</strong>. Sabemos que não era o resultado esperado — e queremos que saiba que isso, com frequência, tem solução.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Existem caminhos possíveis, e vamos avaliar o melhor para o seu caso:</p>
+<ul style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;padding-left:20px;">
+<li style="margin-bottom:6px;">Nova aplicação do visto, com os pontos revistos;</li>
+<li style="margin-bottom:6px;">Troca de destino, aproveitando o que já foi pago;</li>
+<li style="margin-bottom:6px;">Cancelamento, com o acerto conforme as regras.</li>
+</ul>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;"><strong>Enquanto isso, pausamos as cobranças do seu programa.</strong> Você não precisa fazer nada agora.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:8px 0 0;">O seu consultor entrará em contato em breve para conversar sobre os próximos passos.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Aviso ao titular de que o visto foi negado (processo E1, doc 01 §4). Informa
+// e acolhe; a conversa fica com o consultor. Best-effort: quem chama pode
+// ignorar o erro (a excecao e a tarefa ja estao registradas).
+export async function enviarAvisoVistoNegadoEmail(
+  destinatario: string,
+  nome: string,
+  portalUrl?: string | null
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Sobre o seu visto - EXP Tour",
+        html: templateVistoNegado(nome, portalUrl),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "visto_negado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "visto_negado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "visto_negado", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

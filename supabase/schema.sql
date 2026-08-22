@@ -37,6 +37,10 @@ alter table if exists contratos add column if not exists estudante_nome text;
 alter table if exists contratos add column if not exists estudante_sexo text
   check (estudante_sexo in ('F','M'));
 alter table if exists contratos add column if not exists pais_destino text;
+-- Resultado do visto do estudante (por contrato). A transicao para 'negado'
+-- dispara o processo de excecao E1 (doc 01 §4) — ver src/lib/visto-service.ts.
+alter table if exists contratos add column if not exists visto_status text
+  check (visto_status is null or visto_status in ('em_analise','aprovado','negado'));
 -- id do Contato no Zoho CRM: chave estavel de dedupe do webhook (independe de
 -- qual CPF vira titular). Ver src/app/api/integrations/zoho/webhook/route.ts.
 alter table if exists contratos add column if not exists zoho_contact_id text;
