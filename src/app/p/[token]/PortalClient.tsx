@@ -345,6 +345,17 @@ function Opcao({
             Escolher esta opcao
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.location.href = `/api/public/quotes/${token}/pdf?option=${op.index}`;
+            }
+          }}
+          className="mt-3 block text-xs text-neutral-500 underline underline-offset-2 hover:text-brand"
+        >
+          Baixar PDF desta opcao
+        </button>
       </div>
     </section>
   );
