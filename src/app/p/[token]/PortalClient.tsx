@@ -54,8 +54,11 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
   const fx = dados.fx;
 
   function baixarPDF() {
-    void postEvento(token, "downloaded");
-    if (typeof window !== "undefined") window.print();
+    // PDF gerado no SERVIDOR (layout de marca). O proprio endpoint registra o
+    // evento 'downloaded', entao nao duplicamos aqui.
+    if (typeof window !== "undefined") {
+      window.location.href = `/api/public/quotes/${token}/pdf`;
+    }
   }
 
   async function compartilhar() {
