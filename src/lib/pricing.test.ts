@@ -16,8 +16,17 @@ import {
   applyFreeUnits,
   aggregateRegistrationFee,
   convertFx,
+  applyFees,
+  isPromotionApplicable,
+  applyPromotions,
+  priceProduct,
   type Tier,
   type Template,
+  type Fee,
+  type FeeContext,
+  type Promotion,
+  type PromoContext,
+  type PriceRequest,
 } from "./pricing.ts";
 
 // Tiers base usados em T1-T5 (moeda de referencia CAD).
@@ -286,4 +295,387 @@ test("convertFx respeita arredondamentos up_1/up_10/up_100", () => {
   assert.equal(convertFx({ amount: 101, referenceRate: 1, rounding: "up_10" }).converted, 110);
   assert.equal(convertFx({ amount: 101, referenceRate: 1, rounding: "up_100" }).converted, 200);
   assert.equal(convertFx({ amount: 100, referenceRate: 1, rounding: "up_100" }).converted, 100);
+});
+
+// ---------------------------------------------------------------------------
+// TAXAS: applyFees (secao 4.5)
+// ---------------------------------------------------------------------------
+
+// Contexto base de taxas: 10 unidades cobraveis, 3 itens, 2 pessoas, 1 programa.
+const FEE_CTX: FeeContext = {
+  billableQuantity: 10,
+  itemCount: 3,
+  personCount: 2,
+  programItemCount: 1,
+  multiCourseRule: "charge_highest",
+};
+
+test("applyFees calcula once_per_quote x per_unit x per_person", () => {
+  const fees: Fee[] = [
+    { name: "Taxa bancaria", feeType: "bank", chargeBasis: "once_per_quote", amount: 25, currency: "CAD" },
+    { name: "Material", feeType: "material", chargeBasis: "per_unit", amount: 10, currency: "CAD" },
+    { name: "Servico", feeType: "service", chargeBasis: "per_person", amount: 50, currency: "CAD" },
+  ];
+  const r = applyFees(fees, FEE_CTX);
+  assert.equal(r.fees.length, 3);
+  assert.equal(r.fees[0].amount, 25); // uma vez
+  assert.equal(r.fees[1].amount, 100); // 10 x 10 unidades
+  assert.equal(r.fees[2].amount, 100); // 50 x 2 pessoas
+  assert.equal(r.total, 225);
+});
+
+test("applyFees calcula once_per_item = amount x itemCount", () => {
+  const fees: Fee[] = [
+    { name: "Courier", feeType: "courier", chargeBasis: "once_per_item", amount: 30, currency: "CAD" },
+  ];
+  const r = applyFees(fees, FEE_CTX);
+  assert.equal(r.fees[0].amount, 90); // 30 x 3 itens
+  assert.equal(r.total, 90);
+});
+
+test("applyFees com 1 programa cobra matricula normalmente (sem regra multi-curso)", () => {
+  const fees: Fee[] = [
+    { name: "Matricula", feeType: "registration", chargeBasis: "once_per_quote", amount: 160, currency: "CAD" },
+  ];
+  const r = applyFees(fees, { ...FEE_CTX, programItemCount: 1 });
+  assert.equal(r.fees.length, 1);
+  assert.equal(r.fees[0].amount, 160);
+  assert.equal(r.total, 160);
+});
+
+test("applyFees multi-curso: 2 matriculas 160 e 200 -> highest/lowest/all (reusa T6)", () => {
+  const fees: Fee[] = [
+    { name: "Matricula A", feeType: "registration", chargeBasis: "once_per_item", amount: 160, currency: "CAD" },
+    { name: "Matricula B", feeType: "registration", chargeBasis: "once_per_item", amount: 200, currency: "CAD" },
+  ];
+  const base = { ...FEE_CTX, programItemCount: 2 };
+
+  const highest = applyFees(fees, { ...base, multiCourseRule: "charge_highest" });
+  assert.equal(highest.total, 200);
+
+  const lowest = applyFees(fees, { ...base, multiCourseRule: "charge_lowest" });
+  assert.equal(lowest.total, 160);
+
+  const all = applyFees(fees, { ...base, multiCourseRule: "charge_all" });
+  assert.equal(all.total, 360);
+});
+
+test("applyFees multi-curso agrega matriculas mas mantem outras taxas separadas", () => {
+  const fees: Fee[] = [
+    { name: "Matricula A", feeType: "registration", chargeBasis: "once_per_item", amount: 160, currency: "CAD" },
+    { name: "Matricula B", feeType: "registration", chargeBasis: "once_per_item", amount: 200, currency: "CAD" },
+    { name: "Taxa bancaria", feeType: "bank", chargeBasis: "once_per_quote", amount: 25, currency: "CAD" },
+  ];
+  const r = applyFees(fees, { ...FEE_CTX, programItemCount: 2, multiCourseRule: "charge_highest" });
+  // 1 linha agregada de matricula (200) + 1 linha da taxa bancaria (25)
+  assert.equal(r.fees.length, 2);
+  assert.equal(r.total, 225);
+});
+
+// ---------------------------------------------------------------------------
+// PROMOCOES: aplicabilidade (secao 4.5)
+// ---------------------------------------------------------------------------
+
+// Promo base ativa, 30% sobre tuition, alvo mercado BR + nacionalidade br.
+const PROMO_BASE: Promotion = {
+  name: "Desconto Brasil 30%",
+  promoType: "percent_off",
+  value: 30,
+  appliesTo: "tuition",
+  isStackable: false,
+  priority: 10,
+  status: "active",
+  bookingFrom: "2026-01-01",
+  bookingUntil: "2026-12-31",
+  travelFrom: "2026-01-01",
+  travelUntil: "2027-12-31",
+  targets: [
+    { dimension: "market", value: "BR" },
+    { dimension: "nationality", value: "br" },
+  ],
+};
+
+const PROMO_CTX: PromoContext = {
+  quoteDate: "2026-08-21",
+  startDate: "2026-09-01",
+  billableQuantity: 52,
+  marketId: "BR",
+  nationalityCode: "br",
+};
+
+test("isPromotionApplicable: promo base dispara no contexto alvo", () => {
+  assert.equal(isPromotionApplicable(PROMO_BASE, PROMO_CTX), true);
+});
+
+test("isPromotionApplicable: NAO dispara fora da janela de reserva (bookingUntil < quoteDate)", () => {
+  const promo: Promotion = { ...PROMO_BASE, bookingUntil: "2026-07-31" };
+  assert.equal(isPromotionApplicable(promo, PROMO_CTX), false);
+});
+
+test("isPromotionApplicable: NAO dispara por nacionalidade fora do alvo", () => {
+  const ctx: PromoContext = { ...PROMO_CTX, nationalityCode: "pt" };
+  assert.equal(isPromotionApplicable(PROMO_BASE, ctx), false);
+});
+
+test("isPromotionApplicable: status != active nao dispara", () => {
+  assert.equal(isPromotionApplicable({ ...PROMO_BASE, status: "draft" }, PROMO_CTX), false);
+});
+
+test("isPromotionApplicable: minQuantity nao atingido nao dispara", () => {
+  const promo: Promotion = { ...PROMO_BASE, minQuantity: 100 };
+  assert.equal(isPromotionApplicable(promo, PROMO_CTX), false);
+});
+
+test("isPromotionApplicable: dimensao sem alvo nao restringe (OU dentro, E entre)", () => {
+  const promo: Promotion = {
+    ...PROMO_BASE,
+    // duas nacionalidades no OU; mercado ausente do contexto nao restringe pois nao ha alvo de mercado
+    targets: [
+      { dimension: "nationality", value: "br" },
+      { dimension: "nationality", value: "ar" },
+    ],
+  };
+  const ctx: PromoContext = { quoteDate: "2026-08-21", startDate: "2026-09-01", billableQuantity: 52, nationalityCode: "ar" };
+  assert.equal(isPromotionApplicable(promo, ctx), true);
+});
+
+// ---------------------------------------------------------------------------
+// PROMOCOES: aplicacao (secao 4.5)
+// ---------------------------------------------------------------------------
+
+const PROMO_BASES = { tuition: 19760, accommodation: 17680, insurance: 925.65, fees: 1525, total: 39890.65 };
+
+test("applyPromotions: 30% sobre tuition confere com T7 (19760 -> 5928)", () => {
+  const r = applyPromotions([PROMO_BASE], PROMO_BASES, PROMO_CTX);
+  assert.equal(r.discounts.length, 1);
+  assert.equal(r.discounts[0].amount, 5928);
+  assert.equal(r.discounts[0].appliesTo, "tuition");
+  assert.equal(r.totalDiscount, 5928);
+});
+
+test("applyPromotions: duas nao-empilhaveis, so a de menor priority e aplicada", () => {
+  const p1: Promotion = { ...PROMO_BASE, name: "P1 prioridade 10", priority: 10, isStackable: false };
+  const p2: Promotion = {
+    ...PROMO_BASE,
+    name: "P2 prioridade 20",
+    priority: 20,
+    isStackable: false,
+    promoType: "fixed_off",
+    value: 500,
+    appliesTo: "accommodation",
+  };
+  // entrada fora de ordem para provar a ordenacao por priority
+  const r = applyPromotions([p2, p1], PROMO_BASES, PROMO_CTX);
+  assert.equal(r.discounts.length, 1);
+  assert.equal(r.discounts[0].name, "P1 prioridade 10");
+  assert.equal(r.totalDiscount, 5928);
+});
+
+test("applyPromotions: duas empilhaveis somam os descontos", () => {
+  const p1: Promotion = { ...PROMO_BASE, name: "P1", priority: 10, isStackable: true };
+  const p2: Promotion = {
+    ...PROMO_BASE,
+    name: "P2",
+    priority: 20,
+    isStackable: true,
+    promoType: "fixed_off",
+    value: 500,
+    appliesTo: "accommodation",
+  };
+  const r = applyPromotions([p1, p2], PROMO_BASES, PROMO_CTX);
+  assert.equal(r.discounts.length, 2);
+  assert.equal(r.totalDiscount, 6428); // 5928 + 500
+});
+
+test("applyPromotions: maxDiscountAmount funciona como teto por promocao", () => {
+  const promo: Promotion = { ...PROMO_BASE, maxDiscountAmount: 4000 };
+  const r = applyPromotions([promo], PROMO_BASES, PROMO_CTX);
+  assert.equal(r.discounts[0].amount, 4000); // 5928 limitado a 4000
+  assert.equal(r.totalDiscount, 4000);
+});
+
+test("applyPromotions: fixed_off usa value como valor absoluto", () => {
+  const promo: Promotion = { ...PROMO_BASE, promoType: "fixed_off", value: 250, appliesTo: "total" };
+  const r = applyPromotions([promo], PROMO_BASES, PROMO_CTX);
+  assert.equal(r.discounts[0].amount, 250);
+});
+
+test("applyPromotions: promo nao aplicavel (fora do alvo) nao gera desconto", () => {
+  const ctx: PromoContext = { ...PROMO_CTX, nationalityCode: "pt" };
+  const r = applyPromotions([PROMO_BASE], PROMO_BASES, ctx);
+  assert.equal(r.discounts.length, 0);
+  assert.equal(r.totalDiscount, 0);
+});
+
+// ---------------------------------------------------------------------------
+// ORQUESTRACAO: priceProduct (secao 4.1/4.2, aceite do Marco 4)
+// ---------------------------------------------------------------------------
+
+// Template aberto com os tiers do seed (CAD).
+const OPEN_TEMPLATE: Template = {
+  name: "Seed",
+  validFrom: null,
+  validUntil: null,
+  tiers: BASE_TIERS,
+};
+
+// Contexto do estudante (BR) sempre aplicavel para a promo de 30%.
+const PP_CONTEXT: PromoContext = {
+  quoteDate: "2026-08-21",
+  startDate: "2026-09-07",
+  billableQuantity: 10,
+  marketId: "BR",
+  nationalityCode: "br",
+};
+
+// Promo do seed: 30% off tuition, alvo mercado BR, sempre ativa (sem janelas).
+const PP_PROMO: Promotion = {
+  name: "Brasil 30% off",
+  promoType: "percent_off",
+  value: 30,
+  appliesTo: "tuition",
+  isStackable: false,
+  priority: 10,
+  status: "active",
+  targets: [{ dimension: "market", value: "BR" }],
+};
+
+test("priceProduct (aceite Marco 4): 10 semanas flat + matricula 160 + 30% off tuition", () => {
+  const req: PriceRequest = {
+    product: { currency: "CAD", kind: "program", availableFrom: "2026-01-01", availableUntil: "2027-12-31" },
+    startDate: "2026-09-07",
+    quantity: 10,
+    unit: "week",
+    templates: [OPEN_TEMPLATE],
+    transitionRule: "split_by_period",
+    chargeInTiers: false,
+    fees: [
+      { name: "Matricula", feeType: "registration", chargeBasis: "once_per_quote", amount: 160, currency: "CAD" },
+    ],
+    promotions: [PP_PROMO],
+    context: PP_CONTEXT,
+  };
+  const r = priceProduct(req);
+
+  assert.equal(r.grossAmount, 5750); // 10 x 575 (faixa do total 10)
+  assert.equal(r.averageUnitPrice, 575);
+  assert.equal(r.billableQuantity, 10);
+  assert.equal(r.deliveredQuantity, 10);
+  assert.equal(r.endDate, "2026-11-16"); // 2026-09-07 + 70 dias
+
+  assert.equal(r.fees.length, 1);
+  assert.equal(r.fees[0].amount, 160);
+
+  assert.equal(r.discounts.length, 1);
+  assert.equal(r.discounts[0].amount, 1725); // 30% de 5750
+
+  assert.equal(r.netAmount, 4185); // 5750 + 160 - 1725
+  assert.equal(r.warnings.length, 0);
+});
+
+test("priceProduct: converte para BRL quando presentmentCurrency difere", () => {
+  const req: PriceRequest = {
+    product: { currency: "CAD" },
+    startDate: "2026-09-07",
+    quantity: 10,
+    unit: "week",
+    templates: [OPEN_TEMPLATE],
+    transitionRule: "use_start_date_price",
+    fees: [],
+    promotions: [],
+    context: PP_CONTEXT,
+    fx: { referenceRate: 4, markupPercent: 0, rounding: "none", presentmentCurrency: "BRL" },
+  };
+  const r = priceProduct(req);
+  assert.equal(r.netAmount, 5750);
+  assert.equal(r.presentment?.currency, "BRL");
+  assert.equal(r.presentment?.amount, 23000); // 5750 x 4
+  assert.equal(r.presentment?.effectiveRate, 4);
+});
+
+test("priceProduct: freeUnits bonus_on_top separa billable e delivered", () => {
+  const req: PriceRequest = {
+    product: { currency: "CAD" },
+    startDate: "2026-09-07",
+    quantity: 20,
+    unit: "week",
+    templates: [OPEN_TEMPLATE],
+    transitionRule: "split_by_period",
+    fees: [],
+    promotions: [],
+    freeUnits: { semantics: "bonus_on_top", units: 4 },
+    context: { ...PP_CONTEXT, billableQuantity: 20 },
+  };
+  const r = priceProduct(req);
+  assert.equal(r.billableQuantity, 20);
+  assert.equal(r.deliveredQuantity, 24);
+  assert.equal(r.grossAmount, 11400); // 20 x 570 (faixa do total 20)
+  assert.equal(r.discounts.length, 0); // bonus nao gera desconto
+  assert.equal(r.netAmount, 11400);
+  assert.equal(r.endDate, "2027-02-22"); // 2026-09-07 + 24 semanas (168 dias)
+});
+
+test("priceProduct: freeUnits discount_on_booked gera linha de desconto embutida", () => {
+  const req: PriceRequest = {
+    product: { currency: "CAD" },
+    startDate: "2026-09-07",
+    quantity: 20,
+    unit: "week",
+    templates: [OPEN_TEMPLATE],
+    transitionRule: "split_by_period",
+    fees: [],
+    promotions: [],
+    freeUnits: { semantics: "discount_on_booked", units: 4 },
+    context: { ...PP_CONTEXT, billableQuantity: 20 },
+  };
+  const r = priceProduct(req);
+  assert.equal(r.grossAmount, 11400);
+  assert.equal(r.billableQuantity, 16);
+  assert.equal(r.deliveredQuantity, 20);
+  assert.equal(r.discounts.length, 1);
+  assert.equal(r.discounts[0].amount, 2280); // 4 x 570
+  assert.equal(r.netAmount, 9120); // 11400 - 2280
+});
+
+test("priceProduct: buraco de template -> warning bloqueante e amounts 0", () => {
+  const templateA: Template = { name: "A", validFrom: null, validUntil: "2026-06-14", tiers: BASE_TIERS };
+  const templateBGap: Template = { name: "B", validFrom: "2026-07-01", validUntil: null, tiers: BASE_TIERS };
+  const req: PriceRequest = {
+    product: { currency: "CAD" },
+    startDate: "2026-05-25",
+    quantity: 10,
+    unit: "week",
+    templates: [templateA, templateBGap],
+    transitionRule: "split_by_period",
+    fees: [
+      { name: "Matricula", feeType: "registration", chargeBasis: "once_per_quote", amount: 160, currency: "CAD" },
+    ],
+    promotions: [PP_PROMO],
+    context: { ...PP_CONTEXT, startDate: "2026-05-25" },
+  };
+  const r = priceProduct(req);
+  assert.equal(r.grossAmount, 0);
+  assert.equal(r.netAmount, 0);
+  assert.equal(r.averageUnitPrice, 0);
+  assert.equal(r.fees.length, 0);
+  assert.equal(r.discounts.length, 0);
+  assert.ok(r.warnings.some((w) => /bloqueante/i.test(w)));
+});
+
+test("priceProduct: disponibilidade fora da janela gera warning nao bloqueante", () => {
+  const req: PriceRequest = {
+    product: { currency: "CAD", minDuration: 2, maxDuration: 8, availableUntil: "2026-08-31" },
+    startDate: "2026-09-07", // depois de availableUntil
+    quantity: 10, // acima de maxDuration
+    unit: "week",
+    templates: [OPEN_TEMPLATE],
+    transitionRule: "split_by_period",
+    fees: [],
+    promotions: [],
+    context: PP_CONTEXT,
+  };
+  const r = priceProduct(req);
+  // Nao bloqueia: calcula normalmente e apenas alerta.
+  assert.equal(r.grossAmount, 5750);
+  assert.equal(r.warnings.length, 2);
 });
