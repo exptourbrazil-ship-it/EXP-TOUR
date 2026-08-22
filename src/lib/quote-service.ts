@@ -120,6 +120,19 @@ export async function createQuote(
     throw new Error("tenantId, studentId e ownerUserId sao obrigatorios.");
   }
 
+  // Posse do estudante dentro do tenant: a cotacao nao pode apontar para um
+  // estudante de outro tenant (hoje single-tenant, mas o join de PII em telas
+  // usa service role sem filtro; a checagem fecha o vazamento antes que o tenant
+  // passe a sair do contexto do usuario).
+  const { data: student, error: stErr } = await supabase
+    .from("student")
+    .select("id")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.studentId)
+    .maybeSingle();
+  if (stErr) throw new Error(`Falha ao verificar estudante: ${stErr.message}`);
+  if (!student) throw new Error("Estudante nao encontrado para este tenant.");
+
   const year = Number(hojeBrasilISO().slice(0, 4));
   const { count, error: countErr } = await supabase
     .from("quote")
@@ -464,7 +477,22 @@ export type AddManualDiscountArgs = {
   value: number;
   appliesTo: string;
   reason: string;
+  /** Teto (%) de desconto manual para papeis nao-gestor. Se ausente, sem teto. */
+  tetoPercent?: number;
+  /** Papel pode ultrapassar o teto (gestor). O override e sinalizado no retorno. */
+  permitirOverride?: boolean;
 };
+
+/**
+ * Erro tipado: o desconto manual equivale a mais que o teto permitido ao papel.
+ * A rota traduz para 403 (`acima_do_teto`) — nao e erro interno.
+ */
+export class DescontoAcimaDoTeto extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DescontoAcimaDoTeto";
+  }
+}
 
 /**
  * Grava um desconto MANUAL (is_manual=true). O `reason` e obrigatorio e vai para
@@ -476,7 +504,7 @@ export async function addManualDiscount(
   supabase: SupabaseClient,
   args: AddManualDiscountArgs,
   actor: ServiceActor,
-): Promise<{ discountId: string; amount: number }> {
+): Promise<{ discountId: string; amount: number; overrideTeto: boolean }> {
   if (!args.reason || args.reason.trim() === "") {
     throw new Error("Motivo (reason) e obrigatorio para desconto manual.");
   }
@@ -494,13 +522,16 @@ export async function addManualDiscount(
   let base = 0;
   let currency = "BRL";
   if (args.itemId) {
+    // Posse do item DENTRO da opcao: nao basta pertencer ao tenant, o item tem
+    // de ser da propria opcao — senao a base viria de outra opcao/cotacao.
     const { data: item } = await supabase
       .from("quote_item")
       .select("gross_amount, currency")
       .eq("tenant_id", args.tenantId)
       .eq("id", args.itemId)
+      .eq("quote_option_id", args.optionId)
       .maybeSingle();
-    if (!item) throw new Error("Item nao encontrado para este tenant.");
+    if (!item) throw new Error("Item nao encontrado nesta opcao.");
     base = toNum(item.gross_amount);
     currency = item.currency;
   } else {
@@ -523,6 +554,31 @@ export async function addManualDiscount(
     // TODO: calcular a partir do preco unitario do item quando aplicavel.
     amount = 0;
   }
+
+  // Teto de desconto manual: qualquer tipo e convertido para % efetivo sobre a
+  // base antes de comparar — assim `fixed` (e futuros tipos) nao burlam o limite
+  // que hoje so pegaria `percent`. Fixo sem base positiva = ilimitado (bloqueia).
+  const percentEfetivo =
+    args.type === "percent"
+      ? args.value
+      : base > 0
+        ? (amount / base) * 100
+        : amount > 0
+          ? Number.POSITIVE_INFINITY
+          : 0;
+  const excedeTeto =
+    args.tetoPercent != null &&
+    Number.isFinite(args.tetoPercent) &&
+    percentEfetivo > args.tetoPercent;
+  if (excedeTeto && !args.permitirOverride) {
+    const pct = Number.isFinite(percentEfetivo)
+      ? `${percentEfetivo.toFixed(1)}%`
+      : "ilimitado";
+    throw new DescontoAcimaDoTeto(
+      `Desconto equivale a ${pct} da base (R$ ${base.toFixed(2)}), acima do teto de ${args.tetoPercent}% permitido ao seu papel.`,
+    );
+  }
+  const overrideTeto = excedeTeto && !!args.permitirOverride;
 
   const { data: discount, error: insErr } = await supabase
     .from("quote_discount")
@@ -559,7 +615,7 @@ export async function addManualDiscount(
     ip: actor.ip ?? null,
   });
 
-  return { discountId: discount.id as string, amount };
+  return { discountId: discount.id as string, amount, overrideTeto };
 }
 
 // ---------------------------------------------------------------------------

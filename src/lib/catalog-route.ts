@@ -61,9 +61,19 @@ export function bad(message: string, code = "invalido", status = 400): NextRespo
   return NextResponse.json({ ok: false, error: { code, message } }, { status });
 }
 
-/** Resposta de erro interno (500) a partir de uma excecao. */
+/**
+ * Resposta de erro interno (500) a partir de uma excecao. As mensagens de
+ * validacao de negocio (ex.: "Estudante nao encontrado...") sao devolvidas ao
+ * cliente; as que embrulham detalhe do banco (prefixo "Falha ao ") sao logadas
+ * server-side e substituidas por uma mensagem generica — nao vaza schema/constraint.
+ */
 export function fail(err: unknown): NextResponse {
-  const message = err instanceof Error ? err.message : "Erro interno.";
+  const raw = err instanceof Error ? err.message : "Erro interno.";
+  const ehDetalheDeBanco = /^Falha ao /.test(raw);
+  if (ehDetalheDeBanco) {
+    console.error("[catalog] erro interno:", raw);
+  }
+  const message = ehDetalheDeBanco ? "Erro interno ao processar a operacao." : raw;
   return NextResponse.json(
     { ok: false, error: { code: "erro_interno", message } },
     { status: 500 },

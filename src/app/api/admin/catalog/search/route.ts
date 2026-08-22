@@ -21,11 +21,15 @@ export async function GET(request: Request) {
 
     const limitRaw = url.searchParams.get("limit");
     const offsetRaw = url.searchParams.get("offset");
-    const limit = limitRaw != null ? Number(limitRaw) : undefined;
+    const limitPedido = limitRaw != null ? Number(limitRaw) : undefined;
     const offset = offsetRaw != null ? Number(offsetRaw) : undefined;
-    if (limit !== undefined && (!Number.isFinite(limit) || limit < 0)) {
+    if (limitPedido !== undefined && (!Number.isFinite(limitPedido) || limitPedido < 0)) {
       return bad("Parametro 'limit' invalido.");
     }
+    // Teto de pagina: evita varredura gigante (range grande) por um limit inflado.
+    const LIMITE_MAX = 100;
+    const limit =
+      limitPedido !== undefined ? Math.min(limitPedido, LIMITE_MAX) : undefined;
     if (offset !== undefined && (!Number.isFinite(offset) || offset < 0)) {
       return bad("Parametro 'offset' invalido.");
     }
