@@ -6,6 +6,7 @@ import { obterIp } from "@/lib/rate-limit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { montarSignatarios, ehMenorDeIdade } from "@/lib/sign-events";
 import { criarEnvelopeDeTemplate } from "@/lib/zoho-sign";
+import { avancoSuspenso } from "@/lib/hold-service";
 import {
   SIGN_TEMPLATE_ID,
   SIGN_ACTION_CONTRATANTE,
@@ -44,6 +45,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .maybeSingle();
   if (erroContrato || !contrato) {
     return NextResponse.json({ ok: false, erro: "Contrato nao encontrado." }, { status: 404 });
+  }
+
+  // Enviar o contrato para assinatura e um avanco para estado de compromisso.
+  // Se ha um processo de excecao suspendendo o avanco deste contrato (hold de
+  // verificacao E10, disputa E9, deferral E2, interrupcao E7), NAO avanca ate a
+  // excecao ser resolvida.
+  if (await avancoSuspenso(supabase, contratoId)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        erro: "Avanco bloqueado: ha um processo de excecao ativo (ex.: hold de verificacao) suspendendo o avanco deste contrato. Resolva a excecao antes de enviar para assinatura.",
+      },
+      { status: 409 }
+    );
   }
 
   const { data: titular } = await supabase
