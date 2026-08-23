@@ -89,7 +89,9 @@ export const TIPOS_EXCECAO: TipoExcecao[] = [
     valor: "cancelamento_inadimplencia",
     label: "Cancelamento por inadimplência",
     origem: "ambas",
-    suspendePadrao: [],
+    // Ao escalar (D+30 -> rescisao formal), a cobranca automatica cede lugar ao
+    // processo formal: pausa lembretes/regua enquanto o E5 corre.
+    suspendePadrao: ["cobranca", "lembretes"],
     papelAlvo: "financeiro",
     slaDias: 2,
   },
