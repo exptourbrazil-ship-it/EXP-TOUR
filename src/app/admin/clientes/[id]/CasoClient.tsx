@@ -854,6 +854,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         rotuloBotao="Registrar alteração de escopo"
       />
 
+      {/* Motor de alteracao — previa do delta financeiro no escopo (E3) */}
+      <SecaoAlteracaoEscopo caso={caso} podeGerir={permissoes.gerirFinanceiro} />
+
       {/* Interrupcao durante o programa — abre o E7 */}
       <SecaoExcecaoRotulada
         caso={caso}
@@ -1848,12 +1851,233 @@ function SecaoAlteracao({ caso, podeGerir }: { caso: Caso; podeGerir: boolean })
         </p>
       )}
 
-      {caso.alteracoes.length === 0 ? (
-        <p className="text-sm text-neutral-500">Nenhum plano calculado.</p>
+      {(() => {
+        const deferrals = caso.alteracoes.filter((a) => a.tipo === "deferral");
+        return deferrals.length === 0 ? (
+          <p className="text-sm text-neutral-500">Nenhum plano calculado.</p>
+        ) : (
+          <div className="space-y-3">
+            {deferrals.map((a) => (
+              <AlteracaoCard key={a.id} alteracao={a} contratos={caso.contratos} />
+            ))}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ---- Motor de alteracao: previa do delta na alteracao de escopo (E3) --------
+
+function labelSentidoAlteracao(s: string | null): string {
+  if (s === "aditivo") return "Aditivo de compra (cobrança complementar)";
+  if (s === "credito") return "Crédito ao cliente";
+  return "Sem delta";
+}
+
+function AlteracaoEscopoCard({
+  alteracao,
+  contratos,
+}: {
+  alteracao: CasoAlteracao;
+  contratos: CasoContrato[];
+}) {
+  const contrato = contratos.find((c) => c.id === alteracao.contrato_id);
+  const moeda = alteracao.moeda || "BRL";
+  const plano = alteracao.plano_proposto || [];
+  const delta = Number(alteracao.delta || 0);
+  const credito = Number(alteracao.credito_cliente || 0);
+  return (
+    <div className="rounded-xl border border-neutral-200 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-brand">
+          {contrato ? nomeContrato(contrato) : "Contrato"}
+          <span className="ml-2 text-xs font-normal text-neutral-500">
+            {labelSentidoAlteracao(alteracao.sentido)}
+          </span>
+        </span>
+        <span className="text-xs text-neutral-400">{fmtDataHora(alteracao.criado_em)}</span>
+      </div>
+      {alteracao.provisorio ? (
+        <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+          ⚠ Prévia provisória — não reescreve parcelas, não cobra e não devolve. O aditivo (checkout/
+          aceite) e o crédito (motor de acerto) são passos à parte, após revisão.
+        </p>
+      ) : null}
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <dt className="text-neutral-500">Valor do programa (atual)</dt>
+        <dd className="text-right text-neutral-700">
+          {fmtMoeda(Number(alteracao.valor_programa_atual || 0), moeda)}
+        </dd>
+        <dt className="text-neutral-500">Valor do programa (novo)</dt>
+        <dd className="text-right font-medium text-neutral-800">
+          {fmtMoeda(Number(alteracao.valor_programa_novo || 0), moeda)}
+        </dd>
+        <dt className="text-neutral-500">Delta</dt>
+        <dd
+          className={
+            "text-right font-medium " +
+            (delta > 0 ? "text-red-700" : delta < 0 ? "text-emerald-700" : "text-neutral-700")
+          }
+        >
+          {delta > 0 ? "+" : ""}
+          {fmtMoeda(delta, moeda)}
+        </dd>
+        <dt className="text-neutral-500">Já pago</dt>
+        <dd className="text-right text-neutral-700">
+          {fmtMoeda(Number(alteracao.ja_pago || 0), moeda)}
+        </dd>
+        {credito > 0 ? (
+          <>
+            <dt className="text-neutral-500">Crédito a devolver (apurar no acerto)</dt>
+            <dd className="text-right font-medium text-emerald-700">{fmtMoeda(credito, moeda)}</dd>
+          </>
+        ) : null}
+        <dt className="text-neutral-500">Novo saldo a reagendar</dt>
+        <dd className="text-right text-neutral-700">
+          {fmtMoeda(Number(alteracao.saldo_devedor || 0), moeda)}
+        </dd>
+        <dt className="text-neutral-500">Data-limite de quitação</dt>
+        <dd className="text-right font-medium text-neutral-800">
+          {fmtData(alteracao.nova_data_quitacao || "")}
+        </dd>
+      </dl>
+      {alteracao.sentido === "aditivo" && credito === 0 ? (
+        <p className="mt-2 text-xs text-neutral-500">
+          Delta positivo: a diferença é cobrança complementar (aditivo de compra) — encaminhar ao
+          checkout com aceite. Não executado aqui.
+        </p>
+      ) : null}
+      {plano.length > 0 ? (
+        <table className="mt-2 w-full text-sm">
+          <thead>
+            <tr className="border-b border-neutral-200 text-xs text-neutral-500">
+              <th className="py-1 text-left font-normal">Parcela</th>
+              <th className="py-1 text-left font-normal">Vencimento</th>
+              <th className="py-1 text-right font-normal">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plano.map((p) => (
+              <tr key={p.numero} className="border-b border-neutral-100 last:border-0">
+                <td className="py-1 text-neutral-600">{p.numero}</td>
+                <td className="py-1 text-neutral-600">{fmtData(p.vencimento)}</td>
+                <td className="py-1 text-right font-medium text-neutral-700">
+                  {fmtMoeda(Number(p.valor), moeda)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="mt-2 text-xs text-neutral-500">Sem saldo a reagendar após o recálculo.</p>
+      )}
+    </div>
+  );
+}
+
+function SecaoAlteracaoEscopo({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [novoValor, setNovoValor] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function calcular() {
+    setErro(null);
+    if (!contratoId) {
+      setErro("Selecione o contrato.");
+      return;
+    }
+    if (novoValor.trim() === "" || !Number.isFinite(Number(novoValor)) || Number(novoValor) < 0) {
+      setErro("Informe o novo valor do programa.");
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/alteracao-escopo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, valorProgramaNovo: Number(novoValor) }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao calcular o plano.");
+        return;
+      }
+      setNovoValor("");
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const escopos = caso.alteracoes.filter((a) => a.tipo === "escopo");
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Alteração de escopo — delta e plano (rascunho)</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Para um contrato com alteração de escopo (E3) ativa, calcula a prévia do delta financeiro
+        (novo valor do programa − atual) e o plano recalculado sobre o novo saldo. Delta positivo é
+        aditivo de compra (cobrança complementar via checkout); negativo pode gerar crédito
+        (motor de acerto). É rascunho para revisão — não reescreve parcelas, não cobra e não devolve.
+      </p>
+
+      {podeGerir ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs text-neutral-500">Contrato</span>
+            <select
+              value={contratoId}
+              onChange={(e) => setContratoId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {caso.contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {nomeContrato(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs text-neutral-500">Novo valor do programa (na moeda)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={novoValor}
+              onChange={(e) => setNovoValor(e.target.value)}
+              placeholder="0,00"
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="sm:col-span-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={calcular}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Calculando…" : "Calcular delta e plano"}
+            </button>
+            {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+          </div>
+        </div>
+      ) : (
+        <p className="mb-3 text-xs text-neutral-500">
+          Somente o Financeiro (ou Gestor) calcula o delta. Os rascunhos existentes ficam abaixo.
+        </p>
+      )}
+
+      {escopos.length === 0 ? (
+        <p className="text-sm text-neutral-500">Nenhum delta calculado.</p>
       ) : (
         <div className="space-y-3">
-          {caso.alteracoes.map((a) => (
-            <AlteracaoCard key={a.id} alteracao={a} contratos={caso.contratos} />
+          {escopos.map((a) => (
+            <AlteracaoEscopoCard key={a.id} alteracao={a} contratos={caso.contratos} />
           ))}
         </div>
       )}

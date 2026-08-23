@@ -125,6 +125,7 @@ export type CasoAlteracao = {
   id: string;
   contrato_id: string;
   excecao_id: string | null;
+  tipo: string; // 'deferral' (E2) | 'escopo' (E3)
   status: string;
   moeda: string | null;
   data_inicio_atual: string | null;
@@ -133,6 +134,13 @@ export type CasoAlteracao = {
   saldo_devedor: number | null;
   num_parcelas: number | null;
   plano_proposto: { numero: number; vencimento: string; valor: number }[] | null;
+  // E3 (escopo); nulos para 'deferral'.
+  valor_programa_atual: number | null;
+  valor_programa_novo: number | null;
+  delta: number | null;
+  ja_pago: number | null;
+  credito_cliente: number | null;
+  sentido: string | null;
   provisorio: boolean | null;
   criado_em: string | null;
 };
@@ -262,7 +270,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   const { data: alteracoesData } = await supabase
     .from("alteracoes")
     .select(
-      "id, contrato_id, excecao_id, status, moeda, data_inicio_atual, nova_data_inicio, nova_data_quitacao, saldo_devedor, num_parcelas, plano_proposto, provisorio, criado_em"
+      "id, contrato_id, excecao_id, tipo, status, moeda, data_inicio_atual, nova_data_inicio, nova_data_quitacao, saldo_devedor, num_parcelas, plano_proposto, valor_programa_atual, valor_programa_novo, delta, ja_pago, credito_cliente, sentido, provisorio, criado_em"
     )
     .eq("titular_id", titularId)
     .order("criado_em", { ascending: false });

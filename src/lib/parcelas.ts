@@ -183,3 +183,75 @@ export function calcularPlanoDeferral(args: {
 
   return { novaDataQuitacao, planoProposto, cabe: true };
 }
+
+// ---------------------------------------------------------------------------
+// MOTOR DE ALTERACAO — previa do delta e do plano na ALTERACAO DE ESCOPO
+// (E3, doc 01 §4: extensao / upgrade / troca / servicos adicionais)
+// ---------------------------------------------------------------------------
+// Diferente do E2 (so move datas), o E3 muda o VALOR do programa -> delta
+// financeiro na moeda. Esta funcao calcula o delta (novo - atual), o novo saldo
+// a reagendar (novo total - ja pago) e reusa `calcularPlanoDeferral` para o
+// plano recalculado dentro da janela atual (a data de inicio NAO muda nesta
+// fatia). SENTIDO:
+//   - "aditivo": delta > 0  -> cobranca complementar (aditivo de compra; a
+//     execucao via checkout/aceite e um marco a parte, deferido).
+//   - "credito": delta < 0  -> reducao. Se o ja pago superar o novo total, ha
+//     credito a devolver ao cliente (encaminha ao motor de acerto/refund).
+//   - "neutro": delta == 0.
+// NESTE passo e so uma PREVIA (rascunho revisado): NAO reescreve parcelas, NAO
+// cobra e NAO devolve. Parcelas pagas nao sao tocadas.
+
+export type SentidoAlteracao = "aditivo" | "credito" | "neutro";
+
+export type PlanoEscopo = {
+  valorProgramaAtual: number;
+  valorProgramaNovo: number;
+  delta: number; // novo - atual (na moeda do programa)
+  jaPago: number;
+  novoSaldo: number; // max(0, novo total - ja pago) -> o que sera reagendado
+  creditoCliente: number; // max(0, ja pago - novo total) -> refund a apurar (acerto)
+  sentido: SentidoAlteracao;
+  novaDataQuitacao: string | null;
+  planoProposto: ParcelaProposta[];
+  cabe: boolean;
+};
+
+function centavos(n: unknown): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+export function calcularAlteracaoEscopo(args: {
+  valorProgramaAtual: number;
+  valorProgramaNovo: number;
+  jaPago: number;
+  dataReferencia: string; // base da carencia (hoje)
+  dataInicio: string; // inicio ATUAL do programa (E3 nao muda datas nesta fatia)
+}): PlanoEscopo {
+  const valorProgramaAtual = centavos(args.valorProgramaAtual);
+  const valorProgramaNovo = centavos(args.valorProgramaNovo);
+  const jaPago = Math.max(0, centavos(args.jaPago));
+  const delta = centavos(valorProgramaNovo - valorProgramaAtual);
+  const saldoLiquido = centavos(valorProgramaNovo - jaPago);
+  const novoSaldo = Math.max(0, saldoLiquido);
+  const creditoCliente = Math.max(0, centavos(-saldoLiquido));
+  const sentido: SentidoAlteracao = delta > 0 ? "aditivo" : delta < 0 ? "credito" : "neutro";
+
+  const plano = calcularPlanoDeferral({
+    saldoDevedor: novoSaldo,
+    dataReferencia: args.dataReferencia,
+    novaDataInicio: args.dataInicio,
+  });
+
+  return {
+    valorProgramaAtual,
+    valorProgramaNovo,
+    delta,
+    jaPago,
+    novoSaldo,
+    creditoCliente,
+    sentido,
+    novaDataQuitacao: plano.novaDataQuitacao,
+    planoProposto: plano.planoProposto,
+    cabe: plano.cabe,
+  };
+}

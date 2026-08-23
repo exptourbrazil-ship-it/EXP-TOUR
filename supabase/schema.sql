@@ -359,6 +359,10 @@ create table if not exists alteracoes (
   contrato_id uuid not null references contratos(id) on delete cascade,
   titular_id uuid not null references titulares(id) on delete cascade,
   excecao_id uuid references case_exceptions(id),
+  -- Discrimina o motor de alteracao: 'deferral' (E2, so move datas) ou
+  -- 'escopo' (E3, muda o valor do programa -> delta financeiro).
+  tipo text not null default 'deferral'
+    check (tipo in ('deferral','escopo')),
   status text not null default 'rascunho'
     check (status in ('rascunho','aplicado','cancelado')),
   data_inicio_atual date,
@@ -368,16 +372,44 @@ create table if not exists alteracoes (
   moeda text,
   num_parcelas int,
   plano_proposto jsonb,                   -- [{numero, vencimento, valor}]
+  -- Campos do E3 (alteracao de escopo); nulos para 'deferral'.
+  valor_programa_atual numeric(12,2),
+  valor_programa_novo numeric(12,2),
+  delta numeric(12,2),                     -- novo - atual (na moeda)
+  ja_pago numeric(12,2),
+  credito_cliente numeric(12,2),           -- refund a apurar (motor de acerto)
+  sentido text check (sentido in ('aditivo','credito','neutro')),
   provisorio boolean not null default true,
   criado_por text,
   criado_em timestamptz not null default now(),
   atualizada_em timestamptz not null default now()
   );
 
+-- Colunas adicionadas apos a criacao inicial da tabela (bancos ja migrados).
+alter table if exists alteracoes add column if not exists tipo text not null default 'deferral';
+alter table if exists alteracoes add column if not exists valor_programa_atual numeric(12,2);
+alter table if exists alteracoes add column if not exists valor_programa_novo numeric(12,2);
+alter table if exists alteracoes add column if not exists delta numeric(12,2);
+alter table if exists alteracoes add column if not exists ja_pago numeric(12,2);
+alter table if exists alteracoes add column if not exists credito_cliente numeric(12,2);
+alter table if exists alteracoes add column if not exists sentido text;
+-- CHECKs para bancos ja migrados (o create table acima so vale em banco novo).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'alteracoes_tipo_check') then
+    alter table alteracoes add constraint alteracoes_tipo_check check (tipo in ('deferral','escopo'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'alteracoes_sentido_check') then
+    alter table alteracoes add constraint alteracoes_sentido_check check (sentido in ('aditivo','credito','neutro'));
+  end if;
+end $$;
+
 create index if not exists idx_alteracoes_contrato on alteracoes(contrato_id);
 create index if not exists idx_alteracoes_titular on alteracoes(titular_id);
+-- Um rascunho por (contrato, tipo): E2 e E3 podem coexistir sem colidir.
+drop index if exists uidx_alteracoes_rascunho;
 create unique index if not exists uidx_alteracoes_rascunho
-  on alteracoes(contrato_id) where status = 'rascunho';
+  on alteracoes(contrato_id, tipo) where status = 'rascunho';
 alter table if exists alteracoes enable row level security;
 
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao

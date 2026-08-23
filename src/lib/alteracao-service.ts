@@ -9,7 +9,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
-import { calcularPlanoDeferral, saldoDevedorMoeda } from "@/lib/parcelas";
+import { calcularPlanoDeferral, calcularAlteracaoEscopo, saldoDevedorMoeda } from "@/lib/parcelas";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -36,6 +36,7 @@ function dataISOValida(s: unknown): s is string {
 
 export type AlteracaoRegistro = {
   id: string;
+  tipo: string;
   status: string;
   moeda: string | null;
   data_inicio_atual: string | null;
@@ -44,6 +45,13 @@ export type AlteracaoRegistro = {
   saldo_devedor: number | null;
   num_parcelas: number | null;
   plano_proposto: { numero: number; vencimento: string; valor: number }[] | null;
+  // E3 (escopo); nulos para 'deferral'.
+  valor_programa_atual: number | null;
+  valor_programa_novo: number | null;
+  delta: number | null;
+  ja_pago: number | null;
+  credito_cliente: number | null;
+  sentido: string | null;
   provisorio: boolean;
 };
 
@@ -121,6 +129,7 @@ export async function calcularERegistrarAlteracao(args: {
 
   const patch = {
     excecao_id: excecao.id,
+    tipo: "deferral",
     status: "rascunho",
     data_inicio_atual: (contrato as { data_inicio?: string | null }).data_inicio ?? null,
     nova_data_inicio: args.novaDataInicio,
@@ -138,6 +147,7 @@ export async function calcularERegistrarAlteracao(args: {
       .from("alteracoes")
       .select("id")
       .eq("contrato_id", args.contratoId)
+      .eq("tipo", "deferral")
       .eq("status", "rascunho")
       .maybeSingle();
     if (!existente?.id) return null;
@@ -179,6 +189,165 @@ export async function calcularERegistrarAlteracao(args: {
       nova_data_inicio: args.novaDataInicio,
       nova_data_quitacao: plano.novaDataQuitacao,
       num_parcelas: plano.planoProposto.length,
+      provisorio: true,
+    },
+    ip: args.ip ?? null,
+  });
+
+  return registro;
+}
+
+// Calcula e grava (rascunho) a previa do delta e do plano na ALTERACAO DE
+// ESCOPO (E3). O novo valor do programa e informado pela Operacao/Financeiro
+// (nao ha motor de preco integrado). Requer um E3 (alteracao_escopo) ATIVO.
+// Delta nos dois sentidos: aditivo (delta>0, cobranca complementar via checkout
+// — deferido), credito (delta<0; se ja pago superar o novo total, refund a
+// apurar no motor de acerto — deferido) ou neutro. NAO reescreve parcelas, NAO
+// cobra e NAO devolve — e rascunho revisado. Recalcular atualiza o rascunho.
+export async function calcularERegistrarAlteracaoEscopo(args: {
+  contratoId: string;
+  titularIdEsperado: string;
+  valorProgramaNovo: number;
+  autor: string;
+  ip?: string | null;
+}): Promise<AlteracaoRegistro> {
+  const novo = Number(args.valorProgramaNovo);
+  if (!Number.isFinite(novo) || novo < 0) {
+    throw new AlteracaoBloqueada("valor_invalido", "Novo valor do programa invalido");
+  }
+  const supabase = getSupabase();
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id, moeda, data_inicio, valor_total")
+    .eq("id", args.contratoId)
+    .maybeSingle();
+  if (!contrato) {
+    throw new AlteracaoBloqueada("contrato_nao_encontrado", "Contrato nao encontrado");
+  }
+  if (contrato.titular_id !== args.titularIdEsperado) {
+    throw new AlteracaoBloqueada("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+
+  const dataInicio = (contrato as { data_inicio?: string | null }).data_inicio ?? null;
+  if (!dataISOValida(dataInicio)) {
+    throw new AlteracaoBloqueada(
+      "sem_data_inicio",
+      "O contrato nao tem data de inicio para recalcular o plano"
+    );
+  }
+  // Programa ja iniciado: a data-limite de quitacao (D-30) cairia no passado e o
+  // plano recalculado seria enganoso. Recusa em vez de gravar rascunho invalido.
+  if (dataInicio <= hojeBrasilISO()) {
+    throw new AlteracaoBloqueada(
+      "programa_ja_iniciado",
+      "O programa ja comecou; nao ha janela para recalcular o plano"
+    );
+  }
+
+  // Exige um E3 (alteracao de escopo) ativo.
+  const { data: excecoes } = await supabase
+    .from("case_exceptions")
+    .select("id, tipo, aberta_em")
+    .eq("contrato_id", args.contratoId)
+    .in("status", ["aberta", "em_andamento"])
+    .order("aberta_em", { ascending: false });
+  const excecao = (excecoes || []).find((e) => e.tipo === "alteracao_escopo");
+  if (!excecao) {
+    throw new AlteracaoBloqueada(
+      "sem_escopo_ativo",
+      "Nao ha processo de alteracao de escopo (E3) ativo neste contrato"
+    );
+  }
+
+  // Ja pago = soma do ledger de pagamentos (moeda do programa) — mesma fonte
+  // imutavel do motor de acerto.
+  const { data: pagamentos } = await supabase
+    .from("pagamentos")
+    .select("valor_programa")
+    .eq("contrato_id", args.contratoId);
+  const jaPago = (pagamentos || []).reduce(
+    (s, p) => s + (Number((p as { valor_programa?: number }).valor_programa) || 0),
+    0
+  );
+
+  const escopo = calcularAlteracaoEscopo({
+    valorProgramaAtual: Number(contrato.valor_total) || 0,
+    valorProgramaNovo: novo,
+    jaPago,
+    dataReferencia: hojeBrasilISO(),
+    dataInicio: dataInicio as string,
+  });
+
+  const patch = {
+    excecao_id: excecao.id,
+    tipo: "escopo",
+    status: "rascunho",
+    data_inicio_atual: dataInicio,
+    nova_data_inicio: dataInicio, // E3 nao muda datas nesta fatia
+    nova_data_quitacao: escopo.novaDataQuitacao,
+    saldo_devedor: escopo.novoSaldo,
+    moeda: contrato.moeda || null,
+    num_parcelas: escopo.planoProposto.length,
+    plano_proposto: escopo.planoProposto,
+    valor_programa_atual: escopo.valorProgramaAtual,
+    valor_programa_novo: escopo.valorProgramaNovo,
+    delta: escopo.delta,
+    ja_pago: escopo.jaPago,
+    credito_cliente: escopo.creditoCliente,
+    sentido: escopo.sentido,
+    provisorio: true,
+    atualizada_em: new Date().toISOString(),
+  };
+
+  async function atualizarPorContrato(): Promise<AlteracaoRegistro | null> {
+    const { data: existente } = await supabase
+      .from("alteracoes")
+      .select("id")
+      .eq("contrato_id", args.contratoId)
+      .eq("tipo", "escopo")
+      .eq("status", "rascunho")
+      .maybeSingle();
+    if (!existente?.id) return null;
+    const { data, error } = await supabase
+      .from("alteracoes")
+      .update(patch)
+      .eq("id", existente.id)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("Falha ao atualizar a alteracao");
+    return data as AlteracaoRegistro;
+  }
+
+  let registro = await atualizarPorContrato();
+  if (!registro) {
+    const { data, error } = await supabase
+      .from("alteracoes")
+      .insert({ ...patch, contrato_id: contrato.id, titular_id: contrato.titular_id, criado_por: args.autor })
+      .select("*")
+      .single();
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        registro = await atualizarPorContrato();
+        if (!registro) throw new Error("Falha ao registrar a alteracao");
+      } else {
+        throw new Error("Falha ao registrar a alteracao");
+      }
+    } else {
+      registro = data as AlteracaoRegistro;
+    }
+  }
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.autor,
+    acao: "alteracao.escopo.calcular",
+    alvo: contrato.id,
+    detalhe: {
+      excecao_id: excecao.id,
+      sentido: escopo.sentido,
+      delta: escopo.delta,
+      credito_cliente: escopo.creditoCliente,
+      num_parcelas: escopo.planoProposto.length,
       provisorio: true,
     },
     ip: args.ip ?? null,
