@@ -353,6 +353,36 @@ create unique index if not exists uidx_acertos_rascunho
   on acertos(contrato_id, excecao_id) where status = 'rascunho';
 alter table if exists acertos enable row level security;
 
+-- Config de RETENCAO por instancia (motor de acerto, Fatia A). Tira as faixas do
+-- hardcode: o motor le daqui. Enquanto `validado_juridicamente=false`, a memoria
+-- do acerto marca `provisorio=true` (aviso na tela). Uma unica linha vigente
+-- (portal single-tenant). Gerida por config.gerir (so Gestor). RLS sem policy.
+create table if not exists config_retencao (
+  id uuid primary key default gen_random_uuid(),
+  faixas jsonb not null,                     -- [{minDiasAteInicio, percentual}]
+  tipos_sem_retencao jsonb not null default '[]'::jsonb, -- ex.: ["cancelamento_escola"]
+  validado_juridicamente boolean not null default false,
+  vigente boolean not null default true,
+  observacao text,
+  atualizado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+-- No maximo UMA config vigente.
+create unique index if not exists uidx_config_retencao_vigente
+  on config_retencao(vigente) where vigente = true;
+alter table if exists config_retencao enable row level security;
+
+-- Seed: replica o PLACEHOLDER atual como config NAO validada (mantem o
+-- comportamento provisorio=true ate a validacao juridica). So insere se vazia.
+insert into config_retencao (faixas, tipos_sem_retencao, validado_juridicamente, observacao)
+select
+  '[{"minDiasAteInicio":60,"percentual":0.10},{"minDiasAteInicio":30,"percentual":0.25},{"minDiasAteInicio":0,"percentual":0.50}]'::jsonb,
+  '["cancelamento_escola"]'::jsonb,
+  false,
+  'Seed placeholder (a validar juridicamente).'
+where not exists (select 1 from config_retencao where vigente = true);
+
 -- Alteracoes de plano (motor de alteracao — E2 adiamento; doc 01 §4). NESTE
 -- passo guarda a PREVIA do plano recalculado (nova data-limite de quitacao +
 -- reagendamento do saldo em aberto) como RASCUNHO para o Financeiro/Operacao

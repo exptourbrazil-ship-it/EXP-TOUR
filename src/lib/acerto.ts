@@ -25,21 +25,24 @@ export const RETENCAO_PLACEHOLDER: FaixaRetencao[] = [
 // Tipos de excecao que NAO geram multa ao cliente (a culpa nao e dele): escola
 // cancelou (E6). Arrependimento <=7 dias tambem e refund integral, mas isso
 // depende da data de compra (nao do inicio) — tratado pelo revisor/override, nao
-// aqui.
-const TIPOS_SEM_RETENCAO = new Set<string>(["cancelamento_escola"]);
+// aqui. Default (placeholder); a config por instancia pode sobrescrever a lista.
+export const TIPOS_SEM_RETENCAO_PADRAO: string[] = ["cancelamento_escola"];
 
 function round2(n: number): number {
   return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
 }
 
 // Determina o percentual de retencao a partir do tipo + dias ate o inicio.
-// diasAteInicio negativo (programa ja iniciado) usa a faixa mais alta.
+// diasAteInicio negativo (programa ja iniciado) usa a faixa mais alta. As faixas
+// e a lista de tipos-sem-retencao vem da CONFIG por instancia (ver
+// carregarConfigRetencao); os defaults aqui sao so o fallback placeholder.
 export function determinarRetencaoPercentual(
   tipo: string,
   diasAteInicio: number,
-  faixas: FaixaRetencao[] = RETENCAO_PLACEHOLDER
+  faixas: FaixaRetencao[] = RETENCAO_PLACEHOLDER,
+  tiposSemRetencao: string[] = TIPOS_SEM_RETENCAO_PADRAO
 ): number {
-  if (TIPOS_SEM_RETENCAO.has(tipo)) return 0;
+  if (tiposSemRetencao.includes(tipo)) return 0;
   const ordenadas = [...faixas].sort((a, b) => b.minDiasAteInicio - a.minDiasAteInicio);
   for (const f of ordenadas) {
     if (diasAteInicio >= f.minDiasAteInicio) return f.percentual;
@@ -47,6 +50,25 @@ export function determinarRetencaoPercentual(
   // Abaixo de todas as faixas (ex.: ja iniciado, diasAteInicio < menor minDias):
   // aplica a faixa mais restritiva (maior percentual).
   return ordenadas.length ? ordenadas[ordenadas.length - 1].percentual : 0;
+}
+
+// Valida um conjunto de faixas de retencao vindo da config (entrada do gestor).
+// Puro/testavel: garante lista nao-vazia de {minDiasAteInicio>=0, percentual 0..1}.
+export function validarFaixasRetencao(faixas: unknown): { ok: boolean; motivo?: string } {
+  if (!Array.isArray(faixas) || faixas.length === 0) {
+    return { ok: false, motivo: "faixas_vazias" };
+  }
+  for (const f of faixas) {
+    const min = (f as FaixaRetencao)?.minDiasAteInicio;
+    const pct = (f as FaixaRetencao)?.percentual;
+    if (typeof min !== "number" || !Number.isFinite(min) || min < 0) {
+      return { ok: false, motivo: "minDiasAteInicio_invalido" };
+    }
+    if (typeof pct !== "number" || !Number.isFinite(pct) || pct < 0 || pct > 1) {
+      return { ok: false, motivo: "percentual_invalido" };
+    }
+  }
+  return { ok: true };
 }
 
 export type EntradaAcerto = {

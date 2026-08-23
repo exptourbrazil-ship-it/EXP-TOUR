@@ -61,13 +61,20 @@ fica em `proposto`/rascunho (seguro), mas não conclui.
 
 ## 2. Fatias (ordem sugerida: menor risco → maior)
 
-### Fatia A — Retenção parametrizada (tira o PLACEHOLDER) · sem dinheiro
-- Config por instância com as faixas de retenção por tipo de exceção (tabela de
-  `config`/`tenant_config` ou colunas de parâmetro por instância).
-- `determinarRetencaoPercentual` passa a ler a config; `RETENCAO_PLACEHOLDER`
-  vira só o fallback de desenvolvimento. `provisorio=false` quando a config real
-  existe (a memória some o aviso dourado).
-- **Risco:** baixo (não move dinheiro). **Testes:** puros (faixas por config).
+### Fatia A — Retenção parametrizada (tira o PLACEHOLDER) · sem dinheiro · ✅ CONCLUÍDA
+- Tabela `config_retencao` (uma linha vigente; portal single-tenant) com as
+  faixas + `tipos_sem_retencao` + `validado_juridicamente`.
+- `determinarRetencaoPercentual` passa a ler a config (via
+  `carregarConfigRetencao`); `RETENCAO_PLACEHOLDER` vira só o fallback (config
+  ausente **ou malformada** → placeholder + `provisorio=true`).
+  `provisorio=false` só quando `validado_juridicamente=true` (a memória some o
+  aviso dourado).
+- Rota gestor-only `GET/PUT /api/admin/config/retencao` (`config.gerir`, sessão
+  sem Bearer) valida as faixas antes de salvar. Seed inicial = placeholder atual
+  **não validado** (comportamento inalterado até a validação jurídica).
+- **Pendente (menor):** UI admin de edição da config (hoje via a rota/SQL).
+- **Risco:** baixo (não move dinheiro). **Testes:** puros (faixas por config,
+  `validarFaixasRetencao`).
 
 ### Fatia B — Proposta ao cliente + aceite eletrônico · sem dinheiro
 - **Transição `rascunho → proposto`**: rota admin (`financeiro.gerir`, sessão)
@@ -189,3 +196,6 @@ rascunho ──propor(termo)──▶ proposto ──aceite eletrônico──▶
 A ordem coloca todo o valor **sem risco de dinheiro** (A, B) antes de qualquer
 peça que mova caixa (C, D), e cada fatia é entregável e testável isoladamente.
 As Fatias A–C podem ser construídas já; a Fatia D depende das decisões do §6.
+
+> **Estado:** Fatia A **concluída**. Próxima recomendada: Fatia B (proposta +
+> aceite eletrônico, ainda sem dinheiro).

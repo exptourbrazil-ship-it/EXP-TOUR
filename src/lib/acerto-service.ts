@@ -16,13 +16,51 @@ import {
   calcularAcerto,
   calcularAcertoCreditoEscopo,
   determinarRetencaoPercentual,
+  validarFaixasRetencao,
+  RETENCAO_PLACEHOLDER,
+  TIPOS_SEM_RETENCAO_PADRAO,
   type Acerto,
+  type FaixaRetencao,
 } from "@/lib/acerto";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   return createClient(supabaseUrl, serviceRoleKey);
+}
+
+// Config de retencao por instancia (Fatia A). Le a linha vigente; se ausente ou
+// invalida, cai no PLACEHOLDER e mantem provisorio=true. `provisorio` reflete se
+// as regras ja foram validadas juridicamente.
+export type ConfigRetencao = {
+  faixas: FaixaRetencao[];
+  tiposSemRetencao: string[];
+  provisorio: boolean;
+};
+
+export async function carregarConfigRetencao(supabase: SupabaseClient): Promise<ConfigRetencao> {
+  const { data } = await supabase
+    .from("config_retencao")
+    .select("faixas, tipos_sem_retencao, validado_juridicamente")
+    .eq("vigente", true)
+    .maybeSingle();
+  const faixas = (data as { faixas?: unknown } | null)?.faixas;
+  // Config ausente OU malformada (ex.: gravada direto no SQL Editor) cai no
+  // placeholder + provisorio=true. Validar aqui evita retencao 0% silenciosa
+  // (over-refund) sem o aviso de provisorio.
+  if (!data || !validarFaixasRetencao(faixas).ok) {
+    return {
+      faixas: RETENCAO_PLACEHOLDER,
+      tiposSemRetencao: [...TIPOS_SEM_RETENCAO_PADRAO],
+      provisorio: true,
+    };
+  }
+  const tipos = (data as { tipos_sem_retencao?: unknown }).tipos_sem_retencao;
+  return {
+    faixas: faixas as FaixaRetencao[],
+    tiposSemRetencao: Array.isArray(tipos) ? (tipos as string[]) : [],
+    provisorio: !(data as { validado_juridicamente?: boolean }).validado_juridicamente,
+  };
 }
 
 export class AcertoBloqueado extends Error {
@@ -123,8 +161,15 @@ export async function calcularERegistrarAcerto(args: {
     null;
   const dias = diasAteInicio(dataInicio, hojeBrasilISO());
 
+  // Faixas de retencao da CONFIG por instancia (Fatia A) — nao mais hardcoded.
+  const config = await carregarConfigRetencao(supabase);
   const tipo = excecao.tipo as string;
-  const retencaoPercentual = determinarRetencaoPercentual(tipo, dias ?? 0);
+  const retencaoPercentual = determinarRetencaoPercentual(
+    tipo,
+    dias ?? 0,
+    config.faixas,
+    config.tiposSemRetencao
+  );
   const acerto = calcularAcerto({
     valorTotal: Number(contrato.valor_total) || 0,
     totalPago,
@@ -147,7 +192,7 @@ export async function calcularERegistrarAcerto(args: {
     refund_escola_esperado: acerto.refundEscolaEsperado,
     saldo_devolver_cliente: acerto.saldoDevolverCliente,
     memoria: acerto.memoria,
-    provisorio: true, // regras placeholder ate a config real
+    provisorio: config.provisorio, // false quando a retencao ja foi validada juridicamente
     atualizada_em: new Date().toISOString(),
   };
 
@@ -201,7 +246,7 @@ export async function calcularERegistrarAcerto(args: {
       tipo: labelTipoExcecao(tipo),
       retencao_percentual: acerto.retencaoPercentual,
       saldo_devolver: acerto.saldoDevolverCliente,
-      provisorio: true,
+      provisorio: config.provisorio,
     },
     ip: args.ip ?? null,
   });

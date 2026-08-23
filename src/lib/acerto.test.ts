@@ -7,6 +7,7 @@ import {
   determinarRetencaoPercentual,
   calcularAcerto,
   calcularAcertoCreditoEscopo,
+  validarFaixasRetencao,
 } from "./acerto.ts";
 
 test("determinarRetencaoPercentual: faixas placeholder por dias ate inicio", () => {
@@ -97,4 +98,33 @@ test("calcularAcertoCreditoEscopo: pago <= novo -> credito zero (nao devolve)", 
 test("calcularAcertoCreditoEscopo: arredonda a 2 casas", () => {
   const a = calcularAcertoCreditoEscopo({ valorProgramaNovo: 100.001, jaPago: 250.006 });
   assert.equal(a.creditoDevolver, 150.01);
+});
+
+// ---- Fatia A: retencao parametrizada (config por instancia) ----------------
+
+test("determinarRetencaoPercentual: faixas da config sobrescrevem o placeholder", () => {
+  const faixas = [
+    { minDiasAteInicio: 90, percentual: 0.05 },
+    { minDiasAteInicio: 0, percentual: 0.4 },
+  ];
+  assert.equal(determinarRetencaoPercentual("cancelamento_cliente", 100, faixas), 0.05);
+  assert.equal(determinarRetencaoPercentual("cancelamento_cliente", 10, faixas), 0.4);
+});
+
+test("determinarRetencaoPercentual: tiposSemRetencao da config define quem tem multa", () => {
+  // Com a config, escola PASSA a ter retencao e cliente fica isento (hipotetico).
+  const faixas = RETENCAO_PLACEHOLDER;
+  assert.equal(determinarRetencaoPercentual("cancelamento_escola", 10, faixas, []), 0.5);
+  assert.equal(
+    determinarRetencaoPercentual("cancelamento_cliente", 10, faixas, ["cancelamento_cliente"]),
+    0
+  );
+});
+
+test("validarFaixasRetencao: aceita faixas validas, recusa invalidas/vazias", () => {
+  assert.deepEqual(validarFaixasRetencao([{ minDiasAteInicio: 0, percentual: 0.5 }]), { ok: true });
+  assert.equal(validarFaixasRetencao([]).ok, false);
+  assert.equal(validarFaixasRetencao("x").ok, false);
+  assert.equal(validarFaixasRetencao([{ minDiasAteInicio: -1, percentual: 0.5 }]).motivo, "minDiasAteInicio_invalido");
+  assert.equal(validarFaixasRetencao([{ minDiasAteInicio: 0, percentual: 1.5 }]).motivo, "percentual_invalido");
 });
