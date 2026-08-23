@@ -413,6 +413,10 @@ create index if not exists idx_documentos_contrato on documentos(contrato_id);
 -- Motivo da rejeicao de um documento (Caso 360, analise inline pelo admin).
 -- Preenchido quando status='rejeitado'; vai no e-mail de aviso ao titular.
 alter table if exists documentos add column if not exists motivo_rejeicao text;
+-- Quando o documento foi rejeitado (carimbado na transicao para 'rejeitado';
+-- limpo quando sai de rejeitado). Base do E11: documento rejeitado nao reenviado
+-- ha >= 30 dias -> cliente incontactavel (ver cron escalar-incontactavel).
+alter table if exists documentos add column if not exists rejeitado_em timestamptz;
 
 -- Dados do estudante necessarios ao Zoho Sign: a data de nascimento decide a
 -- regra multi-signatario por idade (menor -> so o pagante assina); o e-mail e

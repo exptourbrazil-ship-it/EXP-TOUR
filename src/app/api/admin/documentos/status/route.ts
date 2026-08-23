@@ -44,7 +44,7 @@ export async function PATCH(request: Request) {
   // do e-mail para o aviso, e confirma que o documento existe.
   const { data: documento } = await supabase
     .from("documentos")
-    .select("id, tipo_documento, titular_id")
+    .select("id, tipo_documento, titular_id, status, rejeitado_em")
     .eq("id", id)
     .maybeSingle();
   if (!documento) {
@@ -53,9 +53,18 @@ export async function PATCH(request: Request) {
 
   // motivo_rejeicao so faz sentido no estado rejeitado; nos demais e limpo.
   const motivoPersistir = status === "rejeitado" ? motivo : null;
+  // Relogio do E11: carimba na TRANSICAO para 'rejeitado'; preserva o carimbo se
+  // ja estava rejeitado (re-rejeicao/correcao de motivo nao reinicia os 30 dias);
+  // limpa ao sair de rejeitado.
+  const rejeitadoEm =
+    status === "rejeitado"
+      ? documento.status === "rejeitado"
+        ? (documento.rejeitado_em as string | null) ?? new Date().toISOString()
+        : new Date().toISOString()
+      : null;
   const { error } = await supabase
     .from("documentos")
-    .update({ status, motivo_rejeicao: motivoPersistir })
+    .update({ status, motivo_rejeicao: motivoPersistir, rejeitado_em: rejeitadoEm })
     .eq("id", id);
   if (error) {
     return NextResponse.json({ ok: false, error: "Falha ao atualizar status" }, { status: 500 });

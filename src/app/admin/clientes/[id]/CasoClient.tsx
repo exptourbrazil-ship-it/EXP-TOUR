@@ -826,6 +826,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       {/* Hold de verificacao (suspeita de fraude) — abre o E10 */}
       <SecaoHoldFraude caso={caso} podeGerir={permissoes.gerirCaso} />
 
+      {/* Cliente incontactavel — abre o E11 */}
+      <SecaoIncontactavel caso={caso} podeGerir={permissoes.gerirCaso} />
+
       {/* Processos de excecao (doc 01 §4) */}
       <SecaoExcecoes caso={caso} podeGerir={permissoes.gerirCaso} />
 
@@ -1272,6 +1275,109 @@ function SecaoHoldFraude({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }
       ) : (
         <p className="text-xs text-neutral-500">
           Você não tem permissão para marcar hold de verificação (Operação ou Gestor).
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---- Cliente incontactavel (abre o E11) -------------------------------------
+
+function SecaoIncontactavel({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [motivo, setMotivo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function marcar() {
+    setFeedback(null);
+    if (!contratoId) {
+      setFeedback({ ok: false, msg: "Selecione o contrato." });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/incontactavel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, motivo: motivo.trim() || null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao marcar." });
+        return;
+      }
+      setFeedback({
+        ok: true,
+        msg: data.excecaoAberta
+          ? "Processo E11 aberto: caso escalado na fila da operação para contato."
+          : "Já havia um processo de incontactável aberto para este contrato.",
+      });
+      setMotivo("");
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Cliente incontactável</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Pendência parada, cliente não responde. Abre o processo E11 (escala o caso na fila da
+        operação para contato). Não cobra, não cancela e não notifica o cliente automaticamente.
+        Também é aberto pelo cron quando um documento rejeitado fica 30 dias sem reenvio. Para
+        encerrar, resolva o E11 em <span className="font-medium text-brand">Processos de exceção</span>.
+      </p>
+      {podeGerir ? (
+        <>
+          <label className="block max-w-md">
+            <span className="text-xs text-neutral-500">Contrato</span>
+            <select
+              value={contratoId}
+              onChange={(e) => setContratoId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {caso.contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {nomeContrato(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 block max-w-md">
+            <span className="text-xs text-neutral-500">Motivo / pendência (opcional)</span>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              placeholder="Ex.: não responde e-mail/WhatsApp; documento pendente há semanas"
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={marcar}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Marcando…" : "Marcar incontactável"}
+            </button>
+            {feedback ? (
+              <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+                {feedback.msg}
+              </span>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          Você não tem permissão para marcar incontactável (Operação ou Gestor).
         </p>
       )}
     </div>
