@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto } from "@/lib/admin-caso";
+import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao } from "@/lib/admin-caso";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
   TIPOS_EXCECAO,
@@ -832,6 +832,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
 
       {/* Pedido de adiamento de inicio — abre o E2 */}
       <SecaoDeferral caso={caso} podeGerir={permissoes.gerirCaso} />
+
+      {/* Motor de alteracao — previa do plano recalculado no adiamento (E2) */}
+      <SecaoAlteracao caso={caso} podeGerir={permissoes.gerirCaso} />
 
       {/* Alteracao de escopo — abre o E3 */}
       <SecaoExcecaoRotulada
@@ -1678,6 +1681,181 @@ function SecaoDeferral({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) 
         <p className="text-xs text-neutral-500">
           Você não tem permissão para registrar adiamento (Operação ou Gestor).
         </p>
+      )}
+    </div>
+  );
+}
+
+// ---- Motor de alteracao: previa do plano no adiamento (E2) ------------------
+
+function AlteracaoCard({
+  alteracao,
+  contratos,
+}: {
+  alteracao: CasoAlteracao;
+  contratos: CasoContrato[];
+}) {
+  const contrato = contratos.find((c) => c.id === alteracao.contrato_id);
+  const moeda = alteracao.moeda || "BRL";
+  const plano = alteracao.plano_proposto || [];
+  return (
+    <div className="rounded-xl border border-neutral-200 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-brand">
+          {contrato ? nomeContrato(contrato) : "Contrato"}
+        </span>
+        <span className="text-xs text-neutral-400">{fmtDataHora(alteracao.criado_em)}</span>
+      </div>
+      {alteracao.provisorio ? (
+        <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+          ⚠ Prévia provisória — não reescreve parcelas nem gera aditivo. A aplicação é um passo à
+          parte, após revisão do Financeiro/Operação.
+        </p>
+      ) : null}
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <dt className="text-neutral-500">Início atual</dt>
+        <dd className="text-right text-neutral-700">{fmtData(alteracao.data_inicio_atual || "")}</dd>
+        <dt className="text-neutral-500">Novo início</dt>
+        <dd className="text-right font-medium text-neutral-800">
+          {fmtData(alteracao.nova_data_inicio || "")}
+        </dd>
+        <dt className="text-neutral-500">Nova data-limite de quitação</dt>
+        <dd className="text-right font-medium text-neutral-800">
+          {fmtData(alteracao.nova_data_quitacao || "")}
+        </dd>
+        <dt className="text-neutral-500">Saldo em aberto</dt>
+        <dd className="text-right text-neutral-700">
+          {fmtMoeda(Number(alteracao.saldo_devedor || 0), moeda)}
+        </dd>
+      </dl>
+      {plano.length > 0 ? (
+        <table className="mt-2 w-full text-sm">
+          <thead>
+            <tr className="border-b border-neutral-200 text-xs text-neutral-500">
+              <th className="py-1 text-left font-normal">Parcela</th>
+              <th className="py-1 text-left font-normal">Vencimento</th>
+              <th className="py-1 text-right font-normal">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plano.map((p) => (
+              <tr key={p.numero} className="border-b border-neutral-100 last:border-0">
+                <td className="py-1 text-neutral-600">{p.numero}</td>
+                <td className="py-1 text-neutral-600">{fmtData(p.vencimento)}</td>
+                <td className="py-1 text-right font-medium text-neutral-700">
+                  {fmtMoeda(Number(p.valor), moeda)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="mt-2 text-xs text-neutral-500">
+          Sem saldo em aberto para reagendar — nada a recalcular.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SecaoAlteracao({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [novaData, setNovaData] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function calcular() {
+    setErro(null);
+    if (!contratoId) {
+      setErro("Selecione o contrato.");
+      return;
+    }
+    if (!novaData) {
+      setErro("Informe a nova data de início.");
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/alteracao`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, novaDataInicio: novaData }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao calcular o plano.");
+        return;
+      }
+      setNovaData("");
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Plano recalculado do adiamento (rascunho)</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Para um contrato com pedido de adiamento (E2) ativo, calcula a prévia do novo plano: nova
+        data-limite de quitação (D-30 do novo início) e o reagendamento do saldo em aberto. É um
+        rascunho para revisão — não reescreve parcelas, não gera aditivo e não toca dinheiro.
+      </p>
+
+      {podeGerir ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs text-neutral-500">Contrato</span>
+            <select
+              value={contratoId}
+              onChange={(e) => setContratoId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {caso.contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {nomeContrato(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs text-neutral-500">Nova data de início</span>
+            <input
+              type="date"
+              value={novaData}
+              onChange={(e) => setNovaData(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="sm:col-span-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={calcular}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Calculando…" : "Calcular plano proposto"}
+            </button>
+            {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+          </div>
+        </div>
+      ) : (
+        <p className="mb-3 text-xs text-neutral-500">
+          Somente a Operação (ou Gestor) calcula o plano. Os rascunhos existentes ficam abaixo.
+        </p>
+      )}
+
+      {caso.alteracoes.length === 0 ? (
+        <p className="text-sm text-neutral-500">Nenhum plano calculado.</p>
+      ) : (
+        <div className="space-y-3">
+          {caso.alteracoes.map((a) => (
+            <AlteracaoCard key={a.id} alteracao={a} contratos={caso.contratos} />
+          ))}
+        </div>
       )}
     </div>
   );

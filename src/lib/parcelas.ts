@@ -130,3 +130,56 @@ export function somaParcelasConfere(
   const tolCents = Math.round(tolerancia * 100);
   return diffCents <= tolCents;
 }
+
+// ---------------------------------------------------------------------------
+// MOTOR DE ALTERACAO — previa do plano no adiamento de inicio (E2, doc 01 §4)
+// ---------------------------------------------------------------------------
+// Reagenda o SALDO em aberto na nova janela ate a nova data-limite de quitacao
+// (D-30 do novo inicio), reusando as mesmas regras do plano original (carencia
+// de 30 dias, dia 15, quitacao D-30). NESTE passo e so uma PREVIA (rascunho
+// revisado por humano): NAO reescreve parcelas nem gera aditivo. Parcelas pagas
+// nao entram (so o saldo em aberto). Vive aqui, junto dos helpers que reusa,
+// para permanecer um modulo-folha testavel (node --test nao resolve `@/`).
+
+export type ParcelaProposta = { numero: number; vencimento: string; valor: number };
+
+export type PlanoDeferral = {
+  novaDataQuitacao: string | null; // D-30 do novo inicio
+  planoProposto: ParcelaProposta[]; // reagendamento do saldo em aberto
+  cabe: boolean; // false se ha saldo mas nenhuma data valida
+};
+
+export function calcularPlanoDeferral(args: {
+  saldoDevedor: number;
+  dataReferencia: string; // base da carencia (hoje); 1a nova parcela vence >=30d
+  novaDataInicio: string;
+}): PlanoDeferral {
+  const novaDataQuitacao = dataLimiteQuitacao(args.novaDataInicio);
+  const saldo = Math.max(0, Math.round((Number(args.saldoDevedor) || 0) * 100) / 100);
+
+  if (saldo <= 0) {
+    return { novaDataQuitacao, planoProposto: [], cabe: true };
+  }
+
+  const vencimentos = calcularVencimentosParcelas(args.dataReferencia, args.novaDataInicio);
+
+  // Sem nenhum dia-15 disponivel na janela: propoe parcela unica na data-limite
+  // de quitacao (a vista ate la), se houver data valida.
+  if (vencimentos.length === 0) {
+    if (!novaDataQuitacao) return { novaDataQuitacao, planoProposto: [], cabe: false };
+    return {
+      novaDataQuitacao,
+      planoProposto: [{ numero: 1, vencimento: novaDataQuitacao, valor: saldo }],
+      cabe: true,
+    };
+  }
+
+  const valores = dividirValorParcelas(saldo, vencimentos.length);
+  const planoProposto = vencimentos.map((vencimento, i) => ({
+    numero: i + 1,
+    vencimento,
+    valor: valores[i],
+  }));
+
+  return { novaDataQuitacao, planoProposto, cabe: true };
+}

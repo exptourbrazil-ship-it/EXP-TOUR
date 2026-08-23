@@ -349,6 +349,37 @@ create unique index if not exists uidx_acertos_rascunho
   on acertos(contrato_id) where status = 'rascunho';
 alter table if exists acertos enable row level security;
 
+-- Alteracoes de plano (motor de alteracao — E2 adiamento; doc 01 §4). NESTE
+-- passo guarda a PREVIA do plano recalculado (nova data-limite de quitacao +
+-- reagendamento do saldo em aberto) como RASCUNHO para o Financeiro/Operacao
+-- revisar. NAO reescreve parcelas nem gera aditivo (aplicacao = marco proprio).
+-- Calculo em src/lib/parcelas.ts (calcularPlanoDeferral). RLS sem policy.
+create table if not exists alteracoes (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  excecao_id uuid references case_exceptions(id),
+  status text not null default 'rascunho'
+    check (status in ('rascunho','aplicado','cancelado')),
+  data_inicio_atual date,
+  nova_data_inicio date,
+  nova_data_quitacao date,
+  saldo_devedor numeric(12,2),
+  moeda text,
+  num_parcelas int,
+  plano_proposto jsonb,                   -- [{numero, vencimento, valor}]
+  provisorio boolean not null default true,
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+
+create index if not exists idx_alteracoes_contrato on alteracoes(contrato_id);
+create index if not exists idx_alteracoes_titular on alteracoes(titular_id);
+create unique index if not exists uidx_alteracoes_rascunho
+  on alteracoes(contrato_id) where status = 'rascunho';
+alter table if exists alteracoes enable row level security;
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via

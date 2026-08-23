@@ -121,6 +121,22 @@ export type CasoAcerto = {
   criado_em: string | null;
 };
 
+export type CasoAlteracao = {
+  id: string;
+  contrato_id: string;
+  excecao_id: string | null;
+  status: string;
+  moeda: string | null;
+  data_inicio_atual: string | null;
+  nova_data_inicio: string | null;
+  nova_data_quitacao: string | null;
+  saldo_devedor: number | null;
+  num_parcelas: number | null;
+  plano_proposto: { numero: number; vencimento: string; valor: number }[] | null;
+  provisorio: boolean | null;
+  criado_em: string | null;
+};
+
 export type CasoComunicacao = {
   canal: "email" | "whatsapp";
   tipo_mensagem: string | null;
@@ -148,6 +164,7 @@ export type Caso = {
   eventos: CasoEvento[];
   excecoes: CasoExcecao[];
   acertos: CasoAcerto[];
+  alteracoes: CasoAlteracao[];
   // Derivados
   excecoesAtivas: CasoExcecao[]; // processos ativos (nao terminais) — "processo ativo" do caso
   jornada: EtapaJornada[];
@@ -240,6 +257,17 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .order("criado_em", { ascending: false });
   const acertos = (acertosData || []) as CasoAcerto[];
 
+  // Alteracoes (rascunhos do plano recalculado) do titular — previa do
+  // adiamento (E2) para o Financeiro/Operacao revisar.
+  const { data: alteracoesData } = await supabase
+    .from("alteracoes")
+    .select(
+      "id, contrato_id, excecao_id, status, moeda, data_inicio_atual, nova_data_inicio, nova_data_quitacao, saldo_devedor, num_parcelas, plano_proposto, provisorio, criado_em"
+    )
+    .eq("titular_id", titularId)
+    .order("criado_em", { ascending: false });
+  const alteracoes = (alteracoesData || []) as CasoAlteracao[];
+
   // Comunicacao: e-mail (por destinatario = e-mail do titular) + WhatsApp (por
   // destinatario = telefone do titular). So consulta se houver o contato.
   const comunicacao: CasoComunicacao[] = [];
@@ -323,6 +351,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     eventos,
     excecoes,
     acertos,
+    alteracoes,
     excecoesAtivas,
     jornada,
     etapaAtual,
