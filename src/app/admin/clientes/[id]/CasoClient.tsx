@@ -833,6 +833,44 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       {/* Pedido de adiamento de inicio — abre o E2 */}
       <SecaoDeferral caso={caso} podeGerir={permissoes.gerirCaso} />
 
+      {/* Alteracao de escopo — abre o E3 */}
+      <SecaoExcecaoRotulada
+        caso={caso}
+        podeGerir={permissoes.gerirCaso}
+        tipo="alteracao_escopo"
+        titulo="Alteração de escopo"
+        descricao="Extensão, upgrade, troca de escola/cidade ou serviços adicionais. Abre o processo E3 (cai na fila da operação). O delta financeiro / aditivo é um passo à parte (motor de alteração)."
+        opcoes={[
+          { valor: "Extensão", rotulo: "Extensão" },
+          { valor: "Upgrade", rotulo: "Upgrade" },
+          { valor: "Troca de escola/cidade", rotulo: "Troca de escola/cidade" },
+          { valor: "Serviços adicionais", rotulo: "Serviços adicionais" },
+        ]}
+        rotuloOpcoes="Tipo de alteração"
+        prefixoMotivo="Alteração de escopo"
+        rotuloBotao="Registrar alteração de escopo"
+      />
+
+      {/* Interrupcao durante o programa — abre o E7 */}
+      <SecaoExcecaoRotulada
+        caso={caso}
+        podeGerir={permissoes.gerirCaso}
+        tipo="interrupcao_programa"
+        titulo="Interrupção durante o programa"
+        descricao="Retorno antecipado (saúde, família, insatisfação, conduta, imigração). Abre o processo E7: suspende a cobrança e o avanço para análise. O acerto (com seguro/refund) é conduzido à parte."
+        opcoes={[
+          { valor: "Saúde", rotulo: "Saúde" },
+          { valor: "Família", rotulo: "Família" },
+          { valor: "Insatisfação", rotulo: "Insatisfação" },
+          { valor: "Conduta", rotulo: "Conduta" },
+          { valor: "Imigração", rotulo: "Barrado na imigração" },
+          { valor: "Outro", rotulo: "Outro" },
+        ]}
+        rotuloOpcoes="Causa"
+        prefixoMotivo="Interrupção do programa"
+        rotuloBotao="Registrar interrupção"
+      />
+
       {/* Acerto de cancelamento (rascunho) — motor de acerto */}
       <SecaoAcerto caso={caso} podeGerir={permissoes.gerirFinanceiro} />
 
@@ -1385,6 +1423,142 @@ function SecaoIncontactavel({ caso, podeGerir }: { caso: Caso; podeGerir: boolea
       ) : (
         <p className="text-xs text-neutral-500">
           Você não tem permissão para marcar incontactável (Operação ou Gestor).
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---- Excecao rotulada generica (abre um tipo fixo via a rota /excecoes) ------
+// Usada por E3 (alteracao de escopo) e E7 (interrupcao): tipo fixo + um seletor
+// estruturado (tipo de alteracao / causa) + detalhe, compondo o motivo. Reusa a
+// rota generica de abrir excecao — sem backend novo.
+
+function SecaoExcecaoRotulada({
+  caso,
+  podeGerir,
+  tipo,
+  titulo,
+  descricao,
+  opcoes,
+  rotuloOpcoes,
+  prefixoMotivo,
+  rotuloBotao,
+}: {
+  caso: Caso;
+  podeGerir: boolean;
+  tipo: string;
+  titulo: string;
+  descricao: string;
+  opcoes: { valor: string; rotulo: string }[];
+  rotuloOpcoes: string;
+  prefixoMotivo: string;
+  rotuloBotao: string;
+}) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [opcao, setOpcao] = useState(opcoes[0]?.valor || "");
+  const [detalhe, setDetalhe] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function registrar() {
+    setFeedback(null);
+    if (!contratoId) {
+      setFeedback({ ok: false, msg: "Selecione o contrato." });
+      return;
+    }
+    const partes = [prefixoMotivo];
+    if (opcao) partes.push(opcao);
+    if (detalhe.trim()) partes.push(detalhe.trim());
+    const motivo = partes.join(" — ");
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/excecoes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, tipo, motivo }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao registrar." });
+        return;
+      }
+      setFeedback({ ok: true, msg: "Processo aberto e registrado na fila." });
+      setDetalhe("");
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">{titulo}</h2>
+      <p className="mb-3 text-xs text-neutral-500">{descricao}</p>
+      {podeGerir ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs text-neutral-500">Contrato</span>
+              <select
+                value={contratoId}
+                onChange={(e) => setContratoId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+              >
+                {caso.contratos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {nomeContrato(c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs text-neutral-500">{rotuloOpcoes}</span>
+              <select
+                value={opcao}
+                onChange={(e) => setOpcao(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+              >
+                {opcoes.map((o) => (
+                  <option key={o.valor} value={o.valor}>
+                    {o.rotulo}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="mt-3 block max-w-md">
+            <span className="text-xs text-neutral-500">Detalhe (opcional)</span>
+            <textarea
+              value={detalhe}
+              onChange={(e) => setDetalhe(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={registrar}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Registrando…" : rotuloBotao}
+            </button>
+            {feedback ? (
+              <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+                {feedback.msg}
+              </span>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          Você não tem permissão para registrar isto (Operação ou Gestor).
         </p>
       )}
     </div>
