@@ -830,6 +830,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       {/* Cliente incontactavel — abre o E11 */}
       <SecaoIncontactavel caso={caso} podeGerir={permissoes.gerirCaso} />
 
+      {/* Pedido de adiamento de inicio — abre o E2 */}
+      <SecaoDeferral caso={caso} podeGerir={permissoes.gerirCaso} />
+
       {/* Acerto de cancelamento (rascunho) — motor de acerto */}
       <SecaoAcerto caso={caso} podeGerir={permissoes.gerirFinanceiro} />
 
@@ -1382,6 +1385,124 @@ function SecaoIncontactavel({ caso, podeGerir }: { caso: Caso; podeGerir: boolea
       ) : (
         <p className="text-xs text-neutral-500">
           Você não tem permissão para marcar incontactável (Operação ou Gestor).
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---- Pedido de adiamento de inicio (abre o E2) ------------------------------
+
+function SecaoDeferral({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [novaData, setNovaData] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function registrar() {
+    setFeedback(null);
+    if (!contratoId) {
+      setFeedback({ ok: false, msg: "Selecione o contrato." });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/deferral`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contratoId,
+          novaDataInicio: novaData || null,
+          motivo: motivo.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao registrar o pedido." });
+        return;
+      }
+      setFeedback({
+        ok: true,
+        msg: data.excecaoAberta
+          ? "Processo E2 aberto: avanço suspenso e caso na fila da operação (consultar a escola)."
+          : "Já havia um pedido de adiamento aberto para este contrato.",
+      });
+      setNovaData("");
+      setMotivo("");
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Pedido de adiamento de início</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Abre o processo E2: suspende o avanço da jornada e coloca o caso na fila da operação para
+        consultar a escola. Não recalcula marcos/parcelas nem gera aditivo — o recálculo em cascata é
+        um passo à parte.
+      </p>
+      {podeGerir ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs text-neutral-500">Contrato</span>
+              <select
+                value={contratoId}
+                onChange={(e) => setContratoId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+              >
+                {caso.contratos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {nomeContrato(c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs text-neutral-500">Nova data de início (opcional)</span>
+              <input
+                type="date"
+                value={novaData}
+                onChange={(e) => setNovaData(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+          <label className="mt-3 block max-w-md">
+            <span className="text-xs text-neutral-500">Motivo (opcional)</span>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={registrar}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Registrando…" : "Registrar pedido de adiamento"}
+            </button>
+            {feedback ? (
+              <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+                {feedback.msg}
+              </span>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          Você não tem permissão para registrar adiamento (Operação ou Gestor).
         </p>
       )}
     </div>
