@@ -104,6 +104,23 @@ export type CasoExcecao = {
   resolvida_em: string | null;
 };
 
+export type CasoAcerto = {
+  id: string;
+  contrato_id: string;
+  tipo_cancelamento: string | null;
+  status: string;
+  moeda: string | null;
+  valor_total: number | null;
+  total_pago: number | null;
+  retencao_percentual: number | null;
+  retencao_valor: number | null;
+  refund_escola_esperado: number | null;
+  saldo_devolver_cliente: number | null;
+  memoria: { rotulo: string; valor: number; tipo: string }[] | null;
+  provisorio: boolean | null;
+  criado_em: string | null;
+};
+
 export type CasoComunicacao = {
   canal: "email" | "whatsapp";
   tipo_mensagem: string | null;
@@ -130,6 +147,7 @@ export type Caso = {
   comunicacao: CasoComunicacao[];
   eventos: CasoEvento[];
   excecoes: CasoExcecao[];
+  acertos: CasoAcerto[];
   // Derivados
   excecoesAtivas: CasoExcecao[]; // processos ativos (nao terminais) — "processo ativo" do caso
   jornada: EtapaJornada[];
@@ -210,6 +228,17 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .order("aberta_em", { ascending: false });
   const excecoes = (excecoesData || []) as CasoExcecao[];
   const excecoesAtivas = excecoes.filter((e) => excecaoAtiva(e.status as StatusExcecao));
+
+  // Acertos (rascunhos calculados) do titular — memoria de calculo para o
+  // Financeiro revisar.
+  const { data: acertosData } = await supabase
+    .from("acertos")
+    .select(
+      "id, contrato_id, tipo_cancelamento, status, moeda, valor_total, total_pago, retencao_percentual, retencao_valor, refund_escola_esperado, saldo_devolver_cliente, memoria, provisorio, criado_em"
+    )
+    .eq("titular_id", titularId)
+    .order("criado_em", { ascending: false });
+  const acertos = (acertosData || []) as CasoAcerto[];
 
   // Comunicacao: e-mail (por destinatario = e-mail do titular) + WhatsApp (por
   // destinatario = telefone do titular). So consulta se houver o contato.
@@ -293,6 +322,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     comunicacao,
     eventos,
     excecoes,
+    acertos,
     excecoesAtivas,
     jornada,
     etapaAtual,

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Caso, CasoContrato, CasoDocumento, CasoExcecao } from "@/lib/admin-caso";
+import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto } from "@/lib/admin-caso";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
   TIPOS_EXCECAO,
@@ -32,6 +32,7 @@ export type PermissoesCaso = {
   analisarDocumentos: boolean;
   gerirCaso: boolean;
   gerirCancelamento: boolean;
+  gerirFinanceiro: boolean;
 };
 
 type Aba = "jornada" | "financeiro" | "documentos" | "comunicacao" | "eventos" | "acoes";
@@ -829,6 +830,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       {/* Cliente incontactavel — abre o E11 */}
       <SecaoIncontactavel caso={caso} podeGerir={permissoes.gerirCaso} />
 
+      {/* Acerto de cancelamento (rascunho) — motor de acerto */}
+      <SecaoAcerto caso={caso} podeGerir={permissoes.gerirFinanceiro} />
+
       {/* Processos de excecao (doc 01 §4) */}
       <SecaoExcecoes caso={caso} podeGerir={permissoes.gerirCaso} />
 
@@ -1379,6 +1383,157 @@ function SecaoIncontactavel({ caso, podeGerir }: { caso: Caso; podeGerir: boolea
         <p className="text-xs text-neutral-500">
           Você não tem permissão para marcar incontactável (Operação ou Gestor).
         </p>
+      )}
+    </div>
+  );
+}
+
+// ---- Acerto de cancelamento (rascunho) — motor de acerto --------------------
+
+function AcertoCard({ acerto, contratos }: { acerto: CasoAcerto; contratos: CasoContrato[] }) {
+  const contrato = contratos.find((c) => c.id === acerto.contrato_id);
+  const moeda = acerto.moeda || "BRL";
+  return (
+    <div className="rounded-xl border border-neutral-200 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-brand">
+          {contrato ? nomeContrato(contrato) : "Contrato"}
+          {acerto.tipo_cancelamento ? (
+            <span className="ml-2 text-xs font-normal text-neutral-500">
+              {labelTipoExcecao(acerto.tipo_cancelamento)}
+            </span>
+          ) : null}
+        </span>
+        <span className="text-xs text-neutral-400">{fmtDataHora(acerto.criado_em)}</span>
+      </div>
+      {acerto.provisorio ? (
+        <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+          ⚠ Valores provisórios — regras de retenção pendentes de validação jurídica (config).
+        </p>
+      ) : null}
+      <table className="mt-2 w-full text-sm">
+        <tbody>
+          {(acerto.memoria || []).map((l, i) => (
+            <tr key={i} className="border-b border-neutral-100 last:border-0">
+              <td className="py-1 text-neutral-600">{l.rotulo}</td>
+              <td
+                className={
+                  "py-1 text-right font-medium " +
+                  (l.tipo === "credito"
+                    ? "text-emerald-700"
+                    : l.tipo === "debito"
+                    ? "text-red-700"
+                    : "text-neutral-700")
+                }
+              >
+                {fmtMoeda(Number(l.valor), moeda)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SecaoAcerto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+  const router = useRouter();
+  const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
+  const [refundEscola, setRefundEscola] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function calcular() {
+    setErro(null);
+    if (!contratoId) {
+      setErro("Selecione o contrato.");
+      return;
+    }
+    setEnviando(true);
+    try {
+      const refundNum = refundEscola.trim() === "" ? null : Number(refundEscola);
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/acerto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId, refundEscolaEsperado: refundNum }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao calcular o acerto.");
+        return;
+      }
+      setRefundEscola("");
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Acerto de cancelamento (rascunho)</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Calcula a retenção/multa e o saldo a devolver, com memória de cálculo, para um contrato em
+        processo de cancelamento (E4/E5/E6/E7). É um rascunho para revisão do Financeiro — não
+        propõe ao cliente, não coleta aceite e não executa reembolso.
+      </p>
+
+      {podeGerir ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs text-neutral-500">Contrato</span>
+            <select
+              value={contratoId}
+              onChange={(e) => setContratoId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {caso.contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {nomeContrato(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs text-neutral-500">Refund esperado da escola (opcional)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={refundEscola}
+              onChange={(e) => setRefundEscola(e.target.value)}
+              placeholder="0,00"
+              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+          </label>
+          <div className="sm:col-span-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={calcular}
+              disabled={enviando || caso.contratos.length === 0}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviando ? "Calculando…" : "Calcular acerto"}
+            </button>
+            {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+          </div>
+        </div>
+      ) : (
+        <p className="mb-3 text-xs text-neutral-500">
+          Somente o Financeiro (ou Gestor) calcula o acerto. Os rascunhos existentes ficam abaixo.
+        </p>
+      )}
+
+      {caso.acertos.length === 0 ? (
+        <p className="text-sm text-neutral-500">Nenhum acerto calculado.</p>
+      ) : (
+        <div className="space-y-3">
+          {caso.acertos.map((a) => (
+            <AcertoCard key={a.id} acerto={a} contratos={caso.contratos} />
+          ))}
+        </div>
       )}
     </div>
   );

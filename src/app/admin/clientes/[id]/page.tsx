@@ -24,6 +24,7 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
     analisarDocumentos: podeAdmin(papel, "documentos.analisar"),
     gerirCaso: podeAdmin(papel, "casos.gerir"),
     gerirCancelamento: podeAdmin(papel, "cancelamento.gerir"),
+    gerirFinanceiro: podeAdmin(papel, "financeiro.gerir"),
   };
 
   return <CasoClient caso={caso} permissoes={permissoes} />;

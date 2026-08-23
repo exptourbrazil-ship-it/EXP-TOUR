@@ -312,6 +312,43 @@ create unique index if not exists uidx_case_exceptions_ativa
   on case_exceptions(contrato_id, tipo) where status in ('aberta','em_andamento');
 alter table if exists case_exceptions enable row level security;
 
+-- Acertos de cancelamento/alteracao (motor de acerto — doc 01 §4 E4/E5/E6/E7;
+-- doc 07 §3.5). NESTE passo guarda o RASCUNHO calculado (retencao/multa, saldo a
+-- devolver, memoria de calculo) para o Financeiro revisar. NAO propoe ao cliente,
+-- NAO coleta aceite, NAO executa refund (marcos proprios; dinheiro so muda por
+-- webhook confirmado). `provisorio` = regras de retencao ainda placeholder
+-- (pendentes de validacao juridica). Vocabulario/calculo em src/lib/acerto.ts.
+-- RLS habilitado sem policies: autorizacao e feita em codigo (service role).
+create table if not exists acertos (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  excecao_id uuid references case_exceptions(id),
+  tipo_cancelamento text,                 -- slug da excecao de origem (E4/E5/E6/E7)
+  status text not null default 'rascunho'
+    check (status in ('rascunho','proposto','aceito','executado','cancelado')),
+  moeda text,
+  valor_total numeric(12,2),
+  total_pago numeric(12,2),
+  retencao_percentual numeric(6,4),
+  retencao_valor numeric(12,2),
+  refund_escola_esperado numeric(12,2),
+  saldo_devolver_cliente numeric(12,2),
+  memoria jsonb,                          -- linhas da memoria de calculo
+  provisorio boolean not null default true,
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+
+create index if not exists idx_acertos_contrato on acertos(contrato_id);
+create index if not exists idx_acertos_titular on acertos(titular_id);
+-- No maximo UM rascunho por contrato: recalcular atualiza o rascunho existente
+-- (o read-then-write em codigo nao segura duas requisicoes concorrentes).
+create unique index if not exists uidx_acertos_rascunho
+  on acertos(contrato_id) where status = 'rascunho';
+alter table if exists acertos enable row level security;
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via
