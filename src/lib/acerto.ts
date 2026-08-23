@@ -71,6 +71,25 @@ export function validarFaixasRetencao(faixas: unknown): { ok: boolean; motivo?: 
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// Ciclo de vida do acerto (Fatia B): rascunho -> proposto -> aceito -> executado
+// ---------------------------------------------------------------------------
+export const STATUS_ACERTO = ["rascunho", "proposto", "aceito", "executado", "cancelado"] as const;
+export type StatusAcerto = (typeof STATUS_ACERTO)[number];
+
+// Transicoes permitidas (so avancam; executado/cancelado sao terminais).
+const TRANSICOES_ACERTO: Record<string, string[]> = {
+  rascunho: ["proposto", "cancelado"],
+  proposto: ["aceito", "cancelado"],
+  aceito: ["executado", "cancelado"],
+  executado: [],
+  cancelado: [],
+};
+
+export function transicaoAcertoPermitida(de: string, para: string): boolean {
+  return (TRANSICOES_ACERTO[de] || []).includes(para);
+}
+
 export type EntradaAcerto = {
   valorTotal: number; // valor do programa (moeda do contrato)
   totalPago: number; // total ja pago pelo cliente (mesma moeda)
@@ -139,6 +158,36 @@ export type AcertoCredito = {
   creditoDevolver: number;
   memoria: LinhaMemoria[];
 };
+
+// Renderiza o texto do TERMO DE ACERTO a partir da memoria de calculo. PURO e
+// determinístico (sem data/hora) para que o hash SHA-256 seja estavel e sirva de
+// prova do que o cliente aceitou. O hash em si e calculado por calcularHashTermo
+// (lib/termos.ts) sobre esta string.
+export function renderizarTermoAcerto(d: {
+  moeda: string;
+  memoria: LinhaMemoria[];
+  saldoDevolverCliente: number;
+  provisorio: boolean;
+}): string {
+  const moeda = (d.moeda || "").toUpperCase() || "BRL";
+  const fmt = (v: number) => `${moeda} ${round2(v).toFixed(2)}`;
+  const linhas = (d.memoria || []).map((l) => `- ${l.rotulo}: ${fmt(Number(l.valor) || 0)}`);
+  const partes = [
+    "TERMO DE ACERTO",
+    "",
+    "Memoria de calculo:",
+    ...linhas,
+    "",
+    `Valor a devolver ao cliente: ${fmt(d.saldoDevolverCliente)}`,
+  ];
+  if (d.provisorio) {
+    partes.push(
+      "",
+      "Observacao: valores provisorios ate a validacao final das clausulas de retencao."
+    );
+  }
+  return partes.join("\n");
+}
 
 export function calcularAcertoCreditoEscopo(e: {
   valorProgramaNovo: number;

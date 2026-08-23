@@ -8,6 +8,8 @@ import {
   calcularAcerto,
   calcularAcertoCreditoEscopo,
   validarFaixasRetencao,
+  transicaoAcertoPermitida,
+  renderizarTermoAcerto,
 } from "./acerto.ts";
 
 test("determinarRetencaoPercentual: faixas placeholder por dias ate inicio", () => {
@@ -127,4 +129,37 @@ test("validarFaixasRetencao: aceita faixas validas, recusa invalidas/vazias", ()
   assert.equal(validarFaixasRetencao("x").ok, false);
   assert.equal(validarFaixasRetencao([{ minDiasAteInicio: -1, percentual: 0.5 }]).motivo, "minDiasAteInicio_invalido");
   assert.equal(validarFaixasRetencao([{ minDiasAteInicio: 0, percentual: 1.5 }]).motivo, "percentual_invalido");
+});
+
+// ---- Fatia B: ciclo de vida (proposta + aceite) ----------------------------
+
+test("transicaoAcertoPermitida: fluxo valido rascunho->proposto->aceito->executado", () => {
+  assert.equal(transicaoAcertoPermitida("rascunho", "proposto"), true);
+  assert.equal(transicaoAcertoPermitida("proposto", "aceito"), true);
+  assert.equal(transicaoAcertoPermitida("aceito", "executado"), true);
+  // cancelar permitido enquanto nao executado
+  assert.equal(transicaoAcertoPermitida("proposto", "cancelado"), true);
+  assert.equal(transicaoAcertoPermitida("aceito", "cancelado"), true);
+});
+
+test("transicaoAcertoPermitida: recusa pulos e estados terminais", () => {
+  assert.equal(transicaoAcertoPermitida("rascunho", "aceito"), false); // pulou proposto
+  assert.equal(transicaoAcertoPermitida("rascunho", "executado"), false);
+  assert.equal(transicaoAcertoPermitida("executado", "cancelado"), false); // terminal
+  assert.equal(transicaoAcertoPermitida("cancelado", "proposto"), false); // terminal
+});
+
+test("renderizarTermoAcerto: deterministico (hash estavel) e reflete a memoria", () => {
+  const memoria = [
+    { rotulo: "Valor total do programa", valor: 10000, tipo: "info" as const },
+    { rotulo: "Retenção contratual (25%)", valor: 2500, tipo: "debito" as const },
+    { rotulo: "Saldo a devolver ao cliente", valor: 3500, tipo: "credito" as const },
+  ];
+  const a = renderizarTermoAcerto({ moeda: "CAD", memoria, saldoDevolverCliente: 3500, provisorio: true });
+  const b = renderizarTermoAcerto({ moeda: "CAD", memoria, saldoDevolverCliente: 3500, provisorio: true });
+  assert.equal(a, b); // deterministico
+  assert.ok(a.includes("CAD 3500.00"));
+  assert.ok(a.includes("provisorios")); // aviso quando provisorio
+  const semAviso = renderizarTermoAcerto({ moeda: "CAD", memoria, saldoDevolverCliente: 3500, provisorio: false });
+  assert.ok(!semAviso.includes("provisorios"));
 });

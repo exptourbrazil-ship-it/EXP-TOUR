@@ -503,13 +503,13 @@ export async function aplicarAlteracao(args: {
   try {
     const { data: titular } = await supabase
       .from("titulares")
-      .select("nome, email")
+      .select("nome_completo, email")
       .eq("id", contrato.titular_id)
       .maybeSingle();
     const email = (titular as { email?: string | null } | null)?.email;
     if (email) {
       const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
-      await enviarAvisoCronogramaAtualizadoEmail(email, (titular as { nome?: string }).nome || "", {
+      await enviarAvisoCronogramaAtualizadoEmail(email, (titular as { nome_completo?: string }).nome_completo || "", {
         tipo: alt.tipo === "escopo" ? "escopo" : "deferral",
         moeda: (alt.moeda as string) || "BRL",
         novaDataInicio: alt.tipo === "escopo" ? null : (novaDataInicio as string | null),

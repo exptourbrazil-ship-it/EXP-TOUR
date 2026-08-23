@@ -76,19 +76,24 @@ fica em `proposto`/rascunho (seguro), mas não conclui.
 - **Risco:** baixo (não move dinheiro). **Testes:** puros (faixas por config,
   `validarFaixasRetencao`).
 
-### Fatia B — Proposta ao cliente + aceite eletrônico · sem dinheiro
-- **Transição `rascunho → proposto`**: rota admin (`financeiro.gerir`, sessão)
-  que "propõe" o acerto. Cria/vincula um `termos.tipo='acerto'` (texto + hash com
-  a memória e as condições) e marca `acertos.status='proposto'`.
-- **Área do Cliente (aba Financeiro):** o cliente vê a proposta (memória de
-  cálculo, valor a devolver, prazo) e dá o **aceite eletrônico** — reusa
-  `aceites` (`proposta_id = acerto.id`, `contexto='area_cliente'`, hash/ip/ua).
-  Transição `proposto → aceito`.
-- **Conversa de retenção** (tarefa humana) antes do aceite, conforme doc 01 §4
-  (parte dos cancelamentos é dúvida, não decisão).
-- **Ainda não move dinheiro.** Evento + auditoria em cada transição.
-- **Risco:** baixo/médio. **Testes:** puros (montagem do termo/hash, elegibilidade
-  de transição).
+### Fatia B — Proposta ao cliente + aceite eletrônico · sem dinheiro · ✅ CONCLUÍDA
+- **Transição `rascunho → proposto`**: rota admin (`financeiro.gerir`) que
+  "propõe" o acerto — renderiza o Termo de Acerto (texto determinístico + hash),
+  grava/atualiza a versão em `termos` (tipo `acerto`), vincula `acertos.termo_id`
+  e marca `status='proposto'` (guarda de corrida `.eq('status','rascunho')`).
+- **Área do Cliente (aba Financeiro):** um card mostra a proposta (memória, valor
+  a devolver e o texto do termo) e o cliente dá o **aceite eletrônico** — grava a
+  prova imutável em `aceites` (`proposta_id=acerto.id`, `contexto='area_cliente'`,
+  hash recalculado/ip/ua), com **unique `(titular_id, termo_id)`** para
+  idempotência atômica (duplo-clique/retry não duplica a prova). `proposto → aceito`.
+- **Máquina de estados** pura (`transicaoAcertoPermitida`): só avança;
+  `executado`/`cancelado` terminais. Posse revalidada no servidor (o cliente só
+  aceita acerto de contrato dele).
+- **Conversa de retenção** (tarefa humana) antes do aceite — conduzida à parte.
+- **Não move dinheiro.** Evento em `events` em cada transição.
+- **Pendente (menor):** botão admin de cancelar proposta; e-mail de confirmação
+  do aceite ao cliente.
+- **Risco:** baixo/médio. **Testes:** puros (máquina de estados, termo/hash).
 
 ### Fatia C — Infra de refund no Mercado Pago (wrapper + ledger)
 - `refundPayment(paymentId, valor?)` em `mercadopago.ts`: `POST
@@ -197,5 +202,6 @@ A ordem coloca todo o valor **sem risco de dinheiro** (A, B) antes de qualquer
 peça que mova caixa (C, D), e cada fatia é entregável e testável isoladamente.
 As Fatias A–C podem ser construídas já; a Fatia D depende das decisões do §6.
 
-> **Estado:** Fatia A **concluída**. Próxima recomendada: Fatia B (proposta +
-> aceite eletrônico, ainda sem dinheiro).
+> **Estado:** Fatias A e B **concluídas**. Próxima recomendada: Fatia C (wrapper
+> de refund no Mercado Pago + ledger `estornos`) — primeira peça de infra de
+> dinheiro; a Fatia D (execução confirmada por webhook) depende das decisões do §6.

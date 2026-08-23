@@ -17,11 +17,14 @@ import {
   calcularAcertoCreditoEscopo,
   determinarRetencaoPercentual,
   validarFaixasRetencao,
+  renderizarTermoAcerto,
+  transicaoAcertoPermitida,
   RETENCAO_PLACEHOLDER,
   TIPOS_SEM_RETENCAO_PADRAO,
   type Acerto,
   type FaixaRetencao,
 } from "@/lib/acerto";
+import { calcularHashTermo } from "@/lib/termos";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -402,4 +405,257 @@ export async function gerarAcertoCreditoEscopo(args: {
   });
 
   return registro;
+}
+
+// ---------------------------------------------------------------------------
+// FATIA B: proposta ao cliente + aceite eletronico (sem dinheiro)
+// ---------------------------------------------------------------------------
+
+// Grava (idempotente) um evento no ledger `events`. Best-effort: tolera a
+// colisao de idempotency_key (23505) e nunca derruba a transicao.
+async function gravarEventoAcerto(
+  supabase: SupabaseClient,
+  idempotencyKey: string,
+  eventType: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  try {
+    const { error } = await supabase.from("events").insert({
+      source: "portal",
+      event_type: eventType,
+      idempotency_key: idempotencyKey,
+      payload,
+      status: "processado",
+      processed_at: new Date().toISOString(),
+    });
+    if (error && (error as { code?: string }).code !== "23505") {
+      console.error("[acerto] falha ao gravar evento");
+    }
+  } catch {
+    console.error("[acerto] falha ao gravar evento");
+  }
+}
+
+// ADMIN (financeiro.gerir): propoe o acerto ao cliente. rascunho -> proposto.
+// Renderiza o Termo de Acerto (texto + hash), grava/atualiza a versao em `termos`
+// (tipo 'acerto') e vincula ao acerto. NAO move dinheiro.
+export async function proporAcerto(args: {
+  acertoId: string;
+  titularIdEsperado: string;
+  autor: string;
+  ip?: string | null;
+}): Promise<AcertoRegistro> {
+  const supabase = getSupabase();
+
+  const { data: acerto } = await supabase
+    .from("acertos")
+    .select("id, contrato_id, status, moeda, saldo_devolver_cliente, memoria, provisorio")
+    .eq("id", args.acertoId)
+    .maybeSingle();
+  if (!acerto) {
+    throw new AcertoBloqueado("acerto_nao_encontrado", "Acerto nao encontrado");
+  }
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", acerto.contrato_id)
+    .maybeSingle();
+  if (!contrato) {
+    throw new AcertoBloqueado("contrato_nao_encontrado", "Contrato nao encontrado");
+  }
+  if (contrato.titular_id !== args.titularIdEsperado) {
+    throw new AcertoBloqueado("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+
+  if (!transicaoAcertoPermitida(String(acerto.status), "proposto")) {
+    throw new AcertoBloqueado(
+      "transicao_invalida",
+      "So um acerto em rascunho pode ser proposto ao cliente"
+    );
+  }
+
+  // Renderiza o termo + hash (prova do que sera aceito).
+  const conteudo = renderizarTermoAcerto({
+    moeda: (acerto.moeda as string) || "BRL",
+    memoria: (acerto.memoria as Acerto["memoria"]) || [],
+    saldoDevolverCliente: Number(acerto.saldo_devolver_cliente) || 0,
+    provisorio: !!acerto.provisorio,
+  });
+  const hash = calcularHashTermo(conteudo);
+  const versao = `acerto:${args.acertoId}`;
+
+  // Upsert do termo (tipo 'acerto', unico por (tipo, versao)).
+  let termoId: string | null = null;
+  {
+    const { data: ins, error } = await supabase
+      .from("termos")
+      .insert({ tipo: "acerto", versao, conteudo, hash, ativo: true })
+      .select("id")
+      .single();
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        const { data: upd } = await supabase
+          .from("termos")
+          .update({ conteudo, hash })
+          .eq("tipo", "acerto")
+          .eq("versao", versao)
+          .select("id")
+          .single();
+        termoId = upd?.id ?? null;
+      } else {
+        throw new Error("Falha ao gravar o termo de acerto");
+      }
+    } else {
+      termoId = ins?.id ?? null;
+    }
+  }
+  if (!termoId) throw new Error("Falha ao vincular o termo de acerto");
+
+  const { data: registro, error: updErr } = await supabase
+    .from("acertos")
+    .update({
+      status: "proposto",
+      proposto_em: new Date().toISOString(),
+      termo_id: termoId,
+      atualizada_em: new Date().toISOString(),
+    })
+    .eq("id", args.acertoId)
+    .eq("status", "rascunho") // guarda de corrida: so avança de rascunho
+    .select("*")
+    .single();
+  if (updErr || !registro) {
+    throw new AcertoBloqueado("transicao_invalida", "O acerto nao esta mais em rascunho");
+  }
+
+  await gravarEventoAcerto(supabase, `acerto:propor:${args.acertoId}`, "acerto_proposto", {
+    acerto_id: args.acertoId,
+    termo_id: termoId,
+    hash,
+  });
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.autor,
+    acao: "acerto.propor",
+    alvo: contrato.id,
+    detalhe: { acerto_id: args.acertoId, termo_id: termoId },
+    ip: args.ip ?? null,
+  });
+
+  return registro as AcertoRegistro;
+}
+
+// CLIENTE (sessao do titular): aceita o acerto proposto. proposto -> aceito.
+// Grava a prova imutavel em `aceites` (hash/ip/ua) e avança o acerto. NAO move
+// dinheiro (a execucao do refund e um marco proprio).
+export type AceiteAcerto = { ok: true; jaAceito: boolean; aceiteEm: string | null };
+
+export async function aceitarAcerto(args: {
+  acertoId: string;
+  titularId: string;
+  ip?: string | null;
+  userAgent?: string | null;
+}): Promise<AceiteAcerto> {
+  const supabase = getSupabase();
+
+  const { data: acerto } = await supabase
+    .from("acertos")
+    .select("id, contrato_id, status, termo_id")
+    .eq("id", args.acertoId)
+    .maybeSingle();
+  if (!acerto) {
+    throw new AcertoBloqueado("acerto_nao_encontrado", "Acerto nao encontrado");
+  }
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", acerto.contrato_id)
+    .maybeSingle();
+  if (!contrato || contrato.titular_id !== args.titularId) {
+    throw new AcertoBloqueado("nao_autorizado", "Acerto nao pertence a este titular");
+  }
+
+  const termoId = acerto.termo_id as string | null;
+  if (!termoId) {
+    throw new AcertoBloqueado("sem_termo", "Proposta sem termo para aceitar");
+  }
+
+  // Converge o status para 'aceito' (idempotente): so avança de 'proposto', nunca
+  // reescreve um estado terminal. Usado tanto no fluxo normal quanto quando a
+  // prova ja existe mas o status ficou preso em 'proposto'.
+  async function afirmarAceito(): Promise<void> {
+    await supabase
+      .from("acertos")
+      .update({ status: "aceito", aceito_em: new Date().toISOString(), atualizada_em: new Date().toISOString() })
+      .eq("id", args.acertoId)
+      .eq("status", "proposto");
+  }
+
+  // Idempotente: se ja aceitou este termo, nao duplica a prova — so reafirma o
+  // status (caso tenha ficado preso em proposto) e retorna.
+  const { data: existente } = await supabase
+    .from("aceites")
+    .select("id, data_hora")
+    .eq("titular_id", args.titularId)
+    .eq("termo_id", termoId)
+    .maybeSingle();
+  if (existente) {
+    await afirmarAceito();
+    return { ok: true, jaAceito: true, aceiteEm: (existente as { data_hora?: string }).data_hora ?? null };
+  }
+
+  if (!transicaoAcertoPermitida(String(acerto.status), "aceito")) {
+    throw new AcertoBloqueado("transicao_invalida", "Esta proposta nao esta mais disponivel para aceite");
+  }
+
+  // Recalcula o hash sobre o conteudo do termo (prova auto-consistente).
+  const { data: termo } = await supabase
+    .from("termos")
+    .select("id, versao, hash, conteudo")
+    .eq("id", termoId)
+    .maybeSingle();
+  if (!termo) {
+    throw new AcertoBloqueado("sem_termo", "Termo do acerto nao encontrado");
+  }
+  const conteudo = (termo as { conteudo?: string | null }).conteudo || "";
+  const hashConteudo = conteudo ? calcularHashTermo(conteudo) : (termo as { hash?: string }).hash ?? "";
+
+  const { data: novo, error: insErr } = await supabase
+    .from("aceites")
+    .insert({
+      titular_id: args.titularId,
+      termo_id: termoId,
+      proposta_id: args.acertoId,
+      versao: (termo as { versao?: string }).versao ?? "acerto",
+      hash_conteudo: hashConteudo,
+      contexto: "area_cliente",
+      ip: args.ip ?? null,
+      user_agent: args.userAgent ?? null,
+    })
+    .select("id, data_hora")
+    .single();
+  if (insErr) {
+    // Corrida (duplo-clique/retry): a prova ja foi gravada por outra requisicao.
+    if ((insErr as { code?: string }).code === "23505") {
+      await afirmarAceito();
+      const { data: existe2 } = await supabase
+        .from("aceites")
+        .select("data_hora")
+        .eq("titular_id", args.titularId)
+        .eq("termo_id", termoId)
+        .maybeSingle();
+      return { ok: true, jaAceito: true, aceiteEm: (existe2 as { data_hora?: string } | null)?.data_hora ?? null };
+    }
+    throw new Error("Falha ao registrar o aceite");
+  }
+  if (!novo) throw new Error("Falha ao registrar o aceite");
+
+  await afirmarAceito();
+
+  await gravarEventoAcerto(supabase, `acerto:aceitar:${args.acertoId}`, "acerto_aceito", {
+    acerto_id: args.acertoId,
+    termo_id: termoId,
+  });
+
+  return { ok: true, jaAceito: false, aceiteEm: (novo as { data_hora?: string }).data_hora ?? null };
 }

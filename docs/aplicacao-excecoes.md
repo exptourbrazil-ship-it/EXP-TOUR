@@ -3,7 +3,7 @@
 Registro de aplicação do módulo de processos de exceção (doc 01 §4), da Fatia 1
 do motor de acerto (doc 07 §3.5) e do motor de alteração (E2/E3, doc 01 §4):
 prévia, **execução em cascata**, notificação do cliente e **crédito do E3 →
-rascunho de acerto**. A entrega foi feita em **21 patches** de código lineares a
+rascunho de acerto**. A entrega foi feita em **22 patches** de código lineares a
 partir da `main` (cada patch = 1 commit), aplicáveis com `git am`. Este documento
 serve de referência da ordem, do impacto no banco e da configuração. (Há ainda
 patches só-de-docs — atualizações deste README e o plano de execução do acerto —
@@ -25,7 +25,7 @@ da execução do motor de acerto (retenção parametrizada; ver
 
 ## 2. Ordem de aplicação
 
-Coloque os 21 arquivos `.patch` num diretório e rode, na ordem:
+Coloque os 22 arquivos `.patch` num diretório e rode, na ordem:
 
 ```bash
 git checkout main && git pull
@@ -52,6 +52,7 @@ git am motor-alteracao-cascata.patch
 git am motor-alteracao-notificacao.patch
 git am e3-credito-acerto.patch
 git am acerto-fatia-a-retencao-config.patch
+git am acerto-fatia-b-proposta-aceite.patch
 ```
 
 Alternativa (aplicar todos de uma vez, se estiverem só nesse diretório):
@@ -91,7 +92,8 @@ patch depende de estado externo — só da cadeia anterior.
 | 18 | `motor-alteracao-cascata` | 265218b | **Motor de alteração — execução em cascata (E2/E3):** aplica o rascunho reescrevendo as parcelas em aberto + atualiza o contrato (data de início / valor_total) + marca aplicada, tudo **em transação** (função SQL `aplicar_alteracao`). Guardas de dinheiro (Pix/disputa/cancelado/crédito→acerto/soma). Só-sessão `financeiro.gerir`, sem Bearer |
 | 19 | `motor-alteracao-notificacao` | adbc62a | **Notificação ao cliente:** ao aplicar a cascata, e-mail com o resumo do novo cronograma (best-effort, log em `email_logs`); atualiza este README |
 | 20 | `e3-credito-acerto` | 7855b0c | **Perna de dinheiro do E3 — crédito → acerto:** quando o downgrade gera crédito (já pago > novo), gera um **rascunho de acerto/refund** (reusa a tabela `acertos`, sem retenção) para o Financeiro revisar. NÃO executa refund. Índice de rascunho de acerto passa a ser por `(contrato_id, excecao_id)`; capacidade `financeiro.gerir` |
-| 21 | `acerto-fatia-a-retencao-config` | _(este)_ | **Execução do acerto — Fatia A (retenção parametrizada):** tabela `config_retencao` (faixas + tipos-sem-retenção + validação jurídica); o motor lê da config, `provisorio` reflete `validado_juridicamente`. Rota gestor-only `config.gerir`. Seed = placeholder não validado (comportamento inalterado) |
+| 21 | `acerto-fatia-a-retencao-config` | 910d626 | **Execução do acerto — Fatia A (retenção parametrizada):** tabela `config_retencao` (faixas + tipos-sem-retenção + validação jurídica); o motor lê da config, `provisorio` reflete `validado_juridicamente`. Rota gestor-only `config.gerir`. Seed = placeholder não validado (comportamento inalterado) |
+| 22 | `acerto-fatia-b-proposta-aceite` | _(este)_ | **Execução do acerto — Fatia B (proposta + aceite eletrônico):** rascunho→proposto (admin renderiza Termo de Acerto texto+hash em `termos`, `financeiro.gerir`) → aceito (cliente aceita na Área do Cliente, prova imutável em `aceites` com unique `(titular_id, termo_id)`). Máquina de estados pura. NÃO move dinheiro |
 
 ## 4. Banco de dados
 
@@ -109,6 +111,7 @@ pelos patches) reproduz tudo para um banco novo. DDL, por patch:
 - **#18** `alteracoes.aplicada_em timestamptz`, `alteracoes.aplicada_por text`; **função** `aplicar_alteracao(...)` (plpgsql, transacional: reescreve parcelas + contrato + `events` + `admin_audit`). Reaplicar recria a função (`drop function` da assinatura antiga + `create or replace`)
 - **#20** `uidx_acertos_rascunho` passa de `(contrato_id)` para `(contrato_id, excecao_id)` — um rascunho de acerto por exceção, para o crédito do E3 e um cancelamento (E4-E7) coexistirem sem se sobrescrever. Sem novas colunas (reusa `acertos`)
 - **#21** tabela `config_retencao` (faixas jsonb, `tipos_sem_retencao` jsonb, `validado_juridicamente`, `vigente`) + **índice único parcial** `uidx_config_retencao_vigente (vigente) where vigente=true` + **seed** idempotente com o placeholder atual (não validado) — RLS habilitado sem policy
+- **#22** `acertos`: `proposto_em`, `aceito_em`, `termo_id` (sem FK — `termos` vem depois no arquivo); **índice único** `uidx_aceites_titular_termo (titular_id, termo_id)` em `aceites` (idempotência atômica do aceite). Reusa `termos`/`aceites` existentes
 
 > Reaplicar em produção é seguro: todo DDL usa `if not exists` / `add column if
 > not exists`. Se for um banco novo, basta rodar o `schema.sql` atualizado.
@@ -136,7 +139,7 @@ ao aplicar a cascata — log em `email_logs`, tipo `cronograma_atualizado`),
 
 ```bash
 npm run build     # deve terminar com exit code 0 (conferir o EXIT, não a mensagem)
-npm test          # 329 testes, todos passando
+npm test          # 332 testes, todos passando
 ```
 
 ## 7. Cobertura e pendências
@@ -171,12 +174,13 @@ npm test          # 329 testes, todos passando
   variante do E3 que também desloca a data de início ("+nova data") também fica
   para depois.
 - **Motor de acerto, fatias 2+** — proposta no portal → aceite eletrônico →
-  execução/refund (inclui o crédito do E3). A **Fatia A (retenção parametrizada)
-  já foi entregue**: as faixas vêm de `config_retencao` e `provisorio` reflete
-  `validado_juridicamente`. Falta: validar juridicamente as cláusulas (marcar a
-  config como validada), o aceite eletrônico da proposta (Fatia B), o wrapper de
-  estorno no Mercado Pago + consumidor de webhook (Fatias C/D) e a política de
-  refund por fornecedor. Ver [`plano-execucao-acerto.md`](./plano-execucao-acerto.md).
+  execução/refund (inclui o crédito do E3). **Fatias A e B entregues**: retenção
+  parametrizada (`config_retencao`, `provisorio` reflete `validado_juridicamente`)
+  e a proposta ao cliente + aceite eletrônico (`rascunho→proposto→aceito`, prova
+  em `aceites`). Falta: validar juridicamente as cláusulas (marcar a config),
+  **Fatia C** (wrapper de estorno no Mercado Pago + ledger `estornos`), **Fatia
+  D** (execução confirmada por webhook de estorno) e a política de refund por
+  fornecedor. Ver [`plano-execucao-acerto.md`](./plano-execucao-acerto.md).
 - **Portal do fornecedor** — gatilho do E6 (escola registra) e aprovação de E2/E3.
 
 ## 8. Notas de arquitetura

@@ -343,6 +343,13 @@ create table if not exists acertos (
 
 create index if not exists idx_acertos_contrato on acertos(contrato_id);
 create index if not exists idx_acertos_titular on acertos(titular_id);
+-- Execucao do acerto (Fatia B): proposta ao cliente + aceite eletronico.
+alter table if exists acertos add column if not exists proposto_em timestamptz;
+alter table if exists acertos add column if not exists aceito_em timestamptz;
+-- termo_id sem FK: `termos` e definido mais abaixo no arquivo (integridade
+-- garantida em codigo, no padrao RLS-sem-policy do portal).
+alter table if exists acertos add column if not exists termo_id uuid;
+
 -- No maximo UM rascunho por (contrato, EXCECAO de origem): recalcular atualiza o
 -- rascunho daquela excecao (o read-then-write em codigo nao segura duas
 -- requisicoes concorrentes). Por excecao — e nao so por contrato — para um
@@ -800,6 +807,9 @@ create table if not exists aceites (
 
 create index if not exists idx_aceites_titular on aceites(titular_id);
 create index if not exists idx_aceites_termo on aceites(termo_id);
+-- Idempotencia atomica da prova: no maximo UM aceite por (titular, termo). Fecha
+-- a corrida de duplo-clique/retry do aceite (o read-then-write nao segurava).
+create unique index if not exists uidx_aceites_titular_termo on aceites(titular_id, termo_id);
 
 alter table if exists termos  enable row level security;
 alter table if exists aceites enable row level security;

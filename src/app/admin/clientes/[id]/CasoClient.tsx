@@ -2333,16 +2333,99 @@ function SecaoAlteracaoEscopo({
 
 // ---- Acerto de cancelamento (rascunho) — motor de acerto --------------------
 
-function AcertoCard({ acerto, contratos }: { acerto: CasoAcerto; contratos: CasoContrato[] }) {
+// Chip de status do acerto (rascunho -> proposto -> aceito -> executado / cancelado).
+function AcertoStatusChip({ status }: { status: string }) {
+  const mapa: Record<string, { txt: string; cls: string }> = {
+    rascunho: { txt: "Rascunho", cls: "bg-neutral-100 text-neutral-600" },
+    proposto: { txt: "Proposto ao cliente", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    aceito: { txt: "✓ Aceito pelo cliente", cls: "bg-emerald-100 text-emerald-800" },
+    executado: { txt: "✓ Executado", cls: "bg-emerald-100 text-emerald-800" },
+    cancelado: { txt: "Cancelado", cls: "bg-neutral-100 text-neutral-500 line-through" },
+  };
+  const m = mapa[status] || { txt: status, cls: "bg-neutral-100 text-neutral-600" };
+  return <span className={"rounded-full px-2 py-0.5 text-xs font-medium " + m.cls}>{m.txt}</span>;
+}
+
+// Botao ADMIN: propoe o acerto ao cliente (rascunho -> proposto). So aparece em
+// rascunho e para quem tem financeiro.gerir; a rota revalida tudo.
+function BotaoProporAcerto({
+  titularId,
+  acertoId,
+  status,
+  podePropor,
+}: {
+  titularId: string;
+  acertoId: string;
+  status: string;
+  podePropor: boolean;
+}) {
+  const router = useRouter();
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  if (status !== "rascunho" || !podePropor) return null;
+
+  async function propor() {
+    setErro(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/acerto/propor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acertoId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao propor.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-100 pt-3">
+      <button
+        type="button"
+        onClick={propor}
+        disabled={enviando}
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      >
+        {enviando ? "Propondo…" : "Propor ao cliente"}
+      </button>
+      <p className="mt-1 text-xs text-neutral-500">
+        Gera o Termo de Acerto e o expõe na Área do Cliente para aceite eletrônico. Não devolve
+        dinheiro.
+      </p>
+      {erro ? <p className="mt-1 text-xs text-red-600">{erro}</p> : null}
+    </div>
+  );
+}
+
+function AcertoCard({
+  acerto,
+  contratos,
+  titularId,
+  podePropor,
+}: {
+  acerto: CasoAcerto;
+  contratos: CasoContrato[];
+  titularId: string;
+  podePropor: boolean;
+}) {
   const contrato = contratos.find((c) => c.id === acerto.contrato_id);
   const moeda = acerto.moeda || "BRL";
   return (
     <div className="rounded-xl border border-neutral-200 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium text-brand">
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-brand">
           {contrato ? nomeContrato(contrato) : "Contrato"}
+          <AcertoStatusChip status={acerto.status} />
           {acerto.tipo_cancelamento ? (
-            <span className="ml-2 text-xs font-normal text-neutral-500">
+            <span className="text-xs font-normal text-neutral-500">
               {labelTipoExcecao(acerto.tipo_cancelamento)}
             </span>
           ) : null}
@@ -2375,6 +2458,12 @@ function AcertoCard({ acerto, contratos }: { acerto: CasoAcerto; contratos: Caso
           ))}
         </tbody>
       </table>
+      <BotaoProporAcerto
+        titularId={titularId}
+        acertoId={acerto.id}
+        status={acerto.status}
+        podePropor={podePropor}
+      />
     </div>
   );
 }
@@ -2474,7 +2563,13 @@ function SecaoAcerto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
       ) : (
         <div className="space-y-3">
           {caso.acertos.map((a) => (
-            <AcertoCard key={a.id} acerto={a} contratos={caso.contratos} />
+            <AcertoCard
+              key={a.id}
+              acerto={a}
+              contratos={caso.contratos}
+              titularId={caso.titular.id}
+              podePropor={podeGerir}
+            />
           ))}
         </div>
       )}
