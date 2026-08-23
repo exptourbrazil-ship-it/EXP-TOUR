@@ -6,6 +6,7 @@ import {
   RETENCAO_PLACEHOLDER,
   determinarRetencaoPercentual,
   calcularAcerto,
+  calcularAcertoCreditoEscopo,
 } from "./acerto.ts";
 
 test("determinarRetencaoPercentual: faixas placeholder por dias ate inicio", () => {
@@ -76,4 +77,24 @@ test("faixas placeholder estao ordenadas/coerentes", () => {
     assert.ok(f.percentual >= 0 && f.percentual <= 1);
     assert.ok(f.minDiasAteInicio >= 0);
   }
+});
+
+test("calcularAcertoCreditoEscopo: credito = pago - novo valor (sem retencao)", () => {
+  const a = calcularAcertoCreditoEscopo({ valorProgramaNovo: 6000, jaPago: 8000 });
+  assert.equal(a.creditoDevolver, 2000);
+  assert.equal(a.valorProgramaNovo, 6000);
+  assert.equal(a.totalPago, 8000);
+  // memoria sem linha de retencao/multa
+  assert.ok(!a.memoria.some((l) => l.rotulo.toLowerCase().includes("reten")));
+  assert.ok(a.memoria.some((l) => l.tipo === "credito" && l.valor === 2000));
+});
+
+test("calcularAcertoCreditoEscopo: pago <= novo -> credito zero (nao devolve)", () => {
+  const a = calcularAcertoCreditoEscopo({ valorProgramaNovo: 9000, jaPago: 4000 });
+  assert.equal(a.creditoDevolver, 0);
+});
+
+test("calcularAcertoCreditoEscopo: arredonda a 2 casas", () => {
+  const a = calcularAcertoCreditoEscopo({ valorProgramaNovo: 100.001, jaPago: 250.006 });
+  assert.equal(a.creditoDevolver, 150.01);
 });

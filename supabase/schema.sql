@@ -343,10 +343,14 @@ create table if not exists acertos (
 
 create index if not exists idx_acertos_contrato on acertos(contrato_id);
 create index if not exists idx_acertos_titular on acertos(titular_id);
--- No maximo UM rascunho por contrato: recalcular atualiza o rascunho existente
--- (o read-then-write em codigo nao segura duas requisicoes concorrentes).
+-- No maximo UM rascunho por (contrato, EXCECAO de origem): recalcular atualiza o
+-- rascunho daquela excecao (o read-then-write em codigo nao segura duas
+-- requisicoes concorrentes). Por excecao — e nao so por contrato — para um
+-- cancelamento (E4-E7) e um credito de escopo (E3) coexistirem sem se
+-- sobrescrever quando ambas as excecoes estao ativas no mesmo contrato.
+drop index if exists uidx_acertos_rascunho;
 create unique index if not exists uidx_acertos_rascunho
-  on acertos(contrato_id) where status = 'rascunho';
+  on acertos(contrato_id, excecao_id) where status = 'rascunho';
 alter table if exists acertos enable row level security;
 
 -- Alteracoes de plano (motor de alteracao — E2 adiamento; doc 01 §4). NESTE

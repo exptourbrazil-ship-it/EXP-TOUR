@@ -103,3 +103,32 @@ export function calcularAcerto(e: EntradaAcerto): Acerto {
     memoria,
   };
 }
+
+// ---------------------------------------------------------------------------
+// ACERTO DE CREDITO POR ALTERACAO DE ESCOPO (E3 downgrade)
+// ---------------------------------------------------------------------------
+// Diferente do cancelamento: NAO ha retencao/multa (o cliente nao desiste, so
+// reduz o escopo). O credito a devolver e o que ele pagou A MAIS do que o novo
+// valor do programa: max(0, ja pago - novo valor). Puro/testavel; a execucao do
+// refund (dinheiro saindo) continua deferida (motor de acerto, fatias 2+).
+export type AcertoCredito = {
+  valorProgramaNovo: number;
+  totalPago: number;
+  creditoDevolver: number;
+  memoria: LinhaMemoria[];
+};
+
+export function calcularAcertoCreditoEscopo(e: {
+  valorProgramaNovo: number;
+  jaPago: number;
+}): AcertoCredito {
+  const novo = round2(e.valorProgramaNovo);
+  const pago = round2(e.jaPago);
+  const creditoDevolver = Math.max(0, round2(pago - novo));
+  const memoria: LinhaMemoria[] = [
+    { rotulo: "Valor do programa (após alteração)", valor: novo, tipo: "info" },
+    { rotulo: "Total pago pelo cliente", valor: pago, tipo: "info" },
+    { rotulo: "Crédito a devolver ao cliente", valor: creditoDevolver, tipo: "credito" },
+  ];
+  return { valorProgramaNovo: novo, totalPago: pago, creditoDevolver, memoria };
+}

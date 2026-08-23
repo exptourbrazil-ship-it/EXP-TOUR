@@ -1809,6 +1809,76 @@ function BotaoAplicarAlteracao({
   );
 }
 
+// Acao do CREDITO do E3 (downgrade): gera um rascunho de acerto/refund no motor
+// de acerto (nao devolve dinheiro). So aparece quando ha credito a devolver.
+function BotaoAcertoCredito({
+  titularId,
+  alteracaoId,
+  podeGerar,
+  status,
+  credito,
+}: {
+  titularId: string;
+  alteracaoId: string;
+  podeGerar: boolean;
+  status: string;
+  credito: number;
+}) {
+  const router = useRouter();
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  if (status !== "rascunho" || credito <= 0) return null;
+  if (!podeGerar) return null;
+
+  async function gerar() {
+    setFeedback(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/acerto-credito`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alteracaoId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao gerar o acerto." });
+        return;
+      }
+      setFeedback({
+        ok: true,
+        msg: "Rascunho de acerto criado — veja em “Acerto de cancelamento (rascunho)”.",
+      });
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-100 pt-3">
+      <button
+        type="button"
+        onClick={gerar}
+        disabled={enviando}
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      >
+        {enviando ? "Gerando…" : "Gerar rascunho de acerto (crédito)"}
+      </button>
+      <p className="mt-1 text-xs text-neutral-500">
+        Cria um rascunho de refund no motor de acerto para o Financeiro revisar. Não devolve dinheiro.
+      </p>
+      {feedback ? (
+        <p className={"mt-1 text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+          {feedback.msg}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function AlteracaoCard({
   alteracao,
   contratos,
@@ -2126,6 +2196,13 @@ function AlteracaoEscopoCard({
         podeAplicar={podeAplicar}
         status={alteracao.status}
         bloqueioCredito={credito > 0}
+      />
+      <BotaoAcertoCredito
+        titularId={titularId}
+        alteracaoId={alteracao.id}
+        podeGerar={podeAplicar}
+        status={alteracao.status}
+        credito={credito}
       />
     </div>
   );

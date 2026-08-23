@@ -12,7 +12,12 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { diasAteInicio } from "@/lib/caso";
 import { labelTipoExcecao } from "@/lib/excecao";
-import { calcularAcerto, determinarRetencaoPercentual, type Acerto } from "@/lib/acerto";
+import {
+  calcularAcerto,
+  calcularAcertoCreditoEscopo,
+  determinarRetencaoPercentual,
+  type Acerto,
+} from "@/lib/acerto";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -90,6 +95,7 @@ export async function calcularERegistrarAcerto(args: {
       "Nao ha processo de cancelamento ativo neste contrato (abra E4/E5/E6/E7 antes)"
     );
   }
+  const excecaoIdAlvo: string = excecao.id; // local (evita perda de narrowing na closure)
 
   // Total pago = soma do ledger de pagamentos (moeda do programa) — fonte
   // imutavel da "fotografia" de cada pagamento.
@@ -150,6 +156,7 @@ export async function calcularERegistrarAcerto(args: {
       .from("acertos")
       .select("id")
       .eq("contrato_id", args.contratoId)
+      .eq("excecao_id", excecaoIdAlvo)
       .eq("status", "rascunho")
       .maybeSingle();
     if (selErr || !existente?.id) return null;
@@ -194,6 +201,156 @@ export async function calcularERegistrarAcerto(args: {
       tipo: labelTipoExcecao(tipo),
       retencao_percentual: acerto.retencaoPercentual,
       saldo_devolver: acerto.saldoDevolverCliente,
+      provisorio: true,
+    },
+    ip: args.ip ?? null,
+  });
+
+  return registro;
+}
+
+// Gera (rascunho) o acerto de CREDITO de uma alteracao de escopo (E3 downgrade):
+// o cliente pagou a mais do que o novo valor do programa e o excedente vira um
+// refund a apurar. Reusa a tabela `acertos` (sem retencao) para o Financeiro
+// revisar na mesma superficie dos cancelamentos. NAO executa refund (dinheiro so
+// muda por webhook; a execucao e o marco proprio do motor de acerto, fatias 2+).
+// Requer um E3 (alteracao_escopo) ATIVO e o rascunho de escopo. Posse por titular.
+export async function gerarAcertoCreditoEscopo(args: {
+  alteracaoId: string;
+  titularIdEsperado: string;
+  autor: string;
+  ip?: string | null;
+}): Promise<AcertoRegistro> {
+  const supabase = getSupabase();
+
+  const { data: alt } = await supabase
+    .from("alteracoes")
+    .select("id, contrato_id, tipo, status, moeda, valor_programa_novo, excecao_id")
+    .eq("id", args.alteracaoId)
+    .maybeSingle();
+  if (!alt || alt.tipo !== "escopo") {
+    throw new AcertoBloqueado(
+      "alteracao_nao_encontrada",
+      "Rascunho de alteracao de escopo nao encontrado"
+    );
+  }
+  if (alt.status !== "rascunho") {
+    throw new AcertoBloqueado(
+      "alteracao_nao_rascunho",
+      "A alteracao de escopo ja foi aplicada ou cancelada"
+    );
+  }
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id, moeda")
+    .eq("id", alt.contrato_id)
+    .maybeSingle();
+  if (!contrato) {
+    throw new AcertoBloqueado("contrato_nao_encontrado", "Contrato nao encontrado");
+  }
+  if (contrato.titular_id !== args.titularIdEsperado) {
+    throw new AcertoBloqueado("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+  // Locais primitivos (evita perda de narrowing dentro da closure de upsert).
+  const contratoIdAlvo: string = contrato.id;
+
+  // Exige um E3 (alteracao de escopo) ativo — o acerto acompanha o processo.
+  const { data: excecoes } = await supabase
+    .from("case_exceptions")
+    .select("id, tipo")
+    .eq("contrato_id", contratoIdAlvo)
+    .in("status", ["aberta", "em_andamento"]);
+  const excecao = (excecoes || []).find((e) => e.tipo === "alteracao_escopo");
+  if (!excecao) {
+    throw new AcertoBloqueado(
+      "sem_escopo_ativo",
+      "Nao ha alteracao de escopo (E3) ativa neste contrato"
+    );
+  }
+  const excecaoIdAlvo: string = excecao.id; // local (evita perda de narrowing na closure)
+
+  // Ja pago = ledger de pagamentos (moeda do programa) — mesma fonte do acerto.
+  const { data: pagamentos } = await supabase
+    .from("pagamentos")
+    .select("valor_programa")
+    .eq("contrato_id", contratoIdAlvo);
+  const jaPago = (pagamentos || []).reduce(
+    (s, p) => s + (Number((p as { valor_programa?: number }).valor_programa) || 0),
+    0
+  );
+
+  const novoValor = Number(alt.valor_programa_novo) || 0;
+  const credito = calcularAcertoCreditoEscopo({ valorProgramaNovo: novoValor, jaPago });
+  if (credito.creditoDevolver <= 0) {
+    throw new AcertoBloqueado(
+      "sem_credito",
+      "Nao ha credito a devolver (o pago nao supera o novo valor do programa)"
+    );
+  }
+
+  const patch = {
+    excecao_id: excecao.id,
+    tipo_cancelamento: "alteracao_escopo",
+    status: "rascunho",
+    moeda: (alt.moeda as string) || contrato.moeda || null,
+    valor_total: credito.valorProgramaNovo,
+    total_pago: credito.totalPago,
+    retencao_percentual: 0,
+    retencao_valor: 0,
+    refund_escola_esperado: 0,
+    saldo_devolver_cliente: credito.creditoDevolver,
+    memoria: credito.memoria,
+    provisorio: true,
+    atualizada_em: new Date().toISOString(),
+  };
+
+  async function atualizarPorContrato(): Promise<AcertoRegistro | null> {
+    const { data: existente, error: selErr } = await supabase
+      .from("acertos")
+      .select("id")
+      .eq("contrato_id", contratoIdAlvo)
+      .eq("excecao_id", excecaoIdAlvo)
+      .eq("status", "rascunho")
+      .maybeSingle();
+    if (selErr || !existente?.id) return null;
+    const { data, error } = await supabase
+      .from("acertos")
+      .update(patch)
+      .eq("id", existente.id)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("Falha ao atualizar o acerto");
+    return data as AcertoRegistro;
+  }
+
+  let registro = await atualizarPorContrato();
+  if (!registro) {
+    const { data, error } = await supabase
+      .from("acertos")
+      .insert({ ...patch, contrato_id: contrato.id, titular_id: contrato.titular_id, criado_por: args.autor })
+      .select("*")
+      .single();
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        registro = await atualizarPorContrato();
+        if (!registro) throw new Error("Falha ao registrar o acerto");
+      } else {
+        throw new Error("Falha ao registrar o acerto");
+      }
+    } else {
+      registro = data as AcertoRegistro;
+    }
+  }
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.autor,
+    acao: "acerto.credito_escopo.calcular",
+    alvo: contrato.id,
+    detalhe: {
+      excecao_id: excecao.id,
+      alteracao_id: alt.id,
+      credito_devolver: credito.creditoDevolver,
       provisorio: true,
     },
     ip: args.ip ?? null,
