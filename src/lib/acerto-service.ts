@@ -20,6 +20,8 @@ import {
   renderizarTermoAcerto,
   transicaoAcertoPermitida,
   planejarRefund,
+  refundConfirmadoNoMP,
+  todosEstornosConfirmados,
   DEFAULT_JANELA_REFUND_DIAS,
   RETENCAO_PLACEHOLDER,
   TIPOS_SEM_RETENCAO_PADRAO,
@@ -28,6 +30,8 @@ import {
   type PlanoRefund,
 } from "@/lib/acerto";
 import { calcularHashTermo } from "@/lib/termos";
+import { refundPayment, consultarRefund } from "@/lib/mercadopago";
+import { enviarReciboDevolucaoEmail } from "@/lib/email";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -755,4 +759,389 @@ export async function planejarRefundAcerto(args: {
   });
 
   return plano;
+}
+
+// ---------------------------------------------------------------------------
+// FATIA D: execucao do estorno (money out) — confirmada por reconsulta ao MP
+// ---------------------------------------------------------------------------
+// Guardas de dinheiro: so acerto ACEITO, NAO provisorio (retencao validada),
+// posse por titular, sessao financeiro.gerir (na rota, sem Bearer). Dispara o(s)
+// estorno(s) via MP (idempotente por X-Idempotency-Key + unique do ledger) e so
+// marca `executado` quando TODOS os estornos estao confirmados. Devolucao MANUAL
+// nao dispara MP: registra a intencao e aguarda confirmacao com comprovante.
+
+// Notifica o cliente (best-effort) e, quando todos os estornos confirmam, marca
+// o acerto como executado.
+async function finalizarAcertoSeConfirmado(
+  supabase: SupabaseClient,
+  acertoId: string,
+  contratoId: string
+): Promise<boolean> {
+  const { data: estornos } = await supabase
+    .from("estornos")
+    .select("status, valor_brl, meio")
+    .eq("acerto_id", acertoId);
+  const lista = (estornos || []) as { status: string; valor_brl: number | null; meio: string }[];
+  if (!todosEstornosConfirmados(lista)) return false;
+
+  const { data: upd } = await supabase
+    .from("acertos")
+    .update({ status: "executado", executado_em: new Date().toISOString(), atualizada_em: new Date().toISOString() })
+    .eq("id", acertoId)
+    .eq("status", "aceito") // guarda de corrida: so aceito -> executado
+    .select("id")
+    .maybeSingle();
+  if (!upd) return false; // outra execucao ja finalizou
+
+  await gravarEventoAcerto(supabase, `acerto:executar:${acertoId}`, "acerto_executado", {
+    acerto_id: acertoId,
+  });
+
+  // Recibo de devolucao (best-effort).
+  try {
+    const { data: contrato } = await supabase
+      .from("contratos")
+      .select("titular_id")
+      .eq("id", contratoId)
+      .maybeSingle();
+    const titularId = (contrato as { titular_id?: string } | null)?.titular_id;
+    if (titularId) {
+      const { data: titular } = await supabase
+        .from("titulares")
+        .select("nome_completo, email")
+        .eq("id", titularId)
+        .maybeSingle();
+      const email = (titular as { email?: string | null } | null)?.email;
+      if (email) {
+        const totalBRL = lista.reduce((s, e) => s + (Number(e.valor_brl) || 0), 0);
+        const meio = lista.every((e) => e.meio === "manual") ? "manual" : "mp";
+        const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+        await enviarReciboDevolucaoEmail(email, (titular as { nome_completo?: string }).nome_completo || "", {
+          valorBRL: totalBRL,
+          meio,
+          portalUrl: appUrl || null,
+        });
+      }
+    }
+  } catch {
+    console.error("[acerto] falha ao enviar recibo de devolucao");
+  }
+  return true;
+}
+
+export type ExecucaoAcerto = { ok: true; meio: "mp" | "manual"; refundBRL: number; executado: boolean };
+
+export async function executarAcerto(args: {
+  acertoId: string;
+  titularIdEsperado: string;
+  autor: string;
+  ip?: string | null;
+}): Promise<ExecucaoAcerto> {
+  const supabase = getSupabase();
+
+  const { data: acerto } = await supabase
+    .from("acertos")
+    .select("id, contrato_id, status, provisorio, saldo_devolver_cliente")
+    .eq("id", args.acertoId)
+    .maybeSingle();
+  if (!acerto) throw new AcertoBloqueado("acerto_nao_encontrado", "Acerto nao encontrado");
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", acerto.contrato_id)
+    .maybeSingle();
+  if (!contrato || contrato.titular_id !== args.titularIdEsperado) {
+    throw new AcertoBloqueado("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+  const contratoId: string = contrato.id;
+
+  // GUARDA DE DINHEIRO: nao executa sobre regra de retencao ainda provisoria.
+  if (acerto.provisorio) {
+    throw new AcertoBloqueado(
+      "acerto_provisorio",
+      "A retencao ainda nao foi validada juridicamente; nao e possivel executar o refund"
+    );
+  }
+  if (acerto.status === "executado") {
+    throw new AcertoBloqueado("ja_executado", "Este acerto ja foi executado");
+  }
+  if (!transicaoAcertoPermitida(String(acerto.status), "executado")) {
+    throw new AcertoBloqueado("transicao_invalida", "So um acerto aceito pode ser executado");
+  }
+
+  // Plano fresco (read-only): fracao BRL + particionamento + elegibilidade.
+  const plano = await planejarRefundAcerto({ acertoId: args.acertoId, titularIdEsperado: args.titularIdEsperado });
+
+  await supabase
+    .from("acertos")
+    .update({ refund_meio: plano.meio, atualizada_em: new Date().toISOString() })
+    .eq("id", args.acertoId);
+
+  // GUARDA anti-dupla-devolucao: um acerto nao pode ter estornos dos DOIS meios.
+  // Cenario: meio muda (mp -> manual) entre execucoes depois de um refund MP ja
+  // disparado; registrar tambem a devolucao manual pagaria o mesmo dinheiro 2x.
+  const { data: estornosExistentes } = await supabase
+    .from("estornos")
+    .select("meio")
+    .eq("acerto_id", args.acertoId);
+  const temMp = (estornosExistentes || []).some((e) => (e as { meio?: string }).meio === "mp");
+  const temManual = (estornosExistentes || []).some((e) => (e as { meio?: string }).meio === "manual");
+  if (plano.meio === "manual" && temMp) {
+    throw new AcertoBloqueado(
+      "estorno_mp_existente",
+      "Ja ha estorno via Mercado Pago disparado para este acerto; nao registre devolucao manual"
+    );
+  }
+  if (plano.meio === "mp" && temManual) {
+    throw new AcertoBloqueado(
+      "estorno_manual_existente",
+      "Ja ha devolucao manual registrada para este acerto; conclua-a em vez de estornar via MP"
+    );
+  }
+
+  // Nada a devolver: encerra direto.
+  if (plano.refundBRL <= 0 && plano.itens.length === 0 && plano.meio === "mp") {
+    await supabase
+      .from("acertos")
+      .update({ status: "executado", executado_em: new Date().toISOString(), atualizada_em: new Date().toISOString() })
+      .eq("id", args.acertoId)
+      .eq("status", "aceito");
+    await registrarAuditoriaAdmin(supabase, {
+      usuario: args.autor,
+      acao: "acerto.executar",
+      alvo: contratoId,
+      detalhe: { acerto_id: args.acertoId, meio: "mp", refund_brl: 0, nada_a_devolver: true },
+      ip: args.ip ?? null,
+    });
+    return { ok: true, meio: "mp", refundBRL: 0, executado: true };
+  }
+
+  // DEVOLUCAO MANUAL: registra a intencao (dedupe) e aguarda confirmacao com
+  // comprovante (confirmarDevolucaoManual). NAO dispara MP nem marca executado.
+  if (plano.meio === "manual") {
+    // Insere a intencao de devolucao manual; a unicidade e garantida no banco
+    // (uidx_estornos_manual). 23505 => ja registrada (idempotente, sem TOCTOU).
+    const { error: insManualErr } = await supabase.from("estornos").insert({
+      acerto_id: args.acertoId,
+      valor_brl: plano.refundBRL,
+      meio: "manual",
+      status: "pendente",
+      criado_por: args.autor,
+    });
+    if (insManualErr && (insManualErr as { code?: string }).code !== "23505") {
+      throw new Error("Falha ao registrar a devolucao manual");
+    }
+    await registrarAuditoriaAdmin(supabase, {
+      usuario: args.autor,
+      acao: "acerto.executar",
+      alvo: contratoId,
+      detalhe: { acerto_id: args.acertoId, meio: "manual", refund_brl: plano.refundBRL, motivo: plano.motivoManual },
+      ip: args.ip ?? null,
+    });
+    return { ok: true, meio: "manual", refundBRL: plano.refundBRL, executado: false };
+  }
+
+  // ESTORNO VIA MP: um estorno por pagamento (idempotente). Dispara o refund e
+  // marca cada estorno conforme a resposta do MP; confirma o acerto se todos ok.
+  for (const item of plano.itens) {
+    // Garante a linha do ledger (idempotencia por (acerto_id, pagamento_id)).
+    let estornoId: string | null = null;
+    let jaDisparado = false; // ja confirmado OU ja tem refund id (nao redisparar)
+    const { data: ins, error: insErr } = await supabase
+      .from("estornos")
+      .insert({
+        acerto_id: args.acertoId,
+        pagamento_id: item.pagamentoId,
+        valor_brl: item.valorBRL,
+        meio: "mp",
+        status: "pendente",
+        criado_por: args.autor,
+      })
+      .select("id")
+      .single();
+    if (insErr) {
+      if ((insErr as { code?: string }).code === "23505") {
+        const { data: ex } = await supabase
+          .from("estornos")
+          .select("id, status, external_refund_id")
+          .eq("acerto_id", args.acertoId)
+          .eq("pagamento_id", item.pagamentoId)
+          .maybeSingle();
+        estornoId = (ex as { id?: string } | null)?.id ?? null;
+        // Defesa em profundidade: se ja ha refund id (refund ja enviado ao MP),
+        // NAO redispara — deixa o cron confirmar. So re-dispara 'erro'/'pendente'
+        // que nunca chegaram a ter refund id.
+        const st = (ex as { status?: string } | null)?.status;
+        const rid = (ex as { external_refund_id?: string | null } | null)?.external_refund_id;
+        jaDisparado = st === "confirmado" || !!rid;
+      } else {
+        continue; // erro transitorio ao gravar o ledger; proximo cron/retry cobre
+      }
+    } else {
+      estornoId = (ins as { id?: string } | null)?.id ?? null;
+    }
+    if (!estornoId || jaDisparado || !item.externalPaymentId) continue;
+
+    // Dispara o estorno (idempotente por X-Idempotency-Key: retry nao duplica).
+    try {
+      const resp = await refundPayment(
+        item.externalPaymentId,
+        item.valorBRL,
+        `acerto:${args.acertoId}:pgto:${item.pagamentoId}`
+      );
+      const refundId = String((resp as { id?: string | number })?.id ?? "");
+      const status = refundConfirmadoNoMP((resp as { status?: string })?.status) ? "confirmado" : "pendente";
+      await supabase
+        .from("estornos")
+        .update({ external_refund_id: refundId || null, status, atualizada_em: new Date().toISOString() })
+        .eq("id", estornoId);
+    } catch (err) {
+      await supabase
+        .from("estornos")
+        .update({ status: "erro", erro: String((err as Error)?.message || "erro").slice(0, 500), atualizada_em: new Date().toISOString() })
+        .eq("id", estornoId);
+    }
+  }
+
+  const executado = await finalizarAcertoSeConfirmado(supabase, args.acertoId, contratoId);
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.autor,
+    acao: "acerto.executar",
+    alvo: contratoId,
+    detalhe: { acerto_id: args.acertoId, meio: "mp", refund_brl: plano.refundBRL, executado },
+    ip: args.ip ?? null,
+  });
+
+  return { ok: true, meio: "mp", refundBRL: plano.refundBRL, executado };
+}
+
+// Reconciliacao (cron): confirma estornos MP pendentes reconsultando o MP e
+// finaliza os acertos cujos estornos ficaram todos confirmados. Idempotente.
+export async function conciliarEstornosPendentes(
+  supabase: SupabaseClient,
+  limite = 200
+): Promise<{ verificados: number; confirmados: number; finalizados: number; erros: number }> {
+  const resumo = { verificados: 0, confirmados: 0, finalizados: 0, erros: 0 };
+
+  const { data: pendentes } = await supabase
+    .from("estornos")
+    .select("id, acerto_id, pagamento_id, external_refund_id")
+    .eq("meio", "mp")
+    .eq("status", "pendente")
+    .not("external_refund_id", "is", null)
+    .limit(limite);
+
+  const acertosTocados = new Set<string>();
+  for (const e of (pendentes || []) as {
+    id: string;
+    acerto_id: string;
+    pagamento_id: string | null;
+    external_refund_id: string | null;
+  }[]) {
+    if (!e.pagamento_id || !e.external_refund_id) continue;
+    resumo.verificados++;
+    try {
+      const { data: pg } = await supabase
+        .from("pagamentos")
+        .select("external_payment_id")
+        .eq("id", e.pagamento_id)
+        .maybeSingle();
+      const paymentId = (pg as { external_payment_id?: string } | null)?.external_payment_id;
+      if (!paymentId) continue;
+      const refund = await consultarRefund(paymentId, e.external_refund_id);
+      if (refund && refundConfirmadoNoMP((refund as { status?: string }).status)) {
+        await supabase
+          .from("estornos")
+          .update({ status: "confirmado", atualizada_em: new Date().toISOString() })
+          .eq("id", e.id);
+        resumo.confirmados++;
+        acertosTocados.add(e.acerto_id);
+      }
+    } catch {
+      resumo.erros++;
+    }
+  }
+
+  for (const acertoId of acertosTocados) {
+    const { data: ac } = await supabase
+      .from("acertos")
+      .select("contrato_id")
+      .eq("id", acertoId)
+      .maybeSingle();
+    const contratoId = (ac as { contrato_id?: string } | null)?.contrato_id;
+    if (!contratoId) continue;
+    const fin = await finalizarAcertoSeConfirmado(supabase, acertoId, contratoId);
+    if (fin) resumo.finalizados++;
+  }
+
+  return resumo;
+}
+
+// Confirma uma DEVOLUCAO MANUAL (admin anexa comprovante) e finaliza o acerto.
+export async function confirmarDevolucaoManual(args: {
+  acertoId: string;
+  titularIdEsperado: string;
+  comprovanteUrl?: string | null;
+  autor: string;
+  ip?: string | null;
+}): Promise<{ ok: true; executado: boolean }> {
+  const supabase = getSupabase();
+
+  const { data: acerto } = await supabase
+    .from("acertos")
+    .select("id, contrato_id, status, provisorio")
+    .eq("id", args.acertoId)
+    .maybeSingle();
+  if (!acerto) throw new AcertoBloqueado("acerto_nao_encontrado", "Acerto nao encontrado");
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", acerto.contrato_id)
+    .maybeSingle();
+  if (!contrato || contrato.titular_id !== args.titularIdEsperado) {
+    throw new AcertoBloqueado("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+  if (acerto.provisorio) {
+    throw new AcertoBloqueado("acerto_provisorio", "Retencao ainda nao validada juridicamente");
+  }
+  if (acerto.status === "executado") {
+    throw new AcertoBloqueado("ja_executado", "Este acerto ja foi executado");
+  }
+  if (acerto.status !== "aceito") {
+    throw new AcertoBloqueado("transicao_invalida", "So um acerto aceito pode ser executado");
+  }
+
+  const { data: estorno } = await supabase
+    .from("estornos")
+    .select("id, status")
+    .eq("acerto_id", args.acertoId)
+    .eq("meio", "manual")
+    .maybeSingle();
+  if (!estorno) {
+    throw new AcertoBloqueado("sem_estorno_manual", "Nao ha devolucao manual registrada; execute o acerto primeiro");
+  }
+
+  await supabase
+    .from("estornos")
+    .update({
+      status: "confirmado",
+      comprovante_url: args.comprovanteUrl ?? null,
+      atualizada_em: new Date().toISOString(),
+    })
+    .eq("id", (estorno as { id: string }).id);
+
+  const executado = await finalizarAcertoSeConfirmado(supabase, args.acertoId, contrato.id);
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.autor,
+    acao: "acerto.devolucao_manual.confirmar",
+    alvo: contrato.id,
+    detalhe: { acerto_id: args.acertoId, comprovante: args.comprovanteUrl ?? null, executado },
+    ip: args.ip ?? null,
+  });
+
+  return { ok: true, executado };
 }

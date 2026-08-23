@@ -291,6 +291,21 @@ export function planejarRefund(args: {
   return { refundBRL, meio: "mp", motivoManual: null, itens };
 }
 
+// ---------------------------------------------------------------------------
+// FATIA D: confirmacao do estorno — helpers PUROS
+// ---------------------------------------------------------------------------
+// Um refund do Mercado Pago so conta como confirmado quando `status='approved'`.
+export function refundConfirmadoNoMP(mpStatus: string | null | undefined): boolean {
+  return String(mpStatus || "").toLowerCase() === "approved";
+}
+
+// O acerto so vai a `executado` quando ha ao menos um estorno e TODOS estao
+// confirmados (nada pendente/erro). Vale para estorno MP e devolucao manual.
+export function todosEstornosConfirmados(estornos: { status: string }[]): boolean {
+  const lista = Array.isArray(estornos) ? estornos : [];
+  return lista.length > 0 && lista.every((e) => e.status === "confirmado");
+}
+
 export function calcularAcertoCreditoEscopo(e: {
   valorProgramaNovo: number;
   jaPago: number;

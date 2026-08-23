@@ -2504,6 +2504,142 @@ function BotaoPreviaEstorno({
   );
 }
 
+// Execucao do estorno (Fatia D): money-out. Confirmacao explicita; para
+// devolucao manual, coleta o comprovante e confirma. So aparece em 'aceito' e
+// para quem tem financeiro.gerir; o servidor revalida (inclui recusa se provisorio).
+function BotaoExecutarAcerto({
+  titularId,
+  acertoId,
+  status,
+  podeExecutar,
+}: {
+  titularId: string;
+  acertoId: string;
+  status: string;
+  podeExecutar: boolean;
+}) {
+  const router = useRouter();
+  const [fase, setFase] = useState<"idle" | "confirmando" | "manual">("idle");
+  const [enviando, setEnviando] = useState(false);
+  const [comprovante, setComprovante] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; txt: string } | null>(null);
+  if (status !== "aceito" || !podeExecutar) return null;
+
+  async function executar() {
+    setMsg(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/acerto/executar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acertoId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setMsg({ ok: false, txt: data?.error || "Falha ao executar." });
+        return;
+      }
+      if (data.meio === "manual" && !data.executado) {
+        setFase("manual");
+        setMsg({ ok: true, txt: "Devolução manual registrada. Anexe o comprovante e confirme." });
+        return;
+      }
+      setMsg({
+        ok: true,
+        txt: data.executado
+          ? "Estorno executado."
+          : "Estorno disparado; aguardando confirmação do Mercado Pago.",
+      });
+      router.refresh();
+    } catch {
+      setMsg({ ok: false, txt: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function confirmarManual() {
+    setMsg(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/acerto/confirmar-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acertoId, comprovanteUrl: comprovante.trim() || null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setMsg({ ok: false, txt: data?.error || "Falha ao confirmar." });
+        return;
+      }
+      setMsg({ ok: true, txt: "Devolução confirmada." });
+      router.refresh();
+    } catch {
+      setMsg({ ok: false, txt: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-100 pt-3">
+      {fase === "manual" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="url"
+            value={comprovante}
+            onChange={(e) => setComprovante(e.target.value)}
+            placeholder="URL do comprovante (opcional)"
+            className="min-w-[16rem] flex-1 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-sm"
+          />
+          <button
+            type="button"
+            onClick={confirmarManual}
+            disabled={enviando}
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {enviando ? "Confirmando…" : "Confirmar devolução manual"}
+          </button>
+        </div>
+      ) : fase === "confirmando" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-neutral-600">
+            Isto dispara a devolução ao cliente (estorno no Mercado Pago ou devolução manual).
+            Confirmar?
+          </span>
+          <button
+            type="button"
+            onClick={executar}
+            disabled={enviando}
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {enviando ? "Executando…" : "Confirmar execução"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFase("idle")}
+            disabled={enviando}
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setFase("confirmando")}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          Executar estorno
+        </button>
+      )}
+      {msg ? (
+        <p className={"mt-1 text-xs " + (msg.ok ? "text-emerald-700" : "text-red-600")}>{msg.txt}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function AcertoCard({
   acerto,
   contratos,
@@ -2568,6 +2704,12 @@ function AcertoCard({
         acertoId={acerto.id}
         status={acerto.status}
         podeVer={podePropor}
+      />
+      <BotaoExecutarAcerto
+        titularId={titularId}
+        acertoId={acerto.id}
+        status={acerto.status}
+        podeExecutar={podePropor}
       />
     </div>
   );

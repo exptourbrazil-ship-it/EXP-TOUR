@@ -890,6 +890,74 @@ export async function enviarAvisoCronogramaAtualizadoEmail(
   return data;
 }
 
+// Recibo de DEVOLUCAO (motor de acerto, Fatia D): confirma ao cliente que o
+// reembolso do acerto foi processado. Best-effort. `meio` = 'mp' (estorno no
+// cartao/Pix) | 'manual' (devolucao por fora).
+export async function enviarReciboDevolucaoEmail(
+  destinatario: string,
+  nome: string,
+  dados: { valorBRL: number; meio: "mp" | "manual"; portalUrl?: string | null }
+) {
+  const { apiKey, fromEmail } = getConfig();
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const valor = `R$ ${(Number(dados.valorBRL) || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+  const comoTxt =
+    dados.meio === "mp"
+      ? "O estorno foi enviado ao meio de pagamento original; o prazo de compensação depende do seu banco/emissor."
+      : "A devolução foi processada pela nossa equipe; em caso de dúvida sobre o comprovante, fale com o seu consultor.";
+  const botao = dados.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${dados.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Confirmamos a devolução do seu acerto no valor de <strong>${valor}</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 4px;">${comoTxt}</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Confirmação de devolução - EXP Tour",
+        html,
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "recibo_devolucao", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "recibo_devolucao", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "recibo_devolucao", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

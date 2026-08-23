@@ -156,6 +156,25 @@ export async function refundPayment(
   return response.json();
 }
 
+// Consulta o status de um estorno especifico no Mercado Pago (motor de acerto,
+// Fatia D — confirmacao do refund). Retorna o corpo (inclui `status`). Retorna
+// null se o refund nao existe (404). Lanca nos demais erros/sem token.
+export async function consultarRefund(paymentId: string, refundId: string) {
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error("MERCADOPAGO_ACCESS_TOKEN nao configurado");
+  }
+  const response = await fetch(
+    `${MP_API_URL}/v1/payments/${paymentId}/refunds/${refundId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error("Nao foi possivel consultar o estorno");
+  }
+  return response.json();
+}
+
 // Consulta o status atual de um pagamento no Mercado Pago (usado pelo webhook).
 // Retorna null quando o pagamento NAO existe (404); lanca nos demais erros.
 export async function consultarPagamento(paymentId: string) {

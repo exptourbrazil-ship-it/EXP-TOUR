@@ -11,6 +11,8 @@ import {
   transicaoAcertoPermitida,
   renderizarTermoAcerto,
   planejarRefund,
+  refundConfirmadoNoMP,
+  todosEstornosConfirmados,
 } from "./acerto.ts";
 
 test("determinarRetencaoPercentual: faixas placeholder por dias ate inicio", () => {
@@ -261,4 +263,17 @@ test("planejarRefund: pago_em invalido -> fora da janela (manual, nao MP)", () =
   });
   assert.equal(p.meio, "manual");
   assert.equal(p.motivoManual, "fora_da_janela");
+});
+
+test("refundConfirmadoNoMP: so 'approved' confirma", () => {
+  assert.equal(refundConfirmadoNoMP("approved"), true);
+  assert.equal(refundConfirmadoNoMP("pending"), false);
+  assert.equal(refundConfirmadoNoMP(null), false);
+  assert.equal(refundConfirmadoNoMP(undefined), false);
+});
+
+test("todosEstornosConfirmados: todos confirmados e ao menos um", () => {
+  assert.equal(todosEstornosConfirmados([]), false);
+  assert.equal(todosEstornosConfirmados([{ status: "confirmado" }]), true);
+  assert.equal(todosEstornosConfirmados([{ status: "confirmado" }, { status: "pendente" }]), false);
 });

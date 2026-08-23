@@ -418,6 +418,10 @@ create unique index if not exists uidx_estornos_acerto_pagamento
   on estornos(acerto_id, pagamento_id) where pagamento_id is not null;
 create unique index if not exists uidx_estornos_refund
   on estornos(external_refund_id) where external_refund_id is not null;
+-- Idempotencia da devolucao MANUAL (pagamento_id NULL, fora dos indices acima):
+-- no maximo UMA por acerto, para nao pagar a mao duas vezes.
+create unique index if not exists uidx_estornos_manual
+  on estornos(acerto_id) where meio = 'manual';
 alter table if exists estornos enable row level security;
 
 -- Alteracoes de plano (motor de alteracao — E2 adiamento; doc 01 §4). NESTE

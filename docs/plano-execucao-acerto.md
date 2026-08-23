@@ -126,20 +126,30 @@ _(Meio decidido: **estorno via MP**, ver §1.3.)_
   de executar (a prévia usa todos os pagamentos do contrato); deduplicar a
   devolução manual em código (`pagamento_id` nulo não tem unique).
 
-### Fatia D — Execução confirmada por webhook (money out)
-- **Transição `aceito → executado` só por confirmação.** A rota de execução
-  (`financeiro.gerir`, **sessão, sem Bearer**) dispara o(s) refund(s) da Fatia C,
-  mas **não marca `executado`** — grava a intenção e aguarda.
-- **Consumidor de webhook de estorno** seguindo o padrão `events`
-  (`idempotency_key = mercadopago:refund:<id>`): ao confirmar, grava no ledger
-  `estornos`, soma; quando os estornos cobrem o `saldo_devolver_cliente`, marca
-  `acertos.status='executado'`. Dedupe, tentativas, reprocessável, **falha
-  fechada**.
+### Fatia D — Execução confirmada por reconsulta (money out) · ✅ CONCLUÍDA
+- **Transição `aceito → executado` só por confirmação.** `executarAcerto`
+  (rota **sessão, sem Bearer**, `financeiro.gerir`) dispara o(s) refund(s) da
+  Fatia C, grava os `estornos` e **só marca `executado`** quando TODOS confirmam.
+- **Confirmação por reconsulta ao MP** (cron `conciliar-estornos`, `30 15 * * *`):
+  reconsulta cada estorno MP pendente; ao MP retornar `approved`, marca
+  `confirmado`; quando todos confirmam, finaliza o acerto (update atômico
+  `.eq('status','aceito')`) e envia o recibo. Falha **fechada** (CRON_SECRET).
+  _(A confirmação é por reconsulta autoritativa, mesmo padrão do
+  `conciliar-pagamentos`; um webhook dedicado de estorno pode ser somado depois
+  para imediatismo.)_
+- **Devolução MANUAL:** `executarAcerto` registra a intenção (unique
+  `uidx_estornos_manual`); `confirmarDevolucaoManual` (comprovante) finaliza.
+- **INERTE por segurança:** recusa acerto **provisório** (`provisorio=true`) —
+  só move dinheiro após a retenção validada juridicamente (§6.3).
+- **Guardas anti-duplicação** (revisão): estorno MP idempotente por
+  `(acerto_id, pagamento_id)` + `X-Idempotency-Key` + **não redispara** o que já
+  tem `refund_id`; manual único por acerto (banco); **bloqueia coexistir** MP e
+  manual no mesmo acerto (evita devolver 2x se o meio mudar).
 - **Recibo de devolução** ao cliente (best-effort, `email.ts`).
-- **Cron de conciliação** (rede de segurança, como no pagamento): reconsulta
-  refunds pendentes e reconcilia estados.
-- **Risco:** alto (dinheiro sai). **Guardas:** idempotência ponta a ponta; nunca
-  `executado` por tela; não executar sem `aceito`; posse por titular; auditoria.
+- **Risco:** alto (dinheiro sai) — mitigado pelas guardas + inércia por provisório.
+- **Recuperação:** estorno `erro` ou `pendente sem refund_id` é recuperado por
+  **reexecução idempotente** (visível no ledger; o acerto fica `aceito` até
+  finalizar). **Testes:** puros (confirmação, "todos confirmados").
 
 ### Fatia E — Aditivo de compra avulso (E3, money in) · menor/opcional
 - Alternativa ao *folding* atual: cobrança Pix **dedicada** para o delta positivo
@@ -220,8 +230,8 @@ A ordem coloca todo o valor **sem risco de dinheiro** (A, B) antes de qualquer
 peça que mova caixa (C, D), e cada fatia é entregável e testável isoladamente.
 As Fatias A–C podem ser construídas já; a Fatia D depende das decisões do §6.
 
-> **Estado:** Fatias A, B e C **concluídas**; **meio de refund decidido**
-> (estorno via MP + fallback manual, §1.3). Próxima: Fatia D (execução confirmada
-> por webhook). A execução é construída **inerte por segurança**: recusa acerto
-> provisório (`provisorio=true`), então só move dinheiro depois que a retenção
-> for validada juridicamente (§6.3).
+> **Estado:** Fatias A, B, C e D **concluídas**. O ciclo do acerto está completo
+> ponta a ponta (rascunho → proposta → aceite → execução do refund confirmada),
+> mas **inerte** até: (1) a retenção ser validada juridicamente (§6.3, flip de
+> `validado_juridicamente`), (2) `MERCADOPAGO_ACCESS_TOKEN` com permissão de
+> estorno. Só falta a **Fatia E** (aditivo avulso, opcional).
