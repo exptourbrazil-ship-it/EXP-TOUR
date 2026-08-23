@@ -6,6 +6,7 @@ import {
   montarIdempotencyKey,
 } from "@/lib/mp-events";
 import { processarPagamentoMercadoPago } from "@/lib/mp-processar-pagamento";
+import { tratarDisputaLedger } from "@/lib/disputa-service";
 
 export const runtime = "nodejs";
 
@@ -87,6 +88,31 @@ async function registrarAssinaturaInvalida(paymentId: string) {
   }
 }
 
+// Trata uma DISPUTA de pagamento (E9). Usa um ledger PROPRIO
+// (mercadopago:dispute:<id>), separado do de pagamento — a contestacao chega
+// DEPOIS da aprovacao, cujo evento payment:<id> ja esta 'processado'; sem chave
+// propria, a disputa seria descartada como duplicada. Idempotente: uma vez
+// 'processado', reentregas curto-circuitam.
+async function tratarDisputa(
+  supabase: ReturnType<typeof getSupabase>,
+  paymentId: string,
+  statusMP: string,
+  body: unknown
+): Promise<NextResponse> {
+  const res = await tratarDisputaLedger(supabase, paymentId, statusMP, body);
+  if (res.outcome === "erro") {
+    // Falha transitoria ao abrir o E9: 500 para o MP reenviar.
+    return NextResponse.json({ ok: false, erro: res.erro }, { status: 500 });
+  }
+  if (res.outcome === "duplicado") {
+    return NextResponse.json({ ok: true, disputa: true, duplicado: true });
+  }
+  if (res.outcome === "ignorado") {
+    return NextResponse.json({ ok: true, disputa: true, ignorado: res.motivo });
+  }
+  return NextResponse.json({ ok: true, disputa: true, contratos: res.contratos });
+}
+
 export async function POST(request: Request) {
   const raw = await request.text();
   let body: unknown = null;
@@ -139,6 +165,28 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existente?.status === "processado") {
+    // O efeito do pagamento ja foi aplicado. Mas pode ter chegado uma DISPUTA
+    // para o MESMO pagamento (a contestacao vem depois da aprovacao). Se a
+    // disputa ainda nao foi tratada, reconsulta o status no MP; se contestado,
+    // abre o E9 sob o ledger de disputa. Reentregas param quando ha 200.
+    const disputaKey = montarIdempotencyKey("mercadopago", "dispute", paymentId);
+    const { data: jaDisputa } = await supabase
+      .from("events")
+      .select("status")
+      .eq("idempotency_key", disputaKey)
+      .maybeSingle();
+    if (jaDisputa?.status === "processado") {
+      return NextResponse.json({ ok: true, duplicado: true });
+    }
+    const chk = await processarPagamentoMercadoPago(supabase, paymentId);
+    if (chk.status === "disputa") {
+      return await tratarDisputa(supabase, paymentId, chk.paymentStatus, body);
+    }
+    if (chk.status === "erro") {
+      // Erro transitorio ao reconsultar: 500 para o MP reenviar (e detectarmos
+      // a disputa numa proxima entrega).
+      return NextResponse.json({ ok: false, erro: chk.erro }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, duplicado: true });
   }
 
@@ -179,6 +227,17 @@ export async function POST(request: Request) {
   }
 
   const resultado = await processarPagamentoMercadoPago(supabase, paymentId);
+
+  if (resultado.status === "disputa") {
+    // Primeira notificacao ja veio contestada (raro): nao ha efeito de pagamento
+    // a aplicar agora. Marca o evento de pagamento como ignorado e trata o E9
+    // sob o ledger de disputa.
+    await supabase
+      .from("events")
+      .update({ status: "ignorado", erro: null, updated_at: new Date().toISOString() })
+      .eq("id", eventId);
+    return await tratarDisputa(supabase, paymentId, resultado.paymentStatus, body);
+  }
 
   if (resultado.status === "erro") {
     await supabase

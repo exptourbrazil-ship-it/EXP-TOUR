@@ -73,6 +73,17 @@ if (insertError) {
   return NextResponse.json({ error: "Falha ao salvar registro do documento" }, { status: 500 });
 }
 
+// Reenvio -> para o relogio do E11 (cliente incontactavel): o cliente respondeu.
+// Limpa rejeitado_em das linhas REJEITADAS anteriores do MESMO tipo, para o cron
+// escalar-incontactavel nao tratar como "nao reenviado". Best-effort.
+await supabase
+  .from("documentos")
+  .update({ rejeitado_em: null })
+  .eq("titular_id", titularId)
+  .eq("tipo_documento", tipoDocumento)
+  .eq("status", "rejeitado")
+  .not("rejeitado_em", "is", null);
+
 // Copia o documento para o Contato do titular no Zoho CRM (best-effort).
 await espelharDocumentoNoContatoZoho(supabase, titularId, nomeArquivo, buffer, arquivo.type);
 

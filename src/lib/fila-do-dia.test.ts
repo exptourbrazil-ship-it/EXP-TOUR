@@ -86,9 +86,11 @@ test("papelVeCategoria: gestor tudo; demais so a sua area", () => {
   assert.equal(papelVeCategoria("operacao", "documento"), true);
   assert.equal(papelVeCategoria("operacao", "fornecedor"), true);
   assert.equal(papelVeCategoria("operacao", "parcela"), false);
-  // consultor: so proposta
+  // consultor: proposta e excecao (E1 visto negado, retencao em cancelamento)
   assert.equal(papelVeCategoria("consultor", "proposta"), true);
+  assert.equal(papelVeCategoria("consultor", "excecao"), true);
   assert.equal(papelVeCategoria("consultor", "parcela"), false);
+  assert.equal(papelVeCategoria("consultor", "documento"), false);
   // papel desconhecido nao ve nada (falha fechada)
   assert.equal(papelVeCategoria("root", "documento"), false);
 });
@@ -106,4 +108,26 @@ test("filtrarPorPapel: financeiro so ve parcelas; nao muta a entrada", () => {
   assert.deepEqual(soFinanceiro, ["parcela"]);
   assert.equal(filtrarPorPapel(entrada, "gestor").length, 3);
   assert.equal(entrada.length, 3); // intacta
+});
+
+test("filtrarPorPapel: item com papelAlvo roteia pelo dono, nao pela categoria", () => {
+  const exc = (papelAlvo: string, titulo: string): ItemFila => ({
+    categoria: "excecao",
+    titulo,
+    criadoEm: "2026-08-01T00:00:00Z",
+    idadeDias: 1,
+    estado: "no_prazo",
+    papelAlvo,
+  });
+  const entrada = [
+    exc("consultor", "E1 visto negado"),
+    exc("financeiro", "E9 chargeback"),
+    exc("operacao", "E10 fraude"),
+  ];
+  // Cada papel ve so as exceptions das quais e dono...
+  assert.deepEqual(filtrarPorPapel(entrada, "financeiro").map((i) => i.titulo), ["E9 chargeback"]);
+  assert.deepEqual(filtrarPorPapel(entrada, "consultor").map((i) => i.titulo), ["E1 visto negado"]);
+  assert.deepEqual(filtrarPorPapel(entrada, "operacao").map((i) => i.titulo), ["E10 fraude"]);
+  // ...e o gestor ve todas.
+  assert.equal(filtrarPorPapel(entrada, "gestor").length, 3);
 });

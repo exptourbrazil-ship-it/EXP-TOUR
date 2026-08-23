@@ -15,6 +15,7 @@ import {
   saldoPorMoedaAberto,
   estimarSaldoBRL,
 } from "@/lib/caso";
+import { excecaoAtiva, type StatusExcecao } from "@/lib/excecao";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -42,6 +43,7 @@ export type CasoContrato = {
   estudante_data_nascimento: string | null;
   estudante_email: string | null;
   pais_destino: string | null;
+  visto_status: string | null;
   cancelado_em: string | null;
   cancelado_tipo: string | null;
   cancelado_motivo: string | null;
@@ -61,6 +63,8 @@ export type CasoParcela = {
   vencimento: string | null;
   is_entrada: boolean | null;
   status: string;
+  em_disputa: boolean | null;
+  disputa_status: string | null;
   paid_at: string | null;
 };
 
@@ -80,7 +84,69 @@ export type CasoDocumento = {
   nome_arquivo: string | null;
   origem: string | null;
   status: string | null;
+  motivo_rejeicao: string | null;
   created_at: string | null;
+};
+
+export type CasoExcecao = {
+  id: string;
+  contrato_id: string;
+  tipo: string;
+  status: string;
+  suspende: string[] | null;
+  etapa: string | null;
+  motivo: string | null;
+  desfecho: string | null;
+  resolucao: string | null;
+  aberta_por: string | null;
+  resolvida_por: string | null;
+  aberta_em: string | null;
+  resolvida_em: string | null;
+};
+
+export type CasoAcerto = {
+  id: string;
+  contrato_id: string;
+  tipo_cancelamento: string | null;
+  status: string;
+  moeda: string | null;
+  valor_total: number | null;
+  total_pago: number | null;
+  retencao_percentual: number | null;
+  retencao_valor: number | null;
+  refund_escola_esperado: number | null;
+  saldo_devolver_cliente: number | null;
+  memoria: { rotulo: string; valor: number; tipo: string }[] | null;
+  provisorio: boolean | null;
+  criado_em: string | null;
+};
+
+export type CasoAlteracao = {
+  id: string;
+  contrato_id: string;
+  excecao_id: string | null;
+  tipo: string; // 'deferral' (E2) | 'escopo' (E3)
+  status: string;
+  moeda: string | null;
+  data_inicio_atual: string | null;
+  nova_data_inicio: string | null;
+  nova_data_quitacao: string | null;
+  saldo_devedor: number | null;
+  num_parcelas: number | null;
+  plano_proposto: { numero: number; vencimento: string; valor: number }[] | null;
+  // E3 (escopo); nulos para 'deferral'.
+  valor_programa_atual: number | null;
+  valor_programa_novo: number | null;
+  delta: number | null;
+  ja_pago: number | null;
+  credito_cliente: number | null;
+  sentido: string | null;
+  provisorio: boolean | null;
+  aplicada_em: string | null;
+  aplicada_por: string | null;
+  aditivo_proposto_em: string | null;
+  aditivo_aceito_em: string | null;
+  criado_em: string | null;
 };
 
 export type CasoComunicacao = {
@@ -108,7 +174,11 @@ export type Caso = {
   documentos: CasoDocumento[];
   comunicacao: CasoComunicacao[];
   eventos: CasoEvento[];
+  excecoes: CasoExcecao[];
+  acertos: CasoAcerto[];
+  alteracoes: CasoAlteracao[];
   // Derivados
+  excecoesAtivas: CasoExcecao[]; // processos ativos (nao terminais) — "processo ativo" do caso
   jornada: EtapaJornada[];
   etapaAtual: number; // indice da primeira etapa nao concluida
   saldoPorMoeda: Record<string, number>; // em aberto, por moeda do programa
@@ -135,7 +205,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   const { data: contratos } = await supabase
     .from("contratos")
     .select(
-      "id, nome, valor_total, moeda, estudante_nome, estudante_sexo, estudante_data_nascimento, estudante_email, pais_destino, cancelado_em, cancelado_tipo, cancelado_motivo, cancelado_por, created_at"
+      "id, nome, valor_total, moeda, estudante_nome, estudante_sexo, estudante_data_nascimento, estudante_email, pais_destino, visto_status, cancelado_em, cancelado_tipo, cancelado_motivo, cancelado_por, created_at"
     )
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });
@@ -153,7 +223,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     const { data: parcelasData } = await supabase
       .from("parcelas")
       .select(
-        "id, contrato_id, numero, descricao, valor_original, valor_atual, cotacao_aplicada, valor_cobrado_brl, vencimento, is_entrada, status, paid_at"
+        "id, contrato_id, numero, descricao, valor_original, valor_atual, cotacao_aplicada, valor_cobrado_brl, vencimento, is_entrada, status, em_disputa, disputa_status, paid_at"
       )
       .in("contrato_id", contratoIds)
       .order("contrato_id", { ascending: true })
@@ -171,10 +241,44 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   // Documentos do titular.
   const { data: documentosData } = await supabase
     .from("documentos")
-    .select("id, tipo_documento, nome_arquivo, origem, status, created_at")
+    .select("id, tipo_documento, nome_arquivo, origem, status, motivo_rejeicao, created_at")
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });
   const documentos = (documentosData || []) as CasoDocumento[];
+
+  // Processos de excecao do titular (doc 01, Secao 4). Ordenados por abertura
+  // desc; a UI separa os ativos (nao terminais) para o cabecalho do caso.
+  const { data: excecoesData } = await supabase
+    .from("case_exceptions")
+    .select(
+      "id, contrato_id, tipo, status, suspende, etapa, motivo, desfecho, resolucao, aberta_por, resolvida_por, aberta_em, resolvida_em"
+    )
+    .eq("titular_id", titularId)
+    .order("aberta_em", { ascending: false });
+  const excecoes = (excecoesData || []) as CasoExcecao[];
+  const excecoesAtivas = excecoes.filter((e) => excecaoAtiva(e.status as StatusExcecao));
+
+  // Acertos (rascunhos calculados) do titular — memoria de calculo para o
+  // Financeiro revisar.
+  const { data: acertosData } = await supabase
+    .from("acertos")
+    .select(
+      "id, contrato_id, tipo_cancelamento, status, moeda, valor_total, total_pago, retencao_percentual, retencao_valor, refund_escola_esperado, saldo_devolver_cliente, memoria, provisorio, criado_em"
+    )
+    .eq("titular_id", titularId)
+    .order("criado_em", { ascending: false });
+  const acertos = (acertosData || []) as CasoAcerto[];
+
+  // Alteracoes (rascunhos do plano recalculado) do titular — previa do
+  // adiamento (E2) para o Financeiro/Operacao revisar.
+  const { data: alteracoesData } = await supabase
+    .from("alteracoes")
+    .select(
+      "id, contrato_id, excecao_id, tipo, status, moeda, data_inicio_atual, nova_data_inicio, nova_data_quitacao, saldo_devedor, num_parcelas, plano_proposto, valor_programa_atual, valor_programa_novo, delta, ja_pago, credito_cliente, sentido, provisorio, aplicada_em, aplicada_por, aditivo_proposto_em, aditivo_aceito_em, criado_em"
+    )
+    .eq("titular_id", titularId)
+    .order("criado_em", { ascending: false });
+  const alteracoes = (alteracoesData || []) as CasoAlteracao[];
 
   // Comunicacao: e-mail (por destinatario = e-mail do titular) + WhatsApp (por
   // destinatario = telefone do titular). So consulta se houver o contato.
@@ -257,6 +361,10 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     documentos,
     comunicacao,
     eventos,
+    excecoes,
+    acertos,
+    alteracoes,
+    excecoesAtivas,
     jornada,
     etapaAtual,
     saldoPorMoeda,

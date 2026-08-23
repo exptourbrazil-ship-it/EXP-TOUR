@@ -37,6 +37,10 @@ alter table if exists contratos add column if not exists estudante_nome text;
 alter table if exists contratos add column if not exists estudante_sexo text
   check (estudante_sexo in ('F','M'));
 alter table if exists contratos add column if not exists pais_destino text;
+-- Resultado do visto do estudante (por contrato). A transicao para 'negado'
+-- dispara o processo de excecao E1 (doc 01 §4) — ver src/lib/visto-service.ts.
+alter table if exists contratos add column if not exists visto_status text
+  check (visto_status is null or visto_status in ('em_analise','aprovado','negado'));
 -- id do Contato no Zoho CRM: chave estavel de dedupe do webhook (independe de
 -- qual CPF vira titular). Ver src/app/api/integrations/zoho/webhook/route.ts.
 alter table if exists contratos add column if not exists zoho_contact_id text;
@@ -65,6 +69,13 @@ create table if not exists parcelas (
 
 create index if not exists idx_parcelas_contrato on parcelas(contrato_id);
 create index if not exists idx_contratos_titular on contratos(titular_id);
+
+-- Disputa de pagamento (processo E9, doc 01 §4). Sinaliza que uma parcela paga
+-- teve o pagamento CONTESTADO no Mercado Pago (MED Pix / chargeback). O status
+-- 'pago' e preservado (o ledger de pagamentos e imutavel); a flag congela o
+-- "efeito" e alimenta o processo E9 (aberto pelo webhook). Ver disputa-service.ts.
+alter table if exists parcelas add column if not exists em_disputa boolean not null default false;
+alter table if exists parcelas add column if not exists disputa_status text; -- status do MP: in_mediation | charged_back
 
 -- Ledger de pagamentos: um lancamento imutavel por parcela paga, com o cambio
 -- aplicado e o montante em BRL efetivamente pago (do transaction_amount do
@@ -261,6 +272,399 @@ create table if not exists tasks (
 create index if not exists idx_tasks_estado on tasks(estado, criado_em desc);
 create index if not exists idx_tasks_dono on tasks(dono) where estado <> 'concluido';
 
+-- Processos de EXCECAO (doc 01, Secao 4; doc 07, Secao 3.2). Uma excecao NAO e
+-- um estado da linha principal: e um processo paralelo, com maquina propria,
+-- que ao abrir SUSPENDE partes do motor (cobranca/lembretes/avanco) e ao fechar
+-- retoma/redireciona/encerra a jornada. Ancorada no CONTRATO (visto negado,
+-- deferral etc. sao por estudante/contrato); titular_id denormalizado para o
+-- Caso 360 agregar. O "processo ativo" de um contrato e a excecao nao-terminal.
+-- Vocabulario e maquina de estados vivem em src/lib/excecao.ts (puro, testado).
+-- RLS habilitado sem policies: autorizacao e feita em codigo (service role).
+create table if not exists case_exceptions (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  tipo text not null,                       -- slug E1..E11 (ver src/lib/excecao.ts)
+  status text not null default 'aberta'
+    check (status in ('aberta','em_andamento','resolvida','cancelada')),
+  suspende jsonb not null default '[]'::jsonb, -- dominios suspensos: cobranca/lembretes/avanco
+  etapa text,                               -- ponto de decisao atual dentro do processo
+  motivo text,                              -- por que foi aberta
+  desfecho text                             -- ao resolver: retomada/redirecionamento/encerramento
+    check (desfecho is null or desfecho in ('retomada','redirecionamento','encerramento')),
+  resolucao text,                           -- nota de resolucao
+  aberta_por text,                          -- admin_users.email (ou 'sistema' quando automatica)
+  resolvida_por text,
+  aberta_em timestamptz not null default now(),
+  resolvida_em timestamptz,
+  atualizada_em timestamptz not null default now()
+  );
+
+create index if not exists idx_case_exceptions_contrato on case_exceptions(contrato_id);
+create index if not exists idx_case_exceptions_titular on case_exceptions(titular_id);
+-- Fila "excecoes abertas por idade" (doc 07, Secao 1) e "processo ativo" do caso.
+create index if not exists idx_case_exceptions_ativas on case_exceptions(status, aberta_em desc)
+  where status in ('aberta','em_andamento');
+-- No maximo UMA excecao ativa do mesmo tipo por contrato: o pre-check em codigo
+-- (abrirExcecao) e read-then-insert e nao segura duas aberturas concorrentes;
+-- este indice unico parcial e a garantia real no banco.
+create unique index if not exists uidx_case_exceptions_ativa
+  on case_exceptions(contrato_id, tipo) where status in ('aberta','em_andamento');
+alter table if exists case_exceptions enable row level security;
+
+-- Acertos de cancelamento/alteracao (motor de acerto — doc 01 §4 E4/E5/E6/E7;
+-- doc 07 §3.5). NESTE passo guarda o RASCUNHO calculado (retencao/multa, saldo a
+-- devolver, memoria de calculo) para o Financeiro revisar. NAO propoe ao cliente,
+-- NAO coleta aceite, NAO executa refund (marcos proprios; dinheiro so muda por
+-- webhook confirmado). `provisorio` = regras de retencao ainda placeholder
+-- (pendentes de validacao juridica). Vocabulario/calculo em src/lib/acerto.ts.
+-- RLS habilitado sem policies: autorizacao e feita em codigo (service role).
+create table if not exists acertos (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  excecao_id uuid references case_exceptions(id),
+  tipo_cancelamento text,                 -- slug da excecao de origem (E4/E5/E6/E7)
+  status text not null default 'rascunho'
+    check (status in ('rascunho','proposto','aceito','executado','cancelado')),
+  moeda text,
+  valor_total numeric(12,2),
+  total_pago numeric(12,2),
+  retencao_percentual numeric(6,4),
+  retencao_valor numeric(12,2),
+  refund_escola_esperado numeric(12,2),
+  saldo_devolver_cliente numeric(12,2),
+  memoria jsonb,                          -- linhas da memoria de calculo
+  provisorio boolean not null default true,
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+
+create index if not exists idx_acertos_contrato on acertos(contrato_id);
+create index if not exists idx_acertos_titular on acertos(titular_id);
+-- Execucao do acerto (Fatia B): proposta ao cliente + aceite eletronico.
+alter table if exists acertos add column if not exists proposto_em timestamptz;
+alter table if exists acertos add column if not exists aceito_em timestamptz;
+-- termo_id sem FK: `termos` e definido mais abaixo no arquivo (integridade
+-- garantida em codigo, no padrao RLS-sem-policy do portal).
+alter table if exists acertos add column if not exists termo_id uuid;
+-- Execucao do acerto (Fatia C/D): meio do refund e quando foi executado.
+alter table if exists acertos add column if not exists refund_meio text;
+alter table if exists acertos add column if not exists executado_em timestamptz;
+
+-- No maximo UM rascunho por (contrato, EXCECAO de origem): recalcular atualiza o
+-- rascunho daquela excecao (o read-then-write em codigo nao segura duas
+-- requisicoes concorrentes). Por excecao — e nao so por contrato — para um
+-- cancelamento (E4-E7) e um credito de escopo (E3) coexistirem sem se
+-- sobrescrever quando ambas as excecoes estao ativas no mesmo contrato.
+drop index if exists uidx_acertos_rascunho;
+create unique index if not exists uidx_acertos_rascunho
+  on acertos(contrato_id, excecao_id) where status = 'rascunho';
+alter table if exists acertos enable row level security;
+
+-- Config de RETENCAO por instancia (motor de acerto, Fatia A). Tira as faixas do
+-- hardcode: o motor le daqui. Enquanto `validado_juridicamente=false`, a memoria
+-- do acerto marca `provisorio=true` (aviso na tela). Uma unica linha vigente
+-- (portal single-tenant). Gerida por config.gerir (so Gestor). RLS sem policy.
+create table if not exists config_retencao (
+  id uuid primary key default gen_random_uuid(),
+  faixas jsonb not null,                     -- [{minDiasAteInicio, percentual}]
+  tipos_sem_retencao jsonb not null default '[]'::jsonb, -- ex.: ["cancelamento_escola"]
+  validado_juridicamente boolean not null default false,
+  vigente boolean not null default true,
+  observacao text,
+  atualizado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+-- No maximo UMA config vigente.
+create unique index if not exists uidx_config_retencao_vigente
+  on config_retencao(vigente) where vigente = true;
+alter table if exists config_retencao enable row level security;
+
+-- Seed: replica o PLACEHOLDER atual como config NAO validada (mantem o
+-- comportamento provisorio=true ate a validacao juridica). So insere se vazia.
+insert into config_retencao (faixas, tipos_sem_retencao, validado_juridicamente, observacao)
+select
+  '[{"minDiasAteInicio":60,"percentual":0.10},{"minDiasAteInicio":30,"percentual":0.25},{"minDiasAteInicio":0,"percentual":0.50}]'::jsonb,
+  '["cancelamento_escola"]'::jsonb,
+  false,
+  'Seed placeholder (a validar juridicamente).'
+where not exists (select 1 from config_retencao where vigente = true);
+
+-- Ledger de ESTORNOS (motor de acerto, Fatia C/D): um lancamento por refund
+-- (estorno via MP) ou devolucao manual. Espelha o padrao imutavel de
+-- `pagamentos`. A execucao (Fatia D) grava aqui e so marca o acerto `executado`
+-- quando o webhook de estorno confirma. RLS habilitado sem policy.
+create table if not exists estornos (
+  id uuid primary key default gen_random_uuid(),
+  acerto_id uuid not null references acertos(id) on delete cascade,
+  pagamento_id uuid references pagamentos(id),
+  external_refund_id text,                 -- id do refund no Mercado Pago
+  valor_brl numeric(12,2),
+  meio text not null default 'mp' check (meio in ('mp','manual')),
+  status text not null default 'pendente'
+    check (status in ('pendente','confirmado','erro','manual')),
+  erro text,
+  comprovante_url text,                     -- devolucao manual
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+create index if not exists idx_estornos_acerto on estornos(acerto_id);
+-- Idempotencia: um estorno por (acerto, pagamento) e um por refund id do MP.
+create unique index if not exists uidx_estornos_acerto_pagamento
+  on estornos(acerto_id, pagamento_id) where pagamento_id is not null;
+create unique index if not exists uidx_estornos_refund
+  on estornos(external_refund_id) where external_refund_id is not null;
+-- Idempotencia da devolucao MANUAL (pagamento_id NULL, fora dos indices acima):
+-- no maximo UMA por acerto, para nao pagar a mao duas vezes.
+create unique index if not exists uidx_estornos_manual
+  on estornos(acerto_id) where meio = 'manual';
+alter table if exists estornos enable row level security;
+
+-- Alteracoes de plano (motor de alteracao — E2 adiamento; doc 01 §4). NESTE
+-- passo guarda a PREVIA do plano recalculado (nova data-limite de quitacao +
+-- reagendamento do saldo em aberto) como RASCUNHO para o Financeiro/Operacao
+-- revisar. NAO reescreve parcelas nem gera aditivo (aplicacao = marco proprio).
+-- Calculo em src/lib/parcelas.ts (calcularPlanoDeferral). RLS sem policy.
+create table if not exists alteracoes (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  excecao_id uuid references case_exceptions(id),
+  -- Discrimina o motor de alteracao: 'deferral' (E2, so move datas) ou
+  -- 'escopo' (E3, muda o valor do programa -> delta financeiro).
+  tipo text not null default 'deferral'
+    check (tipo in ('deferral','escopo')),
+  status text not null default 'rascunho'
+    check (status in ('rascunho','aplicado','cancelado')),
+  data_inicio_atual date,
+  nova_data_inicio date,
+  nova_data_quitacao date,
+  saldo_devedor numeric(12,2),
+  moeda text,
+  num_parcelas int,
+  plano_proposto jsonb,                   -- [{numero, vencimento, valor}]
+  -- Campos do E3 (alteracao de escopo); nulos para 'deferral'.
+  valor_programa_atual numeric(12,2),
+  valor_programa_novo numeric(12,2),
+  delta numeric(12,2),                     -- novo - atual (na moeda)
+  ja_pago numeric(12,2),
+  credito_cliente numeric(12,2),           -- refund a apurar (motor de acerto)
+  sentido text check (sentido in ('aditivo','credito','neutro')),
+  provisorio boolean not null default true,
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+
+-- Colunas adicionadas apos a criacao inicial da tabela (bancos ja migrados).
+alter table if exists alteracoes add column if not exists tipo text not null default 'deferral';
+alter table if exists alteracoes add column if not exists valor_programa_atual numeric(12,2);
+alter table if exists alteracoes add column if not exists valor_programa_novo numeric(12,2);
+alter table if exists alteracoes add column if not exists delta numeric(12,2);
+alter table if exists alteracoes add column if not exists ja_pago numeric(12,2);
+alter table if exists alteracoes add column if not exists credito_cliente numeric(12,2);
+alter table if exists alteracoes add column if not exists sentido text;
+-- CHECKs para bancos ja migrados (o create table acima so vale em banco novo).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'alteracoes_tipo_check') then
+    alter table alteracoes add constraint alteracoes_tipo_check check (tipo in ('deferral','escopo'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'alteracoes_sentido_check') then
+    alter table alteracoes add constraint alteracoes_sentido_check check (sentido in ('aditivo','credito','neutro'));
+  end if;
+end $$;
+
+-- Execucao em cascata: quando/quem aplicou o rascunho.
+alter table if exists alteracoes add column if not exists aplicada_em timestamptz;
+alter table if exists alteracoes add column if not exists aplicada_por text;
+-- Aditivo de compra (E3 delta>0, Fatia E): consentimento eletronico do cliente.
+-- termo_id sem FK (termos vem depois no arquivo; integridade em codigo).
+alter table if exists alteracoes add column if not exists aditivo_termo_id uuid;
+alter table if exists alteracoes add column if not exists aditivo_proposto_em timestamptz;
+alter table if exists alteracoes add column if not exists aditivo_aceito_em timestamptz;
+
+create index if not exists idx_alteracoes_contrato on alteracoes(contrato_id);
+create index if not exists idx_alteracoes_titular on alteracoes(titular_id);
+-- Um rascunho por (contrato, tipo): E2 e E3 podem coexistir sem colidir.
+drop index if exists uidx_alteracoes_rascunho;
+create unique index if not exists uidx_alteracoes_rascunho
+  on alteracoes(contrato_id, tipo) where status = 'rascunho';
+alter table if exists alteracoes enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Execucao em cascata do motor de alteracao (E2/E3): aplica o RASCUNHO revisado
+-- reescrevendo as parcelas EM ABERTO, atualizando o contrato e marcando a
+-- alteracao como aplicada — tudo em UMA transacao (a funcao roda atomica).
+-- Invariantes preservadas: parcelas pagas nunca sao tocadas; recusa se houver
+-- Pix em aberto ou parcela em disputa; a soma das parcelas continua igual ao
+-- valor do contrato (na moeda); dinheiro nao muda de estado (so cria cobrancas
+-- a vencer, pagas via webhook). A validacao de negocio (posse, excecao ativa,
+-- credito -> acerto, plano nao-vencido) fica no servico; a funcao re-checa os
+-- invariantes de dinheiro dentro da transacao para fechar corridas.
+-- ---------------------------------------------------------------------------
+create or replace function aplicar_alteracao(
+  p_alteracao_id uuid,
+  p_tipo text,
+  p_expected_saldo numeric,
+  p_expected_valor_atual numeric, -- E3: valor do programa que o rascunho assumiu (revalida sob lock)
+  p_new_total numeric,            -- E3: novo valor do programa; E2: ignorado
+  p_new_data_inicio date,
+  p_parcelas jsonb,
+  p_autor text,
+  p_ip text
+) returns jsonb
+language plpgsql
+as $$
+declare
+  v_alt alteracoes%rowtype;
+  v_contrato_id uuid;
+  v_valor_total numeric;
+  v_data_inicio date;
+  v_cancelado_em timestamptz;
+  v_new_total numeric;
+  v_sum_paid numeric;
+  v_sum_proposto numeric;
+  v_max_numero int;
+  v_count_bloqueio int;
+  v_item jsonb;
+  v_before jsonb;
+  v_after jsonb;
+begin
+  -- Trava o rascunho e valida o estado.
+  select * into v_alt from alteracoes where id = p_alteracao_id for update;
+  if not found then raise exception 'alteracao_nao_encontrada'; end if;
+  if v_alt.status <> 'rascunho' then raise exception 'nao_rascunho'; end if;
+
+  -- Trava o contrato.
+  select id, valor_total, data_inicio, cancelado_em
+    into v_contrato_id, v_valor_total, v_data_inicio, v_cancelado_em
+    from contratos where id = v_alt.contrato_id for update;
+  if not found then raise exception 'contrato_nao_encontrado'; end if;
+  -- Guarda: contrato cancelado nao pode ter cronograma reescrito.
+  if v_cancelado_em is not null then raise exception 'contrato_cancelado'; end if;
+
+  -- Trava as parcelas EM ABERTO: serializa contra a geracao de Pix concorrente
+  -- (que atua na parcela), fechando a janela de pagamento orfao.
+  perform 1 from parcelas
+    where contrato_id = v_contrato_id and status <> 'pago' for update;
+
+  -- Guarda: nenhuma parcela nao-paga com cobranca em aberto (Pix gerado OU
+  -- external_payment_id remanescente) — evita ordem/QR apontando p/ parcela deletada.
+  select count(*) into v_count_bloqueio from parcelas
+    where contrato_id = v_contrato_id and status <> 'pago'
+      and (qr_code_url is not null or external_payment_id is not null);
+  if v_count_bloqueio > 0 then raise exception 'pix_em_aberto'; end if;
+
+  -- Guarda: nenhuma parcela em disputa (E9) — dinheiro contestado.
+  select count(*) into v_count_bloqueio from parcelas
+    where contrato_id = v_contrato_id and em_disputa = true;
+  if v_count_bloqueio > 0 then raise exception 'em_disputa'; end if;
+
+  -- Novo total do contrato, decidido SOB LOCK (nao confia cegamente no chamador):
+  --  - E3 (escopo): revalida que o valor atual continua o que o rascunho assumiu
+  --    (senao um upgrade/alteracao concorrente seria sobrescrito) e usa o novo valor;
+  --  - E2 (deferral): o total NAO muda — mantem o valor travado.
+  if p_tipo = 'escopo' then
+    if round(v_valor_total, 2) <> round(p_expected_valor_atual, 2) then
+      raise exception 'desatualizado';
+    end if;
+    v_new_total := p_new_total;
+  else
+    v_new_total := v_valor_total;
+  end if;
+
+  -- Invariante de soma: novo saldo aplicavel = novo total - pago (parcelas).
+  select coalesce(sum(valor_atual), 0) into v_sum_paid from parcelas
+    where contrato_id = v_contrato_id and status = 'pago';
+  if round(v_new_total - v_sum_paid, 2) <> round(p_expected_saldo, 2) then
+    raise exception 'desatualizado';
+  end if;
+
+  -- A soma do plano proposto tem de bater com o saldo esperado.
+  select coalesce(sum((x->>'valor')::numeric), 0) into v_sum_proposto
+    from jsonb_array_elements(p_parcelas) as x;
+  if round(v_sum_proposto, 2) <> round(p_expected_saldo, 2) then
+    raise exception 'plano_invalido';
+  end if;
+
+  -- Snapshot antes (auditoria/replay).
+  select jsonb_build_object(
+    'valor_total', v_valor_total,
+    'data_inicio', v_data_inicio,
+    'parcelas', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'numero', numero, 'valor', valor_atual, 'vencimento', vencimento, 'status', status
+      ) order by numero), '[]'::jsonb)
+      from parcelas where contrato_id = v_contrato_id)
+  ) into v_before;
+
+  -- Reescreve o saldo em aberto: remove as nao-pagas (nenhuma tem cobranca) e recria.
+  delete from parcelas where contrato_id = v_contrato_id and status <> 'pago';
+  select coalesce(max(numero), 0) into v_max_numero from parcelas where contrato_id = v_contrato_id;
+
+  for v_item in select * from jsonb_array_elements(p_parcelas)
+  loop
+    insert into parcelas (contrato_id, numero, descricao, valor_original, valor_atual, vencimento, status, is_entrada)
+    values (
+      v_contrato_id,
+      v_max_numero + (v_item->>'numero')::int,
+      coalesce(v_item->>'descricao', 'Parcela'),
+      (v_item->>'valor')::numeric,
+      (v_item->>'valor')::numeric,
+      (v_item->>'vencimento')::date,
+      'pendente',
+      false
+    );
+  end loop;
+
+  -- Atualiza o contrato: E3 muda o valor_total (sob lock); E2 regrava o mesmo
+  -- valor travado e desloca a data_inicio.
+  update contratos
+    set valor_total = v_new_total,
+        data_inicio = coalesce(p_new_data_inicio, data_inicio)
+    where id = v_contrato_id;
+
+  -- Marca o rascunho como aplicado (libera o indice unico de rascunho).
+  update alteracoes
+    set status = 'aplicado', aplicada_em = now(), aplicada_por = p_autor, atualizada_em = now()
+    where id = p_alteracao_id;
+
+  -- Snapshot depois.
+  select jsonb_build_object(
+    'valor_total', v_new_total,
+    'data_inicio', coalesce(p_new_data_inicio, v_data_inicio),
+    'parcelas', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'numero', numero, 'valor', valor_atual, 'vencimento', vencimento, 'status', status
+      ) order by numero), '[]'::jsonb)
+      from parcelas where contrato_id = v_contrato_id)
+  ) into v_after;
+
+  -- Evento no ledger (idempotente por idempotency_key) — dentro da transacao.
+  insert into events (source, event_type, idempotency_key, external_id, payload, status, processed_at)
+  values ('portal', 'alteracao_aplicada', 'alteracao:aplicar:' || p_alteracao_id::text, p_alteracao_id::text,
+          jsonb_build_object('tipo', v_alt.tipo, 'antes', v_before, 'depois', v_after, 'autor', p_autor),
+          'processado', now())
+  on conflict (idempotency_key) do nothing;
+
+  -- Trilha de auditoria — dentro da MESMA transacao (a reescrita nunca fica sem trilha).
+  insert into admin_audit (usuario, acao, alvo, detalhe, ip)
+  values (p_autor, 'alteracao.aplicar', v_contrato_id::text,
+          jsonb_build_object(
+            'alteracao_id', p_alteracao_id, 'tipo', v_alt.tipo,
+            'novo_total', v_new_total, 'nova_data_inicio', p_new_data_inicio,
+            'num_parcelas', jsonb_array_length(p_parcelas)
+          ), p_ip);
+
+  return jsonb_build_object('ok', true, 'antes', v_before, 'depois', v_after);
+end;
+$$;
+
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por
 -- titular+contrato (o reenvio atualiza a anterior). Escrita/leitura apenas via
@@ -359,6 +763,14 @@ alter table if exists viagem_info        enable row level security;
 alter table if exists documentos add column if not exists contrato_id uuid references contratos(id);
 create index if not exists idx_documentos_contrato on documentos(contrato_id);
 
+-- Motivo da rejeicao de um documento (Caso 360, analise inline pelo admin).
+-- Preenchido quando status='rejeitado'; vai no e-mail de aviso ao titular.
+alter table if exists documentos add column if not exists motivo_rejeicao text;
+-- Quando o documento foi rejeitado (carimbado na transicao para 'rejeitado';
+-- limpo quando sai de rejeitado). Base do E11: documento rejeitado nao reenviado
+-- ha >= 30 dias -> cliente incontactavel (ver cron escalar-incontactavel).
+alter table if exists documentos add column if not exists rejeitado_em timestamptz;
+
 -- Dados do estudante necessarios ao Zoho Sign: a data de nascimento decide a
 -- regra multi-signatario por idade (menor -> so o pagante assina); o e-mail e
 -- para o estudante maior assinar. Ambos opcionais (podem ser preenchidos no
@@ -434,6 +846,9 @@ create table if not exists aceites (
 
 create index if not exists idx_aceites_titular on aceites(titular_id);
 create index if not exists idx_aceites_termo on aceites(termo_id);
+-- Idempotencia atomica da prova: no maximo UM aceite por (titular, termo). Fecha
+-- a corrida de duplo-clique/retry do aceite (o read-then-write nao segurava).
+create unique index if not exists uidx_aceites_titular_termo on aceites(titular_id, termo_id);
 
 alter table if exists termos  enable row level security;
 alter table if exists aceites enable row level security;

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { montarIdempotencyKey } from "@/lib/mp-events";
 import { processarPagamentoMercadoPago } from "@/lib/mp-processar-pagamento";
+import { tratarDisputaLedger } from "@/lib/disputa-service";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
 
   const filtro = supabase
     .from("events")
-    .select("id, external_id, status")
+    .select("id, external_id, status, event_type")
     .limit(1);
   const { data: evento } = eventId
     ? await filtro.eq("id", eventId).maybeSingle()
@@ -65,10 +66,26 @@ export async function POST(request: Request) {
 
   const resultado = await processarPagamentoMercadoPago(supabase, paymentId);
 
-  // Se o evento existe, atualiza seu status conforme o resultado. Se nao existe
-  // (reprocesso por paymentId sem evento previo), apenas reporta o resultado.
-  if (evento?.id) {
+  // Disputa (E9): trata sob o ledger PROPRIO (dispute:<id>), como o webhook e o
+  // cron. NAO marca o evento de PAGAMENTO como processado — nenhum efeito de
+  // pagamento foi aplicado; marca-lo 'ignorado' preserva a reaplicacao futura
+  // (se a disputa for resolvida a favor e o pagamento aprovar depois).
+  let disputaErro: string | null = null;
+  if (resultado.status === "disputa") {
+    const dres = await tratarDisputaLedger(supabase, paymentId, resultado.paymentStatus, {
+      origem: "admin:reprocessar",
+    });
+    if (dres.outcome === "erro") disputaErro = dres.erro ?? "Falha ao tratar a disputa";
+  }
+
+  // Atualiza o status do evento conforme o resultado — mas SO quando o evento
+  // encontrado e o de PAGAMENTO. O evento de disputa (event_type='dispute') e
+  // gerido exclusivamente por tratarDisputaLedger; toca-lo aqui sobrescreveria
+  // (mascarando uma falha ou mentindo que uma disputa tratada nao foi). Se o
+  // reprocesso e por paymentId sem evento previo, nada a patchar.
+  if (evento?.id && evento.event_type === "payment") {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    let aplicar = true;
     if (resultado.status === "processado") {
       patch.status = "processado";
       patch.erro = null;
@@ -76,11 +93,22 @@ export async function POST(request: Request) {
     } else if (resultado.status === "ignorado") {
       patch.status = "ignorado";
       patch.erro = null;
+    } else if (resultado.status === "disputa") {
+      // NAO rebaixa um pagamento genuinamente aplicado ('processado' = parcela
+      // paga + lancamento no ledger existem). So marca 'ignorado' quando o
+      // efeito de pagamento nunca foi aplicado (estava erro/pendente). A trilha
+      // da disputa vive no evento dispute:<id> (tratarDisputaLedger).
+      if (evento.status !== "processado") {
+        patch.status = "ignorado";
+        patch.erro = null;
+      } else {
+        aplicar = false; // mantem 'processado'; disputa fica no dispute:<id>
+      }
     } else {
       patch.status = "erro";
       patch.erro = resultado.erro;
     }
-    await supabase.from("events").update(patch).eq("id", evento.id);
+    if (aplicar) await supabase.from("events").update(patch).eq("id", evento.id);
   }
 
   const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
@@ -92,6 +120,7 @@ export async function POST(request: Request) {
     ip: obterIp(request),
   });
 
-  const httpStatus = resultado.status === "erro" ? 502 : 200;
-  return NextResponse.json({ ok: resultado.status !== "erro", paymentId, resultado }, { status: httpStatus });
+  const falhou = resultado.status === "erro" || !!disputaErro;
+  const httpStatus = falhou ? 502 : 200;
+  return NextResponse.json({ ok: !falhou, paymentId, resultado }, { status: httpStatus });
 }

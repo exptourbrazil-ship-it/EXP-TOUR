@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import AcertoPropostaClient from "./AcertoPropostaClient";
+import AditivoPropostaClient from "./AditivoPropostaClient";
 import { converterParaBRL } from "@/lib/cambio";
 import { valorProgramaAtual, dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import ParcelasClient from "./ParcelasClient";
@@ -136,5 +138,86 @@ export default async function ParcelasPage() {
     anexoIII = ax || [];
   }
 
-  return createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes, anexoIII });
+  // Acerto PROPOSTO ao cliente (Fatia B): exibido para aceite eletronico acima
+  // do plano. So os contratos do titular da sessao (posse); a rota de aceite
+  // revalida tudo.
+  let acertoProposta: {
+    id: string;
+    moeda: string | null;
+    saldoDevolverCliente: number | null;
+    memoria: { rotulo: string; valor: number; tipo: string }[] | null;
+    termoConteudo: string | null;
+  } | null = null;
+  // TODOS os contratos do titular (inclusive cancelados): o acerto e, por
+  // definicao, de um cancelamento, entao a proposta precisa aparecer mesmo com o
+  // contrato ja marcado cancelado_em. Posse garantida pelo titular_id da sessao.
+  const { data: contratosTodos } = await supabase
+    .from("contratos")
+    .select("id")
+    .eq("titular_id", sessao.titularId);
+  const contratoIdsTodos = (contratosTodos || []).map((c) => c.id);
+  if (contratoIdsTodos.length > 0) {
+    const { data: prop } = await supabase
+      .from("acertos")
+      .select("id, moeda, saldo_devolver_cliente, memoria, termo_id")
+      .in("contrato_id", contratoIdsTodos)
+      .eq("status", "proposto")
+      .order("proposto_em", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (prop) {
+      let termoConteudo: string | null = null;
+      if ((prop as { termo_id?: string }).termo_id) {
+        const { data: termo } = await supabase
+          .from("termos")
+          .select("conteudo")
+          .eq("id", (prop as { termo_id: string }).termo_id)
+          .maybeSingle();
+        termoConteudo = (termo as { conteudo?: string } | null)?.conteudo ?? null;
+      }
+      acertoProposta = {
+        id: (prop as { id: string }).id,
+        moeda: (prop as { moeda?: string | null }).moeda ?? null,
+        saldoDevolverCliente: (prop as { saldo_devolver_cliente?: number | null }).saldo_devolver_cliente ?? null,
+        memoria: (prop as { memoria?: { rotulo: string; valor: number; tipo: string }[] | null }).memoria ?? null,
+        termoConteudo,
+      };
+    }
+  }
+
+  // Aditivo de compra (E3 delta>0, Fatia E) PROPOSTO e ainda nao aceito: card de
+  // consentimento na Area do Cliente. Posse pelos contratos do titular da sessao.
+  let aditivoProposta: { id: string; termoConteudo: string | null } | null = null;
+  if (contratoIdsTodos.length > 0) {
+    const { data: adt } = await supabase
+      .from("alteracoes")
+      .select("id, aditivo_termo_id")
+      .in("contrato_id", contratoIdsTodos)
+      .eq("tipo", "escopo")
+      .eq("status", "rascunho")
+      .not("aditivo_proposto_em", "is", null)
+      .is("aditivo_aceito_em", null)
+      .order("aditivo_proposto_em", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (adt && (adt as { aditivo_termo_id?: string }).aditivo_termo_id) {
+      const { data: termo } = await supabase
+        .from("termos")
+        .select("conteudo")
+        .eq("id", (adt as { aditivo_termo_id: string }).aditivo_termo_id)
+        .maybeSingle();
+      aditivoProposta = {
+        id: (adt as { id: string }).id,
+        termoConteudo: (termo as { conteudo?: string } | null)?.conteudo ?? null,
+      };
+    }
+  }
+
+  return createElement(
+    Fragment,
+    null,
+    acertoProposta ? createElement(AcertoPropostaClient, { key: "acerto", proposta: acertoProposta }) : null,
+    aditivoProposta ? createElement(AditivoPropostaClient, { key: "aditivo", proposta: aditivoProposta }) : null,
+    createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes, anexoIII })
+  );
 }

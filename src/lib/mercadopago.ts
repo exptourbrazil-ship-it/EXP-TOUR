@@ -121,6 +121,60 @@ export async function cancelarPagamento(paymentId: string) {
   return response.json();
 }
 
+// Estorna (refund) um pagamento no Mercado Pago (motor de acerto, Fatia C/D).
+// `valorBRL` ausente/<=0 => estorno TOTAL; caso contrario, estorno PARCIAL do
+// valor informado. `idempotencyKey` (X-Idempotency-Key) garante que um retry
+// nao gere um segundo estorno para a mesma intencao. Retorna o corpo do MP
+// (inclui `id` do refund e `status`). Dispara SO na Fatia D (execucao); aqui e
+// so o wrapper.
+export async function refundPayment(
+  paymentId: string,
+  valorBRL?: number,
+  idempotencyKey?: string
+) {
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error("MERCADOPAGO_ACCESS_TOKEN nao configurado");
+  }
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (idempotencyKey) headers["X-Idempotency-Key"] = idempotencyKey;
+
+  const parcial = typeof valorBRL === "number" && valorBRL > 0;
+  const response = await fetch(`${MP_API_URL}/v1/payments/${paymentId}/refunds`, {
+    method: "POST",
+    headers,
+    body: parcial ? JSON.stringify({ amount: Math.round(valorBRL * 100) / 100 }) : "{}",
+  });
+
+  if (!response.ok) {
+    const erro = await response.text();
+    throw new Error(`Erro ao estornar pagamento: ${erro}`);
+  }
+  return response.json();
+}
+
+// Consulta o status de um estorno especifico no Mercado Pago (motor de acerto,
+// Fatia D — confirmacao do refund). Retorna o corpo (inclui `status`). Retorna
+// null se o refund nao existe (404). Lanca nos demais erros/sem token.
+export async function consultarRefund(paymentId: string, refundId: string) {
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error("MERCADOPAGO_ACCESS_TOKEN nao configurado");
+  }
+  const response = await fetch(
+    `${MP_API_URL}/v1/payments/${paymentId}/refunds/${refundId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error("Nao foi possivel consultar o estorno");
+  }
+  return response.json();
+}
+
 // Consulta o status atual de um pagamento no Mercado Pago (usado pelo webhook).
 // Retorna null quando o pagamento NAO existe (404); lanca nos demais erros.
 export async function consultarPagamento(paymentId: string) {

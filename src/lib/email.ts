@@ -476,6 +476,488 @@ export async function enviarLembreteQuitacaoEmail(destinatario: string, nome: st
   return data;
 }
 
+type DadosAvisoDocumento = {
+  tipoDocumento: string; // rotulo legivel, ex.: "Passaporte"
+  aprovado: boolean; // true = aprovado; false = rejeitado
+  motivo?: string | null; // motivo da rejeicao (obrigatorio quando rejeitado)
+  portalUrl?: string | null; // link para a Area do Cliente, se configurado
+};
+
+function templateAvisoDocumento(nome: string, d: DadosAvisoDocumento) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const motivoTxt = (d.motivo || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const corpo = d.aprovado
+    ? `<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Seu documento <strong>${d.tipoDocumento}</strong> foi <strong>aprovado</strong>. Nada mais é necessário para este item.</p>`
+    : `<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Seu documento <strong>${d.tipoDocumento}</strong> foi <strong>recusado</strong> e precisa ser reenviado.</p>
+${motivoTxt ? `<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;"><strong>Motivo:</strong> ${motivoTxt}</p>` : ""}
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 4px;">Reenvie o documento corrigido pela sua Área do Cliente.</p>`;
+  const botao = d.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+${corpo}
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Avisa o titular que um documento foi aprovado ou rejeitado (analise inline no
+// Caso 360). Best-effort: quem chama pode ignorar o erro (o status ja esta
+// gravado no banco). Lanca em caso de falha para o chamador contabilizar.
+export async function enviarAvisoDocumentoEmail(
+  destinatario: string,
+  nome: string,
+  dados: DadosAvisoDocumento
+) {
+  const { apiKey, fromEmail } = getConfig();
+  const assunto = dados.aprovado
+    ? "Documento aprovado - EXP Tour"
+    : "Documento recusado - reenvio necessário - EXP Tour";
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: assunto,
+        html: templateAvisoDocumento(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "aviso_documento", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "aviso_documento", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "aviso_documento", true);
+  return data;
+}
+
+function templateVistoNegado(nome: string, portalUrl?: string | null) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
+  const botao = portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  // Tom: informa e acolhe, mas a conversa (a emocao e a decisao) fica com o
+  // consultor humano — principio 5 do doc 01. Por isso a mensagem e sobria e
+  // deixa claro que uma pessoa vai entrar em contato.
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Recebemos a informação de que o seu pedido de visto foi <strong>negado</strong>. Sabemos que não era o resultado esperado — e queremos que saiba que isso, com frequência, tem solução.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Existem caminhos possíveis, e vamos avaliar o melhor para o seu caso:</p>
+<ul style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;padding-left:20px;">
+<li style="margin-bottom:6px;">Nova aplicação do visto, com os pontos revistos;</li>
+<li style="margin-bottom:6px;">Troca de destino, aproveitando o que já foi pago;</li>
+<li style="margin-bottom:6px;">Cancelamento, com o acerto conforme as regras.</li>
+</ul>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;"><strong>Enquanto isso, pausamos as cobranças do seu programa.</strong> Você não precisa fazer nada agora.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:8px 0 0;">O seu consultor entrará em contato em breve para conversar sobre os próximos passos.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Aviso ao titular de que o visto foi negado (processo E1, doc 01 §4). Informa
+// e acolhe; a conversa fica com o consultor. Best-effort: quem chama pode
+// ignorar o erro (a excecao e a tarefa ja estao registradas).
+export async function enviarAvisoVistoNegadoEmail(
+  destinatario: string,
+  nome: string,
+  portalUrl?: string | null
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Sobre o seu visto - EXP Tour",
+        html: templateVistoNegado(nome, portalUrl),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "visto_negado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "visto_negado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "visto_negado", true);
+  return data;
+}
+
+function templateCancelamentoEscola(nome: string, portalUrl?: string | null) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
+  const botao = portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  // Comunicacao proativa (reputacao/velocidade — doc 01 §4, E6). Informa e
+  // tranquiliza; a decisao (realocar x reembolsar) e a emocao ficam com o
+  // consultor humano.
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Precisamos avisar que houve uma alteração da escola no seu programa, e ele não poderá seguir como estava. Queremos que saiba, antes de tudo, que <strong>você não fica no prejuízo</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Vamos encontrar a melhor saída com você:</p>
+<ul style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;padding-left:20px;">
+<li style="margin-bottom:6px;">Realocação para uma alternativa equivalente, sem custo adicional; ou</li>
+<li style="margin-bottom:6px;">Reembolso integral, incluindo a entrada.</li>
+</ul>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;"><strong>Enquanto isso, pausamos as cobranças do seu programa.</strong> Você não precisa fazer nada agora.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:8px 0 0;">O seu consultor entrará em contato em breve para resolver com você.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Aviso ao titular de que a escola cancelou/alterou o programa (processo E6, doc
+// 01 §4). Comunicacao proativa e tranquilizadora; a execucao (realocar/
+// reembolsar) e conduzida pelo time. Best-effort.
+export async function enviarAvisoCancelamentoEscolaEmail(
+  destinatario: string,
+  nome: string,
+  portalUrl?: string | null
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Sobre o seu programa - EXP Tour",
+        html: templateCancelamentoEscola(nome, portalUrl),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "cancelamento_escola", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "cancelamento_escola", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "cancelamento_escola", true);
+  return data;
+}
+
+function templateForcaMaior(nome: string, portalUrl?: string | null) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
+  const botao = portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  // Comunicacao padronizada em lote (doc 01 §4, E8). Informa e tranquiliza; a
+  // escolha (adiar x cancelar) e a conversa ficam com o time.
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Surgiu uma situação de força maior que afeta o destino do seu programa. Estamos acompanhando de perto e agindo para proteger você e a sua viagem.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;"><strong>Enquanto isso, pausamos as cobranças do seu programa.</strong> Você não precisa fazer nada agora.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:12px 0 12px;">Assim que o cenário estiver claro, vamos combinar com você o melhor caminho — <strong>adiar</strong> a viagem para uma nova data ou, se preferir, <strong>cancelar com as condições cabíveis</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0;">A nossa equipe entrará em contato. Se tiver qualquer dúvida, é só responder a este e-mail.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Comunicacao padronizada de forca maior coletiva (processo E8, doc 01 §4).
+// Enviada EM LOTE aos titulares afetados. Best-effort por titular.
+export async function enviarAvisoForcaMaiorEmail(
+  destinatario: string,
+  nome: string,
+  portalUrl?: string | null
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Informação importante sobre o seu programa - EXP Tour",
+        html: templateForcaMaior(nome, portalUrl),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "forca_maior", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "forca_maior", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "forca_maior", true);
+  return data;
+}
+
+export type DadosCronograma = {
+  tipo: "deferral" | "escopo"; // E2 (adiamento) | E3 (alteracao de escopo)
+  moeda: string;
+  novaDataInicio?: string | null; // E2: nova data de inicio do programa
+  novoValorTotal?: number | null; // E3: novo valor do programa
+  novaDataQuitacao?: string | null;
+  parcelas: { numero: number; vencimento: string; valor: number }[];
+  portalUrl?: string | null;
+};
+
+function fmtDataBR(iso?: string | null): string {
+  if (!iso || iso.length < 10) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function fmtValor(valor: number, moeda: string): string {
+  const n = (Number(valor) || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const cod = (moeda || "").toUpperCase();
+  const prefixo = cod === "BRL" || cod === "" ? "R$" : cod;
+  return `${prefixo} ${n}`;
+}
+
+function templateCronogramaAtualizado(nome: string, d: DadosCronograma) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const motivo =
+    d.tipo === "deferral"
+      ? `Ajustamos o seu cronograma de pagamentos após o <strong>adiamento da data de início</strong>${
+          d.novaDataInicio ? ` para <strong>${fmtDataBR(d.novaDataInicio)}</strong>` : ""
+        }.`
+      : `Ajustamos o seu cronograma de pagamentos após a <strong>alteração do seu programa</strong>${
+          d.novoValorTotal != null
+            ? ` (novo valor: <strong>${fmtValor(d.novoValorTotal, d.moeda)}</strong>)`
+            : ""
+        }.`;
+  const linhas = (d.parcelas || [])
+    .map(
+      (p) =>
+        `<tr><td style="padding:6px 0;color:${BRAND_GREEN};font-size:14px;border-bottom:1px solid #e4d8c2;">Parcela ${p.numero} &mdash; ${fmtDataBR(
+          p.vencimento
+        )}</td><td style="padding:6px 0;color:${BRAND_GREEN};font-size:14px;text-align:right;border-bottom:1px solid #e4d8c2;">${fmtValor(
+          p.valor,
+          d.moeda
+        )}</td></tr>`
+    )
+    .join("");
+  const tabela = linhas
+    ? `<table role="presentation" width="100%" style="margin:8px 0 12px;border-collapse:collapse;">${linhas}</table>`
+    : `<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;">Não há parcelas em aberto no novo cronograma.</p>`;
+  const quitacao = d.novaDataQuitacao
+    ? `<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;">Data-limite de quitação: <strong>${fmtDataBR(
+        d.novaDataQuitacao
+      )}</strong>.</p>`
+    : "";
+  const botao = d.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Ver na minha Área do Cliente</a></td></tr>`
+    : "";
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">${motivo}</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 4px;"><strong>Novo cronograma:</strong></p>
+${tabela}
+${quitacao}
+<p style="color:${BRAND_GREEN};font-size:13px;margin:8px 0 0;">As parcelas já pagas não foram alteradas. Em caso de dúvida, fale com o seu consultor.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Avisa o titular que o cronograma de pagamentos foi reescrito apos a execucao
+// em cascata de uma alteracao (E2 adiamento / E3 escopo). Transparencia do doc
+// 04: "notifica o cliente com o resumo do novo cronograma". Best-effort: quem
+// chama DEVE ignorar o erro (a alteracao ja foi aplicada e commitada).
+export async function enviarAvisoCronogramaAtualizadoEmail(
+  destinatario: string,
+  nome: string,
+  dados: DadosCronograma
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Seu cronograma de pagamentos foi atualizado - EXP Tour",
+        html: templateCronogramaAtualizado(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "cronograma_atualizado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "cronograma_atualizado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "cronograma_atualizado", true);
+  return data;
+}
+
+// Recibo de DEVOLUCAO (motor de acerto, Fatia D): confirma ao cliente que o
+// reembolso do acerto foi processado. Best-effort. `meio` = 'mp' (estorno no
+// cartao/Pix) | 'manual' (devolucao por fora).
+export async function enviarReciboDevolucaoEmail(
+  destinatario: string,
+  nome: string,
+  dados: { valorBRL: number; meio: "mp" | "manual"; portalUrl?: string | null }
+) {
+  const { apiKey, fromEmail } = getConfig();
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const valor = `R$ ${(Number(dados.valorBRL) || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+  const comoTxt =
+    dados.meio === "mp"
+      ? "O estorno foi enviado ao meio de pagamento original; o prazo de compensação depende do seu banco/emissor."
+      : "A devolução foi processada pela nossa equipe; em caso de dúvida sobre o comprovante, fale com o seu consultor.";
+  const botao = dados.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${dados.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Confirmamos a devolução do seu acerto no valor de <strong>${valor}</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 4px;">${comoTxt}</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Confirmação de devolução - EXP Tour",
+        html,
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "recibo_devolucao", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "recibo_devolucao", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "recibo_devolucao", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {
