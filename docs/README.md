@@ -12,6 +12,7 @@
 | [`sessao-area-cliente.md`](./sessao-area-cliente.md) | Registro da 1ª sessão (parcelas, UX, responsivo, logo, documentos). |
 | [`sessao-area-cliente-2.md`](./sessao-area-cliente-2.md) | Registro da 2ª sessão (contrato, financeiro, Zoho, aceite, réguas, antecipação, Anexo III, UX). |
 | [`aplicacao-excecoes.md`](./aplicacao-excecoes.md) | Registro de aplicação do módulo de processos de exceção (E1–E11) + Motor de Acerto (Fatia 1) + Motor de Alteração E2/E3 (prévia → execução em cascata → notificação → crédito do E3 em acerto): ordem dos patches, DDL, config/crons, verificação, cobertura e pendências. |
+| [`plano-execucao-acerto.md`](./plano-execucao-acerto.md) | **Plano** da fatia de execução do motor de acerto (fatias 2+): rascunho → proposta → aceite eletrônico → refund confirmado por webhook. Fatias A–E, máquina de estados, DDL prevista, invariantes de dinheiro e decisões de negócio em aberto. |
 
 ## Handoff de arquitetura (visão-alvo — Cliente + Admin + Fornecedor)
 
