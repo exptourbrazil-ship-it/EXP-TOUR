@@ -19,10 +19,13 @@ import {
   validarFaixasRetencao,
   renderizarTermoAcerto,
   transicaoAcertoPermitida,
+  planejarRefund,
+  DEFAULT_JANELA_REFUND_DIAS,
   RETENCAO_PLACEHOLDER,
   TIPOS_SEM_RETENCAO_PADRAO,
   type Acerto,
   type FaixaRetencao,
+  type PlanoRefund,
 } from "@/lib/acerto";
 import { calcularHashTermo } from "@/lib/termos";
 
@@ -658,4 +661,98 @@ export async function aceitarAcerto(args: {
   });
 
   return { ok: true, jaAceito: false, aceiteEm: (novo as { data_hora?: string }).data_hora ?? null };
+}
+
+// ---------------------------------------------------------------------------
+// FATIA C: previa do refund (READ-ONLY, nao move dinheiro nem grava estorno)
+// ---------------------------------------------------------------------------
+// Mostra ao Financeiro o plano de estorno de um acerto ACEITO: fracao em BRL,
+// meio (mp/manual + motivo) e o particionamento entre os pagamentos originais.
+// A execucao (disparar o refund + confirmar por webhook) e a Fatia D.
+function janelaRefundDias(): number {
+  const n = Number(process.env.MP_REFUND_JANELA_DIAS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_JANELA_REFUND_DIAS;
+}
+
+export async function planejarRefundAcerto(args: {
+  acertoId: string;
+  titularIdEsperado: string;
+}): Promise<PlanoRefund> {
+  const supabase = getSupabase();
+
+  const { data: acerto } = await supabase
+    .from("acertos")
+    .select("id, contrato_id, status, saldo_devolver_cliente, total_pago")
+    .eq("id", args.acertoId)
+    .maybeSingle();
+  if (!acerto) {
+    throw new AcertoBloqueado("acerto_nao_encontrado", "Acerto nao encontrado");
+  }
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", acerto.contrato_id)
+    .maybeSingle();
+  if (!contrato || contrato.titular_id !== args.titularIdEsperado) {
+    throw new AcertoBloqueado("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+
+  if (acerto.status !== "aceito") {
+    throw new AcertoBloqueado(
+      "nao_aceito",
+      "A previa de estorno so vale para um acerto aceito pelo cliente"
+    );
+  }
+
+  // Pagamentos do contrato (ledger) + flag de disputa (vem da parcela).
+  const { data: pagamentos } = await supabase
+    .from("pagamentos")
+    .select("id, external_payment_id, valor_brl, valor_programa, pago_em, parcela_id")
+    .eq("contrato_id", acerto.contrato_id);
+  // Base do calculo: total pago na moeda vem do MESMO conjunto de pagamentos que
+  // fornece o BRL (auto-consistente), e nao de acerto.total_pago (que pode ter
+  // sido computado sobre outro instantaneo do ledger).
+  const totalPagoLedger = (pagamentos || []).reduce(
+    (s, p) => s + (Number((p as { valor_programa?: number }).valor_programa) || 0),
+    0
+  );
+  const parcelaIds = Array.from(
+    new Set((pagamentos || []).map((p) => (p as { parcela_id?: string }).parcela_id).filter(Boolean))
+  ) as string[];
+  const emDisputaPorParcela = new Set<string>();
+  if (parcelaIds.length > 0) {
+    const { data: parcelas } = await supabase
+      .from("parcelas")
+      .select("id, em_disputa")
+      .in("id", parcelaIds);
+    for (const p of parcelas || []) {
+      if ((p as { em_disputa?: boolean }).em_disputa) emDisputaPorParcela.add((p as { id: string }).id);
+    }
+  }
+
+  const plano = planejarRefund({
+    saldoDevolver: Number(acerto.saldo_devolver_cliente) || 0,
+    totalPago: totalPagoLedger,
+    pagamentos: (pagamentos || []).map((p) => {
+      const row = p as {
+        id: string;
+        external_payment_id?: string | null;
+        valor_brl?: number;
+        pago_em?: string;
+        parcela_id?: string;
+      };
+      return {
+        id: row.id,
+        externalPaymentId: row.external_payment_id ?? null,
+        valorBRL: Number(row.valor_brl) || 0,
+        emDisputa: row.parcela_id ? emDisputaPorParcela.has(row.parcela_id) : false,
+        pagoEmISO: (row.pago_em || "").slice(0, 10),
+      };
+    }),
+    hojeISO: hojeBrasilISO(),
+    janelaDias: janelaRefundDias(),
+  });
+
+  return plano;
 }

@@ -2405,6 +2405,105 @@ function BotaoProporAcerto({
   );
 }
 
+// Previa (READ-ONLY) do plano de estorno de um acerto aceito (Fatia C). Mostra o
+// meio (MP/manual) e o particionamento; NAO executa (a execucao e a Fatia D).
+type PlanoRefundUI = {
+  refundBRL: number;
+  meio: "mp" | "manual";
+  motivoManual: string | null;
+  itens: { pagamentoId: string; externalPaymentId: string | null; valorBRL: number }[];
+};
+
+function motivoManualLabel(m: string | null): string {
+  if (m === "em_disputa") return "pagamento em disputa";
+  if (m === "fora_da_janela") return "fora da janela de estorno do MP";
+  if (m === "sem_external_id") return "pagamento sem id do Mercado Pago";
+  if (m === "sem_pagamentos") return "sem pagamentos no ledger";
+  return m || "";
+}
+
+function BotaoPreviaEstorno({
+  titularId,
+  acertoId,
+  status,
+  podeVer,
+}: {
+  titularId: string;
+  acertoId: string;
+  status: string;
+  podeVer: boolean;
+}) {
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [plano, setPlano] = useState<PlanoRefundUI | null>(null);
+  if (status !== "aceito" || !podeVer) return null;
+
+  async function carregar() {
+    setErro(null);
+    setCarregando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/acerto/refund-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acertoId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao planejar o estorno.");
+        return;
+      }
+      setPlano(data.plano as PlanoRefundUI);
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-100 pt-3">
+      {!plano ? (
+        <button
+          type="button"
+          onClick={carregar}
+          disabled={carregando}
+          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+        >
+          {carregando ? "Calculando…" : "Prévia do estorno"}
+        </button>
+      ) : (
+        <div className="text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium text-brand">Prévia do estorno</span>
+            <span className="text-neutral-700">{fmtMoeda(plano.refundBRL, "BRL")}</span>
+          </div>
+          {plano.meio === "manual" ? (
+            <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+              Devolução manual ({motivoManualLabel(plano.motivoManual)}) — o estorno automático não se
+              aplica; o Financeiro devolve por fora e anexa o comprovante.
+            </p>
+          ) : (
+            <table className="mt-1 w-full text-xs">
+              <tbody>
+                {plano.itens.map((it, i) => (
+                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                    <td className="py-1 text-neutral-500">Estorno MP · pgto {it.externalPaymentId}</td>
+                    <td className="py-1 text-right text-neutral-700">{fmtMoeda(it.valorBRL, "BRL")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="mt-1 text-xs text-neutral-400">
+            Prévia — nada é debitado aqui. A execução do estorno é um passo à parte.
+          </p>
+        </div>
+      )}
+      {erro ? <p className="mt-1 text-xs text-red-600">{erro}</p> : null}
+    </div>
+  );
+}
+
 function AcertoCard({
   acerto,
   contratos,
@@ -2463,6 +2562,12 @@ function AcertoCard({
         acertoId={acerto.id}
         status={acerto.status}
         podePropor={podePropor}
+      />
+      <BotaoPreviaEstorno
+        titularId={titularId}
+        acertoId={acerto.id}
+        status={acerto.status}
+        podeVer={podePropor}
       />
     </div>
   );

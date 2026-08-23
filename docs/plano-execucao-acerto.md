@@ -102,7 +102,7 @@ fica em `proposto`/rascunho (seguro), mas não conclui.
   do aceite ao cliente.
 - **Risco:** baixo/médio. **Testes:** puros (máquina de estados, termo/hash).
 
-### Fatia C — Infra de refund no Mercado Pago (wrapper + ledger + particionamento)
+### Fatia C — Infra de refund no Mercado Pago (wrapper + ledger + particionamento) · ✅ CONCLUÍDA
 _(Meio decidido: **estorno via MP**, ver §1.3.)_
 - `refundPayment(paymentId, valorBRL?)` em `mercadopago.ts`: `POST
   /v1/payments/{id}/refunds` (total ou parcial), com `X-Idempotency-Key`.
@@ -118,9 +118,13 @@ _(Meio decidido: **estorno via MP**, ver §1.3.)_
   (`refund_meio='manual'`, para `executado_manual` + comprovante) quando: fora da
   janela do MP, método não estornável, pagamento em disputa (E9), ou o refund não
   casa (ex.: só pagamentos manuais/sem `external_payment_id`).
-- **Ainda sem "apertar o botão"** (a Fatia D dispara). **Risco:** médio.
-  **Testes:** puros (fração BRL, particionamento, elegibilidade) + helpers de
-  webhook (assinatura, `idempotency_key`), como `mp-events`.
+- **Ainda sem "apertar o botão"** (a Fatia D dispara). Inclui uma **prévia
+  read-only** do estorno no Caso 360 (admin vê meio/partição sem mover dinheiro).
+  **Risco:** médio. **Testes:** puros (fração BRL, particionamento, elegibilidade,
+  fallback manual).
+- **Nota p/ Fatia D (achados da revisão):** escopar os pagamentos ao acerto antes
+  de executar (a prévia usa todos os pagamentos do contrato); deduplicar a
+  devolução manual em código (`pagamento_id` nulo não tem unique).
 
 ### Fatia D — Execução confirmada por webhook (money out)
 - **Transição `aceito → executado` só por confirmação.** A rota de execução
@@ -216,8 +220,8 @@ A ordem coloca todo o valor **sem risco de dinheiro** (A, B) antes de qualquer
 peça que mova caixa (C, D), e cada fatia é entregável e testável isoladamente.
 As Fatias A–C podem ser construídas já; a Fatia D depende das decisões do §6.
 
-> **Estado:** Fatias A e B **concluídas**; **meio de refund decidido** (estorno
-> via MP + fallback manual, §1.3). Próxima: Fatia C (wrapper de refund + ledger
-> `estornos` + particionamento) — já destravada pela decisão. A Fatia D (execução
-> confirmada por webhook) depende só de itens operacionais/jurídicos (§6.3–6.5),
-> não mais de arquitetura.
+> **Estado:** Fatias A, B e C **concluídas**; **meio de refund decidido**
+> (estorno via MP + fallback manual, §1.3). Próxima: Fatia D (execução confirmada
+> por webhook). A execução é construída **inerte por segurança**: recusa acerto
+> provisório (`provisorio=true`), então só move dinheiro depois que a retenção
+> for validada juridicamente (§6.3).

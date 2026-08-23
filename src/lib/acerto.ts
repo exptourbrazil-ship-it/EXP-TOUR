@@ -189,6 +189,108 @@ export function renderizarTermoAcerto(d: {
   return partes.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// FATIA C: planejamento do refund (estorno via MP) — PURO
+// ---------------------------------------------------------------------------
+// Meio decidido (plano §1.3): estorno via Mercado Pago do(s) pagamento(s)
+// original(is), em BRL, com fallback manual. O credito e calculado na moeda do
+// programa; o refund devolve a MESMA FRACAO em BRL do que foi pago:
+//   refundBRL = totalPagoBRL * (saldoDevolver / totalPago)   [ambos na moeda]
+// particionada entre os pagamentos (do mais recente ao mais antigo). Cai no
+// FALLBACK MANUAL (nada de estorno automatico) quando ha pagamento em disputa,
+// fora da janela do MP, ou sem pagamentos no ledger.
+
+export const DEFAULT_JANELA_REFUND_DIAS = 90; // confirmar o limite real do MP (plano §6.5)
+
+export type PagamentoRefund = {
+  id: string;
+  externalPaymentId: string | null;
+  valorBRL: number;
+  emDisputa?: boolean;
+  pagoEmISO: string; // YYYY-MM-DD (ou ISO completo)
+};
+
+export type ItemRefund = { pagamentoId: string; externalPaymentId: string | null; valorBRL: number };
+
+export type PlanoRefund = {
+  refundBRL: number;
+  meio: "mp" | "manual";
+  motivoManual: string | null;
+  itens: ItemRefund[];
+};
+
+function diasEntreISO(aISO: string, bISO: string): number {
+  const a = Date.parse((aISO || "").slice(0, 10) + "T00:00:00Z");
+  const b = Date.parse((bISO || "").slice(0, 10) + "T00:00:00Z");
+  // Data invalida/ausente => trata como MUITO antiga (fora da janela -> manual),
+  // nunca como "dentro da janela". Defensivo para a execucao (Fatia D).
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.POSITIVE_INFINITY;
+  return Math.round((b - a) / (24 * 60 * 60 * 1000));
+}
+
+export function planejarRefund(args: {
+  saldoDevolver: number; // moeda do programa
+  totalPago: number; // moeda do programa
+  pagamentos: PagamentoRefund[];
+  hojeISO: string;
+  janelaDias?: number;
+}): PlanoRefund {
+  const janela = args.janelaDias ?? DEFAULT_JANELA_REFUND_DIAS;
+  const pagamentos = Array.isArray(args.pagamentos) ? args.pagamentos : [];
+  const saldo = round2(args.saldoDevolver);
+  const totalPago = round2(args.totalPago);
+  const totalPagoBRLcents = pagamentos.reduce(
+    (s, p) => s + Math.round((Number(p.valorBRL) || 0) * 100),
+    0
+  );
+
+  // Nada a devolver: acerto sem saldo/base — nao e manual, e vazio.
+  if (saldo <= 0 || totalPago <= 0) {
+    return { refundBRL: 0, meio: "mp", motivoManual: null, itens: [] };
+  }
+  // Ha saldo a devolver, mas nenhum BRL pago no ledger (nada para estornar via
+  // MP) -> devolucao MANUAL. (Antes caia no return "mp R$0", escondendo o caso.)
+  if (totalPagoBRLcents <= 0) {
+    return { refundBRL: 0, meio: "manual", motivoManual: "sem_pagamentos", itens: [] };
+  }
+
+  const fracao = Math.min(1, saldo / totalPago);
+  const refundCents = Math.round(totalPagoBRLcents * fracao);
+  const refundBRL = Math.round(refundCents) / 100;
+
+  // Elegibilidade do estorno automatico: qualquer pagamento em disputa, fora da
+  // janela, ou sem external_payment_id -> o refund inteiro cai no manual.
+  let motivoManual: string | null = null;
+  if (pagamentos.length === 0) motivoManual = "sem_pagamentos";
+  else if (pagamentos.some((p) => p.emDisputa)) motivoManual = "em_disputa";
+  else if (pagamentos.some((p) => !p.externalPaymentId)) motivoManual = "sem_external_id";
+  else if (pagamentos.some((p) => diasEntreISO(p.pagoEmISO, args.hojeISO) > janela))
+    motivoManual = "fora_da_janela";
+
+  if (motivoManual) {
+    return { refundBRL, meio: "manual", motivoManual, itens: [] };
+  }
+
+  // Particiona em centavos (soma exata): do mais recente ao mais antigo.
+  const ordenados = [...pagamentos].sort((a, b) => (a.pagoEmISO < b.pagoEmISO ? 1 : -1));
+  let restante = refundCents;
+  const itens: ItemRefund[] = [];
+  for (const p of ordenados) {
+    if (restante <= 0) break;
+    const disponivel = Math.round((Number(p.valorBRL) || 0) * 100);
+    const take = Math.min(restante, disponivel);
+    if (take > 0) {
+      itens.push({
+        pagamentoId: p.id,
+        externalPaymentId: p.externalPaymentId,
+        valorBRL: Math.round(take) / 100,
+      });
+      restante -= take;
+    }
+  }
+  return { refundBRL, meio: "mp", motivoManual: null, itens };
+}
+
 export function calcularAcertoCreditoEscopo(e: {
   valorProgramaNovo: number;
   jaPago: number;

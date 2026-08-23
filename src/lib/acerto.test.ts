@@ -10,6 +10,7 @@ import {
   validarFaixasRetencao,
   transicaoAcertoPermitida,
   renderizarTermoAcerto,
+  planejarRefund,
 } from "./acerto.ts";
 
 test("determinarRetencaoPercentual: faixas placeholder por dias ate inicio", () => {
@@ -162,4 +163,102 @@ test("renderizarTermoAcerto: deterministico (hash estavel) e reflete a memoria",
   assert.ok(a.includes("provisorios")); // aviso quando provisorio
   const semAviso = renderizarTermoAcerto({ moeda: "CAD", memoria, saldoDevolverCliente: 3500, provisorio: false });
   assert.ok(!semAviso.includes("provisorios"));
+});
+
+// ---- Fatia C: planejamento do refund (estorno via MP) ----------------------
+
+test("planejarRefund: fracao BRL do que foi pago, particionada (soma exata)", () => {
+  // saldoDevolver 7500 de 10000 pago -> 75%. Pago BRL: 4000 + 6000 = 10000.
+  const p = planejarRefund({
+    saldoDevolver: 7500,
+    totalPago: 10000,
+    pagamentos: [
+      { id: "a", externalPaymentId: "mpA", valorBRL: 4000, pagoEmISO: "2026-01-10" },
+      { id: "b", externalPaymentId: "mpB", valorBRL: 6000, pagoEmISO: "2026-02-10" },
+    ],
+    hojeISO: "2026-03-01",
+    janelaDias: 90,
+  });
+  assert.equal(p.meio, "mp");
+  assert.equal(p.refundBRL, 7500); // 75% de 10000 BRL
+  // do mais recente ao mais antigo: b (6000) inteiro + a (1500)
+  assert.equal(p.itens[0].pagamentoId, "b");
+  assert.equal(p.itens[0].valorBRL, 6000);
+  assert.equal(p.itens[1].pagamentoId, "a");
+  assert.equal(p.itens[1].valorBRL, 1500);
+  assert.equal(p.itens.reduce((s, i) => s + i.valorBRL, 0), 7500);
+});
+
+test("planejarRefund: refund total (100%) estorna todos os pagamentos", () => {
+  const p = planejarRefund({
+    saldoDevolver: 10000,
+    totalPago: 10000,
+    pagamentos: [{ id: "a", externalPaymentId: "mpA", valorBRL: 4500, pagoEmISO: "2026-01-10" }],
+    hojeISO: "2026-02-01",
+  });
+  assert.equal(p.meio, "mp");
+  assert.equal(p.refundBRL, 4500);
+  assert.equal(p.itens.length, 1);
+  assert.equal(p.itens[0].valorBRL, 4500);
+});
+
+test("planejarRefund: em disputa -> fallback manual (sem itens)", () => {
+  const p = planejarRefund({
+    saldoDevolver: 5000,
+    totalPago: 10000,
+    pagamentos: [
+      { id: "a", externalPaymentId: "mpA", valorBRL: 10000, emDisputa: true, pagoEmISO: "2026-01-10" },
+    ],
+    hojeISO: "2026-02-01",
+  });
+  assert.equal(p.meio, "manual");
+  assert.equal(p.motivoManual, "em_disputa");
+  assert.deepEqual(p.itens, []);
+  assert.equal(p.refundBRL, 5000); // valor calculado, mas devolucao manual
+});
+
+test("planejarRefund: fora da janela -> fallback manual", () => {
+  const p = planejarRefund({
+    saldoDevolver: 5000,
+    totalPago: 10000,
+    pagamentos: [{ id: "a", externalPaymentId: "mpA", valorBRL: 10000, pagoEmISO: "2025-01-10" }],
+    hojeISO: "2026-02-01", // > 90 dias
+    janelaDias: 90,
+  });
+  assert.equal(p.meio, "manual");
+  assert.equal(p.motivoManual, "fora_da_janela");
+});
+
+test("planejarRefund: saldo zero -> nada a estornar", () => {
+  const p = planejarRefund({
+    saldoDevolver: 0,
+    totalPago: 10000,
+    pagamentos: [{ id: "a", externalPaymentId: "mpA", valorBRL: 10000, pagoEmISO: "2026-01-10" }],
+    hojeISO: "2026-02-01",
+  });
+  assert.equal(p.refundBRL, 0);
+  assert.deepEqual(p.itens, []);
+});
+
+test("planejarRefund: saldo>0 mas sem BRL pago -> manual (sem_pagamentos)", () => {
+  const p = planejarRefund({
+    saldoDevolver: 5000,
+    totalPago: 5000,
+    pagamentos: [], // ledger vazio
+    hojeISO: "2026-02-01",
+  });
+  assert.equal(p.meio, "manual");
+  assert.equal(p.motivoManual, "sem_pagamentos");
+  assert.deepEqual(p.itens, []);
+});
+
+test("planejarRefund: pago_em invalido -> fora da janela (manual, nao MP)", () => {
+  const p = planejarRefund({
+    saldoDevolver: 5000,
+    totalPago: 10000,
+    pagamentos: [{ id: "a", externalPaymentId: "mpA", valorBRL: 10000, pagoEmISO: "" }],
+    hojeISO: "2026-02-01",
+  });
+  assert.equal(p.meio, "manual");
+  assert.equal(p.motivoManual, "fora_da_janela");
 });

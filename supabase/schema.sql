@@ -349,6 +349,9 @@ alter table if exists acertos add column if not exists aceito_em timestamptz;
 -- termo_id sem FK: `termos` e definido mais abaixo no arquivo (integridade
 -- garantida em codigo, no padrao RLS-sem-policy do portal).
 alter table if exists acertos add column if not exists termo_id uuid;
+-- Execucao do acerto (Fatia C/D): meio do refund e quando foi executado.
+alter table if exists acertos add column if not exists refund_meio text;
+alter table if exists acertos add column if not exists executado_em timestamptz;
 
 -- No maximo UM rascunho por (contrato, EXCECAO de origem): recalcular atualiza o
 -- rascunho daquela excecao (o read-then-write em codigo nao segura duas
@@ -389,6 +392,33 @@ select
   false,
   'Seed placeholder (a validar juridicamente).'
 where not exists (select 1 from config_retencao where vigente = true);
+
+-- Ledger de ESTORNOS (motor de acerto, Fatia C/D): um lancamento por refund
+-- (estorno via MP) ou devolucao manual. Espelha o padrao imutavel de
+-- `pagamentos`. A execucao (Fatia D) grava aqui e so marca o acerto `executado`
+-- quando o webhook de estorno confirma. RLS habilitado sem policy.
+create table if not exists estornos (
+  id uuid primary key default gen_random_uuid(),
+  acerto_id uuid not null references acertos(id) on delete cascade,
+  pagamento_id uuid references pagamentos(id),
+  external_refund_id text,                 -- id do refund no Mercado Pago
+  valor_brl numeric(12,2),
+  meio text not null default 'mp' check (meio in ('mp','manual')),
+  status text not null default 'pendente'
+    check (status in ('pendente','confirmado','erro','manual')),
+  erro text,
+  comprovante_url text,                     -- devolucao manual
+  criado_por text,
+  criado_em timestamptz not null default now(),
+  atualizada_em timestamptz not null default now()
+  );
+create index if not exists idx_estornos_acerto on estornos(acerto_id);
+-- Idempotencia: um estorno por (acerto, pagamento) e um por refund id do MP.
+create unique index if not exists uidx_estornos_acerto_pagamento
+  on estornos(acerto_id, pagamento_id) where pagamento_id is not null;
+create unique index if not exists uidx_estornos_refund
+  on estornos(external_refund_id) where external_refund_id is not null;
+alter table if exists estornos enable row level security;
 
 -- Alteracoes de plano (motor de alteracao — E2 adiamento; doc 01 §4). NESTE
 -- passo guarda a PREVIA do plano recalculado (nova data-limite de quitacao +
