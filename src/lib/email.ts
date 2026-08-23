@@ -768,6 +768,128 @@ export async function enviarAvisoForcaMaiorEmail(
   return data;
 }
 
+export type DadosCronograma = {
+  tipo: "deferral" | "escopo"; // E2 (adiamento) | E3 (alteracao de escopo)
+  moeda: string;
+  novaDataInicio?: string | null; // E2: nova data de inicio do programa
+  novoValorTotal?: number | null; // E3: novo valor do programa
+  novaDataQuitacao?: string | null;
+  parcelas: { numero: number; vencimento: string; valor: number }[];
+  portalUrl?: string | null;
+};
+
+function fmtDataBR(iso?: string | null): string {
+  if (!iso || iso.length < 10) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function fmtValor(valor: number, moeda: string): string {
+  const n = (Number(valor) || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const cod = (moeda || "").toUpperCase();
+  const prefixo = cod === "BRL" || cod === "" ? "R$" : cod;
+  return `${prefixo} ${n}`;
+}
+
+function templateCronogramaAtualizado(nome: string, d: DadosCronograma) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const motivo =
+    d.tipo === "deferral"
+      ? `Ajustamos o seu cronograma de pagamentos após o <strong>adiamento da data de início</strong>${
+          d.novaDataInicio ? ` para <strong>${fmtDataBR(d.novaDataInicio)}</strong>` : ""
+        }.`
+      : `Ajustamos o seu cronograma de pagamentos após a <strong>alteração do seu programa</strong>${
+          d.novoValorTotal != null
+            ? ` (novo valor: <strong>${fmtValor(d.novoValorTotal, d.moeda)}</strong>)`
+            : ""
+        }.`;
+  const linhas = (d.parcelas || [])
+    .map(
+      (p) =>
+        `<tr><td style="padding:6px 0;color:${BRAND_GREEN};font-size:14px;border-bottom:1px solid #e4d8c2;">Parcela ${p.numero} &mdash; ${fmtDataBR(
+          p.vencimento
+        )}</td><td style="padding:6px 0;color:${BRAND_GREEN};font-size:14px;text-align:right;border-bottom:1px solid #e4d8c2;">${fmtValor(
+          p.valor,
+          d.moeda
+        )}</td></tr>`
+    )
+    .join("");
+  const tabela = linhas
+    ? `<table role="presentation" width="100%" style="margin:8px 0 12px;border-collapse:collapse;">${linhas}</table>`
+    : `<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;">Não há parcelas em aberto no novo cronograma.</p>`;
+  const quitacao = d.novaDataQuitacao
+    ? `<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 12px;">Data-limite de quitação: <strong>${fmtDataBR(
+        d.novaDataQuitacao
+      )}</strong>.</p>`
+    : "";
+  const botao = d.portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${d.portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Ver na minha Área do Cliente</a></td></tr>`
+    : "";
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">${motivo}</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 4px;"><strong>Novo cronograma:</strong></p>
+${tabela}
+${quitacao}
+<p style="color:${BRAND_GREEN};font-size:13px;margin:8px 0 0;">As parcelas já pagas não foram alteradas. Em caso de dúvida, fale com o seu consultor.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Avisa o titular que o cronograma de pagamentos foi reescrito apos a execucao
+// em cascata de uma alteracao (E2 adiamento / E3 escopo). Transparencia do doc
+// 04: "notifica o cliente com o resumo do novo cronograma". Best-effort: quem
+// chama DEVE ignorar o erro (a alteracao ja foi aplicada e commitada).
+export async function enviarAvisoCronogramaAtualizadoEmail(
+  destinatario: string,
+  nome: string,
+  dados: DadosCronograma
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Seu cronograma de pagamentos foi atualizado - EXP Tour",
+        html: templateCronogramaAtualizado(nome, dados),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "cronograma_atualizado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "cronograma_atualizado", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "cronograma_atualizado", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

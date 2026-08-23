@@ -1,10 +1,12 @@
 # Aplicação — Módulo de Exceções (E1–E11) + Motor de Acerto e Alteração (Fatia 1)
 
 Registro de aplicação do módulo de processos de exceção (doc 01 §4), da Fatia 1
-do motor de acerto (doc 07 §3.5) e da Fatia 1 do motor de alteração (E2/E3, doc
-01 §4). A entrega foi feita em **17 patches** lineares a partir da `main` (cada
-patch = 1 commit), aplicáveis com `git am`. Este documento serve de referência
-da ordem, do impacto no banco e da configuração.
+do motor de acerto (doc 07 §3.5) e do motor de alteração (E2/E3, doc 01 §4):
+prévia, **execução em cascata** e notificação do cliente. A entrega foi feita em
+**19 patches** de código lineares a partir da `main` (cada patch = 1 commit),
+aplicáveis com `git am`. Este documento serve de referência da ordem, do impacto
+no banco e da configuração. (Há ainda patches só-de-docs — atualizações deste
+README — que não alteram código e podem ser aplicados por último.)
 
 > **Banco:** todas as mudanças de schema **já foram aplicadas na produção**
 > (Supabase) durante a sessão. Para um banco **novo**, o `supabase/schema.sql`
@@ -20,7 +22,7 @@ da ordem, do impacto no banco e da configuração.
 
 ## 2. Ordem de aplicação
 
-Coloque os 17 arquivos `.patch` num diretório e rode, na ordem:
+Coloque os 19 arquivos `.patch` num diretório e rode, na ordem:
 
 ```bash
 git checkout main && git pull
@@ -43,6 +45,8 @@ git am excecao-e2-deferral.patch
 git am excecao-e3-e7.patch
 git am motor-alteracao-fatia1.patch
 git am motor-alteracao-e3-fatia1.patch
+git am motor-alteracao-cascata.patch
+git am motor-alteracao-notificacao.patch
 ```
 
 Alternativa (aplicar todos de uma vez, se estiverem só nesse diretório):
@@ -79,6 +83,8 @@ patch depende de estado externo — só da cadeia anterior.
 | 15 | `excecao-e3-e7` | b9d0f7a | **E3** alteração de escopo e **E7** interrupção: ações rotuladas no Caso 360 (reusam a rota genérica de exceção) |
 | 16 | `motor-alteracao-fatia1` | 7fc4c79 | **Motor de alteração — E2 (adiamento):** prévia do plano recalculado (nova data-limite D-30 + reagendamento do saldo em aberto), rascunho revisado. Tabela `alteracoes`; exige E2 ativo |
 | 17 | `motor-alteracao-e3-fatia1` | 23f29ca | **Motor de alteração — E3 (escopo):** prévia do delta financeiro nos dois sentidos (aditivo / crédito / neutro) + plano recalculado, rascunho. Exige E3 ativo; capacidade `financeiro.gerir` |
+| 18 | `motor-alteracao-cascata` | 265218b | **Motor de alteração — execução em cascata (E2/E3):** aplica o rascunho reescrevendo as parcelas em aberto + atualiza o contrato (data de início / valor_total) + marca aplicada, tudo **em transação** (função SQL `aplicar_alteracao`). Guardas de dinheiro (Pix/disputa/cancelado/crédito→acerto/soma). Só-sessão `financeiro.gerir`, sem Bearer |
+| 19 | `motor-alteracao-notificacao` | _(este)_ | **Notificação ao cliente:** ao aplicar a cascata, e-mail com o resumo do novo cronograma (best-effort, log em `email_logs`); atualiza este README |
 
 ## 4. Banco de dados
 
@@ -93,6 +99,7 @@ pelos patches) reproduz tudo para um banco novo. DDL, por patch:
 - **#13** tabela `acertos` (+ índices; **índice único parcial** `uidx_acertos_rascunho (contrato_id) where status='rascunho'`) — RLS habilitado sem policy
 - **#16** tabela `alteracoes` (rascunho do plano recalculado; + `idx_contrato`, `idx_titular`, **índice único parcial** de rascunho) — RLS habilitado sem policy
 - **#17** `alteracoes`: coluna `tipo` (`deferral`|`escopo`) + campos do delta do E3 (`valor_programa_atual`, `valor_programa_novo`, `delta`, `ja_pago`, `credito_cliente`, `sentido`); o índice único de rascunho passa de `(contrato_id)` para `(contrato_id, tipo)` (E2 e E3 coexistem)
+- **#18** `alteracoes.aplicada_em timestamptz`, `alteracoes.aplicada_por text`; **função** `aplicar_alteracao(...)` (plpgsql, transacional: reescreve parcelas + contrato + `events` + `admin_audit`). Reaplicar recria a função (`drop function` da assinatura antiga + `create or replace`)
 
 > Reaplicar em produção é seguro: todo DDL usa `if not exists` / `add column if
 > not exists`. Se for um banco novo, basta rodar o `schema.sql` atualizado.
@@ -111,14 +118,16 @@ Ambos exigem `CRON_SECRET` (falha fechada) como os demais crons.
 - `INADIMPLENCIA_DIAS` (default `30`) — limiar do E5
 - `INCONTACTAVEL_DIAS` (default `30`) — limiar do E11
 
-Usam infra já existente: `RESEND_*` (e-mails de E1/E6/E8), `NEXT_PUBLIC_APP_URL`
-(link do portal nos e-mails), `MERCADOPAGO_WEBHOOK_SECRET` (E9).
+Usam infra já existente: `RESEND_*` (e-mails de E1/E6/E8 e o **novo cronograma**
+ao aplicar a cascata — log em `email_logs`, tipo `cronograma_atualizado`),
+`NEXT_PUBLIC_APP_URL` (link do portal nos e-mails), `MERCADOPAGO_WEBHOOK_SECRET`
+(E9). A cascata (#18) e a notificação (#19) não exigem env nova.
 
 ## 6. Verificação pós-aplicação
 
 ```bash
 npm run build     # deve terminar com exit code 0 (conferir o EXIT, não a mensagem)
-npm test          # 319 testes, todos passando
+npm test          # 323 testes, todos passando
 ```
 
 ## 7. Cobertura e pendências
@@ -128,21 +137,26 @@ npm test          # 319 testes, todos passando
   E5 inadimplência · E6 cancelamento escola · E7 interrupção · E8 força maior ·
   E9 disputa · E10 hold fraude · E11 incontactável.
 - Mais: modelo/máquina de estados, suspensão efetiva da cobrança, Fila do Dia por
-  idade/dono, **Motor de acerto Fatia 1** (cálculo + memória, rascunho) e
-  **Motor de alteração Fatia 1** (prévia recalculada, rascunho):
-  - **E2 (adiamento):** nova data-limite de quitação (D-30 do novo início) +
-    reagendamento do saldo em aberto na nova janela.
-  - **E3 (escopo):** delta financeiro nos dois sentidos — aditivo (delta>0),
-    crédito (delta<0, com refund a apurar) ou neutro — + plano recalculado sobre
-    o novo saldo. Novo valor do programa informado pela Operação/Financeiro (não
-    há motor de preço integrado neste portal).
+  idade/dono, **Motor de acerto Fatia 1** (cálculo + memória, rascunho) e o
+  **Motor de alteração completo (E2/E3): prévia → execução em cascata → notificação:**
+  - **Prévia (rascunho revisado):** E2 (adiamento) recalcula a data-limite de
+    quitação (D-30 do novo início) + reagenda o saldo em aberto; E3 (escopo)
+    calcula o delta financeiro nos dois sentidos — aditivo, crédito ou neutro —
+    + plano sobre o novo saldo. Novo valor do programa informado pela
+    Operação/Financeiro (não há motor de preço integrado neste portal).
+  - **Execução em cascata (aplicar):** reescreve as parcelas em aberto, atualiza
+    o contrato (data de início no E2; `valor_total` no E3) e marca aplicada, em
+    **transação** (função `aplicar_alteracao`). Parcelas pagas intocadas; sem Pix
+    órfão; contrato cancelado recusado; crédito (E3, já pago > novo) encaminhado
+    ao motor de acerto; dinheiro só muda por webhook (só cria cobranças a vencer).
+  - **Notificação:** e-mail ao cliente com o resumo do novo cronograma (best-effort).
 
 **Deferido (peças grandes, transversais):**
-- **Motor de alteração — execução (fatias 2+):** aplicação do rascunho em
-  cascata (marcos → reescrever parcelas → aditivo/aceite); no E3, execução do
-  **aditivo de compra** via checkout e do **crédito** via motor de acerto/refund.
-  A variante do E3 que também desloca a data de início ("+nova data") também fica
-  para depois.
+- **Motor de alteração — pernas de dinheiro do E3:** o **aditivo de compra** como
+  cobrança complementar avulsa via checkout com aceite (hoje o delta positivo
+  entra embutido nas parcelas a vencer) e a execução do **crédito/refund** via
+  motor de acerto (hoje o crédito é apenas encaminhado). A variante do E3 que
+  também desloca a data de início ("+nova data") também fica para depois.
 - **Motor de acerto, fatias 2+** — proposta no portal → aceite eletrônico →
   execução/refund. Depende de: cláusulas de retenção validadas juridicamente
   (hoje **PLACEHOLDER**, `provisorio=true` na memória) e política de refund por
@@ -152,12 +166,18 @@ npm test          # 319 testes, todos passando
 ## 8. Notas de arquitetura
 
 - **Dinheiro só muda por webhook confirmado, nunca por tela.** Nenhuma ação
-  desta entrega executa refund, cobra ou marca pagamento; os motores de acerto e
-  de alteração só calculam e gravam rascunho (`provisorio=true`) para revisão do
-  Financeiro/Operação — não reescrevem parcelas nem geram aditivo.
+  desta entrega executa refund, cobra ou marca pagamento. O acerto só grava
+  rascunho. A execução em cascata do motor de alteração **reescreve o cronograma**
+  (parcelas a vencer), mas nunca marca pagamento nem toca parcela paga: o dinheiro
+  continua entrando só pelo webhook do Mercado Pago quando cada parcela é paga.
+- **Mutação em transação (doc 07 §4).** A cascata roda numa função SQL atômica
+  (`aplicar_alteracao`): valida sob lock → reescreve parcelas + contrato → grava
+  `events` → grava `admin_audit`, tudo junto. A notificação ao cliente é o único
+  passo best-effort (fora da transação, pós-commit).
 - **Autorização em código** (RLS sem policy): rotas checam capacidade
   (`casos.gerir`, `cancelamento.gerir`, `financeiro.gerir`, `config.gerir`) e
-  posse por titular. E8 (força maior) é só-gestor **sem** fallback Bearer.
+  posse por titular. E8 (força maior) e a **execução da cascata** são só-sessão
+  **sem** fallback Bearer (ações de maior alcance / mais sensíveis a dinheiro).
 - **Suspensão cessa sozinha:** ao resolver/cancelar a exceção, ela deixa de ser
   ativa e a cobrança/avanço voltam — sem religar nada.
 - **Regras de retenção são provisórias** até a validação jurídica; a memória de

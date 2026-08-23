@@ -11,7 +11,7 @@
 | [`plano-zoho-sign.md`](./plano-zoho-sign.md) | Plano do Zoho Sign (Bloco 3): assinatura da Ficha de matrícula via barramento de eventos + cópia de documentos no CRM. Passos feitos e o que falta para ativar. |
 | [`sessao-area-cliente.md`](./sessao-area-cliente.md) | Registro da 1ª sessão (parcelas, UX, responsivo, logo, documentos). |
 | [`sessao-area-cliente-2.md`](./sessao-area-cliente-2.md) | Registro da 2ª sessão (contrato, financeiro, Zoho, aceite, réguas, antecipação, Anexo III, UX). |
-| [`aplicacao-excecoes.md`](./aplicacao-excecoes.md) | Registro de aplicação do módulo de processos de exceção (E1–E11) + Motor de Acerto (Fatia 1) + Motor de Alteração (Fatia 1, E2/E3): ordem dos patches, DDL, config/crons, verificação, cobertura e pendências. |
+| [`aplicacao-excecoes.md`](./aplicacao-excecoes.md) | Registro de aplicação do módulo de processos de exceção (E1–E11) + Motor de Acerto (Fatia 1) + Motor de Alteração E2/E3 (prévia → execução em cascata → notificação): ordem dos patches, DDL, config/crons, verificação, cobertura e pendências. |
 
 ## Handoff de arquitetura (visão-alvo — Cliente + Admin + Fornecedor)
 

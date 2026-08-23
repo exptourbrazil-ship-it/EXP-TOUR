@@ -9,6 +9,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
+import { enviarAvisoCronogramaAtualizadoEmail } from "@/lib/email";
 import {
   calcularPlanoDeferral,
   calcularAlteracaoEscopo,
@@ -401,7 +402,7 @@ export async function aplicarAlteracao(args: {
   const { data: alt } = await supabase
     .from("alteracoes")
     .select(
-      "id, contrato_id, tipo, status, nova_data_inicio, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, credito_cliente, excecao_id"
+      "id, contrato_id, tipo, status, moeda, nova_data_inicio, nova_data_quitacao, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, credito_cliente, excecao_id"
     )
     .eq("id", args.alteracaoId)
     .maybeSingle();
@@ -495,6 +496,31 @@ export async function aplicarAlteracao(args: {
     }
     console.error("[alteracao] falha ao aplicar a cascata");
     throw new Error("Falha ao aplicar a alteracao");
+  }
+
+  // Notificacao ao cliente (doc 04): resumo do novo cronograma. Best-effort — a
+  // alteracao ja foi aplicada e commitada; falha de e-mail NAO derruba a acao.
+  try {
+    const { data: titular } = await supabase
+      .from("titulares")
+      .select("nome, email")
+      .eq("id", contrato.titular_id)
+      .maybeSingle();
+    const email = (titular as { email?: string | null } | null)?.email;
+    if (email) {
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+      await enviarAvisoCronogramaAtualizadoEmail(email, (titular as { nome?: string }).nome || "", {
+        tipo: alt.tipo === "escopo" ? "escopo" : "deferral",
+        moeda: (alt.moeda as string) || "BRL",
+        novaDataInicio: alt.tipo === "escopo" ? null : (novaDataInicio as string | null),
+        novoValorTotal: alt.tipo === "escopo" ? novoTotal : null,
+        novaDataQuitacao: (alt.nova_data_quitacao as string | null) ?? null,
+        parcelas: plano,
+        portalUrl: appUrl || null,
+      });
+    }
+  } catch {
+    console.error("[alteracao] falha ao notificar o cliente sobre o novo cronograma");
   }
 
   const res = (resultado || {}) as { antes?: unknown; depois?: unknown };
