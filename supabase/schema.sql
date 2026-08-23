@@ -404,6 +404,10 @@ begin
   end if;
 end $$;
 
+-- Execucao em cascata: quando/quem aplicou o rascunho.
+alter table if exists alteracoes add column if not exists aplicada_em timestamptz;
+alter table if exists alteracoes add column if not exists aplicada_por text;
+
 create index if not exists idx_alteracoes_contrato on alteracoes(contrato_id);
 create index if not exists idx_alteracoes_titular on alteracoes(titular_id);
 -- Um rascunho por (contrato, tipo): E2 e E3 podem coexistir sem colidir.
@@ -411,6 +415,175 @@ drop index if exists uidx_alteracoes_rascunho;
 create unique index if not exists uidx_alteracoes_rascunho
   on alteracoes(contrato_id, tipo) where status = 'rascunho';
 alter table if exists alteracoes enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Execucao em cascata do motor de alteracao (E2/E3): aplica o RASCUNHO revisado
+-- reescrevendo as parcelas EM ABERTO, atualizando o contrato e marcando a
+-- alteracao como aplicada — tudo em UMA transacao (a funcao roda atomica).
+-- Invariantes preservadas: parcelas pagas nunca sao tocadas; recusa se houver
+-- Pix em aberto ou parcela em disputa; a soma das parcelas continua igual ao
+-- valor do contrato (na moeda); dinheiro nao muda de estado (so cria cobrancas
+-- a vencer, pagas via webhook). A validacao de negocio (posse, excecao ativa,
+-- credito -> acerto, plano nao-vencido) fica no servico; a funcao re-checa os
+-- invariantes de dinheiro dentro da transacao para fechar corridas.
+-- ---------------------------------------------------------------------------
+create or replace function aplicar_alteracao(
+  p_alteracao_id uuid,
+  p_tipo text,
+  p_expected_saldo numeric,
+  p_expected_valor_atual numeric, -- E3: valor do programa que o rascunho assumiu (revalida sob lock)
+  p_new_total numeric,            -- E3: novo valor do programa; E2: ignorado
+  p_new_data_inicio date,
+  p_parcelas jsonb,
+  p_autor text,
+  p_ip text
+) returns jsonb
+language plpgsql
+as $$
+declare
+  v_alt alteracoes%rowtype;
+  v_contrato_id uuid;
+  v_valor_total numeric;
+  v_data_inicio date;
+  v_cancelado_em timestamptz;
+  v_new_total numeric;
+  v_sum_paid numeric;
+  v_sum_proposto numeric;
+  v_max_numero int;
+  v_count_bloqueio int;
+  v_item jsonb;
+  v_before jsonb;
+  v_after jsonb;
+begin
+  -- Trava o rascunho e valida o estado.
+  select * into v_alt from alteracoes where id = p_alteracao_id for update;
+  if not found then raise exception 'alteracao_nao_encontrada'; end if;
+  if v_alt.status <> 'rascunho' then raise exception 'nao_rascunho'; end if;
+
+  -- Trava o contrato.
+  select id, valor_total, data_inicio, cancelado_em
+    into v_contrato_id, v_valor_total, v_data_inicio, v_cancelado_em
+    from contratos where id = v_alt.contrato_id for update;
+  if not found then raise exception 'contrato_nao_encontrado'; end if;
+  -- Guarda: contrato cancelado nao pode ter cronograma reescrito.
+  if v_cancelado_em is not null then raise exception 'contrato_cancelado'; end if;
+
+  -- Trava as parcelas EM ABERTO: serializa contra a geracao de Pix concorrente
+  -- (que atua na parcela), fechando a janela de pagamento orfao.
+  perform 1 from parcelas
+    where contrato_id = v_contrato_id and status <> 'pago' for update;
+
+  -- Guarda: nenhuma parcela nao-paga com cobranca em aberto (Pix gerado OU
+  -- external_payment_id remanescente) — evita ordem/QR apontando p/ parcela deletada.
+  select count(*) into v_count_bloqueio from parcelas
+    where contrato_id = v_contrato_id and status <> 'pago'
+      and (qr_code_url is not null or external_payment_id is not null);
+  if v_count_bloqueio > 0 then raise exception 'pix_em_aberto'; end if;
+
+  -- Guarda: nenhuma parcela em disputa (E9) — dinheiro contestado.
+  select count(*) into v_count_bloqueio from parcelas
+    where contrato_id = v_contrato_id and em_disputa = true;
+  if v_count_bloqueio > 0 then raise exception 'em_disputa'; end if;
+
+  -- Novo total do contrato, decidido SOB LOCK (nao confia cegamente no chamador):
+  --  - E3 (escopo): revalida que o valor atual continua o que o rascunho assumiu
+  --    (senao um upgrade/alteracao concorrente seria sobrescrito) e usa o novo valor;
+  --  - E2 (deferral): o total NAO muda — mantem o valor travado.
+  if p_tipo = 'escopo' then
+    if round(v_valor_total, 2) <> round(p_expected_valor_atual, 2) then
+      raise exception 'desatualizado';
+    end if;
+    v_new_total := p_new_total;
+  else
+    v_new_total := v_valor_total;
+  end if;
+
+  -- Invariante de soma: novo saldo aplicavel = novo total - pago (parcelas).
+  select coalesce(sum(valor_atual), 0) into v_sum_paid from parcelas
+    where contrato_id = v_contrato_id and status = 'pago';
+  if round(v_new_total - v_sum_paid, 2) <> round(p_expected_saldo, 2) then
+    raise exception 'desatualizado';
+  end if;
+
+  -- A soma do plano proposto tem de bater com o saldo esperado.
+  select coalesce(sum((x->>'valor')::numeric), 0) into v_sum_proposto
+    from jsonb_array_elements(p_parcelas) as x;
+  if round(v_sum_proposto, 2) <> round(p_expected_saldo, 2) then
+    raise exception 'plano_invalido';
+  end if;
+
+  -- Snapshot antes (auditoria/replay).
+  select jsonb_build_object(
+    'valor_total', v_valor_total,
+    'data_inicio', v_data_inicio,
+    'parcelas', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'numero', numero, 'valor', valor_atual, 'vencimento', vencimento, 'status', status
+      ) order by numero), '[]'::jsonb)
+      from parcelas where contrato_id = v_contrato_id)
+  ) into v_before;
+
+  -- Reescreve o saldo em aberto: remove as nao-pagas (nenhuma tem cobranca) e recria.
+  delete from parcelas where contrato_id = v_contrato_id and status <> 'pago';
+  select coalesce(max(numero), 0) into v_max_numero from parcelas where contrato_id = v_contrato_id;
+
+  for v_item in select * from jsonb_array_elements(p_parcelas)
+  loop
+    insert into parcelas (contrato_id, numero, descricao, valor_original, valor_atual, vencimento, status, is_entrada)
+    values (
+      v_contrato_id,
+      v_max_numero + (v_item->>'numero')::int,
+      coalesce(v_item->>'descricao', 'Parcela'),
+      (v_item->>'valor')::numeric,
+      (v_item->>'valor')::numeric,
+      (v_item->>'vencimento')::date,
+      'pendente',
+      false
+    );
+  end loop;
+
+  -- Atualiza o contrato: E3 muda o valor_total (sob lock); E2 regrava o mesmo
+  -- valor travado e desloca a data_inicio.
+  update contratos
+    set valor_total = v_new_total,
+        data_inicio = coalesce(p_new_data_inicio, data_inicio)
+    where id = v_contrato_id;
+
+  -- Marca o rascunho como aplicado (libera o indice unico de rascunho).
+  update alteracoes
+    set status = 'aplicado', aplicada_em = now(), aplicada_por = p_autor, atualizada_em = now()
+    where id = p_alteracao_id;
+
+  -- Snapshot depois.
+  select jsonb_build_object(
+    'valor_total', v_new_total,
+    'data_inicio', coalesce(p_new_data_inicio, v_data_inicio),
+    'parcelas', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'numero', numero, 'valor', valor_atual, 'vencimento', vencimento, 'status', status
+      ) order by numero), '[]'::jsonb)
+      from parcelas where contrato_id = v_contrato_id)
+  ) into v_after;
+
+  -- Evento no ledger (idempotente por idempotency_key) — dentro da transacao.
+  insert into events (source, event_type, idempotency_key, external_id, payload, status, processed_at)
+  values ('portal', 'alteracao_aplicada', 'alteracao:aplicar:' || p_alteracao_id::text, p_alteracao_id::text,
+          jsonb_build_object('tipo', v_alt.tipo, 'antes', v_before, 'depois', v_after, 'autor', p_autor),
+          'processado', now())
+  on conflict (idempotency_key) do nothing;
+
+  -- Trilha de auditoria — dentro da MESMA transacao (a reescrita nunca fica sem trilha).
+  insert into admin_audit (usuario, acao, alvo, detalhe, ip)
+  values (p_autor, 'alteracao.aplicar', v_contrato_id::text,
+          jsonb_build_object(
+            'alteracao_id', p_alteracao_id, 'tipo', v_alt.tipo,
+            'novo_total', v_new_total, 'nova_data_inicio', p_new_data_inicio,
+            'num_parcelas', jsonb_array_length(p_parcelas)
+          ), p_ip);
+
+  return jsonb_build_object('ok', true, 'antes', v_before, 'depois', v_after);
+end;
+$$;
 
 -- Avaliacoes NPS coletadas na aba Retorno: nota 0-10, classificacao
 -- (detrator/neutro/promotor) e comentario opcional. Uma resposta por

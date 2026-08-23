@@ -834,7 +834,11 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       <SecaoDeferral caso={caso} podeGerir={permissoes.gerirCaso} />
 
       {/* Motor de alteracao — previa do plano recalculado no adiamento (E2) */}
-      <SecaoAlteracao caso={caso} podeGerir={permissoes.gerirCaso} />
+      <SecaoAlteracao
+        caso={caso}
+        podeGerir={permissoes.gerirCaso}
+        podeAplicar={permissoes.gerirFinanceiro}
+      />
 
       {/* Alteracao de escopo — abre o E3 */}
       <SecaoExcecaoRotulada
@@ -855,7 +859,11 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       />
 
       {/* Motor de alteracao — previa do delta financeiro no escopo (E3) */}
-      <SecaoAlteracaoEscopo caso={caso} podeGerir={permissoes.gerirFinanceiro} />
+      <SecaoAlteracaoEscopo
+        caso={caso}
+        podeGerir={permissoes.gerirFinanceiro}
+        podeAplicar={permissoes.gerirFinanceiro}
+      />
 
       {/* Interrupcao durante o programa — abre o E7 */}
       <SecaoExcecaoRotulada
@@ -1691,12 +1699,126 @@ function SecaoDeferral({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) 
 
 // ---- Motor de alteracao: previa do plano no adiamento (E2) ------------------
 
+// Chip de status do rascunho (rascunho / aplicado / cancelado).
+function StatusAlteracaoChip({ status }: { status: string }) {
+  const mapa: Record<string, { txt: string; cls: string }> = {
+    rascunho: { txt: "Rascunho", cls: "bg-neutral-100 text-neutral-600" },
+    aplicado: { txt: "✓ Aplicado", cls: "bg-emerald-100 text-emerald-800" },
+    cancelado: { txt: "Cancelado", cls: "bg-neutral-100 text-neutral-500 line-through" },
+  };
+  const m = mapa[status] || { txt: status, cls: "bg-neutral-100 text-neutral-600" };
+  return <span className={"rounded-full px-2 py-0.5 text-xs font-medium " + m.cls}>{m.txt}</span>;
+}
+
+// Botao de EXECUCAO EM CASCATA: aplica o rascunho revisado (reescreve as
+// parcelas em aberto). Acao sensivel a dinheiro -> exige confirmacao e
+// capacidade financeiro.gerir (decidida no server; aqui so habilita).
+function BotaoAplicarAlteracao({
+  titularId,
+  alteracaoId,
+  podeAplicar,
+  status,
+  bloqueioCredito,
+}: {
+  titularId: string;
+  alteracaoId: string;
+  podeAplicar: boolean;
+  status: string;
+  bloqueioCredito?: boolean;
+}) {
+  const router = useRouter();
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  if (status !== "rascunho") return null;
+  if (bloqueioCredito) {
+    return (
+      <p className="mt-2 text-xs text-[#8a6a2f]">
+        Há crédito a devolver — conduza pelo motor de acerto (refund). A cascata não devolve dinheiro.
+      </p>
+    );
+  }
+  if (!podeAplicar) {
+    return (
+      <p className="mt-2 text-xs text-neutral-500">
+        Aplicar o plano (reescrever as parcelas) requer o Financeiro (ou Gestor).
+      </p>
+    );
+  }
+
+  async function aplicar() {
+    setErro(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/alteracao/aplicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alteracaoId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao aplicar o plano.");
+        return;
+      }
+      setConfirmando(false);
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-100 pt-3">
+      {!confirmando ? (
+        <button
+          type="button"
+          onClick={() => setConfirmando(true)}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          Aplicar plano
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-neutral-600">
+            Reescreve as parcelas em aberto e atualiza o contrato. As parcelas pagas não são tocadas.
+            Confirmar?
+          </span>
+          <button
+            type="button"
+            onClick={aplicar}
+            disabled={enviando}
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {enviando ? "Aplicando…" : "Confirmar aplicação"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmando(false)}
+            disabled={enviando}
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+      {erro ? <p className="mt-1 text-xs text-red-600">{erro}</p> : null}
+    </div>
+  );
+}
+
 function AlteracaoCard({
   alteracao,
   contratos,
+  titularId,
+  podeAplicar,
 }: {
   alteracao: CasoAlteracao;
   contratos: CasoContrato[];
+  titularId: string;
+  podeAplicar: boolean;
 }) {
   const contrato = contratos.find((c) => c.id === alteracao.contrato_id);
   const moeda = alteracao.moeda || "BRL";
@@ -1704,12 +1826,13 @@ function AlteracaoCard({
   return (
     <div className="rounded-xl border border-neutral-200 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium text-brand">
+        <span className="flex items-center gap-2 text-sm font-medium text-brand">
           {contrato ? nomeContrato(contrato) : "Contrato"}
+          <StatusAlteracaoChip status={alteracao.status} />
         </span>
         <span className="text-xs text-neutral-400">{fmtDataHora(alteracao.criado_em)}</span>
       </div>
-      {alteracao.provisorio ? (
+      {alteracao.provisorio && alteracao.status === "rascunho" ? (
         <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
           ⚠ Prévia provisória — não reescreve parcelas nem gera aditivo. A aplicação é um passo à
           parte, após revisão do Financeiro/Operação.
@@ -1757,11 +1880,25 @@ function AlteracaoCard({
           Sem saldo em aberto para reagendar — nada a recalcular.
         </p>
       )}
+      <BotaoAplicarAlteracao
+        titularId={titularId}
+        alteracaoId={alteracao.id}
+        podeAplicar={podeAplicar}
+        status={alteracao.status}
+      />
     </div>
   );
 }
 
-function SecaoAlteracao({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+function SecaoAlteracao({
+  caso,
+  podeGerir,
+  podeAplicar,
+}: {
+  caso: Caso;
+  podeGerir: boolean;
+  podeAplicar: boolean;
+}) {
   const router = useRouter();
   const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
   const [novaData, setNovaData] = useState("");
@@ -1858,7 +1995,13 @@ function SecaoAlteracao({ caso, podeGerir }: { caso: Caso; podeGerir: boolean })
         ) : (
           <div className="space-y-3">
             {deferrals.map((a) => (
-              <AlteracaoCard key={a.id} alteracao={a} contratos={caso.contratos} />
+              <AlteracaoCard
+                key={a.id}
+                alteracao={a}
+                contratos={caso.contratos}
+                titularId={caso.titular.id}
+                podeAplicar={podeAplicar}
+              />
             ))}
           </div>
         );
@@ -1878,9 +2021,13 @@ function labelSentidoAlteracao(s: string | null): string {
 function AlteracaoEscopoCard({
   alteracao,
   contratos,
+  titularId,
+  podeAplicar,
 }: {
   alteracao: CasoAlteracao;
   contratos: CasoContrato[];
+  titularId: string;
+  podeAplicar: boolean;
 }) {
   const contrato = contratos.find((c) => c.id === alteracao.contrato_id);
   const moeda = alteracao.moeda || "BRL";
@@ -1890,18 +2037,19 @@ function AlteracaoEscopoCard({
   return (
     <div className="rounded-xl border border-neutral-200 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium text-brand">
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-brand">
           {contrato ? nomeContrato(contrato) : "Contrato"}
-          <span className="ml-2 text-xs font-normal text-neutral-500">
+          <StatusAlteracaoChip status={alteracao.status} />
+          <span className="text-xs font-normal text-neutral-500">
             {labelSentidoAlteracao(alteracao.sentido)}
           </span>
         </span>
         <span className="text-xs text-neutral-400">{fmtDataHora(alteracao.criado_em)}</span>
       </div>
-      {alteracao.provisorio ? (
+      {alteracao.provisorio && alteracao.status === "rascunho" ? (
         <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
-          ⚠ Prévia provisória — não reescreve parcelas, não cobra e não devolve. O aditivo (checkout/
-          aceite) e o crédito (motor de acerto) são passos à parte, após revisão.
+          ⚠ Prévia provisória — não reescreve parcelas, não cobra e não devolve. O aditivo (folga nas
+          parcelas a vencer) entra ao aplicar; o crédito (motor de acerto) é passo à parte.
         </p>
       ) : null}
       <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
@@ -1944,8 +2092,8 @@ function AlteracaoEscopoCard({
       </dl>
       {alteracao.sentido === "aditivo" && credito === 0 ? (
         <p className="mt-2 text-xs text-neutral-500">
-          Delta positivo: a diferença é cobrança complementar (aditivo de compra) — encaminhar ao
-          checkout com aceite. Não executado aqui.
+          Delta positivo: ao aplicar, a diferença entra como parcelas a vencer (pagas via Pix como as
+          demais). Nenhuma cobrança é feita agora.
         </p>
       ) : null}
       {plano.length > 0 ? (
@@ -1972,11 +2120,26 @@ function AlteracaoEscopoCard({
       ) : (
         <p className="mt-2 text-xs text-neutral-500">Sem saldo a reagendar após o recálculo.</p>
       )}
+      <BotaoAplicarAlteracao
+        titularId={titularId}
+        alteracaoId={alteracao.id}
+        podeAplicar={podeAplicar}
+        status={alteracao.status}
+        bloqueioCredito={credito > 0}
+      />
     </div>
   );
 }
 
-function SecaoAlteracaoEscopo({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
+function SecaoAlteracaoEscopo({
+  caso,
+  podeGerir,
+  podeAplicar,
+}: {
+  caso: Caso;
+  podeGerir: boolean;
+  podeAplicar: boolean;
+}) {
   const router = useRouter();
   const [contratoId, setContratoId] = useState(caso.contratos[0]?.id || "");
   const [novoValor, setNovoValor] = useState("");
@@ -2077,7 +2240,13 @@ function SecaoAlteracaoEscopo({ caso, podeGerir }: { caso: Caso; podeGerir: bool
       ) : (
         <div className="space-y-3">
           {escopos.map((a) => (
-            <AlteracaoEscopoCard key={a.id} alteracao={a} contratos={caso.contratos} />
+            <AlteracaoEscopoCard
+              key={a.id}
+              alteracao={a}
+              contratos={caso.contratos}
+              titularId={caso.titular.id}
+              podeAplicar={podeAplicar}
+            />
           ))}
         </div>
       )}

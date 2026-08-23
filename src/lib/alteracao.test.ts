@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   calcularPlanoDeferral,
   calcularAlteracaoEscopo,
+  validarPlanoAplicavel,
   somaValoresParcelas,
   dataLimiteQuitacao,
 } from "./parcelas.ts";
@@ -118,4 +119,43 @@ test("E3 neutro: delta zero apenas reagenda o saldo restante", () => {
   assert.equal(r.novoSaldo, 7500);
   assert.equal(r.creditoCliente, 0);
   assert.equal(somaValoresParcelas(r.planoProposto.map((x) => x.valor)), 7500);
+});
+
+// ---- Execucao em cascata: validacao do plano antes de aplicar --------------
+
+test("validarPlanoAplicavel: soma bate e vencimentos futuros -> ok", () => {
+  const v = validarPlanoAplicavel({
+    plano: [
+      { numero: 1, vencimento: "2026-06-15", valor: 3000 },
+      { numero: 2, vencimento: "2026-07-15", valor: 3000 },
+    ],
+    saldoEsperado: 6000,
+    hojeISO: "2026-01-01",
+  });
+  assert.deepEqual(v, { ok: true });
+});
+
+test("validarPlanoAplicavel: soma nao bate -> recusa", () => {
+  const v = validarPlanoAplicavel({
+    plano: [{ numero: 1, vencimento: "2026-06-15", valor: 3000 }],
+    saldoEsperado: 6000,
+    hojeISO: "2026-01-01",
+  });
+  assert.equal(v.ok, false);
+  assert.equal(v.motivo, "soma_nao_bate");
+});
+
+test("validarPlanoAplicavel: vencimento no passado -> recusa (rascunho velho)", () => {
+  const v = validarPlanoAplicavel({
+    plano: [{ numero: 1, vencimento: "2025-12-01", valor: 6000 }],
+    saldoEsperado: 6000,
+    hojeISO: "2026-01-01",
+  });
+  assert.equal(v.ok, false);
+  assert.equal(v.motivo, "vencimento_no_passado");
+});
+
+test("validarPlanoAplicavel: saldo zero com plano vazio -> ok", () => {
+  const v = validarPlanoAplicavel({ plano: [], saldoEsperado: 0, hojeISO: "2026-01-01" });
+  assert.deepEqual(v, { ok: true });
 });

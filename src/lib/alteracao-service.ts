@@ -9,7 +9,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
-import { calcularPlanoDeferral, calcularAlteracaoEscopo, saldoDevedorMoeda } from "@/lib/parcelas";
+import {
+  calcularPlanoDeferral,
+  calcularAlteracaoEscopo,
+  saldoDevedorMoeda,
+  validarPlanoAplicavel,
+} from "@/lib/parcelas";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -354,4 +359,144 @@ export async function calcularERegistrarAlteracaoEscopo(args: {
   });
 
   return registro;
+}
+
+// ---------------------------------------------------------------------------
+// EXECUCAO EM CASCATA (E2/E3): aplica o RASCUNHO revisado
+// ---------------------------------------------------------------------------
+// Reescreve as parcelas EM ABERTO conforme o plano do rascunho, atualiza o
+// contrato (E2: nova data de inicio; E3: novo valor_total) e marca a alteracao
+// como aplicada — a escrita e ATOMICA (funcao SQL `aplicar_alteracao`). NAO
+// executa refund nem cobra: apenas cria cobrancas a vencer (pagas via webhook).
+// Recusa se: nao houver rascunho ativo, a excecao ja tiver sido resolvida, o
+// plano estiver desatualizado (soma/vencimento), houver Pix em aberto/disputa,
+// ou (E3) houver credito a devolver -> nesse caso encaminha ao motor de acerto.
+
+const MAPA_ERRO_SQL: Record<string, string> = {
+  nao_rascunho: "Este rascunho ja foi aplicado ou cancelado",
+  alteracao_nao_encontrada: "Rascunho de alteracao nao encontrado",
+  contrato_nao_encontrado: "Contrato nao encontrado",
+  contrato_cancelado: "O contrato esta cancelado; nao ha cronograma para reescrever",
+  pix_em_aberto: "Ha parcela com Pix em aberto; cancele a cobranca antes de aplicar",
+  em_disputa: "Ha parcela em disputa; resolva a disputa (E9) antes de aplicar",
+  desatualizado: "O plano do rascunho esta desatualizado; recalcule antes de aplicar",
+  plano_invalido: "A soma do plano nao confere com o saldo; recalcule",
+};
+
+export type AlteracaoAplicada = {
+  ok: true;
+  antes: unknown;
+  depois: unknown;
+};
+
+export async function aplicarAlteracao(args: {
+  alteracaoId: string;
+  titularIdEsperado: string;
+  autor: string;
+  ip?: string | null;
+}): Promise<AlteracaoAplicada> {
+  const supabase = getSupabase();
+
+  // Carrega o rascunho.
+  const { data: alt } = await supabase
+    .from("alteracoes")
+    .select(
+      "id, contrato_id, tipo, status, nova_data_inicio, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, credito_cliente, excecao_id"
+    )
+    .eq("id", args.alteracaoId)
+    .maybeSingle();
+  if (!alt) {
+    throw new AlteracaoBloqueada("nao_encontrada", "Rascunho de alteracao nao encontrado");
+  }
+  if (alt.status !== "rascunho") {
+    throw new AlteracaoBloqueada("ja_aplicada", "Este rascunho ja foi aplicado ou cancelado");
+  }
+
+  // Posse: o contrato do rascunho precisa ser do titular da URL.
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id, valor_total")
+    .eq("id", alt.contrato_id)
+    .maybeSingle();
+  if (!contrato) {
+    throw new AlteracaoBloqueada("contrato_nao_encontrado", "Contrato nao encontrado");
+  }
+  if (contrato.titular_id !== args.titularIdEsperado) {
+    throw new AlteracaoBloqueada("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+
+  // A excecao (E2/E3) precisa continuar ativa — aplicar so faz sentido com o
+  // processo aberto.
+  const tipoExcecaoEsperado = alt.tipo === "escopo" ? "alteracao_escopo" : "deferral_inicio";
+  const { data: excecoes } = await supabase
+    .from("case_exceptions")
+    .select("id, tipo")
+    .eq("contrato_id", alt.contrato_id)
+    .in("status", ["aberta", "em_andamento"]);
+  if (!(excecoes || []).some((e) => e.tipo === tipoExcecaoEsperado)) {
+    throw new AlteracaoBloqueada(
+      "excecao_inativa",
+      "O processo de alteracao ja foi resolvido; nao ha o que aplicar"
+    );
+  }
+
+  // E3 com credito a devolver: a cascata nao devolve dinheiro — encaminha ao acerto.
+  if (alt.tipo === "escopo" && Number(alt.credito_cliente || 0) > 0) {
+    throw new AlteracaoBloqueada(
+      "credito_encaminhar_acerto",
+      "Ha credito a devolver ao cliente; conduza pelo motor de acerto (refund), nao pela cascata"
+    );
+  }
+
+  // Novo total e nova data de inicio conforme o tipo.
+  const novoTotal =
+    alt.tipo === "escopo" ? Number(alt.valor_programa_novo) || 0 : Number(contrato.valor_total) || 0;
+  const novaDataInicio = alt.tipo === "escopo" ? null : (alt.nova_data_inicio as string | null);
+
+  // Valida o plano revisado (soma bate, sem vencimento no passado).
+  const plano = (alt.plano_proposto || []) as { numero: number; vencimento: string; valor: number }[];
+  const saldoEsperado = Number(alt.saldo_devedor) || 0;
+  const validacao = validarPlanoAplicavel({
+    plano,
+    saldoEsperado,
+    hojeISO: hojeBrasilISO(),
+  });
+  if (!validacao.ok) {
+    const msg =
+      validacao.motivo === "vencimento_no_passado"
+        ? "O plano tem vencimento no passado; recalcule antes de aplicar"
+        : "O plano do rascunho esta desatualizado; recalcule antes de aplicar";
+    throw new AlteracaoBloqueada("plano_desatualizado", msg);
+  }
+
+  const expectedValorAtual =
+    alt.tipo === "escopo" ? Number(alt.valor_programa_atual) || 0 : 0;
+
+  // Escrita ATOMICA no banco (reescreve parcelas + contrato + marca aplicada +
+  // evento + audit, tudo em uma transacao na funcao SQL).
+  const { data: resultado, error } = await supabase.rpc("aplicar_alteracao", {
+    p_alteracao_id: args.alteracaoId,
+    p_tipo: alt.tipo,
+    p_expected_saldo: saldoEsperado,
+    p_expected_valor_atual: expectedValorAtual,
+    p_new_total: novoTotal,
+    p_new_data_inicio: novaDataInicio,
+    p_parcelas: plano,
+    p_autor: args.autor,
+    p_ip: args.ip ?? null,
+  });
+  if (error) {
+    // A funcao SQL sinaliza recusas de negocio via message (ex.: 'pix_em_aberto').
+    // Casa por substring para tolerar prefixo do PostgREST.
+    const msg = String((error as { message?: string }).message || "");
+    const codigo = Object.keys(MAPA_ERRO_SQL).find((c) => msg.includes(c));
+    if (codigo) {
+      throw new AlteracaoBloqueada(codigo, MAPA_ERRO_SQL[codigo]);
+    }
+    console.error("[alteracao] falha ao aplicar a cascata");
+    throw new Error("Falha ao aplicar a alteracao");
+  }
+
+  const res = (resultado || {}) as { antes?: unknown; depois?: unknown };
+  return { ok: true, antes: res.antes ?? null, depois: res.depois ?? null };
 }

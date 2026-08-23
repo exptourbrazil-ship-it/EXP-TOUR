@@ -255,3 +255,36 @@ export function calcularAlteracaoEscopo(args: {
     cabe: plano.cabe,
   };
 }
+
+// ---------------------------------------------------------------------------
+// EXECUCAO EM CASCATA — validacao do plano antes de aplicar (E2/E3)
+// ---------------------------------------------------------------------------
+// Antes de reescrever as parcelas, o rascunho revisado precisa continuar
+// coerente: a soma do plano bate com o saldo esperado e nenhum vencimento caiu
+// no passado (rascunho velho). Guarda pura (sem DB) para ser testavel; a
+// atomicidade da escrita fica na funcao SQL `aplicar_alteracao`.
+export type ValidacaoPlano = { ok: boolean; motivo?: string };
+
+export function validarPlanoAplicavel(args: {
+  plano: ParcelaProposta[];
+  saldoEsperado: number;
+  hojeISO: string;
+}): ValidacaoPlano {
+  const plano = Array.isArray(args.plano) ? args.plano : [];
+  const saldo = centavos(args.saldoEsperado);
+  const soma = somaValoresParcelas(plano.map((p) => Number(p.valor) || 0));
+  if (Math.round(Math.abs(soma - saldo) * 100) > 1) {
+    return { ok: false, motivo: "soma_nao_bate" };
+  }
+  // Saldo zero: nada a reagendar -> plano vazio e valido (ex.: quitado apos downgrade).
+  if (saldo <= 0) {
+    return plano.length === 0 ? { ok: true } : { ok: false, motivo: "soma_nao_bate" };
+  }
+  if (plano.length === 0) return { ok: false, motivo: "plano_vazio" };
+  for (const p of plano) {
+    if (!p.vencimento || p.vencimento < args.hojeISO) {
+      return { ok: false, motivo: "vencimento_no_passado" };
+    }
+  }
+  return { ok: true };
+}
