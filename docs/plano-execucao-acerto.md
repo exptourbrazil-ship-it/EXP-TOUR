@@ -48,12 +48,19 @@ fica em `proposto`/rascunho (seguro), mas não conclui.
 2. **Política de refund por fornecedor.** Quanto/quando a escola devolve
    (`Fornecedor_Politica_Visa_Refusal` e políticas de refund do cadastro do
    fornecedor, doc 05). Define o `refund_escola_esperado` real.
-3. **Meio de devolução ao cliente** (decisão de arquitetura, ver §6):
-   - **A) Estorno do pagamento original via API do Mercado Pago** (refund) —
-     limitado ao método/pagamento original e à janela temporal do MP; ou
-   - **B) Pix de devolução avulso** (transferência para a chave do cliente),
-     fora do fluxo de estorno do MP.
-   A escolha muda a Fatia C/D.
+3. **Meio de devolução ao cliente** — ✅ **DECIDIDO: Opção A (estorno via
+   Mercado Pago) com fallback manual.** Estorna o(s) pagamento(s) original(is)
+   via `POST /v1/payments/{id}/refunds`, confirmado por webhook, devolvendo ao
+   pagador em BRL. Casos que o MP não cobre (fora da janela, método não
+   estornável, múltiplos pagadores) caem no **fallback manual**
+   (`refund_meio='manual'`, `executado_manual` + comprovante). A Opção B (Pix de
+   devolução avulso) foi descartada por exigir captura/validação de chave Pix
+   (KYC), integração de payout e uma decisão de câmbio extra.
+   - **Regra de câmbio (settlada pela Opção A):** o crédito é calculado na moeda
+     do programa, mas o refund é **em BRL do que foi efetivamente pago**. Devolve
+     a mesma **fração**: `refundBRL = totalPagoBRL × (saldoDevolver / totalPago)`
+     (ambos em moeda do programa), particionada entre os pagamentos originais até
+     cobrir o valor. Não escolhe taxa nova — usa o BRL real do ledger.
 4. **Texto do "Termo/Aditivo de Acerto"** (versão + hash) para o aceite
    eletrônico — mesma validação jurídica já prevista do Termo de Adesão.
 
@@ -95,20 +102,25 @@ fica em `proposto`/rascunho (seguro), mas não conclui.
   do aceite ao cliente.
 - **Risco:** baixo/médio. **Testes:** puros (máquina de estados, termo/hash).
 
-### Fatia C — Infra de refund no Mercado Pago (wrapper + ledger)
-- `refundPayment(paymentId, valor?)` em `mercadopago.ts`: `POST
+### Fatia C — Infra de refund no Mercado Pago (wrapper + ledger + particionamento)
+_(Meio decidido: **estorno via MP**, ver §1.3.)_
+- `refundPayment(paymentId, valorBRL?)` em `mercadopago.ts`: `POST
   /v1/payments/{id}/refunds` (total ou parcial), com `X-Idempotency-Key`.
-- Ledger **`estornos`** espelhando `pagamentos`: um lançamento por refund
-  (`acerto_id`, `pagamento_id`, `external_refund_id`, valor BRL e na moeda,
-  status), **único** por `(acerto_id, external_refund_id)` (idempotência).
-- **Elegibilidade** (helper puro, testável): o acerto pode exigir **N refunds**
-  (um por pagamento original); a soma dos estornos tem de bater o
-  `saldo_devolver_cliente`. Casos que caem no **fluxo manual** (registrar como
-  `executado_manual`): fora da janela do MP, método não estornável, valor não
-  casa, pagamento em disputa.
-- **Risco:** médio (infra de dinheiro, mas ainda sem "apertar o botão").
-  **Testes:** puros (soma/particionamento dos refunds, elegibilidade) + helpers
-  de webhook (assinatura, `idempotency_key`), como `mp-events`.
+- Ledger **`estornos`**: um lançamento por refund (`acerto_id`, `pagamento_id`,
+  `external_refund_id`, `valor_brl`, `status`), **único** por `(acerto_id,
+  external_refund_id)` e por `(pagamento_id)` conforme o particionamento
+  (idempotência).
+- **Particionamento (helper PURO, testável):** dado `saldoDevolver`/`totalPago`
+  (moeda) e os pagamentos do ledger (`valor_brl`), calcula `refundBRL` pela
+  fração da §1.3 e o distribui entre os pagamentos (estorno total de cada um até
+  o remanescente; o último pode ser parcial). A soma dos estornos = `refundBRL`.
+- **Elegibilidade (helper PURO):** marca como **fluxo manual**
+  (`refund_meio='manual'`, para `executado_manual` + comprovante) quando: fora da
+  janela do MP, método não estornável, pagamento em disputa (E9), ou o refund não
+  casa (ex.: só pagamentos manuais/sem `external_payment_id`).
+- **Ainda sem "apertar o botão"** (a Fatia D dispara). **Risco:** médio.
+  **Testes:** puros (fração BRL, particionamento, elegibilidade) + helpers de
+  webhook (assinatura, `idempotency_key`), como `mp-events`.
 
 ### Fatia D — Execução confirmada por webhook (money out)
 - **Transição `aceito → executado` só por confirmação.** A rota de execução
@@ -181,14 +193,16 @@ rascunho ──propor(termo)──▶ proposto ──aceite eletrônico──▶
 
 ## 6. Decisões abertas (precisam de definição antes da Fatia D)
 
-1. **Meio de refund:** estorno via MP (§1.3-A) vs Pix de devolução avulso (B). O
-   estorno via MP é idempotente e rastreável, mas tem janela temporal e casa só
-   com o pagamento original; o Pix avulso é flexível, porém exige captura da
-   chave do cliente e um comprovante próprio.
-2. **Refund parcial / múltiplos pagamentos:** confirmar a regra de
-   particionamento (um refund por pagamento até cobrir o saldo).
-3. **Retenção e política de refund por fornecedor** (jurídico + cadastro).
-4. **Texto do Termo/Aditivo de Acerto** (versão + hash).
+1. ✅ **RESOLVIDO — Meio de refund:** estorno via MP + fallback manual (§1.3).
+2. ✅ **RESOLVIDO — Refund parcial / múltiplos pagamentos:** fração em BRL
+   (§1.3) particionada entre os pagamentos originais até cobrir o valor.
+3. **Retenção e política de refund por fornecedor** (jurídico + cadastro) —
+   ainda aberto (a Fatia A já parametriza; falta marcar validado + a política).
+4. **Texto do Termo/Aditivo de Acerto** (versão + hash) — a Fatia B já renderiza
+   um termo funcional; falta a versão jurídica final.
+5. **Janela de estorno do MP** (parâmetro operacional) — confirmar o limite atual
+   para decidir a partir de quando cai no fallback manual (não bloqueia a Fatia C:
+   o helper de elegibilidade já trata "fora da janela").
 
 ---
 
@@ -202,6 +216,8 @@ A ordem coloca todo o valor **sem risco de dinheiro** (A, B) antes de qualquer
 peça que mova caixa (C, D), e cada fatia é entregável e testável isoladamente.
 As Fatias A–C podem ser construídas já; a Fatia D depende das decisões do §6.
 
-> **Estado:** Fatias A e B **concluídas**. Próxima recomendada: Fatia C (wrapper
-> de refund no Mercado Pago + ledger `estornos`) — primeira peça de infra de
-> dinheiro; a Fatia D (execução confirmada por webhook) depende das decisões do §6.
+> **Estado:** Fatias A e B **concluídas**; **meio de refund decidido** (estorno
+> via MP + fallback manual, §1.3). Próxima: Fatia C (wrapper de refund + ledger
+> `estornos` + particionamento) — já destravada pela decisão. A Fatia D (execução
+> confirmada por webhook) depende só de itens operacionais/jurídicos (§6.3–6.5),
+> não mais de arquitetura.
