@@ -702,6 +702,72 @@ export async function enviarAvisoCancelamentoEscolaEmail(
   return data;
 }
 
+function templateForcaMaior(nome: string, portalUrl?: string | null) {
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
+  const botao = portalUrl
+    ? `<tr><td style="padding-top:20px;"><a href="${portalUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;display:inline-block;">Abrir minha Área do Cliente</a></td></tr>`
+    : "";
+  // Comunicacao padronizada em lote (doc 01 §4, E8). Informa e tranquiliza; a
+  // escolha (adiar x cancelar) e a conversa ficam com o time.
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;">
+${cabecalhoLogo()}
+<tr><td style="background-color:#F5EAD9;border-radius:8px;padding:32px;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">Surgiu uma situação de força maior que afeta o destino do seu programa. Estamos acompanhando de perto e agindo para proteger você e a sua viagem.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 4px;"><strong>Enquanto isso, pausamos as cobranças do seu programa.</strong> Você não precisa fazer nada agora.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:12px 0 12px;">Assim que o cenário estiver claro, vamos combinar com você o melhor caminho — <strong>adiar</strong> a viagem para uma nova data ou, se preferir, <strong>cancelar com as condições cabíveis</strong>.</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0;">A nossa equipe entrará em contato. Se tiver qualquer dúvida, é só responder a este e-mail.</p>
+<table role="presentation">${botao}</table>
+</td></tr>
+<tr><td style="text-align:center;padding-top:24px;"><span style="color:#F5EAD9;font-size:13px;">EXP Tour &mdash; Área do Cliente</span></td></tr>
+</table>
+</div>
+</body>
+</html>`;
+}
+
+// Comunicacao padronizada de forca maior coletiva (processo E8, doc 01 §4).
+// Enviada EM LOTE aos titulares afetados. Best-effort por titular.
+export async function enviarAvisoForcaMaiorEmail(
+  destinatario: string,
+  nome: string,
+  portalUrl?: string | null
+) {
+  const { apiKey, fromEmail } = getConfig();
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject: "Informação importante sobre o seu programa - EXP Tour",
+        html: templateForcaMaior(nome, portalUrl),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "forca_maior", false, mensagem);
+    throw new Error(mensagem);
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "forca_maior", false, mensagem);
+    throw new Error(mensagem);
+  }
+  await registrarLog(destinatario, "forca_maior", true);
+  return data;
+}
+
 // Aviso interno para a equipe (ex.: cliente exerceu arrependimento). Envia para
 // ADMIN_EMAIL. Best-effort: quem chama pode ignorar o erro.
 export async function enviarAvisoInternoEmail(assunto: string, texto: string) {

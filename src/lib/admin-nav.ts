@@ -44,6 +44,8 @@ const ICONES = {
     "M9 3h9a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H9M9 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h3M9 3v18M12 8h4M12 12h4",
   anexo:
     "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM13 3v6h6M9 13h6M9 17h4",
+  forcaMaior:
+    "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
 } as const;
 
 // Itens ja disponiveis (telas que existem hoje) + estrutura futura (emBreve).
@@ -119,6 +121,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Câmbio",
     descricao: "Informar cotação comercial manual",
     icone: ICONES.cambio,
+  },
+  {
+    href: "/admin/forca-maior",
+    label: "Força maior",
+    descricao: "Pausa e comunicação em lote por destino (só Gestor)",
+    icone: ICONES.forcaMaior,
   },
   {
     href: "/admin/data-inicio",
