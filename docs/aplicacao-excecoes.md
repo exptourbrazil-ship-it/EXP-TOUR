@@ -3,7 +3,7 @@
 Registro de aplicação do módulo de processos de exceção (doc 01 §4), da Fatia 1
 do motor de acerto (doc 07 §3.5) e do motor de alteração (E2/E3, doc 01 §4):
 prévia, **execução em cascata**, notificação do cliente e **crédito do E3 →
-rascunho de acerto**. A entrega foi feita em **24 patches** de código lineares a
+rascunho de acerto**. A entrega foi feita em **25 patches** de código lineares a
 partir da `main` (cada patch = 1 commit), aplicáveis com `git am`. Este documento
 serve de referência da ordem, do impacto no banco e da configuração. (Há ainda
 patches só-de-docs — atualizações deste README e o plano de execução do acerto —
@@ -25,7 +25,7 @@ da execução do motor de acerto (retenção parametrizada; ver
 
 ## 2. Ordem de aplicação
 
-Coloque os 24 arquivos `.patch` num diretório e rode, na ordem:
+Coloque os 25 arquivos `.patch` num diretório e rode, na ordem:
 
 ```bash
 git checkout main && git pull
@@ -55,6 +55,7 @@ git am acerto-fatia-a-retencao-config.patch
 git am acerto-fatia-b-proposta-aceite.patch
 git am acerto-fatia-c-refund-infra.patch
 git am acerto-fatia-d-execucao.patch
+git am acerto-fatia-e-aditivo-aceite.patch
 ```
 
 Alternativa (aplicar todos de uma vez, se estiverem só nesse diretório):
@@ -97,7 +98,8 @@ patch depende de estado externo — só da cadeia anterior.
 | 21 | `acerto-fatia-a-retencao-config` | 910d626 | **Execução do acerto — Fatia A (retenção parametrizada):** tabela `config_retencao` (faixas + tipos-sem-retenção + validação jurídica); o motor lê da config, `provisorio` reflete `validado_juridicamente`. Rota gestor-only `config.gerir`. Seed = placeholder não validado (comportamento inalterado) |
 | 22 | `acerto-fatia-b-proposta-aceite` | 131e626 | **Execução do acerto — Fatia B (proposta + aceite eletrônico):** rascunho→proposto (admin renderiza Termo de Acerto texto+hash em `termos`, `financeiro.gerir`) → aceito (cliente aceita na Área do Cliente, prova imutável em `aceites` com unique `(titular_id, termo_id)`). Máquina de estados pura. NÃO move dinheiro |
 | 23 | `acerto-fatia-c-refund-infra` | 7ce8e6c | **Execução do acerto — Fatia C (infra de estorno):** `refundPayment` (wrapper MP), ledger `estornos`, planejamento puro do refund (fração BRL + particionamento + fallback manual) e **prévia read-only** no Caso 360. Meio decidido: estorno via MP. NÃO dispara refund (isso é a Fatia D) |
-| 24 | `acerto-fatia-d-execucao` | _(este)_ | **Execução do acerto — Fatia D (money out):** `executarAcerto` dispara estorno(s) via MP (ou devolução manual) — só-sessão `financeiro.gerir`, **recusa acerto provisório**; confirma por reconsulta ao MP (cron `conciliar-estornos`) e marca `executado` só quando todos confirmam; `confirmarDevolucaoManual` (comprovante); recibo ao cliente. Guardas anti-dupla-devolução (idempotência + bloqueia MP×manual). **Inerte** até a validação jurídica |
+| 24 | `acerto-fatia-d-execucao` | d2410b1 | **Execução do acerto — Fatia D (money out):** `executarAcerto` dispara estorno(s) via MP (ou devolução manual) — só-sessão `financeiro.gerir`, **recusa acerto provisório**; confirma por reconsulta ao MP (cron `conciliar-estornos`) e marca `executado` só quando todos confirmam; `confirmarDevolucaoManual` (comprovante); recibo ao cliente. Guardas anti-dupla-devolução (idempotência + bloqueia MP×manual). **Inerte** até a validação jurídica |
+| 25 | `acerto-fatia-e-aditivo-aceite` | _(este)_ | **Motor de alteração — Fatia E (aditivo de compra, E3 delta>0):** camada de **aceite eletrônico** do acréscimo — `proporAditivo` (admin) renderiza o Termo de Aditivo em `termos`; cliente aceita na Área do Cliente (prova em `aceites`). GATE: a cascata do E3 aditivo recusa aplicar sem o aceite. NÃO cobra (o delta segue pela cascata) |
 
 ## 4. Banco de dados
 
@@ -118,6 +120,7 @@ pelos patches) reproduz tudo para um banco novo. DDL, por patch:
 - **#22** `acertos`: `proposto_em`, `aceito_em`, `termo_id` (sem FK — `termos` vem depois no arquivo); **índice único** `uidx_aceites_titular_termo (titular_id, termo_id)` em `aceites` (idempotência atômica do aceite). Reusa `termos`/`aceites` existentes
 - **#23** `acertos`: `refund_meio`, `executado_em`; tabela `estornos` (ledger de refunds; + `idx_estornos_acerto`, **índices únicos parciais** `uidx_estornos_acerto_pagamento (acerto_id, pagamento_id)` e `uidx_estornos_refund (external_refund_id)`) — RLS habilitado sem policy
 - **#24** `estornos`: **índice único parcial** `uidx_estornos_manual (acerto_id) where meio='manual'` (idempotência da devolução manual). Sem novas tabelas/colunas
+- **#25** `alteracoes`: `aditivo_termo_id`, `aditivo_proposto_em`, `aditivo_aceito_em` (aceite do aditivo de compra do E3). Reusa `termos` (tipo `aditivo`) / `aceites`; sem novas tabelas
 
 > Reaplicar em produção é seguro: todo DDL usa `if not exists` / `add column if
 > not exists`. Se for um banco novo, basta rodar o `schema.sql` atualizado.
@@ -154,7 +157,7 @@ da cascata e o **recibo de devolução** da Fatia D — log em `email_logs`),
 
 ```bash
 npm run build     # deve terminar com exit code 0 (conferir o EXIT, não a mensagem)
-npm test          # 341 testes, todos passando
+npm test          # 342 testes, todos passando
 ```
 
 ## 7. Cobertura e pendências
@@ -180,16 +183,16 @@ npm test          # 341 testes, todos passando
   - **Crédito do E3 → acerto:** quando o downgrade deixa já pago > novo valor, um
     clique gera o **rascunho de acerto/refund** (sem retenção) na mesma superfície
     do Financeiro.
-- **Motor de acerto — execução completa (Fatias A–D):** retenção parametrizada
+- **Motor de acerto — execução completa (Fatias A–E):** retenção parametrizada
   (A); proposta + aceite eletrônico (B); infra de estorno (C); execução do refund
-  confirmada por reconsulta ao MP + devolução manual (D). Fica **inerte** até
-  validar juridicamente a retenção (marcar `config_retencao`) e ter
-  `MERCADOPAGO_ACCESS_TOKEN` com permissão de estorno. Ver
-  [`plano-execucao-acerto.md`](./plano-execucao-acerto.md).
+  confirmada por reconsulta ao MP + devolução manual (D); aceite do aditivo de
+  compra do E3 (E). A execução do refund fica **inerte** até validar juridicamente
+  a retenção (marcar `config_retencao`) e ter `MERCADOPAGO_ACCESS_TOKEN` com
+  permissão de estorno. Ver [`plano-execucao-acerto.md`](./plano-execucao-acerto.md).
 
-**Deferido (restante):**
-- **Motor de acerto — Fatia E** (aditivo de compra avulso do E3, *money in*;
-  opcional) e a **política de refund por fornecedor**.
+**Deferido (restante — negócio/produto, não código):**
+- **Validação jurídica** das cláusulas de retenção (marcar `config_retencao`) e a
+  **política de refund por fornecedor**.
 - **Motor de alteração — E3 "+nova data"** (a alteração de escopo que também
   desloca a data de início).
 - **Portal do fornecedor** — gatilho do E6 (escola registra) e aprovação de E2/E3.

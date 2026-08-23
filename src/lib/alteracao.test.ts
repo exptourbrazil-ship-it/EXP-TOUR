@@ -5,6 +5,7 @@ import {
   calcularPlanoDeferral,
   calcularAlteracaoEscopo,
   validarPlanoAplicavel,
+  renderizarTermoAditivo,
   somaValoresParcelas,
   dataLimiteQuitacao,
 } from "./parcelas.ts";
@@ -158,4 +159,17 @@ test("validarPlanoAplicavel: vencimento no passado -> recusa (rascunho velho)", 
 test("validarPlanoAplicavel: saldo zero com plano vazio -> ok", () => {
   const v = validarPlanoAplicavel({ plano: [], saldoEsperado: 0, hojeISO: "2026-01-01" });
   assert.deepEqual(v, { ok: true });
+});
+
+test("renderizarTermoAditivo: deterministico e reflete o delta/plano", () => {
+  const plano = [
+    { numero: 1, vencimento: "2026-06-15", valor: 3000 },
+    { numero: 2, vencimento: "2026-07-15", valor: 3000 },
+  ];
+  const a = renderizarTermoAditivo({ moeda: "CAD", valorProgramaAtual: 10000, valorProgramaNovo: 12000, delta: 2000, planoProposto: plano });
+  const b = renderizarTermoAditivo({ moeda: "CAD", valorProgramaAtual: 10000, valorProgramaNovo: 12000, delta: 2000, planoProposto: plano });
+  assert.equal(a, b);
+  assert.ok(a.includes("CAD 2000.00"));
+  assert.ok(a.includes("ADITIVO DE COMPRA"));
+  assert.ok(a.includes("Parcela 1"));
 });

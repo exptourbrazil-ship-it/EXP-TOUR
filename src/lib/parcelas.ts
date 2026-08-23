@@ -257,6 +257,39 @@ export function calcularAlteracaoEscopo(args: {
 }
 
 // ---------------------------------------------------------------------------
+// ADITIVO DE COMPRA (E3 delta>0, Fatia E) — termo de consentimento (PURO)
+// ---------------------------------------------------------------------------
+// Texto DETERMINISTICO (sem data/hora) do "Termo de Aditivo de Compra": o hash
+// SHA-256 dele (calcularHashTermo, no servico) e a prova do que o cliente
+// aceitou antes de o delta ser cobrado. So faz sentido para delta > 0.
+export function renderizarTermoAditivo(d: {
+  moeda: string;
+  valorProgramaAtual: number;
+  valorProgramaNovo: number;
+  delta: number;
+  planoProposto: ParcelaProposta[];
+}): string {
+  const moeda = (d.moeda || "").toUpperCase() || "BRL";
+  const fmt = (v: number) => `${moeda} ${(Math.round((Number(v) || 0) * 100) / 100).toFixed(2)}`;
+  const linhas = (d.planoProposto || []).map(
+    (p) => `- Parcela ${p.numero} (${p.vencimento}): ${fmt(p.valor)}`
+  );
+  return [
+    "TERMO DE ADITIVO DE COMPRA",
+    "",
+    `Valor do programa (atual): ${fmt(d.valorProgramaAtual)}`,
+    `Valor do programa (novo): ${fmt(d.valorProgramaNovo)}`,
+    `Acrescimo a pagar (aditivo): ${fmt(d.delta)}`,
+    "",
+    "Novo cronograma (saldo reagendado):",
+    ...linhas,
+    "",
+    "Ao aceitar, o CONTRATANTE concorda com a alteracao de escopo e com o",
+    "acrescimo acima, que sera cobrado no cronograma de parcelas.",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // EXECUCAO EM CASCATA — validacao do plano antes de aplicar (E2/E3)
 // ---------------------------------------------------------------------------
 // Antes de reescrever as parcelas, o rascunho revisado precisa continuar

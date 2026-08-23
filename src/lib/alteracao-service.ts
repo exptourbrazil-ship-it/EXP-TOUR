@@ -15,7 +15,9 @@ import {
   calcularAlteracaoEscopo,
   saldoDevedorMoeda,
   validarPlanoAplicavel,
+  renderizarTermoAditivo,
 } from "@/lib/parcelas";
+import { calcularHashTermo } from "@/lib/termos";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -402,7 +404,7 @@ export async function aplicarAlteracao(args: {
   const { data: alt } = await supabase
     .from("alteracoes")
     .select(
-      "id, contrato_id, tipo, status, moeda, nova_data_inicio, nova_data_quitacao, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, credito_cliente, excecao_id"
+      "id, contrato_id, tipo, status, moeda, nova_data_inicio, nova_data_quitacao, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, credito_cliente, excecao_id, aditivo_aceito_em"
     )
     .eq("id", args.alteracaoId)
     .maybeSingle();
@@ -446,6 +448,15 @@ export async function aplicarAlteracao(args: {
     throw new AlteracaoBloqueada(
       "credito_encaminhar_acerto",
       "Ha credito a devolver ao cliente; conduza pelo motor de acerto (refund), nao pela cascata"
+    );
+  }
+
+  // E3 ADITIVO (delta>0): exige o aceite eletronico do cliente (Fatia E) antes de
+  // cobrar o acrescimo. "aceite -> cascata" (doc 01 §4 E3).
+  if (alt.tipo === "escopo" && alt.sentido === "aditivo" && !alt.aditivo_aceito_em) {
+    throw new AlteracaoBloqueada(
+      "sem_aceite_aditivo",
+      "O cliente ainda nao aceitou o aditivo de compra; proponha e aguarde o aceite"
     );
   }
 
@@ -525,4 +536,231 @@ export async function aplicarAlteracao(args: {
 
   const res = (resultado || {}) as { antes?: unknown; depois?: unknown };
   return { ok: true, antes: res.antes ?? null, depois: res.depois ?? null };
+}
+
+// ---------------------------------------------------------------------------
+// FATIA E: aditivo de compra (E3 delta>0) — camada de ACEITE (sem cobranca nova)
+// ---------------------------------------------------------------------------
+// O dinheiro do delta continua sendo cobrado pela cascata (folding nas parcelas
+// a vencer). Esta camada registra o CONSENTIMENTO eletronico do cliente para o
+// upgrade/extensao (aditivo de compra), reusando termos/aceites, e serve de
+// GATE: a cascata do E3 aditivo recusa aplicar sem o aceite.
+
+async function gravarEventoAlteracao(
+  supabase: SupabaseClient,
+  idempotencyKey: string,
+  eventType: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  try {
+    const { error } = await supabase.from("events").insert({
+      source: "portal",
+      event_type: eventType,
+      idempotency_key: idempotencyKey,
+      payload,
+      status: "processado",
+      processed_at: new Date().toISOString(),
+    });
+    if (error && (error as { code?: string }).code !== "23505") {
+      console.error("[aditivo] falha ao gravar evento");
+    }
+  } catch {
+    console.error("[aditivo] falha ao gravar evento");
+  }
+}
+
+// ADMIN (casos.gerir): propoe o aditivo de compra ao cliente. Renderiza o Termo
+// de Aditivo (texto + hash) e o expoe na Area do Cliente para aceite. Exige um
+// rascunho E3 com sentido 'aditivo' (delta>0).
+export async function proporAditivo(args: {
+  alteracaoId: string;
+  titularIdEsperado: string;
+  autor: string;
+  ip?: string | null;
+}): Promise<{ ok: true }> {
+  const supabase = getSupabase();
+
+  const { data: alt } = await supabase
+    .from("alteracoes")
+    .select(
+      "id, contrato_id, tipo, status, sentido, moeda, valor_programa_atual, valor_programa_novo, delta, plano_proposto, aditivo_aceito_em"
+    )
+    .eq("id", args.alteracaoId)
+    .maybeSingle();
+  if (!alt || alt.tipo !== "escopo") {
+    throw new AlteracaoBloqueada("nao_encontrada", "Rascunho de alteracao de escopo nao encontrado");
+  }
+  if (alt.status !== "rascunho") {
+    throw new AlteracaoBloqueada("ja_aplicada", "Este rascunho ja foi aplicado ou cancelado");
+  }
+  if (alt.aditivo_aceito_em) {
+    throw new AlteracaoBloqueada("ja_aceito", "O cliente ja aceitou este aditivo");
+  }
+  if (alt.sentido !== "aditivo" || Number(alt.delta || 0) <= 0) {
+    throw new AlteracaoBloqueada("sem_aditivo", "So ha aditivo a aceitar quando o delta e positivo");
+  }
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", alt.contrato_id)
+    .maybeSingle();
+  if (!contrato) throw new AlteracaoBloqueada("contrato_nao_encontrado", "Contrato nao encontrado");
+  if (contrato.titular_id !== args.titularIdEsperado) {
+    throw new AlteracaoBloqueada("contrato_de_outro_titular", "O contrato nao pertence a este titular");
+  }
+
+  const conteudo = renderizarTermoAditivo({
+    moeda: (alt.moeda as string) || "BRL",
+    valorProgramaAtual: Number(alt.valor_programa_atual) || 0,
+    valorProgramaNovo: Number(alt.valor_programa_novo) || 0,
+    delta: Number(alt.delta) || 0,
+    planoProposto: (alt.plano_proposto as { numero: number; vencimento: string; valor: number }[]) || [],
+  });
+  const hash = calcularHashTermo(conteudo);
+  const versao = `aditivo:${args.alteracaoId}`;
+
+  let termoId: string | null = null;
+  const { data: ins, error } = await supabase
+    .from("termos")
+    .insert({ tipo: "aditivo", versao, conteudo, hash, ativo: true })
+    .select("id")
+    .single();
+  if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      const { data: upd } = await supabase
+        .from("termos")
+        .update({ conteudo, hash })
+        .eq("tipo", "aditivo")
+        .eq("versao", versao)
+        .select("id")
+        .single();
+      termoId = (upd as { id?: string } | null)?.id ?? null;
+    } else {
+      throw new Error("Falha ao gravar o termo de aditivo");
+    }
+  } else {
+    termoId = (ins as { id?: string } | null)?.id ?? null;
+  }
+  if (!termoId) throw new Error("Falha ao vincular o termo de aditivo");
+
+  const { data: reg, error: updErr } = await supabase
+    .from("alteracoes")
+    .update({
+      aditivo_termo_id: termoId,
+      aditivo_proposto_em: new Date().toISOString(),
+      atualizada_em: new Date().toISOString(),
+    })
+    .eq("id", args.alteracaoId)
+    .eq("status", "rascunho")
+    .select("id")
+    .maybeSingle();
+  if (!reg && !updErr) {
+    throw new AlteracaoBloqueada("ja_aplicada", "O rascunho nao esta mais disponivel");
+  }
+
+  await gravarEventoAlteracao(supabase, `aditivo:propor:${args.alteracaoId}`, "aditivo_proposto", {
+    alteracao_id: args.alteracaoId,
+    termo_id: termoId,
+    hash,
+  });
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.autor,
+    acao: "aditivo.propor",
+    alvo: contrato.id,
+    detalhe: { alteracao_id: args.alteracaoId, termo_id: termoId, delta: Number(alt.delta) || 0 },
+    ip: args.ip ?? null,
+  });
+
+  return { ok: true };
+}
+
+// CLIENTE (sessao do titular): aceita o aditivo de compra. Grava a prova em
+// `aceites` e marca `aditivo_aceito_em`. NAO cobra (o delta e cobrado pela
+// cascata). So o titular dono do contrato.
+export async function aceitarAditivo(args: {
+  alteracaoId: string;
+  titularId: string;
+  ip?: string | null;
+  userAgent?: string | null;
+}): Promise<{ ok: true; jaAceito: boolean }> {
+  const supabase = getSupabase();
+
+  const { data: alt } = await supabase
+    .from("alteracoes")
+    .select("id, contrato_id, tipo, status, aditivo_termo_id")
+    .eq("id", args.alteracaoId)
+    .maybeSingle();
+  if (!alt || alt.tipo !== "escopo") {
+    throw new AlteracaoBloqueada("nao_encontrada", "Aditivo nao encontrado");
+  }
+  // Nao registra consentimento sobre um rascunho ja aplicado/cancelado (prova
+  // ficaria ligada a uma alteracao que nao existe mais).
+  if (alt.status !== "rascunho") {
+    throw new AlteracaoBloqueada("nao_rascunho", "Esta alteracao nao esta mais disponivel para aceite");
+  }
+
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, titular_id")
+    .eq("id", alt.contrato_id)
+    .maybeSingle();
+  if (!contrato || contrato.titular_id !== args.titularId) {
+    throw new AlteracaoBloqueada("nao_autorizado", "Aditivo nao pertence a este titular");
+  }
+
+  const termoId = alt.aditivo_termo_id as string | null;
+  if (!termoId) {
+    throw new AlteracaoBloqueada("sem_termo", "Aditivo sem termo para aceitar");
+  }
+
+  async function afirmarAceito(): Promise<void> {
+    await supabase
+      .from("alteracoes")
+      .update({ aditivo_aceito_em: new Date().toISOString(), atualizada_em: new Date().toISOString() })
+      .eq("id", args.alteracaoId)
+      .is("aditivo_aceito_em", null);
+  }
+
+  const { data: existente } = await supabase
+    .from("aceites")
+    .select("id")
+    .eq("titular_id", args.titularId)
+    .eq("termo_id", termoId)
+    .maybeSingle();
+  if (existente) {
+    await afirmarAceito();
+    return { ok: true, jaAceito: true };
+  }
+
+  const { data: termo } = await supabase
+    .from("termos")
+    .select("id, versao, hash, conteudo")
+    .eq("id", termoId)
+    .maybeSingle();
+  if (!termo) throw new AlteracaoBloqueada("sem_termo", "Termo do aditivo nao encontrado");
+  const conteudo = (termo as { conteudo?: string | null }).conteudo || "";
+  const hashConteudo = conteudo ? calcularHashTermo(conteudo) : (termo as { hash?: string }).hash ?? "";
+
+  const { error: insErr } = await supabase.from("aceites").insert({
+    titular_id: args.titularId,
+    termo_id: termoId,
+    proposta_id: args.alteracaoId,
+    versao: (termo as { versao?: string }).versao ?? "aditivo",
+    hash_conteudo: hashConteudo,
+    contexto: "area_cliente",
+    ip: args.ip ?? null,
+    user_agent: args.userAgent ?? null,
+  });
+  if (insErr && (insErr as { code?: string }).code !== "23505") {
+    throw new Error("Falha ao registrar o aceite");
+  }
+
+  await afirmarAceito();
+  await gravarEventoAlteracao(supabase, `aditivo:aceitar:${args.alteracaoId}`, "aditivo_aceito", {
+    alteracao_id: args.alteracaoId,
+    termo_id: termoId,
+  });
+
+  return { ok: true, jaAceito: false };
 }

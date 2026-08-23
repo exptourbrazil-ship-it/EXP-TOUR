@@ -151,11 +151,21 @@ _(Meio decidido: **estorno via MP**, ver §1.3.)_
   **reexecução idempotente** (visível no ledger; o acerto fica `aceito` até
   finalizar). **Testes:** puros (confirmação, "todos confirmados").
 
-### Fatia E — Aditivo de compra avulso (E3, money in) · menor/opcional
-- Alternativa ao *folding* atual: cobrança Pix **dedicada** para o delta positivo
-  do E3, com aceite (aditivo de compra). Reusa `criarCobrancaPix`/`gerar-cobranca`
-  + `aceites`. Entrada de dinheiro **já** é webhook-confirmada, então o risco é
-  baixo; é sobretudo UX/rotulagem.
+### Fatia E — Aditivo de compra (E3 delta>0) · ✅ CONCLUÍDA (camada de aceite)
+- **Escopo escolhido:** só a **camada de aceite** — o delta continua sendo cobrado
+  pela cascata (folding nas parcelas a vencer, já webhook-confirmado). Não há
+  cobrança nova; evita duplicar dinheiro. (A cobrança Pix dedicada foi descartada
+  por ser redundante com o folding.)
+- **`proporAditivo`** (admin, `financeiro.gerir`): renderiza o Termo de Aditivo
+  (texto determinístico + hash) do E3 aditivo, grava em `termos` (tipo `aditivo`),
+  vincula `aditivo_termo_id` e marca `aditivo_proposto_em`.
+- **`aceitarAditivo`** (cliente, Área do Cliente): grava a prova em `aceites`
+  (unique `(titular_id, termo_id)`, idempotente) e marca `aditivo_aceito_em`.
+  Posse revalidada; só rascunho.
+- **GATE:** `aplicarAlteracao` recusa aplicar um E3 aditivo (`sentido='aditivo'`)
+  sem `aditivo_aceito_em` (doc 01 §4: "aceite → cascata"). E2/E3-crédito/neutro
+  passam livres.
+- **Risco:** baixo (não move dinheiro). **Testes:** puro (`renderizarTermoAditivo`).
 
 ---
 
@@ -230,8 +240,10 @@ A ordem coloca todo o valor **sem risco de dinheiro** (A, B) antes de qualquer
 peça que mova caixa (C, D), e cada fatia é entregável e testável isoladamente.
 As Fatias A–C podem ser construídas já; a Fatia D depende das decisões do §6.
 
-> **Estado:** Fatias A, B, C e D **concluídas**. O ciclo do acerto está completo
-> ponta a ponta (rascunho → proposta → aceite → execução do refund confirmada),
-> mas **inerte** até: (1) a retenção ser validada juridicamente (§6.3, flip de
-> `validado_juridicamente`), (2) `MERCADOPAGO_ACCESS_TOKEN` com permissão de
-> estorno. Só falta a **Fatia E** (aditivo avulso, opcional).
+> **Estado:** Fatias A–E **concluídas**. O motor de acerto/alteração está completo
+> ponta a ponta (rascunho → proposta → aceite → execução do refund confirmada; +
+> aceite do aditivo no E3). A execução do refund fica **inerte** até: (1) a
+> retenção ser validada juridicamente (§6.3, flip de `validado_juridicamente`),
+> (2) `MERCADOPAGO_ACCESS_TOKEN` com permissão de estorno. Pendências restantes
+> são **de negócio/jurídico** (§6.3–6.5) e a **política de refund por fornecedor**,
+> não de código.

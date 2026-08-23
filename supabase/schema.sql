@@ -482,6 +482,11 @@ end $$;
 -- Execucao em cascata: quando/quem aplicou o rascunho.
 alter table if exists alteracoes add column if not exists aplicada_em timestamptz;
 alter table if exists alteracoes add column if not exists aplicada_por text;
+-- Aditivo de compra (E3 delta>0, Fatia E): consentimento eletronico do cliente.
+-- termo_id sem FK (termos vem depois no arquivo; integridade em codigo).
+alter table if exists alteracoes add column if not exists aditivo_termo_id uuid;
+alter table if exists alteracoes add column if not exists aditivo_proposto_em timestamptz;
+alter table if exists alteracoes add column if not exists aditivo_aceito_em timestamptz;
 
 create index if not exists idx_alteracoes_contrato on alteracoes(contrato_id);
 create index if not exists idx_alteracoes_titular on alteracoes(titular_id);

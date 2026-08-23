@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createElement, Fragment } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import AcertoPropostaClient from "./AcertoPropostaClient";
+import AditivoPropostaClient from "./AditivoPropostaClient";
 import { converterParaBRL } from "@/lib/cambio";
 import { valorProgramaAtual, dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import ParcelasClient from "./ParcelasClient";
@@ -184,10 +185,39 @@ export default async function ParcelasPage() {
     }
   }
 
+  // Aditivo de compra (E3 delta>0, Fatia E) PROPOSTO e ainda nao aceito: card de
+  // consentimento na Area do Cliente. Posse pelos contratos do titular da sessao.
+  let aditivoProposta: { id: string; termoConteudo: string | null } | null = null;
+  if (contratoIdsTodos.length > 0) {
+    const { data: adt } = await supabase
+      .from("alteracoes")
+      .select("id, aditivo_termo_id")
+      .in("contrato_id", contratoIdsTodos)
+      .eq("tipo", "escopo")
+      .eq("status", "rascunho")
+      .not("aditivo_proposto_em", "is", null)
+      .is("aditivo_aceito_em", null)
+      .order("aditivo_proposto_em", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (adt && (adt as { aditivo_termo_id?: string }).aditivo_termo_id) {
+      const { data: termo } = await supabase
+        .from("termos")
+        .select("conteudo")
+        .eq("id", (adt as { aditivo_termo_id: string }).aditivo_termo_id)
+        .maybeSingle();
+      aditivoProposta = {
+        id: (adt as { id: string }).id,
+        termoConteudo: (termo as { conteudo?: string } | null)?.conteudo ?? null,
+      };
+    }
+  }
+
   return createElement(
     Fragment,
     null,
     acertoProposta ? createElement(AcertoPropostaClient, { key: "acerto", proposta: acertoProposta }) : null,
+    aditivoProposta ? createElement(AditivoPropostaClient, { key: "aditivo", proposta: aditivoProposta }) : null,
     createElement(ParcelasClient, { parcelas, programaNome, totalPrograma, pagoAteAgora, contratoId, dataInicio, valorTotalContrato, nomeCliente, saldoMoeda, saldoBRLhoje, quitarAte, antecipacoes, anexoIII })
   );
 }

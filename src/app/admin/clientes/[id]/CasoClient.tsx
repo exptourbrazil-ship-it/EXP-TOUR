@@ -2088,6 +2088,88 @@ function labelSentidoAlteracao(s: string | null): string {
   return "Sem delta";
 }
 
+// Aditivo de compra (E3 delta>0, Fatia E): propor o consentimento ao cliente e
+// acompanhar o aceite. So aparece em rascunho com sentido 'aditivo'. Nao cobra.
+function BotaoProporAditivo({
+  titularId,
+  alteracao,
+  podeGerir,
+}: {
+  titularId: string;
+  alteracao: CasoAlteracao;
+  podeGerir: boolean;
+}) {
+  const router = useRouter();
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; txt: string } | null>(null);
+  if (alteracao.sentido !== "aditivo" || alteracao.status !== "rascunho") return null;
+
+  if (alteracao.aditivo_aceito_em) {
+    return (
+      <p className="mt-3 border-t border-neutral-100 pt-3 text-xs text-emerald-700">
+        ✓ Cliente aceitou o aditivo de compra ({fmtDataHora(alteracao.aditivo_aceito_em)}). Pode aplicar.
+      </p>
+    );
+  }
+  if (!podeGerir) {
+    return alteracao.aditivo_proposto_em ? (
+      <p className="mt-3 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
+        Aditivo proposto — aguardando aceite do cliente.
+      </p>
+    ) : null;
+  }
+
+  async function propor() {
+    setMsg(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titularId}/alteracao/propor-aditivo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alteracaoId: alteracao.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setMsg({ ok: false, txt: data?.error || "Falha ao propor." });
+        return;
+      }
+      setMsg({ ok: true, txt: "Aditivo proposto ao cliente para aceite." });
+      router.refresh();
+    } catch {
+      setMsg({ ok: false, txt: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-100 pt-3">
+      <button
+        type="button"
+        onClick={propor}
+        disabled={enviando}
+        className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+      >
+        {enviando
+          ? "Propondo…"
+          : alteracao.aditivo_proposto_em
+          ? "Reenviar aditivo ao cliente"
+          : "Propor aditivo ao cliente"}
+      </button>
+      {alteracao.aditivo_proposto_em ? (
+        <span className="ml-2 text-xs text-neutral-500">Aguardando aceite do cliente.</span>
+      ) : null}
+      <p className="mt-1 text-xs text-neutral-500">
+        Coleta o aceite eletrônico do acréscimo. O aditivo só pode ser aplicado após o aceite. Não
+        cobra aqui.
+      </p>
+      {msg ? (
+        <p className={"mt-1 text-xs " + (msg.ok ? "text-emerald-700" : "text-red-600")}>{msg.txt}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function AlteracaoEscopoCard({
   alteracao,
   contratos,
@@ -2204,6 +2286,7 @@ function AlteracaoEscopoCard({
         status={alteracao.status}
         credito={credito}
       />
+      <BotaoProporAditivo titularId={titularId} alteracao={alteracao} podeGerir={podeAplicar} />
     </div>
   );
 }

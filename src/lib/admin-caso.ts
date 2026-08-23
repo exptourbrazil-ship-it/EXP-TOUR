@@ -144,6 +144,8 @@ export type CasoAlteracao = {
   provisorio: boolean | null;
   aplicada_em: string | null;
   aplicada_por: string | null;
+  aditivo_proposto_em: string | null;
+  aditivo_aceito_em: string | null;
   criado_em: string | null;
 };
 
@@ -272,7 +274,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   const { data: alteracoesData } = await supabase
     .from("alteracoes")
     .select(
-      "id, contrato_id, excecao_id, tipo, status, moeda, data_inicio_atual, nova_data_inicio, nova_data_quitacao, saldo_devedor, num_parcelas, plano_proposto, valor_programa_atual, valor_programa_novo, delta, ja_pago, credito_cliente, sentido, provisorio, aplicada_em, aplicada_por, criado_em"
+      "id, contrato_id, excecao_id, tipo, status, moeda, data_inicio_atual, nova_data_inicio, nova_data_quitacao, saldo_devedor, num_parcelas, plano_proposto, valor_programa_atual, valor_programa_novo, delta, ja_pago, credito_cliente, sentido, provisorio, aplicada_em, aplicada_por, aditivo_proposto_em, aditivo_aceito_em, criado_em"
     )
     .eq("titular_id", titularId)
     .order("criado_em", { ascending: false });
