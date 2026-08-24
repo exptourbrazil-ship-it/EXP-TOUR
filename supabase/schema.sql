@@ -966,6 +966,30 @@ create table if not exists supplier_agreement (
 );
 create index if not exists idx_supplier_agreement_supplier on supplier_agreement(supplier_id, valid_from desc);
 
+-- Usuarios do Portal do Fornecedor (login por e-mail + codigo, doc 06 secao 1).
+-- Cada usuario pertence a um supplier (a instituicao). O login busca por e-mail;
+-- por isso o e-mail e unico globalmente (guardado em minusculas). Papel e flags
+-- de alerta controlam telas/notificacoes (matriz da doc 06 secao 2/3.7).
+-- Sem RLS por policy: autorizacao feita em codigo, como o resto do projeto.
+create table if not exists supplier_user (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  email text not null unique,
+  name text not null,
+  role text not null default 'admissions'
+    check (role in ('supplier_admin','admissions','finance','marketing')),
+  language char(2) not null default 'en' check (language in ('en','pt')),
+  alert_flags jsonb not null default '{}'::jsonb,
+  active boolean not null default true,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  archived_at timestamptz
+);
+create index if not exists idx_supplier_user_supplier on supplier_user(supplier_id);
+alter table supplier_user enable row level security;
+
 create table if not exists campus (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
