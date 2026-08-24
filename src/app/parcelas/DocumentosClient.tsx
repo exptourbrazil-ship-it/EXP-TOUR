@@ -28,7 +28,8 @@ const PASSOS_PASSAPORTE = [
 const STATUS_COR: Record<string, { texto: string; fundo: string }> = {
   pendente: { texto: "#92600a", fundo: "#fdf3d7" },
   aprovado: { texto: "#15803d", fundo: "#e4f5ea" },
-  rejeitado: { texto: "#b91c1c", fundo: "#fbe6e6" },
+  // Atencao/acao: ambar-laranja (NUNCA vermelho na Area do Cliente).
+  rejeitado: { texto: "#9a3412", fundo: "#ffedd5" },
 };
 
 function StatusBadge(status: string) {
@@ -55,6 +56,32 @@ function IconeArquivo() {
     )
   );
 }
+
+// Icone pequeno para os botoes de acao; herda a cor do botao (currentColor).
+function iconeAcao(...paths: any[]) {
+  return createElement(
+    "svg",
+    { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", style: { flex: "0 0 auto" } },
+    ...paths
+  );
+}
+const iconeBaixar = () =>
+  iconeAcao(
+    createElement("path", { key: "a", d: "M12 3v11" }),
+    createElement("path", { key: "b", d: "m7 11 5 5 5-5" }),
+    createElement("path", { key: "c", d: "M5 21h14" })
+  );
+const iconeReenviar = () =>
+  iconeAcao(
+    createElement("path", { key: "a", d: "M21 12a9 9 0 1 1-3-6.7" }),
+    createElement("path", { key: "b", d: "M21 4v5h-5" })
+  );
+const iconeLixeira = () =>
+  iconeAcao(
+    createElement("path", { key: "a", d: "M3 6h18" }),
+    createElement("path", { key: "b", d: "M8 6V4h8v2" }),
+    createElement("path", { key: "c", d: "M6 6l1 14h10l1-14" })
+  );
 
 export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { documentos: any[]; afiliadoVistoUrl?: string | null }) {
   const [documentosState, setDocumentosState] = useState(documentos || []);
@@ -131,44 +158,92 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
     }
   }
 
+  // Reenvio inline de um documento rejeitado: pre-seleciona o tipo na caixa de
+  // envio da mesma categoria e rola ate ela, para o cliente nao precisar caçar
+  // o campo nem adivinhar o que escolher.
+  function reenviarDocumento(doc: any) {
+    const categoria = categoriaDoTipoDocumento(doc.tipo_documento);
+    setTipoUpload((t) => ({ ...t, [categoria]: doc.tipo_documento }));
+    const alvo = typeof document !== "undefined" ? document.getElementById(`upload-${categoria}`) : null;
+    if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   function linhaDocumento(doc: any) {
+    const categoria = categoriaDoTipoDocumento(doc.tipo_documento);
     // Cliente pode excluir apenas documentos do ESTUDANTE que ele proprio
     // enviou (origem "titular"). Documentos da escola/financeiro ficam protegidos.
-    const podeExcluir = categoriaDoTipoDocumento(doc.tipo_documento) === "estudante" && doc.origem === "titular";
+    const podeExcluir = categoria === "estudante" && doc.origem === "titular";
+    // Reenvio so faz sentido para documentos do estudante (unica categoria que
+    // o cliente envia) que o admin marcou como rejeitados.
+    const podeReenviar = categoria === "estudante" && doc.status === "rejeitado";
+
+    // Botao de acao com alvo de toque confortavel (>=44px de altura).
+    const acaoBase: any = {
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+      minHeight: 44, padding: "8px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+      textDecoration: "none", cursor: "pointer", whiteSpace: "nowrap",
+      background: "#fff", border: "1px solid #dcdcdc",
+    };
+
     return createElement(
       "div",
-      { key: doc.id, style: { display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid #eee" } },
-      IconeArquivo(),
+      { key: doc.id, style: { padding: "14px 0", borderTop: "1px solid #eee" } },
+      // Linha 1: icone + nome/arquivo + status
       createElement(
         "div",
-        { style: { flex: 1, minWidth: 0 } },
-        createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "#1a1a1a" } }, labelDoTipoDocumento(doc.tipo_documento)),
-        createElement("div", { style: { fontSize: 12, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, doc.nome_arquivo)
+        { style: { display: "flex", alignItems: "center", gap: 12 } },
+        IconeArquivo(),
+        createElement(
+          "div",
+          { style: { flex: 1, minWidth: 0 } },
+          createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "#1a1a1a" } }, labelDoTipoDocumento(doc.tipo_documento)),
+          createElement("div", { style: { fontSize: 12, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, doc.nome_arquivo)
+        ),
+        StatusBadge(doc.status)
       ),
-      StatusBadge(doc.status),
-      createElement(
-        "a",
-        { href: `/api/documentos/${doc.id}/download`, target: "_blank", rel: "noreferrer", style: { fontSize: 13, fontWeight: 600, color: OURO_TEXTO, textDecoration: "underline", whiteSpace: "nowrap" } },
-        "Baixar"
-      ),
-      podeExcluir
+      // Motivo da rejeicao, quando houver: diz ao cliente O QUE corrigir.
+      doc.status === "rejeitado" && doc.motivo_rejeicao
         ? createElement(
-            "button",
-            {
-              onClick: () => excluirDocumento(doc),
-              disabled: excluindo === doc.id,
-              style: { fontSize: 13, fontWeight: 600, color: "#b91c1c", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", whiteSpace: "nowrap", padding: 0 },
-            },
-            excluindo === doc.id ? "Excluindo..." : "Excluir"
+            "p",
+            { style: { fontSize: 12.5, color: "#9a3412", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px", margin: "10px 0 0", lineHeight: 1.4 } },
+            createElement("span", { style: { fontWeight: 700 } }, "Motivo: "),
+            doc.motivo_rejeicao
           )
-        : null
+        : null,
+      // Linha 2: acoes com alvo de toque adequado, destrutivo separado e neutro.
+      createElement(
+        "div",
+        { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 } },
+        createElement(
+          "a",
+          { href: `/api/documentos/${doc.id}/download`, target: "_blank", rel: "noreferrer", style: { ...acaoBase, color: OURO_TEXTO } },
+          iconeBaixar(),
+          "Baixar"
+        ),
+        podeReenviar
+          ? createElement(
+              "button",
+              { onClick: () => reenviarDocumento(doc), style: { ...acaoBase, color: "#9a3412", background: "#fff7ed", border: "1px solid #fed7aa" } },
+              iconeReenviar(),
+              "Reenviar"
+            )
+          : null,
+        podeExcluir
+          ? createElement(
+              "button",
+              { onClick: () => excluirDocumento(doc), disabled: excluindo === doc.id, style: { ...acaoBase, color: "#6b6b6b" } },
+              iconeLixeira(),
+              excluindo === doc.id ? "Excluindo..." : "Excluir"
+            )
+          : null
+      )
     );
   }
 
   function caixaUpload(secao: any) {
     return createElement(
       "div",
-      { style: { marginTop: 16, padding: 14, borderRadius: 12, background: "#fafafa", border: "1px dashed #d8d8d8" } },
+      { id: `upload-${secao.valor}`, style: { marginTop: 16, padding: 14, borderRadius: 12, background: "#fafafa", border: "1px dashed #d8d8d8" } },
       createElement("div", { style: { fontSize: 13, fontWeight: 600, color: VERDE, marginBottom: 10 } }, "Enviar novo documento"),
       createElement(
         "select",
