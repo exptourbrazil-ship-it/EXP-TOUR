@@ -940,6 +940,12 @@ create table if not exists supplier (
   created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
 );
 create index if not exists idx_supplier_tenant_status on supplier(tenant_id, relationship_status);
+-- Id do Vendor no Zoho CRM: chave de idempotencia da sincronizacao Vendors ->
+-- supplier. Indice unico simples: o Postgres permite varios NULLs, entao os
+-- suppliers cadastrados a mao (sem Vendor) convivem, e o upsert por
+-- zoho_vendor_id tem um arbitro valido.
+alter table supplier add column if not exists zoho_vendor_id text;
+create unique index if not exists idx_supplier_zoho_vendor on supplier(zoho_vendor_id);
 
 create table if not exists supplier_group (
   id uuid primary key default gen_random_uuid(),

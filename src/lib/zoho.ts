@@ -82,6 +82,32 @@ export async function obterAccessTokenZoho(): Promise<string> {
   return getAccessToken();
 }
 
+// Lista registros de um modulo do Zoho CRM com paginacao (ex: Vendors, Accounts).
+// Retorna a pagina de registros e se ha mais paginas. Sem o parametro `fields`,
+// a API v2 devolve todos os campos do modulo.
+export async function getZohoRecords(
+  zohoModule: string,
+  opts: { page?: number; perPage?: number } = {}
+): Promise<{ records: any[]; moreRecords: boolean }> {
+  const accessToken = await getAccessToken();
+  const page = opts.page ?? 1;
+  const perPage = Math.min(Math.max(opts.perPage ?? 200, 1), 200);
+
+  const res = await fetch(
+    `${ZOHO_API_DOMAIN}/crm/v2/${zohoModule}?page=${page}&per_page=${perPage}`,
+    { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }
+  );
+
+  // 204 = sem conteudo (modulo vazio nessa pagina).
+  if (res.status === 204) return { records: [], moreRecords: false };
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Falha ao listar ${zohoModule} no Zoho CRM: ` + JSON.stringify(data));
+  }
+  return { records: data?.data || [], moreRecords: Boolean(data?.info?.more_records) };
+}
+
 // Busca um registro especifico de um modulo do Zoho CRM (ex: Contacts, Products).
 export async function getZohoRecord(zohoModule: string, id: string): Promise<any> {
   const accessToken = await getAccessToken();
