@@ -51,6 +51,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   };
 
   // Ao compartilhar, garante o vinculo por contrato (isolamento entre escolas).
+  let contratoVinculado: string | null = null;
   if (compartilhar && !doc.contrato_id) {
     const { data: contratos } = await supabase
       .from("contratos")
@@ -58,6 +59,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       .eq("titular_id", doc.titular_id);
     if ((contratos?.length ?? 0) === 1) {
       patch.contrato_id = contratos![0].id;
+      contratoVinculado = contratos![0].id;
     } else {
       return NextResponse.json(
         {
@@ -80,7 +82,13 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     usuario,
     acao: compartilhar ? "documento.compartilhar" : "documento.descompartilhar",
     alvo: id,
-    detalhe: { titular_id: doc.titular_id, tipo_documento: doc.tipo_documento },
+    detalhe: {
+      titular_id: doc.titular_id,
+      tipo_documento: doc.tipo_documento,
+      // Registra o vinculo automatico de contrato (muda a que contrato o doc
+      // pertence), para a trilha ter o antes/depois.
+      ...(contratoVinculado ? { contrato_id_anterior: null, contrato_id_novo: contratoVinculado } : {}),
+    },
     ip: obterIp(request),
   });
 

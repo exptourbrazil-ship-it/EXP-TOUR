@@ -143,7 +143,9 @@ export async function listarDocumentosDoFornecedor(
     .select("id, tipo_documento, nome_arquivo, origem, status, created_at")
     .eq("contrato_id", contratoId)
     .or("compartilhado_fornecedor.eq.true,origem.eq.fornecedor")
-    .neq("status", "rejeitado")
+    // "nao rejeitado": inclui status NULL (o .neq puro excluiria NULL e
+    // divergiria do download, que trata NULL como visivel).
+    .or("status.is.null,status.neq.rejeitado")
     .order("created_at", { ascending: false });
 
   return (data ?? []).map((d: any) => ({

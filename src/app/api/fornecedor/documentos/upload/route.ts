@@ -3,11 +3,16 @@ import { createClient } from "@supabase/supabase-js";
 import { sessaoFornecedorAtual } from "@/lib/fornecedor-guard";
 import { TIPOS_DOCUMENTO } from "@/lib/documentos";
 import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao } from "@/lib/upload-seguro";
+import { checarELimitar } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BUCKET_FORNECEDOR = "documentos-fornecedor";
+
+// Teto de uploads por usuario da escola (evita encher o bucket). Janela de 10 min.
+const UPLOAD_JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
+const UPLOAD_MAX = Number(process.env.RATE_LIMIT_FORNECEDOR_UPLOAD || "30");
 
 // Upload de um documento PELA ESCOLA (Portal do Parceiro) para um estudante seu.
 // Posse: o contrato tem que pertencer ao fornecedor da sessao. O arquivo e
@@ -36,6 +41,14 @@ export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Teto por usuario da escola (abuso de storage).
+  if (!(await checarELimitar(supabase, `fornecedor-upload:${sessao.supplierUserId}`, UPLOAD_MAX, UPLOAD_JANELA_SEG))) {
+    return NextResponse.json(
+      { error: "Muitos envios em pouco tempo. Aguarde alguns minutos." },
+      { status: 429 }
+    );
+  }
 
   // POSSE: o contrato tem que ser desta escola. 404 se nao for (nao revela nada).
   const { data: contrato } = await supabase
