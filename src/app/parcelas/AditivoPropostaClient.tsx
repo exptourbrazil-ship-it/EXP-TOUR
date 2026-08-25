@@ -68,7 +68,7 @@ export default function AditivoPropostaClient({ proposta }: { proposta: Proposta
           >
             {aceitando ? "Registrando…" : "Aceitar o aditivo"}
           </button>
-          {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+          {erro ? <span className="text-xs text-amber-700">{erro}</span> : null}
         </div>
       )}
     </div>

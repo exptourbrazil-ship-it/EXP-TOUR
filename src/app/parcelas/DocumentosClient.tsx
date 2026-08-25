@@ -32,13 +32,38 @@ const STATUS_COR: Record<string, { texto: string; fundo: string }> = {
   rejeitado: { texto: "#9a3412", fundo: "#ffedd5" },
 };
 
+// Icone por status (herda a cor do badge). Estado nunca so por cor: sempre
+// icone + cor + texto (relogio = em analise, check = aprovado, alerta = reenviar).
+function iconeStatus(chave: string) {
+  const comum: any = { width: 12, height: 12, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flex: "0 0 auto" } };
+  if (chave === "aprovado") {
+    return createElement("svg", comum, createElement("path", { d: "M20 6 9 17l-5-5" }));
+  }
+  if (chave === "rejeitado") {
+    return createElement(
+      "svg",
+      comum,
+      createElement("path", { key: "a", d: "M12 9v4" }),
+      createElement("path", { key: "b", d: "M12 17h.01" }),
+      createElement("path", { key: "c", d: "M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z" })
+    );
+  }
+  return createElement(
+    "svg",
+    comum,
+    createElement("circle", { key: "a", cx: 12, cy: 12, r: 9 }),
+    createElement("path", { key: "b", d: "M12 7v5l3 2" })
+  );
+}
+
 function StatusBadge(status: string) {
   const chave = status || "pendente";
   const label = STATUS_LABEL[chave] || STATUS_LABEL.pendente;
   const cor = STATUS_COR[chave] || STATUS_COR.pendente;
   return createElement(
     "span",
-    { style: { fontSize: 11, fontWeight: 600, color: cor.texto, background: cor.fundo, borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" } },
+    { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: cor.texto, background: cor.fundo, borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" } },
+    iconeStatus(chave),
     label
   );
 }
