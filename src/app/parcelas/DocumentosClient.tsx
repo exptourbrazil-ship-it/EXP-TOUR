@@ -1,17 +1,19 @@
 "use client";
-import { createElement, useState } from "react";
+import { useState } from "react";
 import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, labelDoTipoDocumento, categoriaDoTipoDocumento } from "@/lib/documentos";
-
-// Paleta da marca EXP Tour
-const VERDE = "#042f1b";
-const OURO = "#c9a35e"; // dourado para FUNDOS (botoes) e detalhes
-const OURO_TEXTO = "#8a6a2f"; // dourado acessivel para TEXTO/links sobre fundo claro (WCAG AA)
-const CREME = "#f5ead9";
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: "Em análise",
   aprovado: "Aprovado",
   rejeitado: "Reenviar",
+};
+
+// Cor do badge por status, em classes utilitarias (nunca vermelho na Area do
+// Cliente): ambar = em analise, verde = aprovado, laranja = reenviar.
+const STATUS_CLASSE: Record<string, string> = {
+  pendente: "bg-amber-100 text-amber-800",
+  aprovado: "bg-emerald-100 text-emerald-700",
+  rejeitado: "bg-orange-100 text-orange-800",
 };
 
 // Passo a passo para solicitar o passaporte brasileiro (Policia Federal).
@@ -25,88 +27,90 @@ const PASSOS_PASSAPORTE = [
   "Acompanhe a emissão pelo site e retire o passaporte na unidade quando estiver pronto.",
 ];
 
-const STATUS_COR: Record<string, { texto: string; fundo: string }> = {
-  pendente: { texto: "#92600a", fundo: "#fdf3d7" },
-  aprovado: { texto: "#15803d", fundo: "#e4f5ea" },
-  // Atencao/acao: ambar-laranja (NUNCA vermelho na Area do Cliente).
-  rejeitado: { texto: "#9a3412", fundo: "#ffedd5" },
-};
-
-// Icone por status (herda a cor do badge). Estado nunca so por cor: sempre
-// icone + cor + texto (relogio = em analise, check = aprovado, alerta = reenviar).
-function iconeStatus(chave: string) {
-  const comum: any = { width: 12, height: 12, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flex: "0 0 auto" } };
+// Icone por status (herda a cor do badge via currentColor). Estado nunca so por
+// cor: sempre icone + cor + texto (relogio = em analise, check = aprovado,
+// alerta = reenviar).
+function IconeStatus({ chave }: { chave: string }) {
+  const props = { className: "h-3 w-3 shrink-0", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   if (chave === "aprovado") {
-    return createElement("svg", comum, createElement("path", { d: "M20 6 9 17l-5-5" }));
-  }
-  if (chave === "rejeitado") {
-    return createElement(
-      "svg",
-      comum,
-      createElement("path", { key: "a", d: "M12 9v4" }),
-      createElement("path", { key: "b", d: "M12 17h.01" }),
-      createElement("path", { key: "c", d: "M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z" })
+    return (
+      <svg {...props}>
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
     );
   }
-  return createElement(
-    "svg",
-    comum,
-    createElement("circle", { key: "a", cx: 12, cy: 12, r: 9 }),
-    createElement("path", { key: "b", d: "M12 7v5l3 2" })
+  if (chave === "rejeitado") {
+    return (
+      <svg {...props}>
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+        <path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
   );
 }
 
-function StatusBadge(status: string) {
+function StatusBadge({ status }: { status: string }) {
   const chave = status || "pendente";
   const label = STATUS_LABEL[chave] || STATUS_LABEL.pendente;
-  const cor = STATUS_COR[chave] || STATUS_COR.pendente;
-  return createElement(
-    "span",
-    { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: cor.texto, background: cor.fundo, borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" } },
-    iconeStatus(chave),
-    label
+  const classe = STATUS_CLASSE[chave] || STATUS_CLASSE.pendente;
+  return (
+    <span className={"inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold " + classe}>
+      <IconeStatus chave={chave} />
+      {label}
+    </span>
   );
 }
 
-// Ícone de documento (SVG inline) usado em cada linha, no estilo do mockup.
+// Icone de documento (SVG inline) usado em cada linha, no estilo do mockup.
 function IconeArquivo() {
-  return createElement(
-    "div",
-    { style: { flex: "0 0 auto", width: 40, height: 40, borderRadius: 10, background: CREME, display: "flex", alignItems: "center", justifyContent: "center" } },
-    createElement(
-      "svg",
-      { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: VERDE, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" },
-      createElement("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }),
-      createElement("polyline", { points: "14 2 14 8 20 8" })
-    )
+  return (
+    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] bg-brand-cream">
+      <svg className="h-[18px] w-[18px] text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    </div>
   );
 }
 
-// Icone pequeno para os botoes de acao; herda a cor do botao (currentColor).
-function iconeAcao(...paths: any[]) {
-  return createElement(
-    "svg",
-    { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", style: { flex: "0 0 auto" } },
-    ...paths
+// Icones pequenos dos botoes de acao; herdam a cor do botao (currentColor).
+function IconeAcao({ children }: { children: React.ReactNode }) {
+  return (
+    <svg className="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      {children}
+    </svg>
   );
 }
-const iconeBaixar = () =>
-  iconeAcao(
-    createElement("path", { key: "a", d: "M12 3v11" }),
-    createElement("path", { key: "b", d: "m7 11 5 5 5-5" }),
-    createElement("path", { key: "c", d: "M5 21h14" })
-  );
-const iconeReenviar = () =>
-  iconeAcao(
-    createElement("path", { key: "a", d: "M21 12a9 9 0 1 1-3-6.7" }),
-    createElement("path", { key: "b", d: "M21 4v5h-5" })
-  );
-const iconeLixeira = () =>
-  iconeAcao(
-    createElement("path", { key: "a", d: "M3 6h18" }),
-    createElement("path", { key: "b", d: "M8 6V4h8v2" }),
-    createElement("path", { key: "c", d: "M6 6l1 14h10l1-14" })
-  );
+const IconeBaixar = () => (
+  <IconeAcao>
+    <path d="M12 3v11" />
+    <path d="m7 11 5 5 5-5" />
+    <path d="M5 21h14" />
+  </IconeAcao>
+);
+const IconeReenviar = () => (
+  <IconeAcao>
+    <path d="M21 12a9 9 0 1 1-3-6.7" />
+    <path d="M21 4v5h-5" />
+  </IconeAcao>
+);
+const IconeLixeira = () => (
+  <IconeAcao>
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M6 6l1 14h10l1-14" />
+  </IconeAcao>
+);
+
+// Base dos botoes de acao com alvo de toque confortavel (>=44px de altura).
+const ACAO_BASE = "inline-flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border px-3.5 py-2 text-[13px] font-semibold";
 
 export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { documentos: any[]; afiliadoVistoUrl?: string | null }) {
   const [documentosState, setDocumentosState] = useState(documentos || []);
@@ -202,172 +206,169 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
     // o cliente envia) que o admin marcou como rejeitados.
     const podeReenviar = categoria === "estudante" && doc.status === "rejeitado";
 
-    // Botao de acao com alvo de toque confortavel (>=44px de altura).
-    const acaoBase: any = {
-      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-      minHeight: 44, padding: "8px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-      textDecoration: "none", cursor: "pointer", whiteSpace: "nowrap",
-      background: "#fff", border: "1px solid #dcdcdc",
-    };
+    return (
+      <div key={doc.id} className="border-t border-neutral-200 py-3.5">
+        {/* Linha 1: icone + nome/arquivo + status */}
+        <div className="flex items-center gap-3">
+          <IconeArquivo />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-neutral-900">{labelDoTipoDocumento(doc.tipo_documento)}</div>
+            <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-neutral-500">{doc.nome_arquivo}</div>
+          </div>
+          <StatusBadge status={doc.status} />
+        </div>
 
-    return createElement(
-      "div",
-      { key: doc.id, style: { padding: "14px 0", borderTop: "1px solid #eee" } },
-      // Linha 1: icone + nome/arquivo + status
-      createElement(
-        "div",
-        { style: { display: "flex", alignItems: "center", gap: 12 } },
-        IconeArquivo(),
-        createElement(
-          "div",
-          { style: { flex: 1, minWidth: 0 } },
-          createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "#1a1a1a" } }, labelDoTipoDocumento(doc.tipo_documento)),
-          createElement("div", { style: { fontSize: 12, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, doc.nome_arquivo)
-        ),
-        StatusBadge(doc.status)
-      ),
-      // Motivo da rejeicao, quando houver: diz ao cliente O QUE corrigir.
-      doc.status === "rejeitado" && doc.motivo_rejeicao
-        ? createElement(
-            "p",
-            { style: { fontSize: 12.5, color: "#9a3412", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px", margin: "10px 0 0", lineHeight: 1.4 } },
-            createElement("span", { style: { fontWeight: 700 } }, "Motivo: "),
-            doc.motivo_rejeicao
-          )
-        : null,
-      // Linha 2: acoes com alvo de toque adequado, destrutivo separado e neutro.
-      createElement(
-        "div",
-        { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 } },
-        createElement(
-          "a",
-          { href: `/api/documentos/${doc.id}/download`, target: "_blank", rel: "noreferrer", style: { ...acaoBase, color: OURO_TEXTO } },
-          iconeBaixar(),
-          "Baixar"
-        ),
-        podeReenviar
-          ? createElement(
-              "button",
-              { onClick: () => reenviarDocumento(doc), style: { ...acaoBase, color: "#9a3412", background: "#fff7ed", border: "1px solid #fed7aa" } },
-              iconeReenviar(),
-              "Reenviar"
-            )
-          : null,
-        podeExcluir
-          ? createElement(
-              "button",
-              { onClick: () => excluirDocumento(doc), disabled: excluindo === doc.id, style: { ...acaoBase, color: "#6b6b6b" } },
-              iconeLixeira(),
-              excluindo === doc.id ? "Excluindo..." : "Excluir"
-            )
-          : null
-      )
+        {/* Motivo da rejeicao, quando houver: diz ao cliente O QUE corrigir. */}
+        {doc.status === "rejeitado" && doc.motivo_rejeicao ? (
+          <p className="mt-2.5 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2 text-[12.5px] leading-snug text-orange-800">
+            <span className="font-bold">Motivo: </span>
+            {doc.motivo_rejeicao}
+          </p>
+        ) : null}
+
+        {/* Linha 2: acoes com alvo de toque adequado, destrutivo separado e neutro. */}
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <a
+            href={`/api/documentos/${doc.id}/download`}
+            target="_blank"
+            rel="noreferrer"
+            className={ACAO_BASE + " border-neutral-300 bg-white text-brand-golddark"}
+          >
+            <IconeBaixar />
+            Baixar
+          </a>
+          {podeReenviar ? (
+            <button
+              onClick={() => reenviarDocumento(doc)}
+              className={ACAO_BASE + " border-orange-200 bg-orange-50 text-orange-800"}
+            >
+              <IconeReenviar />
+              Reenviar
+            </button>
+          ) : null}
+          {podeExcluir ? (
+            <button
+              onClick={() => excluirDocumento(doc)}
+              disabled={excluindo === doc.id}
+              className={ACAO_BASE + " border-neutral-300 bg-white text-neutral-500 disabled:opacity-50"}
+            >
+              <IconeLixeira />
+              {excluindo === doc.id ? "Excluindo..." : "Excluir"}
+            </button>
+          ) : null}
+        </div>
+      </div>
     );
   }
 
   function caixaUpload(secao: any) {
-    return createElement(
-      "div",
-      { id: `upload-${secao.valor}`, style: { marginTop: 16, padding: 14, borderRadius: 12, background: "#fafafa", border: "1px dashed #d8d8d8" } },
-      createElement("div", { style: { fontSize: 13, fontWeight: 600, color: VERDE, marginBottom: 10 } }, "Enviar novo documento"),
-      createElement(
-        "select",
-        {
-          value: tipoUpload[secao.valor] || secao.tipos[0]?.valor,
-          onChange: (e: any) => setTipoUpload((t) => ({ ...t, [secao.valor]: e.target.value })),
-          style: { display: "block", width: "100%", padding: 10, marginBottom: 10, borderRadius: 8, border: "1px solid #ddd", fontSize: 13, background: "#fff" },
-        },
-        ...secao.tipos.map((t: any) => createElement("option", { key: t.valor, value: t.valor }, t.label))
-      ),
-      createElement("input", {
-        type: "file",
-        accept: "image/*,application/pdf",
-        disabled: enviando === secao.valor,
-        onChange: (e: any) => enviarArquivo(secao.valor, secao.tipos, e),
-        style: { display: "block", width: "100%", fontSize: 13 },
-      }),
-      createElement("p", { style: { fontSize: 11.5, color: "#8a8a8a", marginTop: 6 } }, "Formatos aceitos: PDF, JPG ou PNG."),
-      enviando === secao.valor ? createElement("p", { style: { fontSize: 12, color: "#666", marginTop: 8 } }, "Enviando...") : null,
-      mensagem[secao.valor] ? createElement("p", { style: { fontSize: 12, marginTop: 8, color: VERDE } }, mensagem[secao.valor]) : null
+    return (
+      <div id={`upload-${secao.valor}`} className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-3.5">
+        <div className="mb-2.5 text-[13px] font-semibold text-brand">Enviar novo documento</div>
+        <select
+          value={tipoUpload[secao.valor] || secao.tipos[0]?.valor}
+          onChange={(e) => setTipoUpload((t) => ({ ...t, [secao.valor]: e.target.value }))}
+          className="mb-2.5 block w-full rounded-lg border border-neutral-300 bg-white p-2.5 text-[13px]"
+        >
+          {secao.tipos.map((t: any) => (
+            <option key={t.valor} value={t.valor}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          disabled={enviando === secao.valor}
+          onChange={(e) => enviarArquivo(secao.valor, secao.tipos, e)}
+          className="block w-full text-[13px]"
+        />
+        <p className="mt-1.5 text-[11.5px] text-neutral-500">Formatos aceitos: PDF, JPG ou PNG.</p>
+        {enviando === secao.valor ? <p className="mt-2 text-xs text-neutral-500">Enviando...</p> : null}
+        {mensagem[secao.valor] ? <p className="mt-2 text-xs text-brand">{mensagem[secao.valor]}</p> : null}
+      </div>
     );
   }
 
   function cardSecao(secao: any) {
     const vazia = secao.grupos.length === 0;
-    const subtitulo = secao.valor === "estudante"
-      ? "Documentos que você envia para a EXP Tour"
-      : secao.valor === "escola"
-      ? "Documentos emitidos pela escola ou pela EXP Tour"
-      : "Documentos financeiros do seu programa";
-    return createElement(
-      "div",
-      { key: secao.valor, style: { background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" } },
-      createElement("h2", { style: { fontFamily: "Bellefair, serif", fontSize: 20, color: VERDE, margin: 0 } }, secao.label),
-      createElement("p", { style: { fontSize: 12, color: "#999", margin: "4px 0 4px" } }, subtitulo),
-      vazia
-        ? createElement(
-            "p",
-            { style: { fontSize: 13, color: "#6b6b6b", padding: "16px 0 4px" } },
-            secao.valor === "estudante"
+    const subtitulo =
+      secao.valor === "estudante"
+        ? "Documentos que você envia para a EXP Tour"
+        : secao.valor === "escola"
+        ? "Documentos emitidos pela escola ou pela EXP Tour"
+        : "Documentos financeiros do seu programa";
+    return (
+      <div key={secao.valor} className="mb-4 rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
+        <h2 className="font-serif text-xl text-brand">{secao.label}</h2>
+        <p className="mt-1 mb-1 text-xs text-neutral-400">{subtitulo}</p>
+        {vazia ? (
+          <p className="pb-1 pt-4 text-[13px] text-neutral-500">
+            {secao.valor === "estudante"
               ? "Você ainda não enviou documentos desta categoria. Use o campo abaixo para enviar."
-              : "A EXP Tour disponibilizará seus documentos aqui assim que estiverem prontos."
-          )
-        : createElement("div", null, ...secao.grupos.flatMap((g: any) => g.itens.map((doc: any) => linhaDocumento(doc)))),
-      podeEnviar(secao.valor) ? caixaUpload(secao) : null
+              : "A EXP Tour disponibilizará seus documentos aqui assim que estiverem prontos."}
+          </p>
+        ) : (
+          <div>{secao.grupos.flatMap((g: any) => g.itens.map((doc: any) => linhaDocumento(doc)))}</div>
+        )}
+        {podeEnviar(secao.valor) ? caixaUpload(secao) : null}
+      </div>
     );
   }
 
   // Card de orientacao: passo a passo do passaporte + botao de afiliado do visto.
   function cardAjuda() {
-    const botaoBase: any = {
-      display: "block", width: "100%", boxSizing: "border-box", padding: "12px 14px",
-      borderRadius: 12, fontSize: 14, fontWeight: 600, textAlign: "center",
-      textDecoration: "none", cursor: "pointer", border: "none",
-    };
-    return createElement(
-      "div",
-      { style: { background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" } },
-      createElement("h2", { style: { fontFamily: "Bellefair, serif", fontSize: 20, color: VERDE, margin: 0 } }, "Passaporte e visto"),
-      createElement("p", { style: { fontSize: 12, color: "#999", margin: "4px 0 12px" } }, "Precisa tirar o passaporte ou solicitar o visto? A gente te orienta."),
-      // Botao: como solicitar passaporte (abre/fecha o passo a passo)
-      createElement(
-        "button",
-        { onClick: () => setMostrarPassaporte((v) => !v), style: { ...botaoBase, background: VERDE, color: CREME } },
-        mostrarPassaporte ? "Ocultar passo a passo" : "Como solicitar passaporte"
-      ),
-      // Painel com o passo a passo
-      mostrarPassaporte
-        ? createElement(
-            "div",
-            { style: { marginTop: 12, padding: 16, borderRadius: 12, background: "#fafafa", border: "1px solid #eee" } },
-            createElement(
-              "ol",
-              { style: { margin: 0, paddingLeft: 20, color: "#333", fontSize: 13, lineHeight: 1.6 } },
-              ...PASSOS_PASSAPORTE.map((p, i) => createElement("li", { key: i, style: { marginBottom: 8 } }, p))
-            ),
-            createElement("p", { style: { fontSize: 12, color: "#92600a", background: "#fdf3d7", padding: "8px 10px", borderRadius: 8, margin: "12px 0 0" } }, "Menor de idade: é obrigatória a presença dos pais ou responsáveis no atendimento, com a documentação de autorização. Consulte sempre o site oficial para valores e regras atualizadas."),
-            createElement(
-              "a",
-              { href: "https://www.gov.br/pf/pt-br/assuntos/passaporte", target: "_blank", rel: "noreferrer", style: { display: "inline-block", marginTop: 12, fontSize: 13, fontWeight: 600, color: OURO_TEXTO, textDecoration: "underline" } },
-              "Abrir site oficial da Polícia Federal →"
-            )
-          )
-        : null,
-      // Botao: solicitar visto (afiliado) -- so aparece se a env existir
-      afiliadoVistoUrl
-        ? createElement(
-            "a",
-            { href: afiliadoVistoUrl, target: "_blank", rel: "noreferrer nofollow sponsored", style: { ...botaoBase, background: OURO, color: VERDE, marginTop: 10 } },
-            "Solicitar visto com parceiro"
-          )
-        : null
+    return (
+      <div className="mb-4 rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
+        <h2 className="font-serif text-xl text-brand">Passaporte e visto</h2>
+        <p className="mt-1 mb-3 text-xs text-neutral-400">Precisa tirar o passaporte ou solicitar o visto? A gente te orienta.</p>
+        {/* Botao: como solicitar passaporte (abre/fecha o passo a passo) */}
+        <button
+          onClick={() => setMostrarPassaporte((v) => !v)}
+          className="block w-full rounded-xl bg-brand px-3.5 py-3 text-center text-sm font-semibold text-brand-cream"
+        >
+          {mostrarPassaporte ? "Ocultar passo a passo" : "Como solicitar passaporte"}
+        </button>
+        {/* Painel com o passo a passo */}
+        {mostrarPassaporte ? (
+          <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+            <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-neutral-700">
+              {PASSOS_PASSAPORTE.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ol>
+            <p className="mt-3 rounded-lg bg-amber-100 px-2.5 py-2 text-xs text-amber-800">
+              Menor de idade: é obrigatória a presença dos pais ou responsáveis no atendimento, com a documentação de autorização. Consulte sempre o site oficial para valores e regras atualizadas.
+            </p>
+            <a
+              href="https://www.gov.br/pf/pt-br/assuntos/passaporte"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block text-[13px] font-semibold text-brand-golddark underline"
+            >
+              Abrir site oficial da Polícia Federal →
+            </a>
+          </div>
+        ) : null}
+        {/* Botao: solicitar visto (afiliado) -- so aparece se a env existir */}
+        {afiliadoVistoUrl ? (
+          <a
+            href={afiliadoVistoUrl}
+            target="_blank"
+            rel="noreferrer nofollow sponsored"
+            className="mt-2.5 block w-full rounded-xl bg-brand-gold px-3.5 py-3 text-center text-sm font-semibold text-brand"
+          >
+            Solicitar visto com parceiro
+          </a>
+        ) : null}
+      </div>
     );
   }
 
-  return createElement(
-    "div",
-    { className: "md:grid md:grid-cols-2 md:gap-4 md:items-start", style: { marginBottom: 32 } },
-    cardAjuda(),
-    ...secoes.map((secao) => cardSecao(secao))
+  return (
+    <div className="mb-8 md:grid md:grid-cols-2 md:gap-4 md:items-start">
+      {cardAjuda()}
+      {secoes.map((secao) => cardSecao(secao))}
+    </div>
   );
 }
