@@ -17,6 +17,18 @@ function texto(v: unknown): string | null {
   return s || null;
 }
 
+// Normaliza um nome de instituicao para casar escola_nome (viagem_info) com
+// display_name (supplier) — ambos vindos do Vendor_Name do Zoho. So minusculas,
+// sem acento e com espacos colapsados; retorna "" quando nao ha nome util.
+export function normalizarNome(v: unknown): string {
+  return String(v ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // remove diacriticos (acentos)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Extrai e valida o e-mail do Vendor (para virar o login do supplier_user).
 export function extrairEmailVendor(vendor: VendorZoho): string | null {
   const e = texto(vendor.Email);
@@ -79,6 +91,7 @@ export type ResultadoSync =
       suppliersUpsert: number;
       usersUpsert: number;
       semEmail: number;
+      contratosVinculados: number;
       erros: string[];
     };
 
@@ -139,16 +152,31 @@ export async function sincronizarVendorsDoZoho(
       continue;
     }
 
+    const vendorId = m.supplier.zoho_vendor_id;
+
+    // Adota uma linha existente com o mesmo e-mail que ainda nao tem
+    // zoho_vendor_id (migracao de dados criados antes da dedup): marca o Vendor
+    // para que o upsert abaixo ATUALIZE essa linha em vez de criar outra. Nao
+    // toca em usuarios convidados a mao (que continuam com zoho_vendor_id NULL).
+    await supabase
+      .from("supplier_user")
+      .update({ zoho_vendor_id: vendorId, supplier_id: sup.id })
+      .eq("email", m.email)
+      .is("zoho_vendor_id", null);
+
+    // Upsert pelo Vendor: uma linha por Vendor, para sempre. Uma nova sync
+    // atualiza e-mail/nome na MESMA linha, nunca duplica.
     const { error: userErr } = await supabase.from("supplier_user").upsert(
       {
         tenant_id: tenantId,
         supplier_id: sup.id,
+        zoho_vendor_id: vendorId,
         email: m.email,
         name: m.contactName || m.email,
         role: "supplier_admin",
         language: "en",
       },
-      { onConflict: "email" }
+      { onConflict: "zoho_vendor_id" }
     );
     if (userErr) {
       erros.push(`supplier_user ${m.email}: ${userErr.message}`);
@@ -157,12 +185,48 @@ export async function sincronizarVendorsDoZoho(
     }
   }
 
+  // Vincula contratos ao fornecedor por NOME (viagem_info.escola_nome =
+  // supplier.display_name, ambos vindos do Vendor_Name do Zoho). So preenche o
+  // que falta (contratos sem supplier_id) -> idempotente.
+  let contratosVinculados = 0;
+  try {
+    const { data: sups } = await supabase
+      .from("supplier")
+      .select("id, display_name")
+      .eq("tenant_id", tenantId);
+    const porNome = new Map<string, string>();
+    for (const s of sups ?? []) {
+      const chave = normalizarNome((s as { display_name?: string }).display_name);
+      if (chave) porNome.set(chave, (s as { id: string }).id);
+    }
+
+    const { data: viagens } = await supabase
+      .from("viagem_info")
+      .select("contrato_id, escola_nome")
+      .not("escola_nome", "is", null);
+
+    for (const v of viagens ?? []) {
+      const sid = porNome.get(normalizarNome((v as { escola_nome?: string }).escola_nome));
+      if (!sid) continue;
+      const { data: upd } = await supabase
+        .from("contratos")
+        .update({ supplier_id: sid })
+        .eq("id", (v as { contrato_id: string }).contrato_id)
+        .is("supplier_id", null)
+        .select("id");
+      contratosVinculados += upd?.length ?? 0;
+    }
+  } catch (err) {
+    erros.push(`vinculo contratos: ${err instanceof Error ? err.message : "erro"}`);
+  }
+
   return {
     dryRun: false,
     totalVendors: vendors.length,
     suppliersUpsert,
     usersUpsert,
     semEmail,
+    contratosVinculados,
     erros,
   };
 }

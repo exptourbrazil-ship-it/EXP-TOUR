@@ -30,6 +30,12 @@ create table if not exists contratos (
   created_at timestamptz not null default now()
   );
 create index if not exists idx_contratos_cancelado_em on contratos(cancelado_em);
+-- Fornecedor (escola) do contrato: base do Portal do Fornecedor (a escola so ve
+-- os proprios estudantes). Preenchido por nome (viagem_info.escola_nome =
+-- supplier.display_name, ambos vindos do Vendor_Name do Zoho). Nullable: um
+-- contrato pode nao ter escola vinculada ainda.
+alter table contratos add column if not exists supplier_id uuid references supplier(id);
+create index if not exists idx_contratos_supplier on contratos(supplier_id);
 
 -- Colunas aplicadas depois via SQL Editor em bancos ja existentes (o create
 -- acima so vale para bancos novos). Ver CLAUDE.md sobre reconciliacao de DDL.
@@ -988,12 +994,18 @@ create table if not exists supplier_user (
   language char(2) not null default 'en' check (language in ('en','pt')),
   alert_flags jsonb not null default '{}'::jsonb,
   active boolean not null default true,
+  -- Vendor de origem no Zoho (so no usuario admin criado pela sincronizacao).
+  -- Chave de dedup da sync: uma vez marcado, uma nova sincronizacao ATUALIZA
+  -- este usuario em vez de criar outro. Usuarios convidados a mao ficam NULL
+  -- (varios NULLs sao permitidos no indice unico) e nao sao tocados pela sync.
+  zoho_vendor_id text,
   last_login_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz,
   archived_at timestamptz
 );
 create index if not exists idx_supplier_user_supplier on supplier_user(supplier_id);
+create unique index if not exists idx_supplier_user_zoho_vendor on supplier_user(zoho_vendor_id);
 alter table supplier_user enable row level security;
 
 create table if not exists campus (
