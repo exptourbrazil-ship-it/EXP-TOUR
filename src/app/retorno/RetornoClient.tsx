@@ -167,7 +167,7 @@ export default function RetornoClient(props: RetornoClientProps) {
                 rows={3}
                 className="mt-4 w-full rounded-xl border border-neutral-300 p-3 text-sm text-neutral-700 outline-none focus:border-brand"
               />
-              {erro ? <p className="mt-2 text-sm text-red-600">{erro}</p> : null}
+              {erro ? <p className="mt-2 text-sm text-amber-700">{erro}</p> : null}
               <button
                 onClick={enviarNps}
                 disabled={enviando}

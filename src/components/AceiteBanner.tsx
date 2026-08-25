@@ -154,7 +154,7 @@ export default function AceiteBanner() {
                 Após aceitar, você tem <strong>7 dias</strong> para se arrepender (CDC art. 49), pela
                 própria Área do Cliente.
               </p>
-              {erro ? <p className="mb-2 text-sm text-red-700">{erro}</p> : null}
+              {erro ? <p className="mb-2 text-sm text-amber-700">{erro}</p> : null}
               <label className="flex items-start gap-2 text-sm text-brand">
                 <input type="checkbox" checked={marcado} onChange={(e) => setMarcado(e.target.checked)} className="mt-0.5" />
                 <span>Li e aceito o Termo de Adesão (versão {termo.versao}).</span>
@@ -181,12 +181,12 @@ export default function AceiteBanner() {
               Isto registra a sua desistência do Termo de Adesão dentro do prazo de 7 dias. Nossa
               equipe será avisada para tratar o contrato e a cobrança. Deseja continuar?
             </p>
-            {erro ? <p className="mt-2 text-sm text-red-700">{erro}</p> : null}
+            {erro ? <p className="mt-2 text-sm text-amber-700">{erro}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setConfirmarArr(false)} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand-cream/60">
                 Cancelar
               </button>
-              <button type="button" onClick={arrepender} disabled={arrependendo} className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={arrepender} disabled={arrependendo} className="rounded-xl bg-brand-golddark px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
                 {arrependendo ? "Registrando..." : "Confirmar arrependimento"}
               </button>
             </div>

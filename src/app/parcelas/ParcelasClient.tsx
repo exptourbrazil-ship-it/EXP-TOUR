@@ -563,11 +563,19 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
 
         {anexoIII && anexoIII.length > 0 ? (
           <section className="mt-8 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <h2 className="font-serif text-xl text-brand">Política de pagamento dos fornecedores</h2>
-            <p className="mt-1 text-xs text-neutral-500">
-              Anexo III do contrato — prazos e condições exigidos pelos fornecedores do seu programa.
-            </p>
-            <ul className="mt-4 flex flex-col gap-3">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+                <span className="block">
+                  <span className="block font-serif text-xl text-brand">Política de pagamento dos fornecedores</span>
+                  <span className="mt-1 block text-xs text-neutral-500">
+                    Anexo III do contrato — {anexoIII.length} {anexoIII.length === 1 ? "item" : "itens"}. Toque para ver prazos e condições.
+                  </span>
+                </span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="mt-1 h-5 w-5 shrink-0 text-brand transition-transform group-open:rotate-180" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </summary>
+              <ul className="mt-4 flex flex-col gap-3">
               {anexoIII.map((it) => (
                 <li key={it.id} className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -592,7 +600,8 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                   ) : null}
                 </li>
               ))}
-            </ul>
+              </ul>
+            </details>
           </section>
         ) : null}
       </main>

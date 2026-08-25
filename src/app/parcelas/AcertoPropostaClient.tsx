@@ -76,7 +76,7 @@ export default function AcertoPropostaClient({ proposta }: { proposta: Proposta 
                     (l.tipo === "credito"
                       ? "text-emerald-700"
                       : l.tipo === "debito"
-                      ? "text-red-700"
+                      ? "text-amber-700"
                       : "text-[#042f1b]")
                   }
                 >
@@ -126,7 +126,7 @@ export default function AcertoPropostaClient({ proposta }: { proposta: Proposta 
           >
             {aceitando ? "Registrando…" : "Aceitar o acerto"}
           </button>
-          {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+          {erro ? <span className="text-xs text-amber-700">{erro}</span> : null}
         </div>
       )}
     </div>
