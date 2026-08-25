@@ -784,11 +784,11 @@ alter table if exists documentos add column if not exists rejeitado_em timestamp
 alter table if exists contratos add column if not exists estudante_data_nascimento date;
 alter table if exists contratos add column if not exists estudante_email text;
 
--- Inclui 'sistema' no CHECK de documentos.origem (PDF gerado pelo Zoho Sign).
--- Ja aplicado no banco de producao (migracao zoho_sign_fluxo).
+-- CHECK de documentos.origem. Inclui 'sistema' (PDF do Zoho Sign) e 'fornecedor'
+-- (documento enviado pela escola pelo Portal do Parceiro).
 alter table if exists documentos drop constraint if exists documentos_origem_check;
 alter table if exists documentos add constraint documentos_origem_check
-  check (origem in ('zoho','admin','titular','sistema'));
+  check (origem in ('zoho','admin','titular','sistema','fornecedor'));
 
 -- ============================================================================
 -- Documentos compartilhados com o fornecedor (Portal do Parceiro)
@@ -796,12 +796,19 @@ alter table if exists documentos add constraint documentos_origem_check
 -- O admin decide, documento a documento, o que a escola pode ver no detalhe do
 -- estudante (nada vaza por padrao). A visibilidade e sempre por CONTRATO: um
 -- doc so aparece para a escola dona daquele contrato (isolamento entre escolas).
--- Aplicar tambem no SQL Editor do Supabase de producao (ver CLAUDE.md).
+-- Documentos enviados PELA escola (origem 'fornecedor') sao sempre visiveis a
+-- ela. Aplicar tambem no SQL Editor do Supabase de producao (ver CLAUDE.md).
 alter table if exists documentos add column if not exists compartilhado_fornecedor boolean not null default false;
 alter table if exists documentos add column if not exists compartilhado_em timestamptz;
 alter table if exists documentos add column if not exists compartilhado_por text;
+-- Quem (supplier_user) enviou o documento, quando a origem e 'fornecedor'.
+alter table if exists documentos add column if not exists enviado_por_supplier_user uuid references supplier_user(id);
 -- Indice parcial: so as linhas compartilhadas, consultadas por contrato.
 create index if not exists idx_documentos_compartilhado on documentos(contrato_id) where compartilhado_fornecedor;
+
+-- Storage: criar o bucket PRIVADO "documentos-fornecedor" (uploads da escola),
+-- no mesmo padrao dos demais (documentos-titular/-admin/-contratos). Downloads
+-- usam URLs assinadas de curta duracao geradas no servidor.
 
 -- Envelope de assinatura: espelho local do estado no Zoho Sign. Uma linha por
 -- solicitacao de assinatura de um contrato.

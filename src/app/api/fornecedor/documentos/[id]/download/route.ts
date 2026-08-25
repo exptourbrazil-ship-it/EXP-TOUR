@@ -11,11 +11,13 @@ const BUCKET_POR_ORIGEM: Record<string, string> = {
   titular: "documentos-titular",
   admin: "documentos-admin",
   sistema: "documentos-contratos",
+  fornecedor: "documentos-fornecedor",
 };
 
 // Download de um documento pela ESCOLA (Portal do Parceiro). So entrega o que o
-// admin compartilhou (compartilhado_fornecedor) E que pertence a um contrato
-// desta escola (isolamento). Qualquer falha de posse -> 404 (nao revela nada).
+// admin compartilhou (compartilhado_fornecedor) OU o que a propria escola enviou
+// (origem 'fornecedor'), E que pertence a um contrato desta escola (isolamento).
+// Qualquer falha de posse -> 404 (nao revela nada).
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const sessao = await sessaoFornecedorAtual();
   if (!sessao) {
@@ -28,13 +30,10 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const { data: documento } = await supabase.from("documentos").select("*").eq("id", id).maybeSingle();
-  // Precisa existir, estar compartilhado, nao-rejeitado e vinculado a um contrato.
-  if (
-    !documento ||
-    !documento.compartilhado_fornecedor ||
-    documento.status === "rejeitado" ||
-    !documento.contrato_id
-  ) {
+  // Precisa existir, ser visivel a escola (compartilhado pelo admin OU enviado
+  // pela propria escola), nao-rejeitado e vinculado a um contrato.
+  const visivel = documento && (documento.compartilhado_fornecedor || documento.origem === "fornecedor");
+  if (!documento || !visivel || documento.status === "rejeitado" || !documento.contrato_id) {
     return NextResponse.json({ error: "Documento nao encontrado" }, { status: 404 });
   }
 

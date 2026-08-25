@@ -22,6 +22,7 @@ const BUCKET_POR_ORIGEM: Record<string, string> = {
   titular: "documentos-titular",
   admin: "documentos-admin",
   sistema: "documentos-contratos",
+  fornecedor: "documentos-fornecedor",
 };
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {

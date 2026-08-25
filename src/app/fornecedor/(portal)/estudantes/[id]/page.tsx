@@ -7,6 +7,7 @@ import {
   listarDocumentosDoFornecedor,
 } from "@/lib/fornecedor-dados";
 import { labelDoTipoDocumento } from "@/lib/documentos";
+import UploadDocumento from "./UploadDocumento";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,11 +136,9 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
             ))}
           </ul>
         )}
-      </div>
 
-      <p style={{ marginTop: 16, fontSize: 12, color: "#6b7280" }}>
-        O envio de documentos pela sua instituição entra na próxima fase do portal.
-      </p>
+        <UploadDocumento contratoId={e.contratoId} />
+      </div>
     </div>
   );
 }

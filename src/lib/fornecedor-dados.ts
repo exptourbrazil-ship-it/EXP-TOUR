@@ -136,11 +136,13 @@ export async function listarDocumentosDoFornecedor(
     .maybeSingle();
   if (!contrato || (contrato as { supplier_id?: string }).supplier_id !== supplierId) return [];
 
+  // Visivel a escola: o que o admin compartilhou OU o que a propria escola
+  // enviou (origem 'fornecedor'). Nunca os rejeitados.
   const { data } = await supabase
     .from("documentos")
     .select("id, tipo_documento, nome_arquivo, origem, status, created_at")
     .eq("contrato_id", contratoId)
-    .eq("compartilhado_fornecedor", true)
+    .or("compartilhado_fornecedor.eq.true,origem.eq.fornecedor")
     .neq("status", "rejeitado")
     .order("created_at", { ascending: false });
 
