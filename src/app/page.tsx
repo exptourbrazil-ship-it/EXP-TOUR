@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { montarLinkSuporteWhatsApp, WHATSAPP_EXP_TOUR } from "@/lib/viagem";
 import Logo from "@/components/Logo";
 
@@ -27,9 +27,20 @@ export default function LoginPage() {
   const [codigo, setCodigo] = useState("");
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState<Mensagem>(null);
+  // Cooldown (segundos) para reenviar o codigo — evita spam e da um feedback
+  // claro de "aguarde" em vez de deixar o cliente clicar repetidamente.
+  const [cooldown, setCooldown] = useState(0);
 
-  async function handleSolicitarCodigo(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  // Solicita (ou reenvia) o codigo. Reaproveitado pelo envio inicial e pelo
+  // botao "Reenviar codigo". Retorna se deu certo, para o chamador ajustar a
+  // etapa/mensagem conforme o contexto.
+  async function solicitarCodigo(): Promise<boolean> {
     setLoading(true);
     setMensagem(null);
     try {
@@ -39,13 +50,29 @@ export default function LoginPage() {
         body: JSON.stringify({ cpf }),
       });
       if (!res.ok) throw new Error("Falha ao solicitar codigo");
-      setEtapa("codigo");
-      setMensagem({ tipo: "sucesso", texto: "Código enviado para o seu e-mail." });
+      setCooldown(30);
+      return true;
     } catch {
       setMensagem({ tipo: "erro", texto: "Não foi possível enviar o código. Verifique o CPF informado." });
+      return false;
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSolicitarCodigo(e: React.FormEvent) {
+    e.preventDefault();
+    const ok = await solicitarCodigo();
+    if (ok) {
+      setEtapa("codigo");
+      setMensagem({ tipo: "sucesso", texto: "Código enviado para o seu e-mail." });
+    }
+  }
+
+  async function reenviarCodigo() {
+    if (cooldown > 0 || loading) return;
+    const ok = await solicitarCodigo();
+    if (ok) setMensagem({ tipo: "sucesso", texto: "Novo código enviado para o seu e-mail." });
   }
 
   async function handleConfirmarCodigo(e: React.FormEvent) {
@@ -143,6 +170,14 @@ export default function LoginPage() {
                 className="w-full rounded-md bg-brand px-4 py-3 text-base font-medium text-white hover:opacity-90 disabled:opacity-50"
               >
                 {loading ? "Confirmando..." : "Confirmar código"}
+              </button>
+              <button
+                type="button"
+                onClick={reenviarCodigo}
+                disabled={cooldown > 0 || loading}
+                className="w-full py-2 text-center text-base text-brand underline disabled:text-neutral-400 disabled:no-underline"
+              >
+                {cooldown > 0 ? `Reenviar código em ${cooldown}s` : "Reenviar código"}
               </button>
               <button
                 type="button"

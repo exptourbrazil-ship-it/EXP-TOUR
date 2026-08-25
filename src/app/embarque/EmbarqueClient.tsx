@@ -96,36 +96,37 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
         <div className="mt-5 space-y-3 lg:mt-0">
           {itens.map((item) => {
             const isTarefa = item.tipo === "tarefa"
-            return (
-              <div
-                key={item.chave}
-                className="flex items-start gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-              >
-                {isTarefa ? (
-                  <button
-                    onClick={() => alternarTarefa(item)}
-                    aria-label={item.concluido ? "Desmarcar" : "Marcar"}
-                    className={
-                      "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[12px] font-bold transition " +
-                      (item.concluido
-                        ? "bg-brand text-brand-cream"
-                        : "border-2 border-neutral-300 text-transparent hover:border-brand")
-                    }
-                  >
-                    {item.concluido ? "✓" : ""}
-                  </button>
-                ) : (
-                  <span
-                    title={item.concluido ? "Recebido no cofre" : "Aguardando envio na aba Docs"}
-                    className={
-                      "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[12px] font-bold " +
-                      (item.concluido ? "bg-brand text-brand-cream" : "border-2 border-dashed border-neutral-300 text-transparent")
-                    }
-                  >
-                    {item.concluido ? "✓" : ""}
-                  </span>
-                )}
 
+            // Circulo de estado (visual). Nas tarefas ele nao e o alvo de toque:
+            // o card inteiro e clicavel (alvo grande, melhor no celular).
+            const circulo = (
+              <span
+                aria-hidden="true"
+                className={
+                  "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[12px] font-bold transition " +
+                  (item.concluido
+                    ? "bg-brand text-brand-cream"
+                    : isTarefa
+                    ? "border-2 border-neutral-300 text-transparent"
+                    : "border-2 border-dashed border-neutral-300 text-transparent")
+                }
+              >
+                {item.concluido ? "✓" : ""}
+              </span>
+            )
+
+            const badge = (
+              <span
+                title={isTarefa ? "Você marca este item" : "Marcado automaticamente a partir dos seus documentos"}
+                className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500"
+              >
+                {isTarefa ? "você" : "auto"}
+              </span>
+            )
+
+            const conteudo = (
+              <>
+                {circulo}
                 <div className="min-w-0 flex-1">
                   <p className={"text-sm " + (item.concluido ? "text-neutral-500 line-through" : "text-brand")}>
                     {item.label}
@@ -140,13 +141,35 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
                     <p className="mt-1 text-xs text-neutral-500">{item.dica}</p>
                   ) : null}
                 </div>
+                {badge}
+              </>
+            )
 
-                <span
-                  title={isTarefa ? "Você marca este item" : "Marcado automaticamente a partir dos seus documentos"}
-                  className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500"
+            // Tarefa: o card INTEIRO e o botao (alvo de toque grande). Documento
+            // e automatico e traz um link interno, entao continua como <div>
+            // (nao pode aninhar link dentro de button).
+            if (isTarefa) {
+              return (
+                <button
+                  key={item.chave}
+                  type="button"
+                  onClick={() => alternarTarefa(item)}
+                  aria-pressed={item.concluido}
+                  aria-label={item.concluido ? "Desmarcar: " + item.label : "Marcar: " + item.label}
+                  disabled={salvando === item.chave}
+                  className="flex w-full items-start gap-3 rounded-2xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:border-brand disabled:opacity-70"
                 >
-                  {isTarefa ? "você" : "auto"}
-                </span>
+                  {conteudo}
+                </button>
+              )
+            }
+
+            return (
+              <div
+                key={item.chave}
+                className="flex items-start gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+              >
+                {conteudo}
               </div>
             )
           })}
