@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
@@ -19,6 +20,7 @@ type InicioClientProps = {
   nomeCompleto: string | null
   contrato: Contrato | null
   dataInicioTitular?: string | null
+  diasAteInicioServidor?: number | null
   documentosEnviados?: number
   parcelasPagas?: number
   parcelasTotal?: number
@@ -66,12 +68,29 @@ const CTA_POR_ETAPA: Record<string, { rotulo: string; href: string }> = {
 export default function InicioClient(props: InicioClientProps) {
   const nomeCompleto = props.nomeCompleto
   const contrato = props.contrato
-  // Saudacao/avatar usam o nome do ESTUDANTE (o app acompanha a jornada dele);
-  // se o contrato ainda nao tem estudante_nome, cai para o nome do titular.
-  const nomeExibicao = (contrato && contrato.estudante_nome) ? contrato.estudante_nome : nomeCompleto
-  const nome = primeiroNome(nomeExibicao)
+  const estudanteNome = (contrato && contrato.estudante_nome) ? contrato.estudante_nome : null
+  // Saudacao: nome de quem esta logado (o titular/responsavel).
+  const nomeSaudacao = primeiroNome(nomeCompleto)
+  // Cabecalho (conta/avatar): mantem o padrao das demais telas (estudante, ou
+  // titular quando ainda nao ha nome do estudante).
+  const nomeConta = estudanteNome || nomeCompleto
+  // Subtitulo deixa explicito de QUEM e a jornada (o estudante).
+  const subtitulo = estudanteNome
+    ? "Jornada de " + primeiroNome(estudanteNome) + (contrato && contrato.nome ? " · " + contrato.nome : "")
+    : (contrato && contrato.nome ? contrato.nome : "Sua jornada com a EXP Tour")
+
   const dataInicioEfetiva = (contrato && contrato.data_inicio) ? contrato.data_inicio : (props.dataInicioTitular || null)
-  const dias = diasAte(dataInicioEfetiva)
+
+  // #1 (hidratacao): valores dependentes do relogio nao podem ser calculados no
+  // render — servidor (UTC) e cliente (fuso local) divergem, causando "flicker"
+  // e erro de hidratacao. O primeiro render usa o valor vindo do servidor (dias)
+  // e uma saudacao neutra; apos montar, o cliente reconfirma no fuso local.
+  const [dias, setDias] = useState<number | null>(props.diasAteInicioServidor ?? null)
+  const [saudacao, setSaudacao] = useState<string>("Olá")
+  useEffect(() => {
+    setDias(diasAte(dataInicioEfetiva))
+    setSaudacao(saudacaoPorHorario())
+  }, [dataInicioEfetiva])
 
   const etapas = calcularJornada({
     temContrato: !!contrato,
@@ -98,14 +117,14 @@ export default function InicioClient(props: InicioClientProps) {
 
   return (
     <div className="min-h-screen bg-brand-cream/40 pb-28 lg:pb-10 lg:pl-60">
-      <Cabecalho nome={nomeExibicao} subtitulo={contrato && contrato.nome ? contrato.nome : null} />
+      <Cabecalho nome={nomeConta} subtitulo={contrato && contrato.nome ? contrato.nome : null} />
 
       <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8 lg:max-w-5xl">
         <h1 className="font-serif text-4xl text-brand md:text-5xl">
-          {saudacaoPorHorario()}{nome ? ", " + nome : ""}
+          {saudacao}{nomeSaudacao ? ", " + nomeSaudacao : ""}
         </h1>
         <p className="mt-2 text-sm text-neutral-600">
-          {contrato && contrato.nome ? contrato.nome : "Sua jornada com a EXP Tour"}
+          {subtitulo}
         </p>
 
         <div className="mt-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
@@ -172,25 +191,35 @@ export default function InicioClient(props: InicioClientProps) {
           </div>
           <p className="mb-5 text-xs text-neutral-500">Seu progresso real, atualizado conforme você avança.</p>
           <ol className="space-y-4">
-            {etapas.map((etapa) => (
-              <li key={etapa.nome} className="flex items-start gap-3">
-                <span
-                  className={
-                    "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
-                    bolinhaPorEstado[etapa.estado]
-                  }
-                >
-                  {etapa.estado === "concluida" ? "✓" : ""}
-                </span>
-                <div>
-                  <p className={"text-sm " + textoPorEstado[etapa.estado]}>
-                    {etapa.nome}
-                    {etapa.estado === "andamento" ? " (em andamento)" : ""}
-                  </p>
-                  <p className="text-xs text-neutral-500">{etapa.descricao}</p>
-                </div>
-              </li>
-            ))}
+            {etapas.map((etapa) => {
+              const rotuloEstado =
+                etapa.estado === "concluida" ? "Concluída" : etapa.estado === "andamento" ? "Em andamento" : "A fazer"
+              return (
+                <li key={etapa.nome} className="flex items-start gap-3">
+                  <span
+                    aria-hidden="true"
+                    className={
+                      "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold " +
+                      bolinhaPorEstado[etapa.estado]
+                    }
+                  >
+                    {etapa.estado === "concluida" ? (
+                      "✓"
+                    ) : etapa.estado === "andamento" ? (
+                      <span className="h-2 w-2 rounded-full bg-brand" />
+                    ) : null}
+                  </span>
+                  <div>
+                    <p className={"text-sm " + textoPorEstado[etapa.estado]}>
+                      <span className="sr-only">{rotuloEstado}: </span>
+                      {etapa.nome}
+                      {etapa.estado === "andamento" ? " (em andamento)" : ""}
+                    </p>
+                    <p className="text-xs text-neutral-500">{etapa.descricao}</p>
+                  </div>
+                </li>
+              )
+            })}
           </ol>
           </div>
           </div>
