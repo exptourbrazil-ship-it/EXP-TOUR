@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { mapVendorToSupplier, extrairEmailVendor } from "./supplier-sync.ts";
+import { mapVendorToSupplier, extrairEmailVendor, normalizarNome } from "./supplier-sync.ts";
 
 const TENANT = "tenant-1";
 
@@ -41,4 +41,14 @@ test("extrairEmailVendor valida e normaliza (minusculo)", () => {
   assert.equal(extrairEmailVendor({ Email: "  Contato@Escola.COM " }), "contato@escola.com");
   assert.equal(extrairEmailVendor({ Email: "sem-arroba" }), null);
   assert.equal(extrairEmailVendor({}), null);
+});
+
+test("normalizarNome casa nomes com acento/caixa/espacos", () => {
+  // escola_nome (viagem_info) x display_name (supplier) devem casar apos normalizar.
+  assert.equal(normalizarNome("  Connect   International Schools "), "connect international schools");
+  assert.equal(
+    normalizarNome("Écòle de Montréal"),
+    normalizarNome("ecole de montreal")
+  );
+  assert.equal(normalizarNome(null), "");
 });

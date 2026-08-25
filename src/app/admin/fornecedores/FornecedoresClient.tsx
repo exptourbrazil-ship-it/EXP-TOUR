@@ -11,7 +11,7 @@ type Amostra = {
 };
 type Resultado =
   | { dryRun: true; totalVendors: number; mapeados: number; comEmail: number; amostra: Amostra[] }
-  | { dryRun: false; totalVendors: number; suppliersUpsert: number; usersUpsert: number; semEmail: number; erros: string[] };
+  | { dryRun: false; totalVendors: number; suppliersUpsert: number; usersUpsert: number; semEmail: number; contratosVinculados: number; erros: string[] };
 
 export default function FornecedoresClient() {
   const [carregando, setCarregando] = useState(false);
@@ -115,8 +115,8 @@ export default function FornecedoresClient() {
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
             <p>
               <strong>Sincronizado.</strong> {resultado.suppliersUpsert} fornecedores e{" "}
-              {resultado.usersUpsert} acessos gravados/atualizados · {resultado.semEmail} sem e-mail
-              (sem acesso).
+              {resultado.usersUpsert} acessos gravados/atualizados · {resultado.contratosVinculados}{" "}
+              contratos vinculados · {resultado.semEmail} sem e-mail (sem acesso).
             </p>
             {resultado.erros.length > 0 ? (
               <ul className="mt-2 list-disc pl-5 text-xs text-red-700">
