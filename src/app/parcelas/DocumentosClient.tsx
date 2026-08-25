@@ -256,10 +256,12 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
       ),
       createElement("input", {
         type: "file",
+        accept: "image/*,application/pdf",
         disabled: enviando === secao.valor,
         onChange: (e: any) => enviarArquivo(secao.valor, secao.tipos, e),
         style: { display: "block", width: "100%", fontSize: 13 },
       }),
+      createElement("p", { style: { fontSize: 11.5, color: "#8a8a8a", marginTop: 6 } }, "Formatos aceitos: PDF, JPG ou PNG."),
       enviando === secao.valor ? createElement("p", { style: { fontSize: 12, color: "#666", marginTop: 8 } }, "Enviando...") : null,
       mensagem[secao.valor] ? createElement("p", { style: { fontSize: 12, marginTop: 8, color: VERDE } }, mensagem[secao.valor]) : null
     );

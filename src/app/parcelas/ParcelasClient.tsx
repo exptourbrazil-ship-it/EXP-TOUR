@@ -451,12 +451,12 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
         {erro ? <p className="mt-4 text-sm text-amber-700">{erro}</p> : null}
 
         <div className="mt-6 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-serif text-2xl text-brand">Parcelas</h2>
             {contratoId ? (
-              <div className="flex items-center gap-4">
-                <button onClick={() => setEditando(true)} className="text-sm font-medium text-brand underline">Ajustar parcelas</button>
-                <button onClick={restaurarPlano} disabled={restaurando} className="text-sm font-medium text-neutral-500 underline disabled:opacity-50">{restaurando ? "Restaurando..." : "Restaurar plano original"}</button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setEditando(true)} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Ajustar parcelas</button>
+                <button onClick={restaurarPlano} disabled={restaurando} className="rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-50">{restaurando ? "Restaurando..." : "Restaurar plano original"}</button>
               </div>
             ) : null}
           </div>
@@ -528,7 +528,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                           <button
                             onClick={() => gerarCobranca(parcela.id)}
                             disabled={gerando === parcela.id}
-                            className={ehProxima ? "rounded-full bg-brand px-4 py-2 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50" : "text-sm font-medium text-brand underline disabled:opacity-50"}
+                            className={ehProxima ? "rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50" : "rounded-full border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50 disabled:opacity-50"}
                           >
                             {gerando === parcela.id ? "Gerando..." : ehProxima ? "Gerar Pix" : "Pagar antecipadamente"}
                           </button>
