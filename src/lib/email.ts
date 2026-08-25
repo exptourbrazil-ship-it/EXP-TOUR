@@ -348,6 +348,102 @@ export async function enviarCodigoFornecedorEmail(
   return data;
 }
 
+// ---- Portal do Fornecedor: convite de acesso (bilingue EN/PT) --------------
+
+function templateConviteFornecedor(nome: string, idioma: string, loginUrl: string) {
+  const en = idioma !== "pt";
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = en
+    ? primeiroNome ? `Hello, ${primeiroNome}!` : "Hello!"
+    : primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const intro = en
+    ? "You now have access to the EXP Tour Partner Portal, where you can follow your students."
+    : "Você agora tem acesso ao Portal do Parceiro da EXP Tour, onde acompanha os seus estudantes.";
+  const instrucao = en
+    ? "To sign in, open the portal and enter this e-mail address. We'll send you a one-time code — no password to remember."
+    : "Para entrar, abra o portal e informe este e-mail. Enviamos um código de uso único — sem senha para decorar.";
+  const botao = en ? "Access the portal" : "Acessar o portal";
+  const rodape = en ? "EXP Tour — Partner Portal" : "EXP Tour — Portal do Parceiro";
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:'Bellefair',Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:${BRAND_GREEN};">
+${cabecalhoLogo()}
+<tr>
+<td style="background-color:#F5EAD9;border-radius:8px;padding:32px;text-align:center;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:15px;margin:0 0 12px;">${intro}</p>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:0 0 24px;">${instrucao}</p>
+<a href="${loginUrl}" style="background-color:${BRAND_GREEN};color:#c9a35e;font-size:16px;text-decoration:none;padding:12px 24px;border-radius:6px;display:inline-block;">${botao}</a>
+<p style="color:${BRAND_GREEN};font-size:12px;margin:24px 0 0;word-break:break-all;">${loginUrl}</p>
+</td>
+</tr>
+<tr>
+<td style="text-align:center;padding-top:24px;">
+<span style="color:#F5EAD9;font-size:13px;">${rodape}</span>
+</td>
+</tr>
+</table>
+</div>
+</body>
+</html>
+`;
+}
+
+// Envia o convite de acesso ao Portal do Fornecedor (boas-vindas + link de
+// login). O portal e sem senha: o convite so avisa que o acesso existe e como
+// entrar (informar o e-mail e receber um codigo). Lanca erro em caso de falha
+// (quem chama decide como tratar). Registra a tentativa em email_logs.
+export async function enviarConviteFornecedorEmail(
+  destinatario: string,
+  nome: string,
+  idioma: string = "en",
+  loginUrl: string = APP_URL ? `${APP_URL}/fornecedor/login` : "https://exp-tour.com/fornecedor/login"
+) {
+  const { apiKey, fromEmail } = getConfig();
+  const en = idioma !== "pt";
+  const subject = en
+    ? "Your EXP Tour Partner Portal access"
+    : "Seu acesso ao Portal do Parceiro EXP Tour";
+
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject,
+        html: templateConviteFornecedor(nome, idioma, loginUrl),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "convite_fornecedor", false, mensagem);
+    throw new Error(mensagem);
+  }
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "convite_fornecedor", false, mensagem);
+    throw new Error(mensagem);
+  }
+
+  await registrarLog(destinatario, "convite_fornecedor", true);
+  return data;
+}
+
 type DadosAceite = {
   versao: string;
   dataFormatada: string;        // ex.: "01/07/2026 14:30"
