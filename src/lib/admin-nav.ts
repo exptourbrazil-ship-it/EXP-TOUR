@@ -46,6 +46,8 @@ const ICONES = {
     "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM13 3v6h6M9 13h6M9 17h4",
   forcaMaior:
     "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
+  fornecedores:
+    "M3 21V8l6-4 6 4v13M9 21v-5h4v5M13 8h5a1 1 0 0 1 1 1v12M17 12h.01M17 16h.01",
 } as const;
 
 // Itens ja disponiveis (telas que existem hoje) + estrutura futura (emBreve).
@@ -91,6 +93,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Contratos",
     descricao: "Enviar contrato para assinatura (Zoho Sign)",
     icone: ICONES.contratos,
+  },
+  {
+    href: "/admin/fornecedores",
+    label: "Fornecedores",
+    descricao: "Sincronizar escolas do Zoho e acessos do portal",
+    icone: ICONES.fornecedores,
   },
   {
     href: "/admin/antecipacoes",
