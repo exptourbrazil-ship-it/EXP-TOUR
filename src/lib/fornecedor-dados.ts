@@ -23,6 +23,15 @@ export type EstudanteResumo = {
   canceladoEm: string | null;
 };
 
+export type DocumentoFornecedor = {
+  id: string;
+  tipoDocumento: string;
+  nomeArquivo: string | null;
+  origem: string | null;
+  status: string | null;
+  criadoEm: string | null;
+};
+
 export type EstudanteDetalhe = EstudanteResumo & {
   estudanteSexo: string | null;
   titularEmail: string | null;
@@ -108,4 +117,39 @@ export async function obterEstudanteDoFornecedor(
     contatoLocalNome: viagem?.contato_local_nome ?? null,
     contatoLocalTelefone: viagem?.contato_local_telefone ?? null,
   };
+}
+
+// Documentos que o admin COMPARTILHOU com esta escola para ESTE contrato. Dupla
+// checagem de posse: (1) o contrato tem que ser do fornecedor da sessao; (2) so
+// devolve docs compartilhados e nao-rejeitados. Nada vaza por padrao — o admin
+// decide caso a caso no Caso 360 (documentos.compartilhado_fornecedor).
+export async function listarDocumentosDoFornecedor(
+  supabase: SupabaseClient,
+  supplierId: string,
+  contratoId: string
+): Promise<DocumentoFornecedor[]> {
+  // POSSE: confirma que o contrato e desta escola antes de ler qualquer doc.
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, supplier_id")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (!contrato || (contrato as { supplier_id?: string }).supplier_id !== supplierId) return [];
+
+  const { data } = await supabase
+    .from("documentos")
+    .select("id, tipo_documento, nome_arquivo, origem, status, created_at")
+    .eq("contrato_id", contratoId)
+    .eq("compartilhado_fornecedor", true)
+    .neq("status", "rejeitado")
+    .order("created_at", { ascending: false });
+
+  return (data ?? []).map((d: any) => ({
+    id: d.id,
+    tipoDocumento: d.tipo_documento,
+    nomeArquivo: d.nome_arquivo ?? null,
+    origem: d.origem ?? null,
+    status: d.status ?? null,
+    criadoEm: d.created_at ?? null,
+  }));
 }

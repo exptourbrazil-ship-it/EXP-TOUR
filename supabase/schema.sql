@@ -790,6 +790,19 @@ alter table if exists documentos drop constraint if exists documentos_origem_che
 alter table if exists documentos add constraint documentos_origem_check
   check (origem in ('zoho','admin','titular','sistema'));
 
+-- ============================================================================
+-- Documentos compartilhados com o fornecedor (Portal do Parceiro)
+-- ============================================================================
+-- O admin decide, documento a documento, o que a escola pode ver no detalhe do
+-- estudante (nada vaza por padrao). A visibilidade e sempre por CONTRATO: um
+-- doc so aparece para a escola dona daquele contrato (isolamento entre escolas).
+-- Aplicar tambem no SQL Editor do Supabase de producao (ver CLAUDE.md).
+alter table if exists documentos add column if not exists compartilhado_fornecedor boolean not null default false;
+alter table if exists documentos add column if not exists compartilhado_em timestamptz;
+alter table if exists documentos add column if not exists compartilhado_por text;
+-- Indice parcial: so as linhas compartilhadas, consultadas por contrato.
+create index if not exists idx_documentos_compartilhado on documentos(contrato_id) where compartilhado_fornecedor;
+
 -- Envelope de assinatura: espelho local do estado no Zoho Sign. Uma linha por
 -- solicitacao de assinatura de um contrato.
 create table if not exists contratos_assinatura (

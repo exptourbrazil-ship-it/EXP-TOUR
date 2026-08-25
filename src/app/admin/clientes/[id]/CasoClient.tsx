@@ -541,6 +541,30 @@ function LinhaDocumento({ doc, podeAnalisar }: { doc: CasoDocumento; podeAnalisa
   const [formRejeicao, setFormRejeicao] = useState(false);
   const [motivoSel, setMotivoSel] = useState(MOTIVOS_REJEICAO_DOCUMENTO[0].valor);
   const [detalhe, setDetalhe] = useState("");
+  const [compartilhando, setCompartilhando] = useState(false);
+
+  // Compartilha/descompartilha o documento com a escola no Portal do Parceiro.
+  async function compartilhar(novo: boolean) {
+    setErro(null);
+    setCompartilhando(true);
+    try {
+      const res = await fetch(`/api/admin/documentos/${doc.id}/compartilhar`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ compartilhar: novo }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao alterar o compartilhamento.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setErro("Falha de rede. Tente novamente.");
+    } finally {
+      setCompartilhando(false);
+    }
+  }
 
   async function definirStatus(status: "aprovado" | "rejeitado", motivo?: string) {
     setErro(null);
@@ -596,6 +620,11 @@ function LinhaDocumento({ doc, podeAnalisar }: { doc: CasoDocumento; podeAnalisa
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {doc.compartilhado_fornecedor ? (
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+              Compartilhada com a escola
+            </span>
+          ) : null}
           <BadgeDocumento status={doc.status} />
           {podeAnalisar ? (
             <a
@@ -607,6 +636,28 @@ function LinhaDocumento({ doc, podeAnalisar }: { doc: CasoDocumento; podeAnalisa
           ) : null}
         </div>
       </div>
+
+      {/* Compartilhamento com a escola (Portal do Parceiro) */}
+      {podeAnalisar ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => compartilhar(!doc.compartilhado_fornecedor)}
+            disabled={compartilhando}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+              doc.compartilhado_fornecedor
+                ? "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                : "border-brand/30 bg-brand/5 text-brand hover:bg-brand/10"
+            }`}
+          >
+            {compartilhando
+              ? "Salvando…"
+              : doc.compartilhado_fornecedor
+                ? "Deixar de compartilhar com a escola"
+                : "Compartilhar com a escola"}
+          </button>
+        </div>
+      ) : null}
 
       {/* Motivo de uma rejeicao anterior */}
       {doc.status === "rejeitado" && doc.motivo_rejeicao ? (
