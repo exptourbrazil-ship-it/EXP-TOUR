@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 // Painel de sincronizacao dos fornecedores (Vendors do Zoho CRM) para a tabela
 // supplier. Dois botoes: pre-visualizar (dry-run, nao grava) e sincronizar de
@@ -44,11 +45,20 @@ export default function FornecedoresClient() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-1 font-serif text-2xl text-brand">Fornecedores</h1>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h1 className="font-serif text-2xl text-brand">Fornecedores</h1>
+        <Link
+          href="/admin/fornecedores/usuarios"
+          className="text-sm text-neutral-500 hover:text-brand"
+        >
+          Usuários do portal →
+        </Link>
+      </div>
       <p className="mb-5 text-sm text-neutral-600">
         Importa as escolas do módulo <strong>Vendors</strong> do Zoho CRM para o portal, criando o
         acesso (usuário admin) a partir do e-mail de cada Vendor. É idempotente: rodar de novo
-        atualiza, nunca duplica.
+        atualiza, nunca duplica. Para convidar acessos à mão (escolas sem e-mail no Zoho ou um 2º
+        contato), use <strong>Usuários do portal</strong>.
       </p>
 
       <div className="mb-6 flex flex-wrap gap-3">
