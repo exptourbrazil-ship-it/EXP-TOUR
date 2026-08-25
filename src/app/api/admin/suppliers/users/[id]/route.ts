@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
-import { obterIp } from "@/lib/rate-limit";
+import { obterIp, checarELimitar } from "@/lib/rate-limit";
 import { enviarConviteFornecedorEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Teto de reenvios do convite por usuario-alvo (protege a reputacao do
+// remetente: um admin nao deve poder disparar e-mails em rajada ao mesmo
+// destinatario). Janela de 10 min.
+const REENVIO_JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
+const REENVIO_MAX = Number(process.env.RATE_LIMIT_FORNECEDOR_CONVITE || "3");
 
 // Gerencia um usuario do Portal do Fornecedor ja existente:
 //  - { active: boolean }        -> ativa/desativa o acesso (revoga/restaura);
@@ -47,6 +53,13 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         { status: 409 }
       );
     }
+    // Teto de reenvios por usuario-alvo (anti-spam / reputacao do remetente).
+    if (!(await checarELimitar(supabase, `fornecedor-convite:${usuario.id}`, REENVIO_MAX, REENVIO_JANELA_SEG))) {
+      return NextResponse.json(
+        { ok: false, erro: "Muitos reenvios para este usuário. Aguarde alguns minutos." },
+        { status: 429 }
+      );
+    }
     try {
       await enviarConviteFornecedorEmail(usuario.email, usuario.name || "", usuario.language || "en");
     } catch (err) {
@@ -67,9 +80,13 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   // Ativar/desativar o acesso.
   if (typeof body?.active === "boolean") {
     const active = body.active as boolean;
+    // Ao reativar, tambem limpa archived_at: senao o acesso ficaria ativo porem
+    // "arquivado" (estado inconsistente que bloquearia o reenvio de convite).
+    const patch: Record<string, unknown> = { active, updated_at: new Date().toISOString() };
+    if (active) patch.archived_at = null;
     const { data: atualizado, error } = await supabase
       .from("supplier_user")
-      .update({ active, updated_at: new Date().toISOString() })
+      .update(patch)
       .eq("id", id)
       .select("id, name, email, role, language, active, zoho_vendor_id")
       .single();
