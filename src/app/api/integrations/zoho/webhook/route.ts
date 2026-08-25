@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getZohoRecord } from "@/lib/zoho";
 import { getZohoAttachments } from "@/lib/zoho"; import { categorizarNomeArquivo } from "@/lib/documentos";
 import { resolverTitular, dadosPrograma, dadosComerciais } from "@/lib/zoho-contato";
+import { normalizarNome } from "@/lib/supplier-sync";
 import { calcularVencimentosParcelas, dividirValorParcelas, somaParcelasConfere } from "@/lib/parcelas";
 
 export const runtime = "nodejs";
@@ -170,6 +171,37 @@ export async function POST(request: Request) {
     }
   }
 
+  // Resolve o fornecedor (supplier) deste contrato, para vincular contratos.supplier_id
+  // ja no provisionamento -- sem depender de rodar a sincronizacao de Vendors depois.
+  // Prioridade:
+  //   1) pelo ID do Vendor no lookup (exato, casa com supplier.zoho_vendor_id);
+  //   2) fallback pelo NOME normalizado do Vendor (so quando ha um unico supplier
+  //      com aquele nome, para nunca vincular ao fornecedor errado).
+  // O webhook NAO cria supplier: se o Vendor ainda nao foi sincronizado, o
+  // contrato fica sem supplier_id e sera vinculado na proxima sync de Vendors.
+  async function resolverSupplierId(): Promise<string | null> {
+    if (prog.escolaVendorId) {
+      const { data } = await supabase
+        .from("supplier")
+        .select("id")
+        .eq("zoho_vendor_id", prog.escolaVendorId)
+        .maybeSingle();
+      if (data?.id) return data.id as string;
+    }
+    if (prog.escolaNome) {
+      const alvo = normalizarNome(prog.escolaNome);
+      if (alvo) {
+        const { data } = await supabase.from("supplier").select("id, display_name");
+        const casados = (data ?? []).filter(
+          (s) => normalizarNome((s as { display_name?: string }).display_name) === alvo
+        );
+        if (casados.length === 1) return (casados[0] as { id: string }).id;
+      }
+    }
+    return null;
+  }
+  const supplierId = await resolverSupplierId();
+
   // Dedupe: primeiro pelo contato do Zoho gravado no contrato (chave estavel,
   // nao depende de qual CPF virou titular); se nao houver, pelo par
   // titular + produto (contratos antigos, antes de gravarmos o contact id).
@@ -197,6 +229,15 @@ export async function POST(request: Request) {
     // os campos do programa (backfill para contratos ja na base).
     if (Object.keys(camposContrato).length > 0) {
       await supabase.from("contratos").update(camposContrato).eq("id", contratoExistente.id);
+    }
+    // Vincula o fornecedor apenas quando ainda esta vazio (nao sobrescreve uma
+    // correcao manual feita no admin). Idempotente: rodar de novo nao muda nada.
+    if (supplierId) {
+      await supabase
+        .from("contratos")
+        .update({ supplier_id: supplierId })
+        .eq("id", contratoExistente.id)
+        .is("supplier_id", null);
     }
     await sincronizarViagemInfo(contratoExistente.id);
     return NextResponse.json({
@@ -246,6 +287,8 @@ export async function POST(request: Request) {
       valor_total: valorTotal,
       moeda,
       zoho_product_id: produtoLookup.id,
+      // Fornecedor ja no provisionamento (quando o Vendor esta sincronizado).
+      ...(supplierId ? { supplier_id: supplierId } : {}),
       ...camposContrato,
     })
     .select()

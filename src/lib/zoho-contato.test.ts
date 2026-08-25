@@ -8,6 +8,7 @@ import {
   soDigitos,
   nomeEstudante,
   nomeLookup,
+  idLookup,
   normalizarSexo,
   slugDestino,
   dataZoho,
@@ -84,6 +85,14 @@ test("nomeLookup extrai de objeto { name } ou de string", () => {
   assert.equal(nomeLookup({ name: "" }), null);
 });
 
+test("idLookup extrai o id de um lookup e ignora texto simples", () => {
+  assert.equal(idLookup({ name: "ILAC - Toronto", id: "555000111" }), "555000111");
+  assert.equal(idLookup("ILAC - Toronto"), null); // texto simples nao tem id
+  assert.equal(idLookup({ name: "Sem id" }), null);
+  assert.equal(idLookup({ name: "Vazio", id: "  " }), null);
+  assert.equal(idLookup(null), null);
+});
+
 test("normalizarSexo aceita M/F e Masculino/Feminino", () => {
   assert.equal(normalizarSexo("M"), "M");
   assert.equal(normalizarSexo("F"), "F");
@@ -119,7 +128,7 @@ test("dadosPrograma reune os campos do programa no formato do banco", () => {
     Sexo: "F",
     Destino: { name: "Canadá" },
     Data_de_Inicio: "2026-09-15",
-    Vendor_Name: { name: "ILAC - Toronto" },
+    Vendor_Name: { name: "ILAC - Toronto", id: "555000111" },
   });
   assert.deepEqual(p, {
     estudanteNome: "Luiza Haas",
@@ -127,7 +136,14 @@ test("dadosPrograma reune os campos do programa no formato do banco", () => {
     paisDestino: "canada",
     dataInicio: "2026-09-15",
     escolaNome: "ILAC - Toronto",
+    escolaVendorId: "555000111",
   });
+});
+
+test("dadosPrograma: Vendor_Name como texto simples nao produz escolaVendorId", () => {
+  const p = dadosPrograma({ Full_Name: "Aluno", Vendor_Name: "ILAC - Toronto" });
+  assert.equal(p.escolaNome, "ILAC - Toronto");
+  assert.equal(p.escolaVendorId, null);
 });
 
 test("dadosPrograma cai para 'Destino do Fornecedor' (texto) quando o lookup Destino esta vazio", () => {
@@ -154,6 +170,7 @@ test("dadosPrograma retorna nulos quando o Contato nao tem os campos", () => {
   assert.equal(p.paisDestino, null);
   assert.equal(p.dataInicio, null);
   assert.equal(p.escolaNome, null);
+  assert.equal(p.escolaVendorId, null);
 });
 
 test("normalizarMoeda traduz as opcoes legadas do Zoho", () => {
