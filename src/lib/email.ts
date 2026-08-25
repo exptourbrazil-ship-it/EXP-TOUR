@@ -253,6 +253,101 @@ await registrarLog(destinatario, "codigo_acesso", true);
   return data;
 }
 
+// ---- Portal do Fornecedor: codigo de login (bilingue EN/PT) ----------------
+
+function templateCodigoFornecedor(nome: string, codigo: string, idioma: string) {
+  const en = idioma !== "pt";
+  const primeiroNome = (nome || "").trim().split(" ")[0] || "";
+  const saudacao = en
+    ? primeiroNome ? `Hello, ${primeiroNome}!` : "Hello!"
+    : primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!";
+  const instrucao = en
+    ? "Use the code below to access your Partner Portal:"
+    : "Use o código abaixo para acessar o seu Portal do Parceiro:";
+  const expira = en
+    ? "This code expires in 10 minutes. If you didn't request it, ignore this e-mail."
+    : "Este código expira em 10 minutos. Se você não solicitou, ignore este e-mail.";
+  const rodape = en ? "EXP Tour — Partner Portal" : "EXP Tour — Portal do Parceiro";
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;">
+<div style="background-color:${BRAND_GREEN};padding:32px 0;font-family:'Bellefair',Georgia,'Times New Roman',serif;">
+<table role="presentation" width="100%" style="max-width:480px;margin:0 auto;background-color:${BRAND_GREEN};">
+<tr>
+<td style="text-align:center;padding-bottom:24px;">
+<img src="${LOGO_URL}" alt="EXP TOUR" width="150" style="display:block;margin:0 auto;border:0;" />
+</td>
+</tr>
+<tr>
+<td style="background-color:#F5EAD9;border-radius:8px;padding:32px;text-align:center;">
+<p style="color:${BRAND_GREEN};font-size:18px;margin:0 0 16px;">${saudacao}</p>
+<p style="color:${BRAND_GREEN};font-size:16px;margin:0 0 24px;">${instrucao}</p>
+<div style="background-color:${BRAND_GREEN};color:#c9a35e;font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;border-radius:6px;display:inline-block;">${codigo}</div>
+<p style="color:${BRAND_GREEN};font-size:14px;margin:24px 0 0;">${expira}</p>
+</td>
+</tr>
+<tr>
+<td style="text-align:center;padding-top:24px;">
+<span style="color:#F5EAD9;font-size:13px;">${rodape}</span>
+</td>
+</tr>
+</table>
+</div>
+</body>
+</html>
+`;
+}
+
+// Envia o codigo de login do fornecedor por e-mail via Resend, no idioma do
+// usuario (EN padrao). Lanca erro em caso de falha (quem chamar decide como
+// tratar). Registra a tentativa em email_logs.
+export async function enviarCodigoFornecedorEmail(
+  destinatario: string,
+  nome: string,
+  codigo: string,
+  idioma: string = "en"
+) {
+  const { apiKey, fromEmail } = getConfig();
+  const en = idioma !== "pt";
+  const subject = en ? "Your access code - EXP Tour" : "Seu código de acesso - EXP Tour";
+
+  let response: Response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [destinatario],
+        subject,
+        html: templateCodigoFornecedor(nome, codigo, idioma),
+      }),
+    });
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
+    await registrarLog(destinatario, "codigo_fornecedor", false, mensagem);
+    throw new Error(mensagem);
+  }
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const mensagem = data?.message || `Falha ao enviar email (status ${response.status})`;
+    await registrarLog(destinatario, "codigo_fornecedor", false, mensagem);
+    throw new Error(mensagem);
+  }
+
+  await registrarLog(destinatario, "codigo_fornecedor", true);
+  return data;
+}
+
 type DadosAceite = {
   versao: string;
   dataFormatada: string;        // ex.: "01/07/2026 14:30"

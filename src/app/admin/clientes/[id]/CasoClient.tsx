@@ -33,6 +33,7 @@ export type PermissoesCaso = {
   gerirCaso: boolean;
   gerirCancelamento: boolean;
   gerirFinanceiro: boolean;
+  editarCpf: boolean;
 };
 
 type Aba = "jornada" | "financeiro" | "documentos" | "comunicacao" | "eventos" | "acoes";
@@ -815,6 +816,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         )}
       </div>
 
+      {/* Editar cadastro — contato do titular, estudante (por contrato) e CPF */}
+      <SecaoEditarCadastro caso={caso} permissoes={permissoes} />
+
       {/* Resultado do visto — dispara o E1 na transicao para negado */}
       <SecaoVisto caso={caso} podeGerir={permissoes.gerirCaso} />
 
@@ -921,6 +925,332 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+// ---- Editar cadastro (contato do titular, estudante por contrato, CPF) ------
+
+// Contato do titular: nome/telefone/email. Capacidade casos.gerir.
+function FormContatoTitular({ caso }: { caso: Caso }) {
+  const router = useRouter();
+  const { titular } = caso;
+  const [nome, setNome] = useState(titular.nome_completo || "");
+  const [telefone, setTelefone] = useState(titular.telefone || "");
+  const [email, setEmail] = useState(titular.email || "");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function salvar() {
+    setFeedback(null);
+    if (!nome.trim()) {
+      setFeedback({ ok: false, msg: "Informe o nome completo." });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titular.id}/cadastro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secao: "contato", nome_completo: nome, telefone, email }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao salvar o contato." });
+        return;
+      }
+      setFeedback({ ok: true, msg: "Contato do titular atualizado." });
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="mb-1 text-sm font-semibold text-brand">Contato do titular</h3>
+      <p className="mb-2 text-xs text-neutral-500">Nome, telefone e e-mail do titular.</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block sm:col-span-3">
+          <span className="text-xs text-neutral-500">Nome completo</span>
+          <input
+            type="text"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs text-neutral-500">Telefone</span>
+          <input
+            type="text"
+            value={telefone}
+            onChange={(e) => setTelefone(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs text-neutral-500">E-mail</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={enviando}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {enviando ? "Salvando…" : "Salvar contato"}
+        </button>
+        {feedback ? (
+          <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+            {feedback.msg}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// Dados do estudante de UM contrato. Capacidade casos.gerir.
+function FormEstudanteContrato({ caso, contrato }: { caso: Caso; contrato: CasoContrato }) {
+  const router = useRouter();
+  const [nome, setNome] = useState(contrato.estudante_nome || "");
+  const [sexo, setSexo] = useState(contrato.estudante_sexo || "");
+  const [nascimento, setNascimento] = useState(contrato.estudante_data_nascimento || "");
+  const [email, setEmail] = useState(contrato.estudante_email || "");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function salvar() {
+    setFeedback(null);
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/estudante`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contratoId: contrato.id,
+          estudante_nome: nome,
+          estudante_sexo: sexo,
+          estudante_data_nascimento: nascimento,
+          estudante_email: email,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao salvar o estudante." });
+        return;
+      }
+      setFeedback({ ok: true, msg: "Dados do estudante atualizados." });
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 p-3">
+      <p className="mb-2 text-xs text-neutral-500">
+        Contrato: <span className="font-medium text-brand">{nomeContrato(contrato)}</span>
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs text-neutral-500">Nome do estudante</span>
+          <input
+            type="text"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs text-neutral-500">Sexo</span>
+          <select
+            value={sexo}
+            onChange={(e) => setSexo(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          >
+            <option value="">—</option>
+            <option value="F">Feminino</option>
+            <option value="M">Masculino</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs text-neutral-500">Data de nascimento</span>
+          <input
+            type="date"
+            value={nascimento}
+            onChange={(e) => setNascimento(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs text-neutral-500">E-mail do estudante</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={enviando}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {enviando ? "Salvando…" : "Salvar estudante"}
+        </button>
+        {feedback ? (
+          <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+            {feedback.msg}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// CPF do titular. Acao SENSIVEL (muda a identidade de login): so visivel com a
+// capacidade override e exige justificativa registrada na auditoria.
+function FormCpfTitular({ caso }: { caso: Caso }) {
+  const router = useRouter();
+  const { titular } = caso;
+  const [cpf, setCpf] = useState(titular.cpf || "");
+  const [justificativa, setJustificativa] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function salvar() {
+    setFeedback(null);
+    if (justificativa.trim().length < 5) {
+      setFeedback({ ok: false, msg: "Informe uma justificativa (mínimo 5 caracteres)." });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${titular.id}/cadastro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secao: "cpf", cpf, justificativa }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setFeedback({ ok: false, msg: data?.error || "Falha ao salvar o CPF." });
+        return;
+      }
+      setFeedback({ ok: true, msg: "CPF do titular atualizado." });
+      setJustificativa("");
+      router.refresh();
+    } catch {
+      setFeedback({ ok: false, msg: "Falha de rede. Tente novamente." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50/50 p-3">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-red-700">
+        <span aria-hidden>!</span> CPF do titular
+      </h3>
+      <p className="mb-2 text-xs text-red-700">
+        O CPF é o login do cliente. Alterá-lo muda a identidade de acesso. Ação registrada na
+        auditoria com a justificativa.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs text-neutral-500">CPF</span>
+          <input
+            type="text"
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs text-neutral-500">Justificativa (obrigatória)</span>
+          <input
+            type="text"
+            value={justificativa}
+            onChange={(e) => setJustificativa(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={enviando}
+          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {enviando ? "Salvando…" : "Salvar CPF"}
+        </button>
+        {feedback ? (
+          <span className={"text-xs " + (feedback.ok ? "text-emerald-700" : "text-red-600")}>
+            {feedback.msg}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SecaoEditarCadastro({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso }) {
+  if (!permissoes.gerirCaso) {
+    return (
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 font-serif text-xl text-brand">Editar cadastro</h2>
+        <p className="text-xs text-neutral-500">
+          Você não tem permissão para editar os dados cadastrais deste cliente.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Editar cadastro</h2>
+      <p className="mb-4 text-xs text-neutral-500">
+        Corrige os dados cadastrais do cliente. Toda alteração fica registrada na auditoria.
+      </p>
+
+      <div className="space-y-6">
+        <FormContatoTitular caso={caso} />
+
+        <div className="border-t border-neutral-100 pt-4">
+          <h3 className="mb-2 text-sm font-semibold text-brand">Dados do estudante (por contrato)</h3>
+          {caso.contratos.length === 0 ? (
+            <p className="text-xs text-neutral-500">Nenhum contrato para este titular.</p>
+          ) : (
+            <div className="space-y-3">
+              {caso.contratos.map((c) => (
+                <FormEstudanteContrato key={c.id} caso={caso} contrato={c} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {permissoes.editarCpf ? (
+          <div className="border-t border-neutral-100 pt-4">
+            <FormCpfTitular caso={caso} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
