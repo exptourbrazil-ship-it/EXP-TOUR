@@ -5,7 +5,7 @@
 // Formato parcial de um Contato do Zoho CRM, so com os campos que usamos aqui.
 // Um lookup do Zoho ("Pesquisar") vem como objeto { name, id }; um campo de
 // texto simples vem como string.
-export type LookupZoho = { name?: string | null } | string | null;
+export type LookupZoho = { name?: string | null; id?: string | null } | string | null;
 
 export type ContatoZoho = {
   Full_Name?: string | null;
@@ -106,6 +106,16 @@ export function nomeLookup(valor: LookupZoho | undefined): string | null {
   if (typeof valor === "string") return valor.trim() || null;
   const nome = valor.name;
   return typeof nome === "string" && nome.trim() ? nome.trim() : null;
+}
+
+// Extrai o ID de um lookup do Zoho ({ id }). Quando o campo veio como texto
+// simples (nao e um lookup de verdade), nao ha id -> null. Esse id e o mesmo
+// `zoho_vendor_id` que guardamos em `supplier`, entao serve para casar o
+// contrato com o fornecedor de forma exata (sem depender do nome).
+export function idLookup(valor: LookupZoho | undefined): string | null {
+  if (!valor || typeof valor === "string") return null;
+  const id = valor.id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
 }
 
 // Minusculas, sem acentos e sem espacos nas pontas.
@@ -223,6 +233,7 @@ export function dadosPrograma(contato: ContatoZoho): {
   paisDestino: string | null;
   dataInicio: string | null;
   escolaNome: string | null;
+  escolaVendorId: string | null;
 } {
   return {
     estudanteNome: nomeEstudante(contato) || null,
@@ -231,5 +242,8 @@ export function dadosPrograma(contato: ContatoZoho): {
     paisDestino: slugDestino(contato.Destino) ?? slugDestino(contato.Destino_do_Fornecedor),
     dataInicio: dataZoho(contato.Data_de_Inicio),
     escolaNome: nomeLookup(contato.Vendor_Name),
+    // Id do Vendor (quando o CRM usa o lookup de verdade): chave exata para casar
+    // o contrato com o supplier via zoho_vendor_id.
+    escolaVendorId: idLookup(contato.Vendor_Name),
   };
 }
