@@ -18,6 +18,30 @@ import type { CSSProperties } from "react";
 export type TenantTheme = "exptour" | "forio";
 export type TenantLogo = "exptour" | "forio";
 
+// Tema do PDF de marca (server, @react-pdf/renderer). O react-pdf nao le
+// variaveis CSS: precisa de cores hex explicitas. Espelha o --p-* do portal em
+// valores de impressao. Fontes ficam no fallback Helvetica (react-pdf embute
+// so as 14 fontes padrao; nao empacotamos arquivos de fonte).
+export type PdfTheme = {
+  bar: string;         // fundo da faixa do cabecalho (letterhead)
+  barLine: string | null; // regua sob o cabecalho (null = sem regua)
+  wordFg: string;      // cor do wordmark no cabecalho
+  sub: string;         // cor da assinatura/tagline
+  brand: string;       // estrutural forte (titulos, totais, valores)
+  accentInk: string;   // texto do selo "Recomendada"
+  accentSoft: string;  // fundo do selo "Recomendada"
+  ink: string;
+  muted: string;
+  faint: string;
+  line: string;
+  wordmark: string;    // texto do logotipo
+  tagline: string;     // "" para omitir
+  dot: string | null;  // ponto de destaque apos o wordmark (null = sem)
+  font: string;        // familia base (texto regular). Ex.: "Helvetica" | "Inter"
+  fontBold: string;    // familia p/ enfase (titulos/totais)
+  boldWeight?: number; // peso da enfase quando a familia usa fontWeight (Inter=500)
+};
+
 export type TenantBrand = {
   slug: string;
   theme: TenantTheme;
@@ -25,6 +49,8 @@ export type TenantBrand = {
   logo: TenantLogo;
   /** Variaveis CSS para aplicar no `style` do wrapper do portal. */
   styleVars: CSSProperties;
+  /** Tema do PDF de marca (cores de impressao). */
+  pdf: PdfTheme;
 };
 
 const INTER = '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -60,6 +86,25 @@ const EXP_TOUR: TenantBrand = {
     "--p-heading": '"Bellefair", Georgia, "Times New Roman", serif',
     "--p-body": "ui-sans-serif, system-ui, -apple-system, sans-serif",
   } as CSSProperties,
+  // PDF EXP Tour: mantem exatamente o letterhead atual (verde profundo/bronze).
+  pdf: {
+    bar: "#0f3d3e",
+    barLine: null,
+    wordFg: "#ffffff",
+    sub: "#8a6d3b",
+    brand: "#0f3d3e",
+    accentInk: "#8a6d3b",
+    accentSoft: "#efe7d6",
+    ink: "#1f2937",
+    muted: "#6b7280",
+    faint: "#9ca3af",
+    line: "#e5e7eb",
+    wordmark: "EXP TOUR",
+    tagline: "TRAVEL EXPERIENCE",
+    dot: null,
+    font: "Helvetica",
+    fontBold: "Helvetica-Bold",
+  },
 };
 
 // Forio (Manual da Marca v1.1): light-first, sem gradientes, Inter 400/500.
@@ -92,6 +137,27 @@ const FORIO: TenantBrand = {
     "--p-heading": INTER,
     "--p-body": INTER,
   } as CSSProperties,
+  // PDF Forio: letterhead claro (light-first), wordmark Night + regua Portal
+  // Blue; selo em Amber Gate; totais em Night. Sem tagline.
+  pdf: {
+    bar: "#ffffff",
+    barLine: "#3b4dc9",
+    wordFg: "#0f1020",
+    sub: "#3b4dc9",
+    brand: "#0f1020",
+    accentInk: "#8a6410",
+    accentSoft: "#fbf0d8",
+    ink: "#0f1020",
+    muted: "#4a4e6a",
+    faint: "#8a8ea8",
+    line: "#e4e5ee",
+    wordmark: "forio",
+    tagline: "",
+    dot: "#3b4dc9",
+    font: "Inter",
+    fontBold: "Inter",
+    boldWeight: 500, // Inter Medium — o manual usa 400/500, sem bold sintetico
+  },
 };
 
 const REGISTRO: Record<string, TenantBrand> = {
