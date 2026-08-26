@@ -70,6 +70,19 @@ async function postJson(url: string, body: unknown) {
   return json.data;
 }
 
+async function deleteJson(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.error?.message || "Falha na operação.");
+  }
+  return json.data;
+}
+
 function totaisPorMoeda(items: ItemView[]): Record<string, number> {
   const acc: Record<string, number> = {};
   for (const it of items) acc[it.currency] = (acc[it.currency] ?? 0) + it.grossAmount;
@@ -132,6 +145,15 @@ export default function ConstrutorClient({
   const recalcular = () =>
     comBusy(async () => {
       await postJson(`/api/admin/quotes/${header.id}/recalculate`, {});
+      router.refresh();
+    });
+
+  const removerItem = (itemId: string) =>
+    comBusy(async () => {
+      if (typeof window !== "undefined" && !window.confirm("Remover este item da opção?")) {
+        return;
+      }
+      await deleteJson(`/api/admin/quotes/${header.id}/items`, { itemId });
       router.refresh();
     });
 
@@ -390,11 +412,23 @@ export default function ConstrutorClient({
                             {it.group}
                           </span>
                         </div>
-                        <div className="mt-0.5 text-xs text-neutral-500">
-                          {it.quantity} {it.unit} ·{" "}
-                          <span className="font-medium text-brand">
-                            {fmtMoeda(it.grossAmount, it.currency)}
-                          </span>
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                          <div className="text-xs text-neutral-500">
+                            {it.quantity} {it.unit} ·{" "}
+                            <span className="font-medium text-brand">
+                              {fmtMoeda(it.grossAmount, it.currency)}
+                            </span>
+                          </div>
+                          {isDraft ? (
+                            <button
+                              type="button"
+                              onClick={() => removerItem(it.id)}
+                              disabled={busy}
+                              className="shrink-0 rounded-lg border border-red-200 px-2 py-1 text-[11px] font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                            >
+                              Remover
+                            </button>
+                          ) : null}
                         </div>
                       </li>
                     ))}

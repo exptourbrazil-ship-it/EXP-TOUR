@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { fmtData } from "@/lib/formato";
+import { fmtData, fmtMoeda } from "@/lib/formato";
 
 export type QuoteRow = {
   id: string;
@@ -11,6 +11,10 @@ export type QuoteRow = {
   status: string;
   createdAt: string;
   studentName: string;
+  // "Opcao-chave" (recomendada/1a) + subtotal bruto, para dar magnitude na linha.
+  mainOptionLabel?: string | null;
+  mainOptionTotal?: number | null;
+  mainOptionCurrency?: string | null;
 };
 
 // Cada estado com cor propria (antes viewed/option_selected/converted eram
@@ -248,6 +252,11 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
                   </span>
                 </div>
                 <div className="mt-0.5 text-sm text-neutral-600">{q.studentName}</div>
+                {q.mainOptionTotal != null && q.mainOptionCurrency ? (
+                  <div className="mt-0.5 text-xs text-neutral-500">
+                    {q.mainOptionLabel} · {fmtMoeda(q.mainOptionTotal, q.mainOptionCurrency)}
+                  </div>
+                ) : null}
                 <div className="mt-0.5 text-xs text-neutral-400">
                   criada em {fmtData(q.createdAt)}
                 </div>

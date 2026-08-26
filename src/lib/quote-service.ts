@@ -546,6 +546,88 @@ export async function addQuoteItem(
 }
 
 // ---------------------------------------------------------------------------
+// removeQuoteItem
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove um item de uma opcao (so em cotacao RASCUNHO). Valida posse por tenant
+ * (item -> opcao -> cotacao) e o status draft, apaga os filhos (descontos e
+ * taxas do item) e o item, e registra a trilha. Totais sao derivados na leitura
+ * (o construtor recalcula a partir dos itens), entao nao ha agregado a atualizar.
+ */
+export async function removeQuoteItem(
+  supabase: SupabaseClient,
+  args: { tenantId: string; quoteId: string; itemId: string },
+  actor: ServiceActor,
+): Promise<{ removed: boolean }> {
+  const { data: item, error: itemErr } = await supabase
+    .from("quote_item")
+    .select("id, quote_option_id")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.itemId)
+    .maybeSingle();
+  if (itemErr) throw new Error(`Falha ao carregar item: ${itemErr.message}`);
+  if (!item) throw new Error("Item nao encontrado para este tenant.");
+
+  // Posse: a opcao do item precisa pertencer a esta cotacao.
+  const { data: option, error: optErr } = await supabase
+    .from("quote_option")
+    .select("id, quote_id")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", item.quote_option_id)
+    .maybeSingle();
+  if (optErr) throw new Error(`Falha ao carregar opcao: ${optErr.message}`);
+  if (!option || option.quote_id !== args.quoteId) {
+    throw new Error("Item nao pertence a esta cotacao.");
+  }
+
+  // Dinheiro so muda em rascunho: cotacao emitida tem valores congelados.
+  const { data: quote, error: qErr } = await supabase
+    .from("quote")
+    .select("id, status")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.quoteId)
+    .maybeSingle();
+  if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
+  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+  if (quote.status !== "draft") {
+    throw new Error("So e possivel remover item de cotacao em rascunho (draft).");
+  }
+
+  // Remove os filhos do item antes do item (descontos e taxas vinculados).
+  const { error: descErr } = await supabase
+    .from("quote_discount")
+    .delete()
+    .eq("tenant_id", args.tenantId)
+    .eq("quote_item_id", args.itemId);
+  if (descErr) throw new Error(`Falha ao remover descontos do item: ${descErr.message}`);
+
+  const { error: feeErr } = await supabase
+    .from("quote_item_fee")
+    .delete()
+    .eq("tenant_id", args.tenantId)
+    .eq("quote_item_id", args.itemId);
+  if (feeErr) throw new Error(`Falha ao remover taxas do item: ${feeErr.message}`);
+
+  const { error: delErr } = await supabase
+    .from("quote_item")
+    .delete()
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.itemId);
+  if (delErr) throw new Error(`Falha ao remover item: ${delErr.message}`);
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: actor.usuario,
+    acao: "quote.item.removed",
+    alvo: args.itemId,
+    detalhe: { quoteId: args.quoteId, optionId: option.id },
+    ip: actor.ip ?? null,
+  });
+
+  return { removed: true };
+}
+
+// ---------------------------------------------------------------------------
 // addManualDiscount
 // ---------------------------------------------------------------------------
 
