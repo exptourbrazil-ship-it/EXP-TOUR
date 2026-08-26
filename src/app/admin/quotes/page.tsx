@@ -31,7 +31,8 @@ export default async function AdminQuotesPage() {
   // subtotal BRUTO dos itens dela (os totais nao sao armazenados; e uma
   // magnitude para triagem na lista, nao o preco final liquido).
   const opcoesPorCotacao = new Map<string, { id: string; label: string; recomendada: boolean; sort: number }[]>();
-  const brutoPorOpcao = new Map<string, { total: number; currency: string }>();
+  // Subtotal bruto por opcao, SEPARADO por moeda (nunca somar moedas distintas).
+  const brutoPorOpcao = new Map<string, Map<string, number>>();
   if (ids.length > 0) {
     const { data: opts } = await supabase
       .from("quote_option")
@@ -51,10 +52,10 @@ export default async function AdminQuotesPage() {
         .eq("tenant_id", tenantId)
         .in("quote_option_id", optionIds);
       for (const it of items ?? []) {
-        const atual = brutoPorOpcao.get(it.quote_option_id) ?? { total: 0, currency: it.currency ?? "BRL" };
-        atual.total += Number(it.gross_amount ?? 0);
-        atual.currency = it.currency ?? atual.currency;
-        brutoPorOpcao.set(it.quote_option_id, atual);
+        const moeda = it.currency ?? "BRL";
+        const porMoeda = brutoPorOpcao.get(it.quote_option_id) ?? new Map<string, number>();
+        porMoeda.set(moeda, (porMoeda.get(moeda) ?? 0) + Number(it.gross_amount ?? 0));
+        brutoPorOpcao.set(it.quote_option_id, porMoeda);
       }
     }
   }
@@ -63,12 +64,13 @@ export default async function AdminQuotesPage() {
     const arr = opcoesPorCotacao.get(quoteId) ?? [];
     if (arr.length === 0) return null;
     const principal = arr.find((o) => o.recomendada) ?? [...arr].sort((a, b) => a.sort - b.sort)[0];
-    const g = brutoPorOpcao.get(principal.id);
-    return {
-      label: principal.label,
-      total: g ? Math.round(g.total * 100) / 100 : null,
-      currency: g?.currency ?? null,
-    };
+    const porMoeda = brutoPorOpcao.get(principal.id);
+    if (!porMoeda || porMoeda.size === 0) {
+      return { label: principal.label, total: null, currency: null };
+    }
+    // Moeda dominante (maior subtotal) — evita somar moedas diferentes na linha.
+    const [moeda, total] = [...porMoeda.entries()].sort((a, b) => b[1] - a[1])[0];
+    return { label: principal.label, total: Math.round(total * 100) / 100, currency: moeda };
   }
 
   const quotes: QuoteRow[] = (data ?? []).map((q: any) => {
