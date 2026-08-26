@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fmtData } from "@/lib/formato";
@@ -13,14 +13,17 @@ export type QuoteRow = {
   studentName: string;
 };
 
+// Cada estado com cor propria (antes viewed/option_selected/converted eram
+// identicos). option_selected = dourado (atencao: precisa de acao da equipe);
+// converted = verde (sucesso); viewed = azul (info). Vermelho e permitido no admin.
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-neutral-100 text-neutral-600",
   issued: "bg-amber-100 text-amber-800",
-  viewed: "bg-brand/10 text-brand",
-  option_selected: "bg-brand/10 text-brand",
+  viewed: "bg-sky-100 text-sky-700",
+  option_selected: "bg-brand-gold/25 text-brand-golddark",
   expired: "bg-red-100 text-red-700",
   cancelled: "bg-neutral-100 text-neutral-500",
-  converted: "bg-brand/10 text-brand",
+  converted: "bg-emerald-100 text-emerald-700",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -47,6 +50,22 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
   const [form, setForm] = useState({ ...VAZIO });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
+
+  // Busca por referencia/estudante + filtro por status (client-side). Escala a
+  // triagem de muitas cotacoes sem depender de recarregar do servidor.
+  const filtradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return quotes.filter((q) => {
+      if (filtroStatus !== "todos" && q.status !== filtroStatus) return false;
+      if (!termo) return true;
+      return (
+        q.reference.toLowerCase().includes(termo) ||
+        (q.studentName || "").toLowerCase().includes(termo)
+      );
+    });
+  }, [quotes, busca, filtroStatus]);
 
   const set = (campo: keyof typeof VAZIO) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [campo]: e.target.value }));
@@ -105,8 +124,8 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
           </p>
           <h1 className="mt-1 font-serif text-3xl text-brand">Cotações</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            Monte cotações com múltiplas opções comparáveis. Emissão, câmbio congelado e
-            link público entram na próxima fase.
+            Monte cotações com múltiplas opções comparáveis, emita e compartilhe o link
+            público — o câmbio fica congelado na emissão.
           </p>
         </div>
         <button
@@ -181,11 +200,38 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
       ) : null}
 
       <h2 className="mb-3 text-sm font-semibold text-brand">Suas cotações</h2>
+
+      {quotes.length > 0 ? (
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por referência ou estudante"
+            className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm sm:flex-1"
+          />
+          <select
+            value={filtroStatus}
+            onChange={(e) => setFiltroStatus(e.target.value)}
+            className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm sm:w-56"
+          >
+            <option value="todos">Todos os status</option>
+            {Object.keys(STATUS_LABEL).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
       {quotes.length === 0 ? (
         <p className="text-sm text-neutral-500">Nenhuma cotação ainda.</p>
+      ) : filtradas.length === 0 ? (
+        <p className="text-sm text-neutral-500">Nenhuma cotação para a busca/filtro.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {quotes.map((q) => (
+          {filtradas.map((q) => (
             <li key={q.id}>
               <Link
                 href={`/admin/quotes/${q.id}`}
