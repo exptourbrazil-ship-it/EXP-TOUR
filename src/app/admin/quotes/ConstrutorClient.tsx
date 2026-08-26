@@ -85,6 +85,8 @@ export default function ConstrutorClient({
 }) {
   const router = useRouter();
   const options = initialOptions; // fonte = servidor; router.refresh() recarrega
+  // So faz sentido emitir uma cotacao que tenha ao menos uma opcao com item.
+  const temItens = options.some((o) => o.items.length > 0);
   const isDraft = header.status === "draft";
 
   const [busy, setBusy] = useState(false);
@@ -276,9 +278,9 @@ export default function ConstrutorClient({
             <button
               type="button"
               onClick={emitir}
-              disabled={busy}
+              disabled={busy || !temItens}
               className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              title="Congela o câmbio e gera o link do estudante"
+              title={temItens ? "Congela o câmbio e gera o link do estudante" : "Adicione ao menos uma opção com item antes de emitir"}
             >
               {busy ? "…" : "Emitir"}
             </button>
@@ -537,12 +539,16 @@ export default function ConstrutorClient({
                   </label>
                   <label className="text-sm font-medium text-brand">
                     Unidade
-                    <input
-                      type="text"
+                    <select
                       value={itemForm.unit}
                       onChange={(e) => setItemForm((f) => ({ ...f, unit: e.target.value }))}
                       className={inputClasse}
-                    />
+                    >
+                      <option value="week">Semana(s)</option>
+                      <option value="month">Mês/Meses</option>
+                      <option value="day">Dia(s)</option>
+                      <option value="unit">Unidade(s)</option>
+                    </select>
                   </label>
                 </div>
 
