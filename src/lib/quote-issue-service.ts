@@ -439,6 +439,8 @@ export type PublicQuote = {
   locale: string;
   studentFirstName: string;
   brand: string;
+  brandSlug: string | null;
+  logoUrl: string | null;
   consultant: { nome: string | null; email: string | null } | null;
   validUntil: string | null;
   status: string;
@@ -516,10 +518,11 @@ export async function getPublicQuote(
     .eq("id", quote.student_id as string)
     .maybeSingle();
 
-  // Marca (nome do tenant) e disclaimer de cambio.
+  // Marca (nome/slug/logo do tenant) e disclaimer de cambio. O slug seleciona
+  // os tokens visuais da instancia no portal (ver src/lib/tenant-brand.ts).
   const { data: tenant } = await supabase
     .from("tenant")
-    .select("name")
+    .select("name, slug, logo_url")
     .eq("id", tenantId)
     .maybeSingle();
   const { data: policy } = await supabase
@@ -572,6 +575,8 @@ export async function getPublicQuote(
     locale: (quote.locale as string) || "pt-BR",
     studentFirstName: (student?.first_name as string) ?? "",
     brand: (tenant?.name as string) ?? "EXP Tour",
+    brandSlug: (tenant?.slug as string) ?? null,
+    logoUrl: (tenant?.logo_url as string) ?? null,
     consultant,
     validUntil: (quote.valid_until as string) ?? null,
     status: quote.status as string,

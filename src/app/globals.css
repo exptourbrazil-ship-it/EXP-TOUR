@@ -2,6 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+ * Tokens de marca (defaults = EXP Tour). As cores da marca sao variaveis CSS
+ * em tripla RGB (espaco, nao virgula) para que o Tailwind componha opacidade
+ * (ex.: bg-brand/40 -> rgb(var(--brand) / 0.4)). O portal do estudante
+ * sobrescreve estas variaveis por TENANT (src/lib/tenant-brand.ts): assim a
+ * mesma tela veste a identidade da Forio ou da EXP Tour sem duplicar codigo.
+ * ------------------------------------------------------------------------- */
+:root {
+  --brand: 4 47 27;         /* #042f1b verde EXP Tour */
+  --brand-gold: 201 163 94; /* #c9a35e dourado */
+  --brand-golddark: 138 106 47; /* #8a6a2f */
+  --brand-cream: 245 234 217;   /* #f5ead9 */
+
+  /* Tokens semanticos do portal do estudante (defaults = EXP Tour). */
+  --p-page: #f6eddd;
+  --p-header-bg: #042f1b;
+  --p-header-fg: #ffffff;
+  --p-header-line: transparent;
+  --p-ink: #042f1b;
+  --p-muted: #525252;
+  --p-surface: #ffffff;
+  --p-line: #e5e5e5;
+  --p-cta: #042f1b;
+  --p-cta-fg: #ffffff;
+  --p-accent: #c9a35e;      /* recomendada / atencao */
+  --p-accent-ink: #8a6a2f;
+  --p-accent-soft: #f5ead9;
+  --p-success: #042f1b;     /* opcao escolhida */
+  --p-success-ink: #042f1b;
+  --p-success-soft: #eef4f0;
+  --p-heading: "Bellefair", Georgia, "Times New Roman", serif;
+  --p-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
 /* Foco visivel e consistente para navegacao por teclado/acessibilidade. */
 @layer base {
   a:focus-visible,
@@ -10,13 +44,18 @@
   input:focus-visible,
   textarea:focus-visible,
   select:focus-visible {
-    outline: 2px solid #c9a35e; /* dourado da marca */
+    outline: 2px solid rgb(var(--brand-gold)); /* dourado/ambar da marca do tenant */
     outline-offset: 2px;
     border-radius: 0.5rem;
   }
 }
 
 @layer components {
+  /* Tipografia de titulo por tenant (serif EXP Tour / Inter Forio). */
+  .titulo-portal {
+    font-family: var(--p-heading);
+  }
+
   /* Card com microinteracao de hover (elevacao sutil). Aplicar em cards
      clicaveis ou que se beneficiam de resposta ao toque. */
   .card-interativo {

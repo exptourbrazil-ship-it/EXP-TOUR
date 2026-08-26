@@ -15,8 +15,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   "head",
                   null,
                   createElement("link", { rel: "preconnect", href: "https://fonts.googleapis.com" }),
+                  createElement("link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" }),
                   createElement("link", {
-                            href: "https://fonts.googleapis.com/css2?family=Bellefair&display=swap",
+                            // Bellefair (titulo EXP Tour) + Inter (identidade Forio, 400/500).
+                            href: "https://fonts.googleapis.com/css2?family=Bellefair&family=Inter:wght@400;500&display=swap",
                             rel: "stylesheet",
                   })
                 ),
