@@ -756,6 +756,31 @@ function AbaEventos({ caso }: { caso: Caso }) {
   );
 }
 
+// Selo de acao sensivel: sinaliza no cabecalho que a secao move dinheiro /
+// aplica plano e registra justificativa. Dourado (atencao), como o padrao do
+// admin; vermelho fica para estados de erro.
+function SeloSensivel({ texto = "Ação sensível" }: { texto?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-[#c9a35e]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a6a2f]">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+        <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+        <path d="M9.5 12l2 2 3.5-4" />
+      </svg>
+      {texto}
+    </span>
+  );
+}
+
+// Cabecalho de secao com selo de acao sensivel ao lado do titulo.
+function CabecalhoSensivel({ titulo, selo = "Exige justificativa" }: { titulo: string; selo?: string }) {
+  return (
+    <div className="mb-1 flex flex-wrap items-center gap-2">
+      <h2 className="font-serif text-xl text-brand">{titulo}</h2>
+      <SeloSensivel texto={selo} />
+    </div>
+  );
+}
+
 function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso }) {
   const { titular } = caso;
   const [enviando, setEnviando] = useState(false);
@@ -1421,7 +1446,7 @@ function SecaoCancelamento({ caso, podeGerir }: { caso: Caso; podeGerir: boolean
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <h2 className="mb-1 font-serif text-xl text-brand">Pedido de cancelamento do cliente</h2>
+      <CabecalhoSensivel titulo="Pedido de cancelamento do cliente" />
       <p className="mb-3 text-xs text-neutral-500">
         Abre o processo E4: pausa a régua de cobrança e coloca o caso na fila do consultor para a
         conversa de retenção. Não cancela nem reembolsa — a execução/acerto é um passo à parte.
@@ -2350,7 +2375,7 @@ function SecaoAlteracao({
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <h2 className="mb-1 font-serif text-xl text-brand">Plano recalculado do adiamento (rascunho)</h2>
+      <CabecalhoSensivel titulo="Plano recalculado do adiamento (rascunho)" selo="Financeiro" />
       <p className="mb-3 text-xs text-neutral-500">
         Para um contrato com pedido de adiamento (E2) ativo, calcula a prévia do novo plano: nova
         data-limite de quitação (D-30 do novo início) e o reagendamento do saldo em aberto. É um
@@ -2683,7 +2708,7 @@ function SecaoAlteracaoEscopo({
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <h2 className="mb-1 font-serif text-xl text-brand">Alteração de escopo — delta e plano (rascunho)</h2>
+      <CabecalhoSensivel titulo="Alteração de escopo — delta e plano (rascunho)" selo="Financeiro" />
       <p className="mb-3 text-xs text-neutral-500">
         Para um contrato com alteração de escopo (E3) ativa, calcula a prévia do delta financeiro
         (novo valor do programa − atual) e o plano recalculado sobre o novo saldo. Delta positivo é
@@ -3177,7 +3202,7 @@ function SecaoAcerto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <h2 className="mb-1 font-serif text-xl text-brand">Acerto de cancelamento (rascunho)</h2>
+      <CabecalhoSensivel titulo="Acerto de cancelamento (rascunho)" selo="Financeiro" />
       <p className="mb-3 text-xs text-neutral-500">
         Calcula a retenção/multa e o saldo a devolver, com memória de cálculo, para um contrato em
         processo de cancelamento (E4/E5/E6/E7). É um rascunho para revisão do Financeiro — não

@@ -5,7 +5,7 @@ import { carregarFinanceiro } from "@/lib/admin-financeiro";
 import { contarDocumentosPendentes } from "@/lib/admin-operacao";
 import { carregarFilaDoDia, type FilaDoDia } from "@/lib/admin-fila";
 import { ESTADO_LABEL, type EstadoPrazo, type ItemFila } from "@/lib/fila-do-dia";
-import { PAPEL_LABEL } from "@/lib/admin-roles";
+import { PAPEL_LABEL, podeAdmin } from "@/lib/admin-roles";
 import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
 
 export const runtime = "nodejs";
@@ -15,8 +15,18 @@ export const dynamic = "force-dynamic";
 // feita aqui via exigirAdmin; o proxy da borda ja barra quem nao tem cookie.
 // Mostra os indicadores financeiros reais (Fase 1) com link para o Financeiro;
 // a fila de documentos (Fase 2) segue como espaco reservado.
-export default async function AdminHomePage() {
+export default async function AdminHomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ erro?: string }>;
+}) {
   const { usuario, papel } = await exigirAdmin("/admin");
+
+  // Aviso quando o operador foi redirecionado por falta de permissao
+  // (exigirCapacidade -> /admin?erro=sem_permissao), em vez de cair na home
+  // em silencio.
+  const sp = searchParams ? await searchParams : undefined;
+  const semPermissao = sp?.erro === "sem_permissao";
 
   // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
   let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
@@ -44,8 +54,11 @@ export default async function AdminHomePage() {
     fila = null;
   }
 
-  // Secoes navegaveis (exclui a propria home).
-  const secoes = ADMIN_NAV.filter((i) => i.href !== "/admin");
+  // Secoes navegaveis (exclui a propria home), filtradas pelo papel — como o
+  // menu lateral. Itens sem capacidade seguem visiveis a todos.
+  const secoes = ADMIN_NAV.filter(
+    (i) => i.href !== "/admin" && (!i.capacidade || podeAdmin(papel, i.capacidade))
+  );
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -57,6 +70,23 @@ export default async function AdminHomePage() {
           financeiros e as ferramentas ficam logo abaixo.
         </p>
       </header>
+
+      {semPermissao ? (
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true">
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+            <path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z" />
+          </svg>
+          <span>
+            Você não tem permissão para acessar aquela área com o papel{" "}
+            <strong>{PAPEL_LABEL[papel]}</strong>. Se precisar de acesso, fale com um Gestor.
+          </span>
+        </div>
+      ) : null}
 
       {/* Fila do Dia: o que precisa de atenção, priorizado (doc 07, 3.1) */}
       <section aria-label="Fila do Dia" className="mb-10">
