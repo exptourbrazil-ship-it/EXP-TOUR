@@ -37,6 +37,9 @@ export type PdfTheme = {
   wordmark: string;    // texto do logotipo
   tagline: string;     // "" para omitir
   dot: string | null;  // ponto de destaque apos o wordmark (null = sem)
+  font: string;        // familia base (texto regular). Ex.: "Helvetica" | "Inter"
+  fontBold: string;    // familia p/ enfase (titulos/totais)
+  boldWeight?: number; // peso da enfase quando a familia usa fontWeight (Inter=500)
 };
 
 export type TenantBrand = {
@@ -99,6 +102,8 @@ const EXP_TOUR: TenantBrand = {
     wordmark: "EXP TOUR",
     tagline: "TRAVEL EXPERIENCE",
     dot: null,
+    font: "Helvetica",
+    fontBold: "Helvetica-Bold",
   },
 };
 
@@ -149,6 +154,9 @@ const FORIO: TenantBrand = {
     wordmark: "forio",
     tagline: "",
     dot: "#3b4dc9",
+    font: "Inter",
+    fontBold: "Inter",
+    boldWeight: 500, // Inter Medium — o manual usa 400/500, sem bold sintetico
   },
 };
 

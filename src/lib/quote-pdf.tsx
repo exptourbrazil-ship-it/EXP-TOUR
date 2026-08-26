@@ -7,11 +7,30 @@ import {
   Page,
   View,
   Text,
+  Font,
   StyleSheet,
   renderToBuffer,
 } from "@react-pdf/renderer";
 import type { PublicQuote } from "@/lib/quote-issue-service";
 import { getTenantBrand, type PdfTheme } from "@/lib/tenant-brand";
+import { INTER_REGULAR_TTF, INTER_MEDIUM_TTF } from "@/lib/fonts/inter";
+
+// Registra a Inter (400/500) uma unica vez. As fontes vao embutidas como data
+// URI (ver src/lib/fonts/inter.ts) — sem dependencia de filesystem/rede em
+// runtime serverless. So a Forio usa Inter; a EXP Tour segue no Helvetica
+// padrao do react-pdf. Idempotente por processo.
+let interRegistrada = false;
+function registrarInter() {
+  if (interRegistrada) return;
+  Font.register({
+    family: "Inter",
+    fonts: [
+      { src: INTER_REGULAR_TTF, fontWeight: 400 },
+      { src: INTER_MEDIUM_TTF, fontWeight: 500 },
+    ],
+  });
+  interRegistrada = true;
+}
 
 function fmtMoeda(valor: number, moeda: string): string {
   const c = (moeda || "").toUpperCase();
@@ -34,8 +53,11 @@ function fmtData(iso: string | null): string {
 // cabecalho ganha regua inferior so quando t.barLine existe (letterhead claro
 // da Forio); a EXP Tour mantem a faixa verde sem regua.
 function makeStyles(t: PdfTheme) {
+  // Enfase (titulos/totais): familia bold do tenant. Para Inter, a enfase e o
+  // peso 500 (Medium) na mesma familia; para Helvetica, a familia "-Bold".
+  const bold = { fontFamily: t.fontBold, ...(t.boldWeight ? { fontWeight: t.boldWeight } : {}) };
   return StyleSheet.create({
-    page: { paddingTop: 0, paddingBottom: 48, paddingHorizontal: 0, fontSize: 10, color: t.ink, fontFamily: "Helvetica" },
+    page: { paddingTop: 0, paddingBottom: 48, paddingHorizontal: 0, fontSize: 10, color: t.ink, fontFamily: t.font },
     headerBar: {
       backgroundColor: t.bar,
       paddingVertical: 20,
@@ -43,20 +65,20 @@ function makeStyles(t: PdfTheme) {
       ...(t.barLine ? { borderBottomWidth: 2, borderBottomColor: t.barLine } : {}),
     },
     brandRow: { flexDirection: "row", alignItems: "flex-end" },
-    brandWord: { color: t.wordFg, fontSize: 18, letterSpacing: t.dot ? 0 : 4, fontFamily: "Helvetica-Bold" },
-    brandDot: { color: t.dot ?? t.wordFg, fontSize: 18, fontFamily: "Helvetica-Bold" },
+    brandWord: { color: t.wordFg, fontSize: 18, letterSpacing: t.dot ? 0 : 4, ...bold },
+    brandDot: { color: t.dot ?? t.wordFg, fontSize: 18, ...bold },
     brandSub: { color: t.sub, fontSize: 7, letterSpacing: 3, marginTop: 2 },
     body: { paddingHorizontal: 40, paddingTop: 24 },
-    h1: { fontSize: 20, color: t.brand, fontFamily: "Helvetica-Bold" },
+    h1: { fontSize: 20, color: t.brand, ...bold },
     intro: { fontSize: 10, color: t.muted, marginTop: 4 },
     card: { borderWidth: 1, borderColor: t.line, borderRadius: 8, padding: 14, marginTop: 14 },
     label: { fontSize: 7, color: t.faint, letterSpacing: 1, textTransform: "uppercase" },
     optHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-    optTitle: { fontSize: 14, color: t.brand, fontFamily: "Helvetica-Bold" },
+    optTitle: { fontSize: 14, color: t.brand, ...bold },
     badge: { alignSelf: "flex-start", marginTop: 4, backgroundColor: t.accentSoft, color: t.accentInk, fontSize: 7, paddingVertical: 2, paddingHorizontal: 6, borderRadius: 8 },
     totalCol: { alignItems: "flex-end" },
     strike: { fontSize: 8, color: t.faint, textDecoration: "line-through" },
-    total: { fontSize: 15, color: t.brand, fontFamily: "Helvetica-Bold" },
+    total: { fontSize: 15, color: t.brand, ...bold },
     totalConv: { fontSize: 8, color: t.muted, marginTop: 1 },
     sep: { borderTopWidth: 1, borderTopColor: t.line, marginTop: 10, marginBottom: 8 },
     itemRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
@@ -66,7 +88,7 @@ function makeStyles(t: PdfTheme) {
     sumRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 3 },
     sumRot: { color: t.muted },
     sumTotalRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4, borderTopWidth: 1, borderTopColor: t.line, paddingTop: 4 },
-    sumTotal: { color: t.brand, fontFamily: "Helvetica-Bold" },
+    sumTotal: { color: t.brand, ...bold },
     fxBox: { marginTop: 16, borderWidth: 1, borderColor: t.line, borderRadius: 8, padding: 12 },
     fxText: { fontSize: 8, color: t.muted },
     footer: { position: "absolute", bottom: 24, left: 40, right: 40, textAlign: "center", fontSize: 7, color: t.faint },
@@ -176,6 +198,7 @@ export async function renderQuotePdf(
 
   // Tema de impressao do tenant da cotacao (default seguro = EXP Tour).
   const t = getTenantBrand(data.brandSlug).pdf;
+  if (t.font === "Inter") registrarInter();
   const s = makeStyles(t);
 
   const doc = (
