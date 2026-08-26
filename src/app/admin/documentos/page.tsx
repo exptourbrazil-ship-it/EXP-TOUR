@@ -1,4 +1,4 @@
-import { exigirAdmin } from "@/lib/admin-guard";
+import { exigirCapacidade } from "@/lib/admin-guard";
 import FilaDocumentos from "./FilaDocumentos";
 import DocumentosAdminClient from "./DocumentosAdminClient";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // telas admin. No topo, a fila de aprovacao (documentos pendentes de todos os
 // titulares); abaixo, as ferramentas de enviar/buscar por CPF.
 export default async function AdminDocumentosPage() {
-  await exigirAdmin("/admin/documentos");
+  await exigirCapacidade("documentos.analisar", "/admin/documentos");
   return (
     <div className="mx-auto max-w-2xl">
       <FilaDocumentos />

@@ -4,14 +4,21 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ADMIN_NAV } from "@/lib/admin-nav";
+import { podeAdmin, type PapelAdmin } from "@/lib/admin-roles";
 
 // Menu de navegacao do painel admin. Em telas grandes vira uma barra lateral
 // fixa; no celular/tablet vira uma faixa horizontal rolavel no topo do
 // conteudo. Destaca a aba ativa (aria-current) e traz o botao "Sair".
-export default function AdminNav() {
+// Filtra os itens pelo PAPEL: esconde o que o papel nao pode acessar (o menu
+// espelha o guard da pagina). Itens sem capacidade ficam visiveis a todos.
+export default function AdminNav({ papel }: { papel?: PapelAdmin }) {
   const pathname = usePathname();
   const router = useRouter();
   const [saindo, setSaindo] = useState(false);
+
+  const itens = ADMIN_NAV.filter(
+    (item) => !item.capacidade || !papel || podeAdmin(papel, item.capacidade)
+  );
 
   async function sair() {
     setSaindo(true);
@@ -36,7 +43,7 @@ export default function AdminNav() {
       className="flex gap-1 overflow-x-auto p-3 lg:h-full lg:w-64 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:border-r lg:border-neutral-200 lg:p-4"
     >
       <ul className="flex gap-1 lg:flex-1 lg:flex-col">
-        {ADMIN_NAV.map((item) => {
+        {itens.map((item) => {
           const ativo = estaAtivo(item.href);
           const conteudo = (
             <>

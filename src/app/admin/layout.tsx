@@ -3,6 +3,7 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import AdminNav from "@/components/AdminNav";
 import { verificarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
+import { PAPEL_LABEL } from "@/lib/admin-roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,11 +31,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Logo escuro />
           </Link>
           <div className="flex items-center gap-3">
-            <span className="hidden text-xs text-brand-cream/80 sm:inline">Painel administrativo</span>
+            {/* Papel do operador no chrome: deixa claro "com que chapeu" ele opera. */}
+            <span className="hidden rounded-full bg-brand-cream/15 px-2.5 py-1 text-xs font-medium text-brand-cream ring-1 ring-brand-cream/20 sm:inline">
+              {PAPEL_LABEL[sessao.papel]}
+            </span>
             <span
               className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-cream text-sm font-medium text-brand ring-1 ring-white/20"
-              title={sessao.usuario}
-              aria-label={"Sessão de " + sessao.usuario}
+              title={`${sessao.usuario} · ${PAPEL_LABEL[sessao.papel]}`}
+              aria-label={`Sessão de ${sessao.usuario} (${PAPEL_LABEL[sessao.papel]})`}
             >
               {sessao.usuario.trim().charAt(0).toUpperCase() || "A"}
             </span>
@@ -44,7 +48,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       <div className="mx-auto flex max-w-7xl flex-col lg:min-h-[calc(100vh-73px)] lg:flex-row">
         <aside className="border-b border-neutral-200 bg-white lg:border-b-0">
-          <AdminNav />
+          <AdminNav papel={sessao.papel} />
         </aside>
         <main className="flex-1 px-5 py-6 md:px-8 md:py-8">{children}</main>
       </div>

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { exigirAdmin } from "@/lib/admin-guard";
+import { exigirCapacidade } from "@/lib/admin-guard";
 import AntecipacoesClient from "./AntecipacoesClient";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export type ContratoOpcao = {
 // (Clausula 7.5) e acompanhar o status. Carrega os contratos para o seletor;
 // o client cuida de criar/listar/atualizar via /api/admin/antecipacoes.
 export default async function AdminAntecipacoesPage() {
-  await exigirAdmin("/admin/antecipacoes");
+  await exigirCapacidade("financeiro.ver", "/admin/antecipacoes");
 
   let contratos: ContratoOpcao[] = [];
   try {

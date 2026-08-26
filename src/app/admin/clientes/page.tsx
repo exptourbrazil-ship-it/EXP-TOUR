@@ -1,4 +1,4 @@
-import { exigirAdmin } from "@/lib/admin-guard";
+import { exigirCapacidade } from "@/lib/admin-guard";
 import { carregarClientes } from "@/lib/admin-clientes";
 import ClientesClient from "./ClientesClient";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Pagina protegida da carteira de clientes. Carrega no servidor (sem waterfall)
 // e entrega para o client component, que cuida de busca e filtros.
 export default async function AdminClientesPage() {
-  await exigirAdmin("/admin/clientes");
+  await exigirCapacidade("casos.ver", "/admin/clientes");
 
   let clientes;
   try {
