@@ -1,5 +1,5 @@
 import { tenantIdAtual } from "@/lib/catalog-service";
-import { addQuoteItem } from "@/lib/quote-service";
+import { addQuoteItem, removeQuoteItem } from "@/lib/quote-service";
 import {
   getSupabase,
   guardCatalog,
@@ -57,6 +57,36 @@ export async function POST(
     const result = await addQuoteItem(
       supabase,
       { tenantId, optionId, productId, startDate, quantity, unit, quoteDate, nationalityCode },
+      { usuario: g.usuario, ip: g.ip },
+    );
+    return okData(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// DELETE /api/admin/quotes/[id]/items — remove um item de uma opcao (so em
+// rascunho). Body: { itemId }. Posse e status validados no servico.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const g = await guardCatalog(request);
+  if (!g.ok) return g.response;
+
+  const { id: quoteId } = await params;
+  if (!quoteId) return bad("Informe o id da cotacao.");
+
+  const b = await request.json().catch(() => null);
+  const itemId = b && typeof b.itemId === "string" ? b.itemId : "";
+  if (!itemId) return bad("Informe itemId.");
+
+  try {
+    const supabase = getSupabase();
+    const tenantId = await tenantIdAtual(supabase);
+    const result = await removeQuoteItem(
+      supabase,
+      { tenantId, quoteId, itemId },
       { usuario: g.usuario, ip: g.ip },
     );
     return okData(result);
