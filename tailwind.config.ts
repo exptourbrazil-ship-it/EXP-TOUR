@@ -8,11 +8,15 @@ const config: Config = {
     theme: {
           extend: {
                   colors: {
+                            // Tokens de marca por TENANT: os valores vem de variaveis CSS
+                            // (triplas RGB, p/ suportar opacidade tipo bg-brand/40). Os
+                            // defaults ficam em globals.css (:root = EXP Tour); o portal do
+                            // estudante sobrescreve por tenant (ver src/lib/tenant-brand.ts).
                             brand: {
-                                        DEFAULT: "#042f1b",
-                                        gold: "#c9a35e",
-                                        golddark: "#8a6a2f",
-                                        cream: "#f5ead9",
+                                        DEFAULT: "rgb(var(--brand) / <alpha-value>)",
+                                        gold: "rgb(var(--brand-gold) / <alpha-value>)",
+                                        golddark: "rgb(var(--brand-golddark) / <alpha-value>)",
+                                        cream: "rgb(var(--brand-cream) / <alpha-value>)",
                             },
                   },
                   keyframes: {
