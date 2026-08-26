@@ -158,11 +158,14 @@ function resumoDetalhe(detalhe: Record<string, unknown> | null): string {
 export default function CasoClient({
   caso,
   permissoes,
+  abaInicial,
 }: {
   caso: Caso;
   permissoes: PermissoesCaso;
+  abaInicial?: Aba;
 }) {
-  const [aba, setAba] = useState<Aba>("jornada");
+  // Aba inicial pode vir por deep-link (?aba=) da Fila do Dia; default "jornada".
+  const [aba, setAba] = useState<Aba>(abaInicial ?? "jornada");
   const { titular, contratos } = caso;
 
   const contato = [titular.email, titular.telefone].filter(Boolean).join(" · ");

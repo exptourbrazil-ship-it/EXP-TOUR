@@ -22,6 +22,13 @@ const STATUS_BADGE: Record<string, string> = {
   cancelada: "bg-neutral-100 text-neutral-500",
 };
 
+// Rotulo legivel do status, alinhado ao padrao de Financeiro/Quotes.
+const STATUS_LABEL: Record<string, string> = {
+  pendente: "Pendente",
+  atendida: "Atendida",
+  cancelada: "Cancelada",
+};
+
 export default function AntecipacoesClient({ contratos }: { contratos: ContratoOpcao[] }) {
   const [lista, setLista] = useState<Antecipacao[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -190,7 +197,7 @@ export default function AntecipacoesClient({ contratos }: { contratos: ContratoO
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium text-brand">{cliente}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATUS_BADGE[a.status] || "bg-neutral-100 text-neutral-600"}`}>
-                    {a.status}
+                    {STATUS_LABEL[a.status] || a.status}
                   </span>
                 </div>
                 <div className="mt-1 text-sm text-neutral-700">
