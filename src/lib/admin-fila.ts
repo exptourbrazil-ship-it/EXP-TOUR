@@ -63,7 +63,7 @@ async function coletarFontesAoVivo(
   // E1 "contato em 24h"). Por isso, qualquer erro de leitura ABORTA a coleta.
   const { data: docs, error: errDocs } = await supabase
     .from("documentos")
-    .select("id, created_at, titular:titulares(nome_completo)")
+    .select("id, created_at, titular_id, titular:titulares(nome_completo)")
     .eq("origem", "titular")
     .eq("status", "pendente")
     .order("created_at", { ascending: true });
@@ -75,7 +75,9 @@ async function coletarFontesAoVivo(
       categoria: "documento",
       titulo: "Documento aguardando análise",
       contexto: nomeDe(d.titular),
-      href: "/admin/documentos",
+      // Deep-link direto ao Caso 360 do titular na aba certa (principio "operado
+      // pela fila"): um clique leva a ACAO, nao a uma lista generica.
+      href: d.titular_id ? `/admin/clientes/${d.titular_id}?aba=documentos` : "/admin/documentos",
       criadoEm: d.created_at,
       idadeDias: idade,
       estado: estadoPrazo(idade, SLA_ANALISE_DOCUMENTO_DIAS),
@@ -88,7 +90,7 @@ async function coletarFontesAoVivo(
 
   const { data: parcelas, error: errParcelas } = await supabase
     .from("parcelas")
-    .select("id, vencimento, contrato:contratos(titular:titulares(nome_completo))")
+    .select("id, vencimento, contrato:contratos(titular_id, titular:titulares(nome_completo))")
     .neq("status", "pago")
     .lte("vencimento", limiteD10)
     .order("vencimento", { ascending: true });
@@ -97,11 +99,15 @@ async function coletarFontesAoVivo(
   for (const p of parcelas ?? []) {
     if (!p.vencimento) continue;
     const atraso = diasDeAtraso(p.vencimento, hojeISO);
+    const contratoRel = (p as { contrato?: unknown }).contrato;
+    const contratoObj = Array.isArray(contratoRel) ? contratoRel[0] : contratoRel;
+    const titularIdParcela = (contratoObj as { titular_id?: string } | undefined)?.titular_id;
     fontes.push({
       categoria: "parcela",
       titulo: `Cobrança humana — parcela em D+${atraso}`,
-      contexto: nomeDe((p as { contrato?: { titular?: unknown } }).contrato?.titular),
-      href: "/admin/financeiro",
+      contexto: nomeDe((contratoObj as { titular?: unknown } | undefined)?.titular),
+      // Deep-link ao Caso 360 do titular, aba Financeiro (um clique ate a acao).
+      href: titularIdParcela ? `/admin/clientes/${titularIdParcela}?aba=financeiro` : "/admin/financeiro",
       criadoEm: p.vencimento,
       idadeDias: atraso,
       estado: "estourado",

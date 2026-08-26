@@ -239,7 +239,7 @@ function ChipEstado({ estado }: { estado: EstadoPrazo }) {
       : "text-emerald-700";
   return (
     <span
-      className={`hidden shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${texto}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-medium ${texto}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${cor}`} aria-hidden="true" />
       {ESTADO_LABEL[estado]}

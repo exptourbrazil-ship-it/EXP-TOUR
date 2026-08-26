@@ -1,4 +1,4 @@
-import { exigirAdmin } from "@/lib/admin-guard";
+import { exigirCapacidade } from "@/lib/admin-guard";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
 import FinanceiroClient from "./FinanceiroClient";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // de fetch no cliente) e entrega para o client component, que cuida dos
 // filtros e da tabela.
 export default async function AdminFinanceiroPage() {
-  await exigirAdmin("/admin/financeiro");
+  await exigirCapacidade("financeiro.ver", "/admin/financeiro");
 
   let dados;
   try {

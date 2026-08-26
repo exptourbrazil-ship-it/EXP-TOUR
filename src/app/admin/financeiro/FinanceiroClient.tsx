@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { DadosFinanceiros, ParcelaLista } from "@/lib/admin-financeiro";
 import { fmtMoeda, fmtBRL, fmtData, fmtPorMoeda } from "@/lib/formato";
 
@@ -15,6 +16,14 @@ const BADGE: Record<string, string> = {
   pago: "bg-brand/10 text-brand",
   atrasado: "bg-red-100 text-red-700",
   pendente: "bg-amber-100 text-amber-800",
+};
+
+// Rotulo legivel do status (evita exibir o slug cru), alinhado ao padrao de
+// Quotes. Vermelho no atrasado e permitido no admin.
+const STATUS_LABEL: Record<string, string> = {
+  pago: "Pago",
+  atrasado: "Atrasado",
+  pendente: "Pendente",
 };
 
 type FiltroStatus = "todos" | "pendente" | "atrasado" | "pago";
@@ -143,6 +152,7 @@ export default function FinanceiroClient({ dados }: { dados: DadosFinanceiros })
               <th className="px-4 py-3 font-medium">Vencimento</th>
               <th className="px-4 py-3 text-right font-medium">Valor</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium"><span className="sr-only">Ações</span></th>
             </tr>
           </thead>
           <tbody>
@@ -172,15 +182,25 @@ export default function FinanceiroClient({ dados }: { dados: DadosFinanceiros })
                     <span
                       className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${BADGE[st]}`}
                     >
-                      {st}
+                      {STATUS_LABEL[st] ?? st}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {p.titular_id ? (
+                      <Link
+                        href={`/admin/clientes/${p.titular_id}?aba=financeiro`}
+                        className="whitespace-nowrap rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-brand transition hover:bg-brand-cream/50"
+                      >
+                        Abrir caso
+                      </Link>
+                    ) : null}
                   </td>
                 </tr>
               );
             })}
             {filtradas.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-neutral-500">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-neutral-500">
                   Nenhuma parcela para os filtros selecionados.
                 </td>
               </tr>

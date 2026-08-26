@@ -11,9 +11,24 @@ export const dynamic = "force-dynamic";
 // servidor (service role) e entrega dados planos para o client component.
 // Autorizacao por capacidade, nunca por papel direto. As Acoes (FATIA 2) sao
 // gateadas por capacidade tanto aqui (permissoes -> UI) quanto na rota de API.
-export default async function CasoPage({ params }: { params: Promise<{ id: string }> }) {
+const ABAS_VALIDAS = ["jornada", "financeiro", "documentos", "comunicacao", "eventos", "acoes"] as const;
+type AbaValida = (typeof ABAS_VALIDAS)[number];
+
+export default async function CasoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ aba?: string }>;
+}) {
   const { id } = await params;
   const { papel } = await exigirCapacidade("casos.ver", `/admin/clientes/${id}`);
+
+  // Aba inicial via deep-link da Fila do Dia (?aba=), validada contra a lista.
+  const sp = searchParams ? await searchParams : undefined;
+  const abaInicial = (ABAS_VALIDAS as readonly string[]).includes(sp?.aba ?? "")
+    ? (sp!.aba as AbaValida)
+    : undefined;
 
   const caso = await carregarCaso(id);
   if (!caso) notFound();
@@ -28,5 +43,5 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
     editarCpf: podeAdmin(papel, "override"),
   };
 
-  return <CasoClient caso={caso} permissoes={permissoes} />;
+  return <CasoClient caso={caso} permissoes={permissoes} abaInicial={abaInicial} />;
 }

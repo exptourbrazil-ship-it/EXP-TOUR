@@ -158,11 +158,14 @@ function resumoDetalhe(detalhe: Record<string, unknown> | null): string {
 export default function CasoClient({
   caso,
   permissoes,
+  abaInicial,
 }: {
   caso: Caso;
   permissoes: PermissoesCaso;
+  abaInicial?: Aba;
 }) {
-  const [aba, setAba] = useState<Aba>("jornada");
+  // Aba inicial pode vir por deep-link (?aba=) da Fila do Dia; default "jornada".
+  const [aba, setAba] = useState<Aba>(abaInicial ?? "jornada");
   const { titular, contratos } = caso;
 
   const contato = [titular.email, titular.telefone].filter(Boolean).join(" · ");
@@ -820,22 +823,27 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       <SecaoEditarCadastro caso={caso} permissoes={permissoes} />
 
       {/* Resultado do visto — dispara o E1 na transicao para negado */}
-      <SecaoVisto caso={caso} podeGerir={permissoes.gerirCaso} />
+      {/* #8: seções que so agem (sem conteudo de leitura) so aparecem para quem
+          pode — em vez de exibir um card "sem permissao" (ruido). A mesma
+          capacidade que gateava internamente gateia aqui. */}
+      {permissoes.gerirCaso ? <SecaoVisto caso={caso} podeGerir={permissoes.gerirCaso} /> : null}
 
       {/* Pedido de cancelamento do cliente — abre o E4 */}
-      <SecaoCancelamento caso={caso} podeGerir={permissoes.gerirCancelamento} />
+      {permissoes.gerirCancelamento ? (
+        <SecaoCancelamento caso={caso} podeGerir={permissoes.gerirCancelamento} />
+      ) : null}
 
       {/* Cancelamento pela escola — abre o E6 */}
-      <SecaoCancelamentoEscola caso={caso} podeGerir={permissoes.gerirCaso} />
+      {permissoes.gerirCaso ? <SecaoCancelamentoEscola caso={caso} podeGerir={permissoes.gerirCaso} /> : null}
 
       {/* Hold de verificacao (suspeita de fraude) — abre o E10 */}
-      <SecaoHoldFraude caso={caso} podeGerir={permissoes.gerirCaso} />
+      {permissoes.gerirCaso ? <SecaoHoldFraude caso={caso} podeGerir={permissoes.gerirCaso} /> : null}
 
       {/* Cliente incontactavel — abre o E11 */}
-      <SecaoIncontactavel caso={caso} podeGerir={permissoes.gerirCaso} />
+      {permissoes.gerirCaso ? <SecaoIncontactavel caso={caso} podeGerir={permissoes.gerirCaso} /> : null}
 
       {/* Pedido de adiamento de inicio — abre o E2 */}
-      <SecaoDeferral caso={caso} podeGerir={permissoes.gerirCaso} />
+      {permissoes.gerirCaso ? <SecaoDeferral caso={caso} podeGerir={permissoes.gerirCaso} /> : null}
 
       {/* Motor de alteracao — previa do plano recalculado no adiamento (E2) */}
       <SecaoAlteracao
@@ -845,6 +853,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       />
 
       {/* Alteracao de escopo — abre o E3 */}
+      {permissoes.gerirCaso ? (
       <SecaoExcecaoRotulada
         caso={caso}
         podeGerir={permissoes.gerirCaso}
@@ -861,6 +870,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         prefixoMotivo="Alteração de escopo"
         rotuloBotao="Registrar alteração de escopo"
       />
+      ) : null}
 
       {/* Motor de alteracao — previa do delta financeiro no escopo (E3) */}
       <SecaoAlteracaoEscopo
@@ -870,6 +880,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       />
 
       {/* Interrupcao durante o programa — abre o E7 */}
+      {permissoes.gerirCaso ? (
       <SecaoExcecaoRotulada
         caso={caso}
         podeGerir={permissoes.gerirCaso}
@@ -888,6 +899,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         prefixoMotivo="Interrupção do programa"
         rotuloBotao="Registrar interrupção"
       />
+      ) : null}
 
       {/* Acerto de cancelamento (rascunho) — motor de acerto */}
       <SecaoAcerto caso={caso} podeGerir={permissoes.gerirFinanceiro} />

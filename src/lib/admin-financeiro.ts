@@ -28,6 +28,7 @@ export type ParcelaLista = {
   pais_destino: string | null;
   estudante_nome: string | null;
   contrato_nome: string | null;
+  titular_id: string | null;
   titular_nome: string | null;
   titular_cpf: string | null;
 };
@@ -60,7 +61,7 @@ export async function carregarFinanceiro(): Promise<DadosFinanceiros> {
   const { data: parcelas, error: erroParcelas } = await supabase
     .from("parcelas")
     .select(
-      "id, numero, descricao, valor_atual, valor_cobrado_brl, vencimento, status, is_entrada, paid_at, contrato_id, contratos(moeda, pais_destino, estudante_nome, nome, titulares(nome_completo, cpf))"
+      "id, numero, descricao, valor_atual, valor_cobrado_brl, vencimento, status, is_entrada, paid_at, contrato_id, contratos(moeda, pais_destino, estudante_nome, nome, titulares(id, nome_completo, cpf))"
     )
     .order("vencimento", { ascending: true });
 
@@ -94,6 +95,7 @@ export async function carregarFinanceiro(): Promise<DadosFinanceiros> {
       pais_destino: c.pais_destino || null,
       estudante_nome: c.estudante_nome || null,
       contrato_nome: c.nome || null,
+      titular_id: t.id || null,
       titular_nome: t.nome_completo || null,
       titular_cpf: t.cpf || null,
     };

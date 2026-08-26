@@ -4,6 +4,8 @@
 // do dashboard (Financeiro, Clientes, Sistema) sem prometer telas que ainda
 // nao existem — viram links de verdade conforme cada fase e entregue.
 
+import type { CapacidadeAdmin } from "@/lib/admin-roles";
+
 export type AdminNavItem = {
   href: string;
   label: string;
@@ -12,6 +14,11 @@ export type AdminNavItem = {
   icone: string;
   // Quando true, aparece esmaecido e sem link (fase futura do dashboard).
   emBreve?: boolean;
+  // Capacidade exigida para VER o item no menu. Espelha o guard da pagina
+  // (exigirCapacidade): so definimos onde a pagina ja e gateada por capacidade,
+  // para o menu nao esconder algo que o papel de fato consegue abrir. Itens sem
+  // capacidade (ainda so exigirAdmin) permanecem visiveis a qualquer admin.
+  capacidade?: CapacidadeAdmin;
 };
 
 // Icones (Heroicons outline, traco unico) como caminho SVG.
@@ -63,12 +70,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Financeiro",
     descricao: "Recebido, a receber e parcelas em atraso",
     icone: ICONES.financeiro,
+    capacidade: "financeiro.ver",
   },
   {
     href: "/admin/documentos",
     label: "Documentos",
     descricao: "Aprovar, rejeitar e enviar documentos",
     icone: ICONES.documentos,
+    capacidade: "documentos.analisar",
   },
   {
     href: "/admin/propostas",
@@ -81,12 +90,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Cotações",
     descricao: "Montar cotações com opções comparáveis",
     icone: ICONES.cotacoes,
+    capacidade: "propostas.gerir",
   },
   {
     href: "/admin/clientes",
     label: "Clientes",
     descricao: "Carteira de titulares e contratos",
     icone: ICONES.clientes,
+    capacidade: "casos.ver",
   },
   {
     href: "/admin/contratos",
@@ -99,12 +110,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Fornecedores",
     descricao: "Sincronizar escolas do Zoho e acessos do portal",
     icone: ICONES.fornecedores,
+    capacidade: "fornecedores.gerir",
   },
   {
     href: "/admin/antecipacoes",
     label: "Antecipações",
     descricao: "Antecipações exigidas por visto/fornecedor",
     icone: ICONES.antecipacoes,
+    capacidade: "financeiro.ver",
   },
   {
     href: "/admin/anexo-iii",
@@ -135,6 +148,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Força maior",
     descricao: "Pausa e comunicação em lote por destino (só Gestor)",
     icone: ICONES.forcaMaior,
+    capacidade: "config.gerir",
   },
   {
     href: "/admin/data-inicio",
