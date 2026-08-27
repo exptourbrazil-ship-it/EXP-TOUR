@@ -5,8 +5,10 @@ create table if not exists titulares (
   nome_completo text not null,
   cpf text not null unique,
   telefone text,
+  tenant_id uuid,  -- FK -> tenant(id); marca do titular (e-mails por tenant). NULL -> padrao EXP Tour. Aplicado via migration titulares_tenant_id.
   created_at timestamptz not null default now()
   );
+create index if not exists idx_titulares_tenant on titulares(tenant_id);
 
 -- Contratos: uma viagem/grupo contratado por um titular
 create table if not exists contratos (

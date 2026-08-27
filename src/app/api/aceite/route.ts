@@ -5,6 +5,7 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { obterIp } from "@/lib/rate-limit";
 import { prazoArrependimentoISO, dentroDoPrazoArrependimento } from "@/lib/termos";
 import { enviarConfirmacaoAceiteEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -148,19 +149,22 @@ export async function POST(request: Request) {
   try {
     const { data: titular } = await supabase
       .from("titulares")
-      .select("nome_completo, email")
+      .select("nome_completo, email, tenant_id")
       .eq("id", titularId)
       .maybeSingle();
     if (titular?.email) {
+      const slug = await slugDoTenant(supabase, titular.tenant_id);
       await enviarConfirmacaoAceiteEmail(titular.email, titular.nome_completo || "", {
         versao: termo.versao,
         dataFormatada: fmtDataHora(novo.data_hora),
         arrependimentoAte: fmtData(arrependimentoAte),
         conteudo: termo.conteudo,
-      });
+      }, slug);
     }
-  } catch (err) {
-    console.error("Falha ao enviar e-mail de confirmacao do aceite:", err);
+  } catch {
+    // Sem o erro cru: a mensagem do provedor pode conter o e-mail (PII).
+    // A falha ja fica registrada, com detalhe, em email_logs.
+    console.error("[aceite] falha ao enviar e-mail de confirmacao (ver email_logs)");
   }
 
   return NextResponse.json({ ok: true, aceiteEm: novo.data_hora, arrependimentoAte });

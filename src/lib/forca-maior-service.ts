@@ -15,6 +15,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { abrirExcecao, ExcecaoBloqueada } from "@/lib/excecao-service";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoForcaMaiorEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -31,7 +32,10 @@ type FiltroCoorte = { destino: string; inicioDe?: string | null; inicioAte?: str
 type ContratoCoorte = {
   id: string;
   titular_id: string;
-  titular?: { nome_completo?: string | null; email?: string | null } | { nome_completo?: string | null; email?: string | null }[] | null;
+  titular?:
+    | { nome_completo?: string | null; email?: string | null; tenant_id?: string | null }
+    | { nome_completo?: string | null; email?: string | null; tenant_id?: string | null }[]
+    | null;
 };
 
 // Aplica o recorte do coorte a uma query base. `selectArg`/`selectOpts` permitem
@@ -105,7 +109,7 @@ export async function aplicarForcaMaior(args: {
   const { data, error } = await aplicarFiltro(
     supabase,
     filtro,
-    "id, titular_id, titular:titulares(nome_completo, email)"
+    "id, titular_id, titular:titulares(nome_completo, email, tenant_id)"
   )
     .order("data_inicio", { ascending: true })
     .limit(LIMITE_FORCA_MAIOR + 1);
@@ -152,8 +156,9 @@ export async function aplicarForcaMaior(args: {
     if (abriu) {
       const titular = Array.isArray(c.titular) ? c.titular[0] : c.titular;
       if (titular?.email) {
+        const slug = await slugDoTenant(supabase, titular.tenant_id);
         try {
-          await enviarAvisoForcaMaiorEmail(titular.email, titular.nome_completo || "", appUrl || null);
+          await enviarAvisoForcaMaiorEmail(titular.email, titular.nome_completo || "", appUrl || null, slug);
           res.avisos++;
         } catch {
           console.error("[forca-maior] falha ao enviar comunicacao a um titular (ver email_logs)");

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento } from "@/lib/regua";
 import { dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 import { removerDeContratosCancelados, contratoCancelado } from "@/lib/cancelamento";
 import { contratosComSuspensao } from "@/lib/excecao";
 
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
   const { data: parcelas, error } = await supabase
     .from("parcelas")
     .select(
-      "id, contrato_id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo))"
+      "id, contrato_id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo, tenant_id))"
     )
     .neq("status", "pago")
     .is("paid_at", null)
@@ -161,6 +162,7 @@ export async function GET(request: Request) {
 
     const moeda = contrato?.moeda || "BRL";
     try {
+      const slug = await slugDoTenant(supabase, titular.tenant_id);
       await enviarLembreteCobrancaEmail(titular.email, titular.nome_completo, {
         descricao: p.descricao,
         valor: formatarMoeda(Number(p.valor_atual), moeda),
@@ -168,7 +170,7 @@ export async function GET(request: Request) {
         vencida: janelaEhAtraso(janela),
         pixCode: p.payment_link || null,
         portalUrl,
-      });
+      }, slug);
 
       // Registra o envio (a constraint unique parcela_id+janela e a garantia
       // final contra duplicidade mesmo sob execucoes concorrentes).
@@ -198,7 +200,7 @@ export async function GET(request: Request) {
 
   const { data: contratos } = await supabase
     .from("contratos")
-    .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo)")
+    .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo, tenant_id)")
     .is("cancelado_em", null)
     .not("data_inicio", "is", null)
     .gte("data_inicio", inicioMin)
@@ -251,12 +253,13 @@ export async function GET(request: Request) {
     const moeda = (c as any).moeda || "BRL";
     const diasRestantes = diasAteVencimento(hojeISO, dataLimite as string) ?? 0;
     try {
+      const slug = await slugDoTenant(supabase, titular.tenant_id);
       await enviarLembreteQuitacaoEmail(titular.email, titular.nome_completo, {
         saldo: formatarMoeda(saldo, moeda),
         dataLimite: formatarData(dataLimite as string),
         diasRestantes,
         portalUrl,
-      });
+      }, slug);
       const { error: erroInsert } = await supabase
         .from("lembretes_quitacao")
         .insert({ contrato_id: (c as any).id, janela });

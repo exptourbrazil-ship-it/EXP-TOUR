@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 import { hashCodigoAcesso, gerarCodigoAcesso } from "@/lib/codigo-acesso";
 
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
 
   const { data: titular } = await supabase
       .from("titulares")
-              .select("id, nome_completo, email")
+              .select("id, nome_completo, email, tenant_id")
       .eq("cpf", cpfLimpo)
       .maybeSingle();
 
@@ -104,9 +105,12 @@ export async function POST(request: Request) {
   }
 
   try {
-                await enviarCodigoAcessoEmail(titular.email, titular.nome_completo, codigo);
-  } catch (err) {
-                console.error("Falha ao enviar codigo por email", err);
+                const slug = await slugDoTenant(supabase, titular.tenant_id);
+                await enviarCodigoAcessoEmail(titular.email, titular.nome_completo, codigo, slug);
+  } catch {
+                // Sem o erro cru: a mensagem do provedor pode conter o e-mail (PII).
+                // A falha ja fica registrada, com detalhe, em email_logs.
+                console.error("[request-code] falha ao enviar codigo por e-mail (ver email_logs)");
   }
 
   return NextResponse.json({ success: true });

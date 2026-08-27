@@ -12,6 +12,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { abrirExcecao, ExcecaoBloqueada } from "@/lib/excecao-service";
 import { enviarAvisoCancelamentoEscolaEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -41,7 +42,7 @@ export async function registrarCancelamentoEscola(args: {
 
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("id, titular_id, titular:titulares(nome_completo, email)")
+    .select("id, titular_id, titular:titulares(nome_completo, email, tenant_id)")
     .eq("id", args.contratoId)
     .maybeSingle();
   if (!contrato) {
@@ -80,8 +81,9 @@ export async function registrarCancelamentoEscola(args: {
   const titular = Array.isArray(contrato.titular) ? contrato.titular[0] : contrato.titular;
   if (titular?.email) {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+    const slug = await slugDoTenant(supabase, (titular as { tenant_id?: string | null }).tenant_id);
     try {
-      await enviarAvisoCancelamentoEscolaEmail(titular.email, titular.nome_completo || "", appUrl || null);
+      await enviarAvisoCancelamentoEscolaEmail(titular.email, titular.nome_completo || "", appUrl || null, slug);
       resultado.avisoEnviado = true;
     } catch {
       // Nao logamos o erro cru (mensagem do provedor pode conter o e-mail); a

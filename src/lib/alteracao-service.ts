@@ -10,6 +10,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { enviarAvisoCronogramaAtualizadoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 import {
   calcularPlanoDeferral,
   calcularAlteracaoEscopo,
@@ -514,12 +515,13 @@ export async function aplicarAlteracao(args: {
   try {
     const { data: titular } = await supabase
       .from("titulares")
-      .select("nome_completo, email")
+      .select("nome_completo, email, tenant_id")
       .eq("id", contrato.titular_id)
       .maybeSingle();
     const email = (titular as { email?: string | null } | null)?.email;
     if (email) {
       const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+      const slug = await slugDoTenant(supabase, (titular as { tenant_id?: string | null }).tenant_id);
       await enviarAvisoCronogramaAtualizadoEmail(email, (titular as { nome_completo?: string }).nome_completo || "", {
         tipo: alt.tipo === "escopo" ? "escopo" : "deferral",
         moeda: (alt.moeda as string) || "BRL",
@@ -528,7 +530,7 @@ export async function aplicarAlteracao(args: {
         novaDataQuitacao: (alt.nova_data_quitacao as string | null) ?? null,
         parcelas: plano,
         portalUrl: appUrl || null,
-      });
+      }, slug);
     }
   } catch {
     console.error("[alteracao] falha ao notificar o cliente sobre o novo cronograma");
