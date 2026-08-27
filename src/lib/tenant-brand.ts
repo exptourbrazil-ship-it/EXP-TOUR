@@ -42,6 +42,30 @@ export type PdfTheme = {
   boldWeight?: number; // peso da enfase quando a familia usa fontWeight (Inter=500)
 };
 
+// Tema dos e-mails (Resend, HTML inline). Sem variavel CSS (clientes de e-mail
+// nao suportam): cores hex diretas. Estrutura comum "moldura escura + cartao
+// claro"; cada tenant so troca a paleta, a fonte e o logo. O remetente vem de
+// uma env por tenant (dominio proprio precisa estar verificado no Resend).
+export type EmailTheme = {
+  frame: string;       // fundo externo (moldura)
+  card: string;        // fundo do cartao
+  ink: string;         // texto no cartao
+  accentBg: string;    // botoes e chip de codigo (fundo)
+  accentFg: string;    // botoes e chip de codigo (texto) + wordmark de fallback
+  footerFg: string;    // texto do rodape sobre a moldura
+  line: string;        // divisores/bordas sutis
+  boxBg: string;       // fundo de caixas realcadas no cartao (ex.: Pix copia-e-cola)
+  font: string;        // font stack inline
+  fontLink: string;    // <link> de webfont ("" para nenhum)
+  logoBasename: string; // arquivo em public/email/
+  logoWidth: number;   // largura do <img> no cabecalho
+  wordmarkTop: string; // fallback textual (linha 1) quando nao ha logo hospedado
+  wordmarkSub: string; // fallback textual (linha 2); "" para omitir
+  footerLabel: string; // assinatura no rodape
+  brandName: string;   // nome da marca (assuntos de e-mail)
+  fromEnv: string;     // env var do remetente deste tenant
+};
+
 export type TenantBrand = {
   slug: string;
   theme: TenantTheme;
@@ -51,6 +75,8 @@ export type TenantBrand = {
   styleVars: CSSProperties;
   /** Tema do PDF de marca (cores de impressao). */
   pdf: PdfTheme;
+  /** Tema dos e-mails transacionais (Resend). */
+  email: EmailTheme;
 };
 
 const INTER = '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -105,6 +131,27 @@ const EXP_TOUR: TenantBrand = {
     font: "Helvetica",
     fontBold: "Helvetica-Bold",
   },
+  // E-mail EXP Tour: iguala o visual atual (moldura verde, cartao creme, dourado).
+  email: {
+    frame: "#042f1b",
+    card: "#F5EAD9",
+    ink: "#042f1b",
+    accentBg: "#042f1b",
+    accentFg: "#c9a35e",
+    footerFg: "#F5EAD9",
+    line: "#d8c7a8",
+    boxBg: "#ffffff", // branco se destaca sobre o cartao creme
+    font: "'Bellefair',Georgia,'Times New Roman',serif",
+    fontLink:
+      '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Bellefair&display=swap" rel="stylesheet">',
+    logoBasename: "logo-exp-tour.png",
+    logoWidth: 150,
+    wordmarkTop: "EXP TOUR",
+    wordmarkSub: "TRAVEL EXPERIENCE",
+    footerLabel: "EXP Tour — Área do Cliente",
+    brandName: "EXP Tour",
+    fromEnv: "RESEND_FROM_EMAIL",
+  },
 };
 
 // Forio (Manual da Marca v1.1): light-first, sem gradientes, Inter 400/500.
@@ -157,6 +204,30 @@ const FORIO: TenantBrand = {
     font: "Inter",
     fontBold: "Inter",
     boldWeight: 500, // Inter Medium — o manual usa 400/500, sem bold sintetico
+  },
+  // E-mail Forio: light-first dentro da estrutura de e-mail — moldura Night,
+  // cartao branco, tinta Night, acento Portal Blue. Remetente proprio via env
+  // RESEND_FROM_EMAIL_FORIO (dominio precisa estar verificado no Resend; sem a
+  // env, cai no remetente padrao).
+  email: {
+    frame: "#0f1020",
+    card: "#ffffff",
+    ink: "#0f1020",
+    accentBg: "#3b4dc9",
+    accentFg: "#ffffff",
+    footerFg: "#c7cbe8",
+    line: "#e4e5ee",
+    boxBg: "#f4f5ff", // Mist: destaca a caixa sobre o cartao branco
+    font: "'Inter',Arial,Helvetica,sans-serif",
+    fontLink:
+      '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">',
+    logoBasename: "logo-forio.png",
+    logoWidth: 56,
+    wordmarkTop: "Forio",
+    wordmarkSub: "",
+    footerLabel: "Forio — Área do Cliente",
+    brandName: "Forio",
+    fromEnv: "RESEND_FROM_EMAIL_FORIO",
   },
 };
 

@@ -16,6 +16,7 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { statusVistoValido, disparaExcecaoVistoNegado, type StatusVisto } from "@/lib/visto";
 import { abrirExcecao, ExcecaoBloqueada } from "@/lib/excecao-service";
 import { enviarAvisoVistoNegadoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -57,7 +58,7 @@ export async function registrarStatusVisto(args: {
 
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("id, titular_id, estudante_nome, visto_status, titular:titulares(nome_completo, email)")
+    .select("id, titular_id, estudante_nome, visto_status, titular:titulares(nome_completo, email, tenant_id)")
     .eq("id", args.contratoId)
     .maybeSingle();
   if (!contrato) {
@@ -172,8 +173,9 @@ export async function registrarStatusVisto(args: {
   // 3. Notifica o cliente (empatia + proximos passos). Best-effort.
   if (titular?.email) {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+    const slug = await slugDoTenant(supabase, (titular as { tenant_id?: string | null }).tenant_id);
     try {
-      await enviarAvisoVistoNegadoEmail(titular.email, titular.nome_completo || "", appUrl || null);
+      await enviarAvisoVistoNegadoEmail(titular.email, titular.nome_completo || "", appUrl || null, slug);
       resultado.avisoEnviado = true;
     } catch {
       // Nao logamos o erro cru (a mensagem do provedor pode conter o e-mail);

@@ -32,6 +32,7 @@ import {
 import { calcularHashTermo } from "@/lib/termos";
 import { refundPayment, consultarRefund } from "@/lib/mercadopago";
 import { enviarReciboDevolucaoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 
 function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -808,7 +809,7 @@ async function finalizarAcertoSeConfirmado(
     if (titularId) {
       const { data: titular } = await supabase
         .from("titulares")
-        .select("nome_completo, email")
+        .select("nome_completo, email, tenant_id")
         .eq("id", titularId)
         .maybeSingle();
       const email = (titular as { email?: string | null } | null)?.email;
@@ -816,11 +817,12 @@ async function finalizarAcertoSeConfirmado(
         const totalBRL = lista.reduce((s, e) => s + (Number(e.valor_brl) || 0), 0);
         const meio = lista.every((e) => e.meio === "manual") ? "manual" : "mp";
         const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+        const slug = await slugDoTenant(supabase, (titular as { tenant_id?: string | null }).tenant_id);
         await enviarReciboDevolucaoEmail(email, (titular as { nome_completo?: string }).nome_completo || "", {
           valorBRL: totalBRL,
           meio,
           portalUrl: appUrl || null,
-        });
+        }, slug);
       }
     }
   } catch {

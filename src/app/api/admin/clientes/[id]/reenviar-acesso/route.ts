@@ -5,6 +5,7 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 import { hashCodigoAcesso, gerarCodigoAcesso } from "@/lib/codigo-acesso";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: titular } = await supabase
     .from("titulares")
-    .select("id, nome_completo, email")
+    .select("id, nome_completo, email, tenant_id")
     .eq("id", id)
     .maybeSingle();
   if (!titular) {
@@ -97,7 +98,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   });
 
   try {
-    await enviarCodigoAcessoEmail(titular.email, titular.nome_completo || "", codigo);
+    const slug = await slugDoTenant(supabase, titular.tenant_id);
+    await enviarCodigoAcessoEmail(titular.email, titular.nome_completo || "", codigo, slug);
   } catch {
     // Nao logamos o erro cru: a mensagem do provedor pode conter o e-mail do
     // titular (PII). A falha ja fica registrada, com detalhe, em email_logs.

@@ -9,6 +9,7 @@ import { consultarPagamento } from "@/lib/mercadopago";
 import { montarLancamentoPagamento } from "@/lib/pagamento-ledger";
 import { itemizarRecibo } from "@/lib/cambio";
 import { enviarReciboPagamentoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 import { ehStatusDisputaMP } from "@/lib/mp-disputa";
 
 export type ResultadoProcessamento =
@@ -136,10 +137,11 @@ export async function processarPagamentoMercadoPago(
 
         const { data: titular } = await supabase
           .from("titulares")
-          .select("nome_completo, email")
+          .select("nome_completo, email, tenant_id")
           .eq("id", contrato.titular_id)
           .maybeSingle();
         if (!titular?.email) continue;
+        const slug = await slugDoTenant(supabase, titular.tenant_id);
 
         const { data: abertas } = await supabase
           .from("parcelas")
@@ -155,7 +157,7 @@ export async function processarPagamentoMercadoPago(
           moeda,
           ...itens,
           saldoRestanteMoeda: Math.round(saldo * 100) / 100,
-        });
+        }, slug);
       }
     }
   } catch (err) {

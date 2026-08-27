@@ -4,6 +4,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { enviarAvisoDocumentoEmail } from "@/lib/email";
+import { slugDoTenant } from "@/lib/tenant-slug";
 import { labelDoTipoDocumento } from "@/lib/documentos";
 
 export const runtime = "nodejs";
@@ -90,18 +91,19 @@ export async function PATCH(request: Request) {
   if (status === "aprovado" || status === "rejeitado") {
     const { data: titular } = await supabase
       .from("titulares")
-      .select("nome_completo, email")
+      .select("nome_completo, email, tenant_id")
       .eq("id", documento.titular_id)
       .maybeSingle();
     if (titular?.email) {
       const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+      const slug = await slugDoTenant(supabase, titular.tenant_id);
       try {
         await enviarAvisoDocumentoEmail(titular.email, titular.nome_completo || "", {
           tipoDocumento: labelDoTipoDocumento(documento.tipo_documento),
           aprovado: status === "aprovado",
           motivo: motivoPersistir,
           portalUrl: appUrl || null,
-        });
+        }, slug);
         avisoEnviado = true;
       } catch {
         // Sem o erro cru: a mensagem do provedor pode conter o e-mail (PII).
