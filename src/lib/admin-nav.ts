@@ -113,6 +113,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/disponibilidade",
+    label: "Disponibilidade",
+    descricao: "Programas e datas de início por fornecedor",
+    icone: ICONES.data,
+    capacidade: "fornecedores.gerir",
+  },
+  {
     href: "/admin/antecipacoes",
     label: "Antecipações",
     descricao: "Antecipações exigidas por visto/fornecedor",

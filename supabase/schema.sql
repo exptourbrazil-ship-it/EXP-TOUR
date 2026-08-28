@@ -1477,3 +1477,44 @@ alter table if exists quote_payment_installment enable row level security;
 alter table if exists quote_event               enable row level security;
 alter table if exists saved_note                enable row level security;
 alter table if exists fx_rate                   enable row level security;
+
+-- ============================================================================
+-- Disponibilidade por programa (Portal do Fornecedor, doc 06 secao 3.5)
+-- ============================================================================
+-- Ancorada no catalogo estilo Edvisor: um `product` (kind='program') sob um
+-- `campus` (que pertence a um `supplier`). Aqui adicionamos a DISPONIBILIDADE
+-- por data de inicio (intake): status + capacidade, self-service, publica na
+-- hora. Aplicar tambem no SQL Editor do Supabase de producao (ver CLAUDE.md).
+create table if not exists product_availability (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  product_id uuid not null references product(id) on delete cascade,
+  start_date date not null,
+  status text not null default 'open'
+    check (status in ('open','limited','closed','waitlist')),
+  capacity int,                       -- vagas (opcional)
+  notes text,
+  updated_by text,                    -- e-mail/id de quem alterou por ultimo
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  unique (product_id, start_date)     -- uma linha por (programa, data de inicio)
+);
+create index if not exists idx_product_availability on product_availability(product_id, start_date);
+alter table if exists product_availability enable row level security;
+
+-- Trilha (append-only) das mudancas de disponibilidade — "com log" da spec.
+-- Serve tanto para a escola (portal) quanto para o admin.
+create table if not exists product_availability_log (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  product_id uuid not null references product(id) on delete cascade,
+  start_date date,
+  action text not null,               -- 'upsert' | 'delete'
+  status text,
+  capacity int,
+  actor text,
+  actor_kind text not null check (actor_kind in ('supplier','admin')),
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_product_availability_log on product_availability_log(product_id, created_at);
+alter table if exists product_availability_log enable row level security;
