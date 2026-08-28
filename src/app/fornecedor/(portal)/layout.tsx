@@ -42,6 +42,9 @@ export default async function PortalLayout({ children }: { children: React.React
             <Link href="/fornecedor/estudantes" style={{ color: "#c9a35e", textDecoration: "none" }}>
               Estudantes
             </Link>
+            <Link href="/fornecedor/disponibilidade" style={{ color: "#c9a35e", textDecoration: "none" }}>
+              Disponibilidade
+            </Link>
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
