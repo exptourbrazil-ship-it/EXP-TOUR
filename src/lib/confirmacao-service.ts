@@ -156,7 +156,7 @@ export async function responderSolicitacao(
     return { ok: false, erro: "Este pedido já foi respondido." };
   }
 
-  const { error } = await supabase
+  const { data: atualizado, error } = await supabase
     .from("availability_confirmation")
     .update({
       status: dados.status,
@@ -165,7 +165,12 @@ export async function responderSolicitacao(
       responded_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("status", "pending"); // guarda final contra corrida
+    .eq("status", "pending") // guarda final contra corrida
+    .select("id");
   if (error) return { ok: false, erro: "Falha ao registrar a resposta." };
+  // 0 linhas = outra resposta ganhou a corrida no intervalo; nao mentir "ok".
+  if (!atualizado || atualizado.length === 0) {
+    return { ok: false, erro: "Este pedido já foi respondido." };
+  }
   return { ok: true };
 }
