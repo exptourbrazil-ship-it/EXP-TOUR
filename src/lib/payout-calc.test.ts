@@ -114,8 +114,9 @@ test("T7 moeda divergente em valor fixo: comissao null", () => {
   assert.equal(p.comissaoDefinida, false);
 });
 
-// T8: comissao maior que o bruto -> liquido nunca negativo (piso em 0).
-test("T8 liquido nunca negativo", () => {
+// T8: comissao maior que o bruto -> liquido pisado em 0 e comissao retida
+// capada no bruto (nunca mostra comissao > bruto).
+test("T8 comissao capada no bruto, liquido nunca negativo", () => {
   const p = calcularPrevisao({
     grossAmount: 100,
     currency: "CAD",
@@ -124,8 +125,26 @@ test("T8 liquido nunca negativo", () => {
     acordo: { basis: "total", type: "fixed_per_sale", value: 300, currency: "CAD" },
     hoje: "2026-08-01",
   });
-  assert.equal(p.commissionAmount, 300);
+  assert.equal(p.commissionAmount, 100);
   assert.equal(p.netAmount, 0);
+});
+
+// T10: percentual sobre base != total (tuition) -> "a definir" (Fatia 1 nao
+// tem a decomposicao tuition/fees por caso; nunca adivinha).
+test("T10 percentual sobre tuition: comissao a definir", () => {
+  const p = calcularPrevisao({
+    grossAmount: 10000,
+    currency: "USD",
+    dataInicio: "2026-10-01",
+    prazoDias: 30,
+    acordo: { basis: "tuition", type: "percent", value: 15 },
+    hoje: "2026-08-01",
+  });
+  assert.equal(p.commissionAmount, null);
+  assert.equal(p.netAmount, null);
+  assert.equal(p.comissaoDefinida, false);
+  assert.equal(p.grossAmount, 10000); // bruto e vencimento seguem visiveis
+  assert.equal(p.dueDate, "2026-09-01");
 });
 
 // T9: prazo configuravel (D-45) e vencimento ja vencido (dias negativo).

@@ -147,10 +147,15 @@ export async function extratoDoFornecedor(
     .eq("supplier_id", supplierId)
     .in("contrato_id", contratoIds)
     .order("paid_at", { ascending: false });
-  // Ultima remessa por contrato (a lista ja vem por paid_at desc).
-  const payoutPorContrato = new Map<string, PayoutRow>();
+  // Todas as remessas por contrato (a lista ja vem por paid_at desc, entao a
+  // primeira de cada grupo e a mais recente). O ledger e append-only e admite
+  // remessas parciais/multiplas por caso: o total pago SOMA todas; a mais
+  // recente e usada so para metadados de exibicao (data/comprovante/referencia).
+  const payoutsPorContrato = new Map<string, PayoutRow[]>();
   for (const p of (payouts ?? []) as PayoutRow[]) {
-    if (!payoutPorContrato.has(p.contrato_id)) payoutPorContrato.set(p.contrato_id, p);
+    const arr = payoutsPorContrato.get(p.contrato_id) ?? [];
+    arr.push(p);
+    payoutsPorContrato.set(p.contrato_id, arr);
   }
 
   const previstoPorMoeda: Record<string, number> = {};
@@ -166,14 +171,21 @@ export async function extratoDoFornecedor(
       semanas: null, // Fatia 1 nao tem numero de semanas por caso; fixed_per_week fica "a definir".
       hoje,
     });
-    const pago = payoutPorContrato.get(c.id) ?? null;
+    const pagos = payoutsPorContrato.get(c.id) ?? [];
+    const pago = pagos[0] ?? null; // mais recente (metadados de exibicao)
+    const totalPagoNet = pagos.reduce((s, p) => s + (p.net_amount != null ? Number(p.net_amount) : 0), 0);
     const cancelado = !!c.cancelado_em;
-    const status: StatusRepasse = cancelado ? "cancelado" : pago ? "pago" : "previsto";
+    const status: StatusRepasse = cancelado ? "cancelado" : pagos.length ? "pago" : "previsto";
 
     if (!cancelado) {
-      if (pago && pago.net_amount != null) {
-        const m = (pago.currency ?? prev.currency ?? "").toUpperCase();
-        if (m) pagoPorMoeda[m] = (pagoPorMoeda[m] ?? 0) + Number(pago.net_amount);
+      if (pagos.length) {
+        // Soma CADA remessa na sua propria moeda (remessas parciais podem, em
+        // tese, diferir de moeda); a mais recente cobre a que nao tiver moeda.
+        for (const p of pagos) {
+          if (p.net_amount == null) continue;
+          const m = (p.currency ?? prev.currency ?? "").toUpperCase();
+          if (m) pagoPorMoeda[m] = (pagoPorMoeda[m] ?? 0) + Number(p.net_amount);
+        }
       } else if (prev.netAmount != null && prev.currency) {
         previstoPorMoeda[prev.currency] = (previstoPorMoeda[prev.currency] ?? 0) + prev.netAmount;
       }
@@ -193,7 +205,7 @@ export async function extratoDoFornecedor(
       status,
       payoutId: pago?.id ?? null,
       paidAt: pago?.paid_at ?? null,
-      paidNet: pago?.net_amount ?? null,
+      paidNet: pagos.length ? totalPagoNet : null, // total remetido (soma das remessas)
       paidCurrency: pago?.currency ?? null,
       reference: pago?.reference ?? null,
       proofStoragePath: pago?.proof_storage_path ?? null,

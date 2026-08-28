@@ -86,6 +86,11 @@ function calcularComissao(
   if (value === null || value < 0) return null;
 
   if (acordo.type === "percent") {
+    // O percentual so e seguro sobre o TOTAL do programa. Para bases
+    // 'tuition'/'tuition_plus_fees' a Fatia 1 nao tem a decomposicao por caso
+    // (bruto = valor_total do contrato), entao NAO adivinha: devolve null ("a
+    // definir"), coerente com a filosofia do T7 (nunca inventa numero).
+    if (acordo.basis !== "total") return null;
     const pct = Math.min(value, 100); // clamp defensivo (percentual)
     return round2((gross * pct) / 100);
   }
@@ -129,8 +134,12 @@ export function calcularPrevisao(entrada: EntradaPrevisao): Previsao {
   if (gross !== null) {
     const c = calcularComissao(gross, currency, entrada.acordo, entrada.semanas);
     if (c !== null) {
-      commissionAmount = c;
-      netAmount = round2(Math.max(0, gross - c)); // liquido nunca negativo
+      // A comissao efetivamente retida nunca excede o bruto disponivel: uma
+      // taxa fixa maior que o programa nao "come" mais do que existe. Mantem a
+      // coerencia net = gross - comissao (liquido pisado em 0).
+      const cEfetiva = Math.min(c, gross);
+      commissionAmount = cEfetiva;
+      netAmount = round2(Math.max(0, gross - cEfetiva));
       comissaoDefinida = true;
     }
   }
