@@ -5,9 +5,11 @@ import {
   getServiceClient,
   obterEstudanteDoFornecedor,
   listarDocumentosDoFornecedor,
+  pendenciasDoContratoFornecedor,
 } from "@/lib/fornecedor-dados";
 import { labelDoTipoDocumento } from "@/lib/documentos";
 import UploadDocumento from "./UploadDocumento";
+import PendenciasLista from "../../PendenciasLista";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +29,10 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
   const e = await obterEstudanteDoFornecedor(supabase, sessao.supplierId, id);
   if (!e) notFound();
 
-  const documentos = await listarDocumentosDoFornecedor(supabase, sessao.supplierId, id);
+  const [documentos, pendencias] = await Promise.all([
+    listarDocumentosDoFornecedor(supabase, sessao.supplierId, id),
+    pendenciasDoContratoFornecedor(supabase, sessao.supplierId, id),
+  ]);
 
   const linhas: Array<[string, string | null]> = [
     ["Estudante", e.estudanteNome],
@@ -83,6 +88,15 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
           ))}
         </dl>
       </div>
+
+      {pendencias.length > 0 ? (
+        <div style={{ marginTop: 18 }}>
+          <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "0 0 10px" }}>
+            Pendências
+          </h2>
+          <PendenciasLista pendencias={pendencias} />
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 18, border: "1px solid #d8ccb4", borderRadius: 14, background: "#fff", padding: 22 }}>
         <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "0 0 4px" }}>

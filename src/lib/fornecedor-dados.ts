@@ -4,11 +4,120 @@
 // NUNCA pode ver estudante/contrato de outra. O filtro e sempre passado como
 // argumento (nunca vem do cliente) e o detalhe reconfere a posse.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  derivarPendencias,
+  type ContratoPendencia,
+  type DocPendencia,
+  type Pendencia,
+} from "@/lib/fornecedor-pendencias";
 
 export function getServiceClient(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   return createClient(supabaseUrl, serviceRoleKey);
+}
+
+function hojeISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+type ContratoRow = {
+  id: string;
+  estudante_nome: string | null;
+  cancelado_em: string | null;
+  created_at: string | null;
+  titular_id: string | null;
+};
+type DocRow = {
+  contrato_id: string | null;
+  titular_id: string | null;
+  tipo_documento: string;
+  origem: string | null;
+  status: string | null;
+  compartilhado_fornecedor: boolean | null;
+};
+
+// Associa os documentos a cada contrato e monta a entrada do motor de pendencias.
+// Um doc de nivel-titular (contrato_id null) so entra no contrato quando aquele
+// titular tem UM unico contrato no conjunto (evita cruzar docs entre contratos).
+function montarContratosPendencia(contratos: ContratoRow[], docs: DocRow[]): ContratoPendencia[] {
+  const contratosPorTitular = new Map<string, number>();
+  for (const c of contratos) {
+    if (c.titular_id) contratosPorTitular.set(c.titular_id, (contratosPorTitular.get(c.titular_id) ?? 0) + 1);
+  }
+  const idsValidos = new Set(contratos.map((c) => c.id));
+
+  const paraDoc = (d: DocRow): DocPendencia => ({
+    tipo: d.tipo_documento,
+    origem: d.origem ?? null,
+    status: d.status ?? null,
+    compartilhado: d.compartilhado_fornecedor === true,
+  });
+
+  return contratos.map((c) => {
+    const docsDoContrato = docs.filter((d) => {
+      if (d.contrato_id) return d.contrato_id === c.id && idsValidos.has(d.contrato_id);
+      // Nivel-titular: so quando o titular tem exatamente 1 contrato no conjunto.
+      return d.titular_id === c.titular_id && (contratosPorTitular.get(c.titular_id ?? "") ?? 0) === 1;
+    });
+    return {
+      contratoId: c.id,
+      estudanteNome: c.estudante_nome ?? null,
+      canceladoEm: c.cancelado_em ?? null,
+      criadoEm: c.created_at ?? null,
+      documentos: docsDoContrato.map(paraDoc),
+    };
+  });
+}
+
+// Pendencias (matriz 1-4) de TODOS os contratos do fornecedor. Filtrado sempre
+// pelo supplier_id da sessao (isolamento entre escolas).
+export async function listarPendenciasDoFornecedor(
+  supabase: SupabaseClient,
+  supplierId: string
+): Promise<Pendencia[]> {
+  const { data: contratos } = await supabase
+    .from("contratos")
+    .select("id, estudante_nome, cancelado_em, created_at, titular_id")
+    .eq("supplier_id", supplierId);
+  if (!contratos?.length) return [];
+
+  const titularIds = [...new Set(contratos.map((c) => c.titular_id).filter(Boolean))] as string[];
+  const { data: docs } = titularIds.length
+    ? await supabase
+        .from("documentos")
+        .select("contrato_id, titular_id, tipo_documento, origem, status, compartilhado_fornecedor")
+        .in("titular_id", titularIds)
+    : { data: [] as DocRow[] };
+
+  const entrada = montarContratosPendencia(contratos as ContratoRow[], (docs ?? []) as DocRow[]);
+  return derivarPendencias(hojeISO(), entrada);
+}
+
+// Pendencias de UM contrato do fornecedor (para o selo no detalhe do estudante).
+// Reconfere a posse: contrato de outra escola -> lista vazia.
+export async function pendenciasDoContratoFornecedor(
+  supabase: SupabaseClient,
+  supplierId: string,
+  contratoId: string
+): Promise<Pendencia[]> {
+  const { data: contrato } = await supabase
+    .from("contratos")
+    .select("id, estudante_nome, cancelado_em, created_at, titular_id, supplier_id")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (!contrato || (contrato as { supplier_id?: string }).supplier_id !== supplierId) return [];
+
+  const c = contrato as ContratoRow & { supplier_id: string };
+  const { data: docs } = c.titular_id
+    ? await supabase
+        .from("documentos")
+        .select("contrato_id, titular_id, tipo_documento, origem, status, compartilhado_fornecedor")
+        .eq("titular_id", c.titular_id)
+    : { data: [] as DocRow[] };
+
+  const entrada = montarContratosPendencia([c], (docs ?? []) as DocRow[]);
+  return derivarPendencias(hojeISO(), entrada);
 }
 
 export type ContadoresPainel = { total: number; ativos: number; cancelados: number };
