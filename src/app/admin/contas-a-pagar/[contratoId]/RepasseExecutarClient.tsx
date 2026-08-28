@@ -11,15 +11,25 @@ type Previsao = {
   dueDate: string | null;
 };
 
+// Valores extraídos da fatura conferida (quando houver): têm prioridade no
+// pré-preenchimento do bruto/moeda, pois é o que a escola efetivamente cobrou.
+type Fatura = { grossAmount: number | null; currency: string | null } | null;
+
 // Formulário de execução da remessa (D-30). Pré-preenche com a previsão, mas os
 // valores são editáveis (o financeiro confere contra a fatura). Anexa o
 // comprovante. Envia multipart para /api/admin/repasses (financeiro.gerir).
-export default function RepasseExecutarClient({ contratoId, previsao }: { contratoId: string; previsao: Previsao }) {
+export default function RepasseExecutarClient({ contratoId, previsao, fatura }: { contratoId: string; previsao: Previsao; fatura?: Fatura }) {
   const router = useRouter();
-  const [gross, setGross] = useState(previsao.grossAmount != null ? String(previsao.grossAmount) : "");
-  const [commission, setCommission] = useState(previsao.commissionAmount != null ? String(previsao.commissionAmount) : "");
-  const [net, setNet] = useState(previsao.netAmount != null ? String(previsao.netAmount) : "");
-  const [currency, setCurrency] = useState(previsao.currency || "");
+  // Bruto/moeda: preferir a fatura conferida; cair na previsão do contrato.
+  const grossInicial = fatura?.grossAmount ?? previsao.grossAmount;
+  const moedaInicial = fatura?.currency || previsao.currency || "";
+  // Comissão/líquido: a previsão só é coerente se o bruto usado for o da previsão;
+  // se o bruto vem da fatura, começa comissão vazia (o financeiro preenche/confere).
+  const usouFatura = fatura?.grossAmount != null;
+  const [gross, setGross] = useState(grossInicial != null ? String(grossInicial) : "");
+  const [commission, setCommission] = useState(!usouFatura && previsao.commissionAmount != null ? String(previsao.commissionAmount) : "");
+  const [net, setNet] = useState(!usouFatura && previsao.netAmount != null ? String(previsao.netAmount) : "");
+  const [currency, setCurrency] = useState(moedaInicial);
   const [dueDate, setDueDate] = useState(previsao.dueDate || "");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");

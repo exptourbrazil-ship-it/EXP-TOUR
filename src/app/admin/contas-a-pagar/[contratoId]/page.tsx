@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { obterCasoParaRepasse } from "@/lib/payout-admin-service";
+import { obterConferencia } from "@/lib/fatura-conferencia-service";
 import RepasseExecutarClient from "./RepasseExecutarClient";
 
 export const runtime = "nodejs";
@@ -32,6 +33,7 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
   const tenantId = await tenantIdAtual(supabase);
   const caso = await obterCasoParaRepasse(supabase, tenantId, contratoId);
   if (!caso) notFound();
+  const conferencia = await obterConferencia(supabase, tenantId, contratoId);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -57,6 +59,41 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
         </dl>
       </div>
 
+      {conferencia ? (
+        <div
+          className="mb-4 rounded-xl border p-4"
+          style={
+            conferencia.status === "conferida"
+              ? { borderColor: "#bbe7c6", background: "#f0f9f2" }
+              : conferencia.status === "divergente"
+              ? { borderColor: "#f0d79b", background: "#fdf6e6" }
+              : { borderColor: "#e5e7eb", background: "#fafafa" }
+          }
+        >
+          <h2 className="mb-1 font-serif text-lg text-brand">Conferência da fatura</h2>
+          {conferencia.status === "conferida" ? (
+            <p className="text-sm text-emerald-800">
+              Fatura confere com a previsão{conferencia.valorFatura != null ? ` (${conferencia.currency || ""} ${conferencia.valorFatura})` : ""}.
+            </p>
+          ) : conferencia.status === "divergente" ? (
+            <div className="text-sm text-amber-800">
+              <p className="mb-1">A fatura diverge da previsão — confira antes de pagar:</p>
+              <ul className="ml-4 list-disc">
+                {conferencia.divergencias.map((d, i) => (
+                  <li key={i}>{d.campo}: <b>{d.fatura}</b> (esperado {d.esperado})</li>
+                ))}
+              </ul>
+            </div>
+          ) : conferencia.status === "sem_fatura" ? (
+            <p className="text-sm text-neutral-600">Nenhuma fatura anexada a este caso ainda.</p>
+          ) : (
+            <p className="text-sm text-neutral-600">
+              Fatura ainda não conferida automaticamente{conferencia.extractStatus === "sem_ia" ? " (extração por IA não configurada)" : ""}.
+            </p>
+          )}
+        </div>
+      ) : null}
+
       {caso.jaPago ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
           Este caso já tem uma remessa registrada. Veja o extrato do fornecedor no portal.
@@ -71,6 +108,11 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
             currency: caso.currency,
             dueDate: caso.dueDate,
           }}
+          fatura={
+            conferencia && conferencia.valorFatura != null
+              ? { grossAmount: conferencia.valorFatura, currency: conferencia.currency }
+              : null
+          }
         />
       )}
     </div>

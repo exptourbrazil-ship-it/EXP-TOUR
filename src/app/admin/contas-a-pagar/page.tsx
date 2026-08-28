@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarContasAPagar, type ContaAPagar } from "@/lib/payout-admin-service";
+import { mapaConferencias, type Conferencia, type StatusConferencia } from "@/lib/fatura-conferencia-service";
+import ConferirFaturaButton from "./ConferirFaturaButton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +31,47 @@ function selo(c: ContaAPagar): { texto: string; cor: string } | null {
   return { texto: `em ${d}d`, cor: "#6b7280" };
 }
 
+const CHIP_CONFERENCIA: Record<StatusConferencia, { texto: string; cor: string; bg: string }> = {
+  conferida: { texto: "Conferida", cor: "#15803d", bg: "#e7f4ea" },
+  divergente: { texto: "Divergente", cor: "#b45309", bg: "#fdf0d5" },
+  sem_fatura: { texto: "Sem fatura", cor: "#6b7280", bg: "#f0f0ef" },
+  pendente: { texto: "A conferir", cor: "#6b7280", bg: "#f0f0ef" },
+  erro: { texto: "Erro", cor: "#b91c1c", bg: "#fde8e8" },
+};
+
+// Célula da coluna Fatura: chip do veredito + diff (se divergente) + botão
+// "Conferir" quando ainda não há veredito (ou deu erro/pendente por falta de IA).
+function CelulaFatura({ conferencia, contratoId }: { conferencia: Conferencia | null; contratoId: string }) {
+  if (!conferencia) {
+    return <ConferirFaturaButton contratoId={contratoId} />;
+  }
+  const chip = CHIP_CONFERENCIA[conferencia.status];
+  return (
+    <div>
+      <span
+        className="inline-block rounded-full px-2 py-0.5 text-xs font-semibold"
+        style={{ color: chip.cor, background: chip.bg }}
+      >
+        {chip.texto}
+      </span>
+      {conferencia.status === "divergente" && conferencia.divergencias.length > 0 ? (
+        <div className="mt-1 text-xs text-amber-700">
+          {conferencia.divergencias.map((d, i) => (
+            <div key={i}>
+              {d.campo}: <b>{d.fatura}</b> vs {d.esperado}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {conferencia.status === "pendente" || conferencia.status === "erro" || conferencia.status === "sem_fatura" ? (
+        <div className="mt-1">
+          <ConferirFaturaButton contratoId={contratoId} label="Reconferir" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // Contas a pagar às escolas (D-30, doc 05 §2). Capacidade financeiro.ver (a
 // execução da remessa exige financeiro.gerir, revalidado na rota). Lista as
 // previsões de repasse ainda não executadas, do caso mais urgente ao menos.
@@ -37,6 +80,7 @@ export default async function ContasAPagarPage() {
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL as string, process.env.SUPABASE_SERVICE_ROLE_KEY as string);
   const tenantId = await tenantIdAtual(supabase);
   const contas = await listarContasAPagar(supabase, tenantId);
+  const conferencias = await mapaConferencias(supabase, tenantId, contas.map((c) => c.contratoId));
 
   // Total previsto por moeda (só líquido definido).
   const totais: Record<string, number> = {};
@@ -76,6 +120,7 @@ export default async function ContasAPagarPage() {
                 <th className="px-4 py-2 text-right">Comissão</th>
                 <th className="px-4 py-2 text-right">Líquido</th>
                 <th className="px-4 py-2">Vencimento</th>
+                <th className="px-4 py-2">Fatura</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
@@ -96,6 +141,9 @@ export default async function ContasAPagarPage() {
                     <td className="px-4 py-2">
                       {fmtData(c.dueDate)}
                       {s ? <span className="ml-1 text-xs" style={{ color: s.cor }}>({s.texto})</span> : null}
+                    </td>
+                    <td className="px-4 py-2">
+                      <CelulaFatura conferencia={conferencias.get(c.contratoId) ?? null} contratoId={c.contratoId} />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <Link href={`/admin/contas-a-pagar/${c.contratoId}`} className="text-brand-golddark hover:underline">
