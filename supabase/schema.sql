@@ -1584,8 +1584,10 @@ create table if not exists price_submission (
   currency char(3),
   -- Rascunho normalizado extraido do PDF (cursos/faixas/taxas), editavel pela escola.
   extracted jsonb not null default '{}'::jsonb,
+  -- 'processing' = trava atomica durante a materializacao (impede aprovacao
+  -- concorrente da mesma submission de duplicar preco).
   status text not null default 'draft'
-    check (status in ('draft','pending_admin','approved','rejected')),
+    check (status in ('draft','pending_admin','processing','approved','rejected')),
   extract_status text, -- 'ok' | 'sem_ia' | 'erro' (diagnostico da extracao)
   created_by text,
   submitted_by text, supplier_approved_at timestamptz,
@@ -1597,3 +1599,20 @@ create table if not exists price_submission (
 create index if not exists idx_price_submission_supplier on price_submission(supplier_id, status);
 create index if not exists idx_price_submission_status on price_submission(tenant_id, status);
 alter table if exists price_submission enable row level security;
+
+-- Versionamento da materializacao (Fase C, fatia 2): as linhas de catalogo
+-- geradas pela aprovacao de um price list carregam o submission de origem. Um
+-- novo price list aprovado da MESMA escola supersede o anterior (expira os
+-- templates/produtos/taxas daquele submission); o que o admin cria a mao fica
+-- com source_submission_id NULL e nunca e tocado. Aplicar no SQL Editor de prod.
+alter table if exists product        add column if not exists source_submission_id uuid references price_submission(id);
+alter table if exists price_template add column if not exists source_submission_id uuid references price_submission(id);
+alter table if exists fee            add column if not exists source_submission_id uuid references price_submission(id);
+create index if not exists idx_product_source_submission on product(source_submission_id);
+create index if not exists idx_price_template_source_submission on price_template(source_submission_id);
+create index if not exists idx_fee_source_submission on fee(source_submission_id);
+
+-- Se a price_submission ja existir sem o estado 'processing', atualiza o CHECK.
+alter table if exists price_submission drop constraint if exists price_submission_status_check;
+alter table if exists price_submission add constraint price_submission_status_check
+  check (status in ('draft','pending_admin','processing','approved','rejected'));
