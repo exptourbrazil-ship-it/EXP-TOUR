@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
-import { getServiceClient, contarPainelFornecedor } from "@/lib/fornecedor-dados";
+import {
+  getServiceClient,
+  contarPainelFornecedor,
+  listarPendenciasDoFornecedor,
+} from "@/lib/fornecedor-dados";
+import { contarPorSeveridade } from "@/lib/fornecedor-pendencias";
+import PendenciasLista from "./PendenciasLista";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +17,11 @@ export const dynamic = "force-dynamic";
 export default async function PainelFornecedorPage() {
   const sessao = await exigirFornecedor("/fornecedor");
   const supabase = getServiceClient();
-  const contadores = await contarPainelFornecedor(supabase, sessao.supplierId);
+  const [contadores, pendencias] = await Promise.all([
+    contarPainelFornecedor(supabase, sessao.supplierId),
+    listarPendenciasDoFornecedor(supabase, sessao.supplierId),
+  ]);
+  const sev = contarPorSeveridade(pendencias);
 
   const cards = [
     { label: "Estudantes", valor: contadores.total, cor: "#042f1b" },
@@ -27,6 +37,21 @@ export default async function PainelFornecedorPage() {
       <p style={{ color: "#042f1b", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         Visão geral dos seus estudantes na EXP Tour.
       </p>
+
+      {pendencias.length > 0 ? (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+            <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: 0 }}>
+              Pendências
+            </h2>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>
+              {sev.urgente > 0 ? `${sev.urgente} urgente${sev.urgente > 1 ? "s" : ""} · ` : ""}
+              {pendencias.length} no total
+            </span>
+          </div>
+          <PendenciasLista pendencias={pendencias} comLinkEstudante />
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
         {cards.map((c) => (
