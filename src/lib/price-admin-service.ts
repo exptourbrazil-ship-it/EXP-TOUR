@@ -117,10 +117,14 @@ async function limparMaterializacaoDoSubmission(supabase: SupabaseClient, submis
 // escola — o novo price list supersede o anterior. Nao toca no que o admin criou
 // a mao (source_submission_id NULL).
 async function supersedeAnteriores(supabase: SupabaseClient, sub: SubmissionRow) {
+  // So o MESMO campus (multi-campus: publicar a lista de um campus nao pode
+  // expirar o preco vivo de outro). Filtro de tenant por consistencia.
   const { data: priors } = await supabase
     .from("price_submission")
     .select("id")
+    .eq("tenant_id", sub.tenant_id)
     .eq("supplier_id", sub.supplier_id)
+    .eq("campus_id", sub.campus_id as string)
     .eq("status", "approved")
     .neq("id", sub.id);
   const ids = (priors ?? []).map((p) => (p as { id: string }).id);
@@ -171,7 +175,8 @@ async function materializar(
     if (eProd || !prod) return { ok: false, erro: `Falha ao publicar produto "${pr.name}".` };
 
     const detailTable = pr.kind === "program" ? "program_detail" : "accommodation_detail";
-    await supabase.from(detailTable).upsert({ product_id: prod.id, ...pr.detail }, { onConflict: "product_id" });
+    const { error: eDet } = await supabase.from(detailTable).upsert({ product_id: prod.id, ...pr.detail }, { onConflict: "product_id" });
+    if (eDet) return { ok: false, erro: `Falha ao publicar o detalhe de "${pr.name}".` };
 
     const { data: tpl, error: eTpl } = await supabase
       .from("price_template")
@@ -216,8 +221,9 @@ async function materializar(
     if (eFee) return { ok: false, erro: `Falha ao publicar a taxa "${tx.name}".` };
   }
 
-  // O novo price list supersede o anterior da mesma escola.
-  await supersedeAnteriores(supabase, sub);
+  // Supersede fica FORA daqui: so depois que o status vira 'approved', para nao
+  // expirar o preco anterior se a finalizacao falhar (a escola nunca fica sem
+  // preco vivo).
   return { ok: true, resumo };
 }
 
@@ -232,18 +238,45 @@ export async function aprovarPeloAdmin(
   if (!sub) return { ok: false, erro: "Price list não encontrado." };
   if (sub.status !== "pending_admin") return { ok: false, erro: "Este price list não está aguardando aprovação." };
 
-  const mat = await materializar(supabase, sub);
-  if (!mat.ok) return { ok: false, erro: mat.erro };
+  // TRAVA atomica: pending_admin -> processing. So um aprovador vence; os demais
+  // (outra aba, dois admins, retry em voo) veem 0 linhas e abortam. Evita a
+  // materializacao concorrente duplicar preco.
+  const { data: claim } = await supabase
+    .from("price_submission")
+    .update({ status: "processing", updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "pending_admin")
+    .select("id");
+  if (!claim || claim.length === 0) {
+    return { ok: false, erro: "Este price list já está sendo processado." };
+  }
+
+  async function reverter() {
+    // Limpa o que este submission tenha inserido e devolve para pending_admin,
+    // sem tocar nos priors (que so sao expirados APOS a aprovacao concluir).
+    await limparMaterializacaoDoSubmission(supabase, id);
+    await supabase.from("price_submission").update({ status: "pending_admin", updated_at: new Date().toISOString() }).eq("id", id).eq("status", "processing");
+  }
+
+  const mat = await materializar(supabase, { ...sub, status: "processing" });
+  if (!mat.ok) {
+    await reverter();
+    return { ok: false, erro: mat.erro };
+  }
 
   const { data, error } = await supabase
     .from("price_submission")
     .update({ status: "approved", admin_approved_by: adminUser, admin_approved_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("status", "pending_admin")
+    .eq("status", "processing")
     .select("id");
   if (error || !data || data.length === 0) {
+    await reverter();
     return { ok: false, erro: "Falha ao concluir a aprovação (tente novamente)." };
   }
+
+  // So agora (ja 'approved') o novo price list supersede o anterior da escola.
+  await supersedeAnteriores(supabase, sub);
   return { ok: true, resumo: mat.resumo, supplierId: sub.supplier_id, submittedBy: sub.submitted_by };
 }
 

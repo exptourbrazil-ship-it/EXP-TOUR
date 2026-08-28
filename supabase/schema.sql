@@ -1584,8 +1584,10 @@ create table if not exists price_submission (
   currency char(3),
   -- Rascunho normalizado extraido do PDF (cursos/faixas/taxas), editavel pela escola.
   extracted jsonb not null default '{}'::jsonb,
+  -- 'processing' = trava atomica durante a materializacao (impede aprovacao
+  -- concorrente da mesma submission de duplicar preco).
   status text not null default 'draft'
-    check (status in ('draft','pending_admin','approved','rejected')),
+    check (status in ('draft','pending_admin','processing','approved','rejected')),
   extract_status text, -- 'ok' | 'sem_ia' | 'erro' (diagnostico da extracao)
   created_by text,
   submitted_by text, supplier_approved_at timestamptz,
@@ -1609,3 +1611,8 @@ alter table if exists fee            add column if not exists source_submission_
 create index if not exists idx_product_source_submission on product(source_submission_id);
 create index if not exists idx_price_template_source_submission on price_template(source_submission_id);
 create index if not exists idx_fee_source_submission on fee(source_submission_id);
+
+-- Se a price_submission ja existir sem o estado 'processing', atualiza o CHECK.
+alter table if exists price_submission drop constraint if exists price_submission_status_check;
+alter table if exists price_submission add constraint price_submission_status_check
+  check (status in ('draft','pending_admin','processing','approved','rejected'));
