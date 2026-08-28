@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { calcularPrevisao, type AcordoComissao } from "./payout-calc.ts";
+import { calcularPrevisao, validarValoresRepasse, type AcordoComissao } from "./payout-calc.ts";
 
 const pct15: AcordoComissao = { basis: "total", type: "percent", value: 15 };
 
@@ -159,4 +159,38 @@ test("T9 prazo D-45 e vencimento vencido", () => {
   });
   assert.equal(p.dueDate, "2026-07-18"); // 45 dias antes de 01/set
   assert.equal(p.diasAteVencimento, -14); // ja passou 14 dias
+});
+
+// ── validarValoresRepasse ────────────────────────────────────────────────────
+test("V1 valores coerentes passam e sao arredondados", () => {
+  const r = validarValoresRepasse({ grossAmount: "1000", commissionAmount: "150", netAmount: "850", currency: "cad" });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.deepEqual(r.valores, { grossAmount: 1000, commissionAmount: 150, netAmount: 850, currency: "CAD" });
+  }
+});
+
+test("V2 net != gross - comissao e recusado", () => {
+  const r = validarValoresRepasse({ grossAmount: 1000, commissionAmount: 150, netAmount: 900, currency: "CAD" });
+  assert.equal(r.ok, false);
+});
+
+test("V3 moeda invalida recusada", () => {
+  const r = validarValoresRepasse({ grossAmount: 1000, commissionAmount: 0, netAmount: 1000, currency: "DOLAR" });
+  assert.equal(r.ok, false);
+});
+
+test("V4 comissao maior que bruto recusada", () => {
+  const r = validarValoresRepasse({ grossAmount: 100, commissionAmount: 300, netAmount: 0, currency: "CAD" });
+  assert.equal(r.ok, false);
+});
+
+test("V5 bruto zero/negativo recusado", () => {
+  assert.equal(validarValoresRepasse({ grossAmount: 0, commissionAmount: 0, netAmount: 0, currency: "CAD" }).ok, false);
+  assert.equal(validarValoresRepasse({ grossAmount: -5, commissionAmount: 0, netAmount: -5, currency: "CAD" }).ok, false);
+});
+
+test("V6 tolerancia de centavo aceita", () => {
+  const r = validarValoresRepasse({ grossAmount: 1000, commissionAmount: 333.33, netAmount: 666.67, currency: "CAD" });
+  assert.equal(r.ok, true);
 });

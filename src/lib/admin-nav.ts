@@ -73,6 +73,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "financeiro.ver",
   },
   {
+    href: "/admin/contas-a-pagar",
+    label: "Contas a pagar",
+    descricao: "Repasses às escolas (D-30) e comprovantes",
+    icone: ICONES.financeiro,
+    capacidade: "financeiro.ver",
+  },
+  {
     href: "/admin/documentos",
     label: "Documentos",
     descricao: "Aprovar, rejeitar e enviar documentos",

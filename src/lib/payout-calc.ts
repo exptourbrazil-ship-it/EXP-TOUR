@@ -154,3 +154,46 @@ export function calcularPrevisao(entrada: EntradaPrevisao): Previsao {
     comissaoDefinida,
   };
 }
+
+// ── Validacao dos valores de uma remessa (Fatia 2, execucao pelo Admin) ──────
+// PURO: guarda o insert money-touching em supplier_payout. Confere que os
+// numeros sao coerentes ANTES de gravar dinheiro (nunca confia so na tela).
+export type EntradaRepasse = {
+  grossAmount: unknown;
+  commissionAmount: unknown;
+  netAmount: unknown;
+  currency: unknown;
+};
+
+export type RepasseValidado = {
+  grossAmount: number;
+  commissionAmount: number;
+  netAmount: number;
+  currency: string;
+};
+
+// Tolerancia de arredondamento ao conferir net = gross - comissao (centavos).
+const TOLERANCIA = 0.01;
+
+export function validarValoresRepasse(
+  e: EntradaRepasse
+): { ok: true; valores: RepasseValidado } | { ok: false; erro: string } {
+  const gross = num(e.grossAmount);
+  const commission = num(e.commissionAmount);
+  const net = num(e.netAmount);
+  const currency = typeof e.currency === "string" ? e.currency.toUpperCase().trim() : "";
+
+  if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, erro: "Informe a moeda (3 letras, ex.: CAD)." };
+  if (gross === null || gross <= 0) return { ok: false, erro: "Valor bruto inválido." };
+  if (commission === null || commission < 0) return { ok: false, erro: "Comissão inválida." };
+  if (net === null || net < 0) return { ok: false, erro: "Valor líquido inválido." };
+  if (commission > gross + TOLERANCIA) return { ok: false, erro: "A comissão não pode exceder o valor bruto." };
+  if (net > gross + TOLERANCIA) return { ok: false, erro: "O líquido não pode exceder o valor bruto." };
+  if (Math.abs(round2(gross - commission) - round2(net)) > TOLERANCIA) {
+    return { ok: false, erro: "Os valores não fecham: líquido deve ser bruto menos comissão." };
+  }
+  return {
+    ok: true,
+    valores: { grossAmount: round2(gross), commissionAmount: round2(commission), netAmount: round2(net), currency },
+  };
+}
