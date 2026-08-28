@@ -48,6 +48,9 @@ export default async function PortalLayout({ children }: { children: React.React
             <Link href="/fornecedor/precos" style={{ color: "#c9a35e", textDecoration: "none" }}>
               Preços
             </Link>
+            <Link href="/fornecedor/materiais" style={{ color: "#c9a35e", textDecoration: "none" }}>
+              Materiais
+            </Link>
             <Link href="/fornecedor/financeiro" style={{ color: "#c9a35e", textDecoration: "none" }}>
               Financeiro
             </Link>
