@@ -1660,3 +1660,33 @@ create index if not exists idx_supplier_payout_supplier on supplier_payout(suppl
 -- pagamento (o check-then-insert da aplicacao nao basta sob concorrencia).
 create unique index if not exists idx_supplier_payout_contrato on supplier_payout(tenant_id, contrato_id);
 alter table if exists supplier_payout enable row level security;
+
+-- ============================================================================
+-- Conferencia automatica de fatura (doc 05 secao 1/2). Aplicar no SQL Editor.
+-- ============================================================================
+-- A escola sobe a fatura (documentos.tipo_documento = 'invoice_escola'). A IA
+-- extrai os campos e o veredito cruza contra a PREVISAO do caso (bruto do
+-- contrato / moeda / estudante). Uma linha por contrato (a fatura vigente); um
+-- novo upload re-confere (upsert por contrato_id). Nao move dinheiro — so
+-- sinaliza a fila de contas a pagar (verde/amarelo/sem fatura).
+create table if not exists fatura_conferencia (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  documento_id uuid references documentos(id) on delete set null,
+  extracted jsonb not null default '{}'::jsonb,      -- fatura extraida (normalizada)
+  valor_fatura numeric(14,2),                        -- bruto extraido da fatura
+  currency char(3),
+  -- 'indeterminado' = fatura extraida mas faltou comparador essencial (valor do
+  -- contrato, moeda ou nome) — trava a fila como amarelo, nunca vira "conferida".
+  status text not null default 'pendente'
+    check (status in ('pendente','conferida','divergente','indeterminado','sem_fatura','erro')),
+  divergencias jsonb not null default '[]'::jsonb,   -- lista de {campo, fatura, esperado, severidade}
+  extract_status text,                               -- ok | sem_ia | erro | sem_pdf
+  conferido_em timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  unique (tenant_id, contrato_id)
+);
+create index if not exists idx_fatura_conferencia_tenant_status on fatura_conferencia(tenant_id, status);
+alter table if exists fatura_conferencia enable row level security;

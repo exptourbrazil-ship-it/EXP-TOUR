@@ -11,15 +11,39 @@ type Previsao = {
   dueDate: string | null;
 };
 
+// prefillFatura: só vem preenchido quando a conferência é VERDE — aí o bruto/
+// moeda pré-preenchem o formulário. faturaRef: valor extraído da fatura para
+// EXIBIR como referência (inclusive quando divergente/indeterminado), sem tocar
+// no campo.
+type Fatura = { grossAmount: number | null; currency: string | null } | null;
+type FaturaRef = { grossAmount: number | null; currency: string | null; status: string } | null;
+
 // Formulário de execução da remessa (D-30). Pré-preenche com a previsão, mas os
 // valores são editáveis (o financeiro confere contra a fatura). Anexa o
 // comprovante. Envia multipart para /api/admin/repasses (financeiro.gerir).
-export default function RepasseExecutarClient({ contratoId, previsao }: { contratoId: string; previsao: Previsao }) {
+export default function RepasseExecutarClient({
+  contratoId,
+  previsao,
+  prefillFatura,
+  faturaRef,
+}: {
+  contratoId: string;
+  previsao: Previsao;
+  prefillFatura?: Fatura;
+  faturaRef?: FaturaRef;
+}) {
   const router = useRouter();
-  const [gross, setGross] = useState(previsao.grossAmount != null ? String(previsao.grossAmount) : "");
-  const [commission, setCommission] = useState(previsao.commissionAmount != null ? String(previsao.commissionAmount) : "");
-  const [net, setNet] = useState(previsao.netAmount != null ? String(previsao.netAmount) : "");
-  const [currency, setCurrency] = useState(previsao.currency || "");
+  // Bruto/moeda: só usa a fatura quando a conferência é VERDE (prefillFatura);
+  // caso contrário, cai na previsão do contrato.
+  const grossInicial = prefillFatura?.grossAmount ?? previsao.grossAmount;
+  const moedaInicial = prefillFatura?.currency || previsao.currency || "";
+  // Comissão/líquido: a previsão só é coerente se o bruto usado for o da previsão;
+  // se o bruto vem da fatura verde, começa comissão vazia (o financeiro confere).
+  const usouFatura = prefillFatura?.grossAmount != null;
+  const [gross, setGross] = useState(grossInicial != null ? String(grossInicial) : "");
+  const [commission, setCommission] = useState(!usouFatura && previsao.commissionAmount != null ? String(previsao.commissionAmount) : "");
+  const [net, setNet] = useState(!usouFatura && previsao.netAmount != null ? String(previsao.netAmount) : "");
+  const [currency, setCurrency] = useState(moedaInicial);
   const [dueDate, setDueDate] = useState(previsao.dueDate || "");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
@@ -81,6 +105,11 @@ export default function RepasseExecutarClient({ contratoId, previsao }: { contra
         <div>
           <label className={labelCls}>Bruto</label>
           <input type="number" step="0.01" value={gross} onChange={(e) => { setGross(e.target.value); recalcularLiquido(e.target.value, commission); }} className={inputCls} />
+          {faturaRef && faturaRef.grossAmount != null && faturaRef.status !== "conferida" ? (
+            <p className="mt-1 text-xs text-amber-700">
+              Fatura (não confirmada): {faturaRef.currency || ""} {faturaRef.grossAmount} — confira antes de usar.
+            </p>
+          ) : null}
         </div>
         <div>
           <label className={labelCls}>Moeda</label>
