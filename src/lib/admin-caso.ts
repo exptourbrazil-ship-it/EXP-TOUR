@@ -86,6 +86,7 @@ export type CasoDocumento = {
   status: string | null;
   motivo_rejeicao: string | null;
   created_at: string | null;
+  compartilhado_fornecedor: boolean | null;
 };
 
 export type CasoExcecao = {
@@ -241,7 +242,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   // Documentos do titular.
   const { data: documentosData } = await supabase
     .from("documentos")
-    .select("id, tipo_documento, nome_arquivo, origem, status, motivo_rejeicao, created_at")
+    .select("id, tipo_documento, nome_arquivo, origem, status, motivo_rejeicao, created_at, compartilhado_fornecedor")
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });
   const documentos = (documentosData || []) as CasoDocumento[];

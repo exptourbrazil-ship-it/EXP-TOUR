@@ -24,10 +24,14 @@ export default async function DocumentosPage() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  // O cofre do titular NAO mostra documentos enviados pela escola (origem
+  // 'fornecedor'): sao internos do fluxo EXP Tour <-> instituicao e o titular
+  // nem consegue baixa-los. Ficam so no admin e no Portal do Fornecedor.
   const { data: documentos } = await supabase
     .from("documentos")
     .select("*")
     .eq("titular_id", sessao.titularId)
+    .neq("origem", "fornecedor")
     .order("created_at", { ascending: false });
 
   const { data: titular } = await supabase
