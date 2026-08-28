@@ -1698,3 +1698,37 @@ alter table if exists fatura_conferencia add column if not exists valor_gross nu
 alter table if exists fatura_conferencia add column if not exists valor_net numeric(14,2);
 alter table if exists fatura_conferencia add column if not exists commission numeric(14,2);
 alter table if exists fatura_conferencia add column if not exists documento_net_id uuid references documentos(id) on delete set null;
+
+-- ============================================================================
+-- Materiais do fornecedor (doc 06 secao 3.3). Biblioteca que a escola mantem
+-- sozinha (brochura, fotos, video-link, apresentacao, midia kit, logotipo,
+-- termos). Cada material e um ARQUIVO (bucket privado documentos-fornecedor,
+-- prefixo materiais/) OU um LINK (video YouTube/Vimeo etc.). Permissao de uso:
+-- 'interno' (so o representante) vs 'cliente' (pode ser exposto ao cliente
+-- final). Escopo por supplier. Aplicar no SQL Editor de prod.
+create table if not exists material (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  tipo text not null check (tipo in ('brochura','price_list','foto','video','apresentacao','midia_kit','logotipo','termos','outro')),
+  titulo text not null,
+  idioma char(2) not null default 'en' check (idioma in ('en','pt','es')),
+  programa text,                 -- programa relacionado (texto livre, opcional)
+  validade date,                 -- validade/expiracao (opcional; vencido sai de circulacao na Fatia 2)
+  permissao text not null default 'interno' check (permissao in ('interno','cliente')),
+  -- ARQUIVO ou LINK (ao menos um; o codigo garante exatamente um).
+  storage_path text,
+  nome_arquivo text,
+  mime text,
+  link_url text,
+  created_by text,
+  archived_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  -- XOR: exatamente um de arquivo/link (nao "ao menos um") — o codigo ja garante,
+  -- mas a constraint fecha a porta para qualquer writer futuro.
+  constraint material_arquivo_ou_link check ((storage_path is not null) <> (link_url is not null))
+);
+create index if not exists idx_material_supplier on material(supplier_id, archived_at);
+create index if not exists idx_material_tenant_perm on material(tenant_id, permissao, archived_at);
+alter table if exists material enable row level security;
