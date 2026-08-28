@@ -1626,14 +1626,16 @@ alter table if exists price_submission add constraint price_submission_status_ch
 -- configuravel, e nao fixo") — algumas escolas exigem antecipado para a LOA.
 alter table if exists supplier add column if not exists prazo_pagamento_dias int not null default 30;
 
--- Ledger de remessas EXECUTADAS ao fornecedor (contas a pagar). Uma linha por
--- pagamento efetivamente enviado, APPEND-ONLY: registra o valor bruto do
--- programa (moeda de origem), a comissao retida pela EXP Tour e o liquido
--- remetido, alem do comprovante compartilhado com a escola pelo portal. Dinheiro
--- so entra aqui por acao confirmada e auditada do Admin (Fatia 2), nunca por
--- previsao — a PREVISAO (bruto/comissao/liquido/vencimento D-30) e calculada ao
--- vivo a partir de contratos + supplier_agreement, e nao vive nesta tabela.
--- A previsao vira "Pago" no extrato quando existe pelo menos uma linha aqui.
+-- Ledger de remessas EXECUTADAS ao fornecedor (contas a pagar). UMA remessa por
+-- caso (indice unico em (tenant_id, contrato_id) — impede dupla marcacao de
+-- pagamento sob concorrencia; remessa parcial/adicional e trabalho futuro com
+-- outra chave). Registra o valor bruto do programa (moeda de origem), a comissao
+-- retida pela EXP Tour e o liquido remetido, alem do comprovante compartilhado
+-- com a escola pelo portal. Dinheiro so entra aqui por acao confirmada e
+-- auditada do Admin (Fatia 2), nunca por previsao — a PREVISAO
+-- (bruto/comissao/liquido/vencimento D-30) e calculada ao vivo a partir de
+-- contratos + supplier_agreement, e nao vive nesta tabela. A previsao vira
+-- "Pago" no extrato quando existe uma linha aqui.
 create table if not exists supplier_payout (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
@@ -1654,5 +1656,7 @@ create table if not exists supplier_payout (
   updated_at timestamptz
 );
 create index if not exists idx_supplier_payout_supplier on supplier_payout(supplier_id, paid_at desc);
-create index if not exists idx_supplier_payout_contrato on supplier_payout(contrato_id);
+-- UNICO: uma remessa por caso. Guarda de banco contra dupla marcacao de
+-- pagamento (o check-then-insert da aplicacao nao basta sob concorrencia).
+create unique index if not exists idx_supplier_payout_contrato on supplier_payout(tenant_id, contrato_id);
 alter table if exists supplier_payout enable row level security;
