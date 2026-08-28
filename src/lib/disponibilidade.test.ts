@@ -33,6 +33,7 @@ test("validarIntake: rejeita data, status e capacidade invalidos", () => {
   assert.equal(validarIntake({ startDate: "2026-09-15", status: "sold_out" }).ok, false);
   assert.equal(validarIntake({ startDate: "2026-09-15", capacity: "-1" }).ok, false);
   assert.equal(validarIntake({ startDate: "2026-09-15", capacity: "3.5" }).ok, false);
+  assert.equal(validarIntake({ startDate: "2026-09-15", capacity: "999999" }).ok, false); // acima do teto
 });
 
 test("validarPrograma: exige nome; normaliza duracao e idioma", () => {

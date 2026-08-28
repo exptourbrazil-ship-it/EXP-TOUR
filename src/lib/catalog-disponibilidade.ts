@@ -50,17 +50,23 @@ export async function garantirCampusDoFornecedor(
 
   const { data: sup } = await supabase
     .from("supplier")
-    .select("display_name, country_code")
+    .select("display_name, country_code, tenant_id")
     .eq("id", supplierId)
     .maybeSingle();
+  if (!sup) throw new Error("Fornecedor não encontrado.");
+  // POSSE de tenant: o fornecedor tem que ser do tenant vigente (nao criar
+  // catalogo sob o tenant errado se um supplierId de outro tenant chegar).
+  if ((sup as { tenant_id?: string }).tenant_id !== tenantId) {
+    throw new Error("Fornecedor de outro tenant.");
+  }
 
-  const country = (sup as { country_code?: string | null } | null)?.country_code;
+  const country = (sup as { country_code?: string | null }).country_code;
   const { data: criado, error } = await supabase
     .from("campus")
     .insert({
       tenant_id: tenantId,
       supplier_id: supplierId,
-      name: (sup as { display_name?: string } | null)?.display_name || "Unidade principal",
+      name: (sup as { display_name?: string }).display_name || "Unidade principal",
       country_code: country && /^[A-Za-z]{2}$/.test(country) ? country.toUpperCase() : "ZZ",
       city: "(a definir)",
       timezone: "UTC",
@@ -69,9 +75,24 @@ export async function garantirCampusDoFornecedor(
     })
     .select("id")
     .single();
-  if (error || !criado) {
-    throw new Error(`Falha ao provisionar o campus do fornecedor: ${error?.message ?? "sem retorno"}`);
+
+  if (error) {
+    // Corrida: outra execucao criou o campus rascunho primeiro (indice unico
+    // parcial idx_campus_supplier_draft). Re-seleciona e devolve o existente.
+    if ((error as { code?: string }).code === "23505") {
+      const { data: agora } = await supabase
+        .from("campus")
+        .select("id")
+        .eq("supplier_id", supplierId)
+        .is("archived_at", null)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (agora?.id) return agora.id as string;
+    }
+    throw new Error(`Falha ao provisionar o campus do fornecedor: ${error.message}`);
   }
+  if (!criado) throw new Error("Falha ao provisionar o campus do fornecedor.");
   return criado.id as string;
 }
 

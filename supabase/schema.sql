@@ -1518,3 +1518,9 @@ create table if not exists product_availability_log (
 );
 create index if not exists idx_product_availability_log on product_availability_log(product_id, created_at);
 alter table if exists product_availability_log enable row level security;
+
+-- Um unico campus AUTO-PROVISIONADO (rascunho) por fornecedor: guarda contra
+-- corrida no SELECT-then-INSERT de garantirCampusDoFornecedor (duplo clique,
+-- escola+admin ao mesmo tempo). Campus 'active' multiplos continuam permitidos
+-- (Edvisor e multi-campus); so o placeholder de rascunho e unico por supplier.
+create unique index if not exists idx_campus_supplier_draft on campus(supplier_id) where status = 'draft';
