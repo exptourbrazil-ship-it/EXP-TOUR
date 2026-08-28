@@ -105,8 +105,28 @@ export async function listarPendenciasDoFornecedor(
         .in("titular_id", titularIds)
     : { data: [] as DocRow[] };
 
-  const entrada = montarContratosPendencia(contratos as ContratoRow[], (docs ?? []) as DocRow[]);
+  // Contagem GLOBAL de contratos por titular (igual ao cron): um doc de nivel-
+  // titular so anexa quando o titular tem UM unico contrato no total — se ele
+  // tem contrato em outra escola tambem, nao anexa (evita pendencia fantasma).
+  const porTitular = await contarContratosPorTitular(supabase, titularIds);
+  const entrada = montarContratosPendencia(contratos as ContratoRow[], (docs ?? []) as DocRow[], porTitular);
   return derivarPendencias(hojeISO(), entrada);
+}
+
+// Contagem GLOBAL (todas as escolas) de contratos por titular. Usada para a
+// regra do documento de nivel-titular, sem vazar dados (so conta, nao le nada
+// de outra escola).
+async function contarContratosPorTitular(
+  supabase: SupabaseClient,
+  titularIds: string[]
+): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  if (!titularIds.length) return mapa;
+  const { data } = await supabase.from("contratos").select("titular_id").in("titular_id", titularIds);
+  for (const r of (data ?? []) as { titular_id: string | null }[]) {
+    if (r.titular_id) mapa.set(r.titular_id, (mapa.get(r.titular_id) ?? 0) + 1);
+  }
+  return mapa;
 }
 
 // Pendencias de UM contrato do fornecedor (para o selo no detalhe do estudante).
@@ -131,7 +151,12 @@ export async function pendenciasDoContratoFornecedor(
         .eq("titular_id", c.titular_id)
     : { data: [] as DocRow[] };
 
-  const entrada = montarContratosPendencia([c], (docs ?? []) as DocRow[]);
+  // Contagem GLOBAL (igual ao cron): doc de nivel-titular so anexa se o titular
+  // tem 1 unico contrato no total.
+  const porTitular = c.titular_id
+    ? await contarContratosPorTitular(supabase, [c.titular_id])
+    : new Map<string, number>();
+  const entrada = montarContratosPendencia([c], (docs ?? []) as DocRow[], porTitular);
   return derivarPendencias(hojeISO(), entrada);
 }
 
