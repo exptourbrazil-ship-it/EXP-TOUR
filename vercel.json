@@ -11,6 +11,7 @@
     { "path": "/api/cron/materializar-tasks", "schedule": "0 7 * * *" },
     { "path": "/api/cron/expirar-cotacoes", "schedule": "0 5 * * *" },
     { "path": "/api/cron/alertar-fornecedor", "schedule": "0 8 * * *" },
-    { "path": "/api/cron/conferir-faturas", "schedule": "0 9 * * *" }
+    { "path": "/api/cron/conferir-faturas", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/materiais-vencidos", "schedule": "0 10 * * *" }
   ]
 }

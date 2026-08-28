@@ -27,6 +27,7 @@ type Material = {
 };
 
 const IDIOMA_LABEL: Record<string, string> = { en: "EN", pt: "PT", es: "ES" };
+const HOJE_ISO = new Date().toISOString().slice(0, 10);
 
 const card: React.CSSProperties = { border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16 };
 const inputCls: React.CSSProperties = { width: "100%", borderRadius: 8, border: "1px solid #cbb98f", padding: "7px 9px", fontSize: 14, marginTop: 3 };
@@ -176,7 +177,12 @@ export default function MateriaisClient({ materiais }: { materiais: Material[] }
           {materiais.map((m) => (
             <div key={m.id} style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600, color: "#042f1b" }}>{m.titulo}</div>
+                <div style={{ fontWeight: 600, color: "#042f1b" }}>
+                  {m.titulo}
+                  {m.validade && m.validade < HOJE_ISO ? (
+                    <span style={{ marginLeft: 8, background: "#fde8e8", color: "#b91c1c", borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 600 }}>vencido</span>
+                  ) : null}
+                </div>
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
                   {TIPO_MATERIAL_LABEL[m.tipo as TipoMaterial] || m.tipo} · {IDIOMA_LABEL[m.idioma] || m.idioma}
                   {m.programa ? ` · ${m.programa}` : ""}

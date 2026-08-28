@@ -133,6 +133,100 @@ export async function arquivarMaterial(
   return { ok: true };
 }
 
+// ── Área do Cliente ─────────────────────────────────────────────────────────
+// Materiais que a escola marcou como EXPOSTOS AO CLIENTE (permissao='cliente'),
+// ativos e NÃO vencidos. Filtrado pelo supplier do contrato do cliente.
+export async function listarMateriaisCliente(supabase: SupabaseClient, supplierId: string, hojeISO: string): Promise<Material[]> {
+  const { data } = await supabase
+    .from("material")
+    .select(COLS)
+    .eq("supplier_id", supplierId)
+    .eq("permissao", "cliente")
+    .is("archived_at", null)
+    .or(`validade.is.null,validade.gte.${hojeISO}`)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map(mapRow);
+}
+
+// Download de material pelo CLIENTE: só arquivo de material 'cliente', ativo e
+// não vencido, do supplier informado (o do contrato do cliente).
+export async function materialClienteParaDownload(
+  supabase: SupabaseClient,
+  supplierId: string,
+  id: string,
+  hojeISO: string
+): Promise<{ storagePath: string; nomeArquivo: string | null } | null> {
+  const { data } = await supabase
+    .from("material")
+    .select("supplier_id, permissao, storage_path, nome_arquivo, archived_at, validade")
+    .eq("id", id)
+    .maybeSingle();
+  const r = data as { supplier_id?: string; permissao?: string; storage_path?: string | null; nome_arquivo?: string | null; archived_at?: string | null; validade?: string | null } | null;
+  if (!r || r.supplier_id !== supplierId || r.permissao !== "cliente" || r.archived_at || !r.storage_path) return null;
+  if (r.validade && String(r.validade) < hojeISO) return null; // vencido sai de circulação
+  return { storagePath: r.storage_path, nomeArquivo: r.nome_arquivo ?? null };
+}
+
+// ── Admin (consultores) ─────────────────────────────────────────────────────
+export type MaterialAdmin = Material & { supplierId: string; supplierNome: string | null; vencido: boolean };
+
+// Biblioteca de materiais para o admin (do tenant), opcionalmente filtrada por
+// fornecedor. Ativos (não arquivados). Marca os vencidos.
+export async function listarMateriaisAdmin(
+  supabase: SupabaseClient,
+  tenantId: string,
+  hojeISO: string,
+  supplierId?: string
+): Promise<MaterialAdmin[]> {
+  let q = supabase
+    .from("material")
+    .select(COLS + ", supplier_id, supplier:supplier(display_name)")
+    .eq("tenant_id", tenantId)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false });
+  if (supplierId) q = q.eq("supplier_id", supplierId);
+  const { data } = await q;
+  return (data ?? []).map((r: any) => {
+    const sup = Array.isArray(r.supplier) ? r.supplier[0] : r.supplier;
+    return {
+      ...mapRow(r),
+      supplierId: r.supplier_id,
+      supplierNome: sup?.display_name ?? null,
+      vencido: !!r.validade && String(r.validade) < hojeISO,
+    };
+  });
+}
+
+// Download de material pelo ADMIN: posse por tenant (materiais são do tenant).
+export async function materialAdminParaDownload(
+  supabase: SupabaseClient,
+  tenantId: string,
+  id: string
+): Promise<{ storagePath: string; nomeArquivo: string | null } | null> {
+  const { data } = await supabase
+    .from("material")
+    .select("tenant_id, storage_path, nome_arquivo, archived_at")
+    .eq("id", id)
+    .maybeSingle();
+  const r = data as { tenant_id?: string; storage_path?: string | null; nome_arquivo?: string | null; archived_at?: string | null } | null;
+  if (!r || r.tenant_id !== tenantId || r.archived_at || !r.storage_path) return null;
+  return { storagePath: r.storage_path, nomeArquivo: r.nome_arquivo ?? null };
+}
+
+// ── Cron de validade ────────────────────────────────────────────────────────
+export type MaterialVencido = { id: string; supplierId: string; titulo: string; validade: string | null };
+
+// Materiais ATIVOS já vencidos (validade < hoje), para o cron avisar a escola.
+export async function materiaisVencidos(supabase: SupabaseClient, hojeISO: string): Promise<MaterialVencido[]> {
+  const { data } = await supabase
+    .from("material")
+    .select("id, supplier_id, titulo, validade")
+    .is("archived_at", null)
+    .not("validade", "is", null)
+    .lt("validade", hojeISO);
+  return (data ?? []).map((r: any) => ({ id: r.id, supplierId: r.supplier_id, titulo: r.titulo, validade: r.validade ?? null }));
+}
+
 // Dados para o download de um material por ARQUIVO. Posse: só devolve se o
 // material for deste fornecedor e não arquivado. Null = nada a servir.
 export async function materialParaDownload(
