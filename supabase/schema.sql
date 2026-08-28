@@ -1616,3 +1616,43 @@ create index if not exists idx_fee_source_submission on fee(source_submission_id
 alter table if exists price_submission drop constraint if exists price_submission_status_check;
 alter table if exists price_submission add constraint price_submission_status_check
   check (status in ('draft','pending_admin','processing','approved','rejected'));
+
+-- ============================================================================
+-- Extrato financeiro do fornecedor — repasses / pagamento as escolas (D-30)
+-- (doc 05 secao 2, doc 06 secao 3.6). Aplicar tambem no SQL Editor de prod.
+-- ============================================================================
+-- Prazo de pagamento por fornecedor: quantos dias ANTES do inicio do programa
+-- a remessa vence (padrao D-30). Configuravel por instituicao (doc 05: "por que
+-- configuravel, e nao fixo") — algumas escolas exigem antecipado para a LOA.
+alter table if exists supplier add column if not exists prazo_pagamento_dias int not null default 30;
+
+-- Ledger de remessas EXECUTADAS ao fornecedor (contas a pagar). Uma linha por
+-- pagamento efetivamente enviado, APPEND-ONLY: registra o valor bruto do
+-- programa (moeda de origem), a comissao retida pela EXP Tour e o liquido
+-- remetido, alem do comprovante compartilhado com a escola pelo portal. Dinheiro
+-- so entra aqui por acao confirmada e auditada do Admin (Fatia 2), nunca por
+-- previsao — a PREVISAO (bruto/comissao/liquido/vencimento D-30) e calculada ao
+-- vivo a partir de contratos + supplier_agreement, e nao vive nesta tabela.
+-- A previsao vira "Pago" no extrato quando existe pelo menos uma linha aqui.
+create table if not exists supplier_payout (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  currency char(3) not null,
+  gross_amount numeric(14,2) not null,             -- bruto do programa (moeda de origem)
+  commission_amount numeric(14,2) not null default 0, -- comissao retida pela EXP Tour
+  net_amount numeric(14,2) not null,               -- liquido efetivamente remetido
+  due_date date,                                   -- vencimento previsto (D-30) na execucao
+  reference text,                                  -- referencia externa da remessa (TED/wire/swift)
+  proof_storage_path text,                         -- comprovante no bucket privado documentos-fornecedor
+  proof_filename text,
+  notes text,
+  paid_at timestamptz not null default now(),
+  paid_by text,                                    -- usuario admin que executou
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+create index if not exists idx_supplier_payout_supplier on supplier_payout(supplier_id, paid_at desc);
+create index if not exists idx_supplier_payout_contrato on supplier_payout(contrato_id);
+alter table if exists supplier_payout enable row level security;
