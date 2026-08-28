@@ -14,6 +14,8 @@ export type DocPendencia = {
   origem: string | null; // 'zoho' | 'admin' | 'titular' | 'sistema' | 'fornecedor'
   status: string | null; // 'aprovado' | 'rejeitado' | 'pendente' | 'recebido' | null
   compartilhado: boolean;
+  id?: string; // id do documento (usado pelos alertas para dedupe/roteamento)
+  enviadoPor?: string | null; // supplier_user que enviou (documento_devolvido)
 };
 
 export type ContratoPendencia = {
@@ -40,6 +42,9 @@ export type Pendencia = {
   idadeDias: number | null; // desde o gatilho (null quando nao ha data base)
   prazoDias: number | null; // prazo relativo ao gatilho (LOA), quando aplicavel
   severidade: Severidade;
+  // Metadados usados pelos alertas por e-mail (nao pela UI):
+  refId?: string; // id estavel do gatilho (documento_devolvido -> id do doc)
+  destinatarioSupplierUserId?: string | null; // quem enviou (documento_devolvido)
 };
 
 export type ConfigPendencias = {
@@ -97,6 +102,8 @@ function pendenciasDoContrato(
         idadeDias: null,
         prazoDias: null,
         severidade: "urgente",
+        refId: d.id,
+        destinatarioSupplierUserId: d.enviadoPor ?? null,
       });
     }
   }

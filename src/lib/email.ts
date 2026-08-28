@@ -340,6 +340,55 @@ export async function enviarConviteFornecedorEmail(
   return enviarViaResend(t, destinatario, "convite_fornecedor", subject, templateConviteFornecedor(t, nome, idioma, loginUrl));
 }
 
+// ---- Portal do Fornecedor: alerta operacional (matriz 1-4) ------------------
+// Generico: assunto + um paragrafo de contexto + UM botao de acao que leva a
+// tela certa do portal (apos o login por codigo). Bilingue (o chamador passa o
+// texto ja no idioma do usuario). Marca fixa EXP Tour (portal de parceiros).
+
+function templateAlertaFornecedor(
+  t: EmailTheme,
+  nome: string,
+  idioma: string,
+  dados: { titulo: string; contexto: string; botaoLabel: string; botaoUrl: string }
+) {
+  const en = idioma !== "pt";
+  const saudacao = en
+    ? (nome || "").trim().split(" ")[0]
+      ? `Hello, ${(nome || "").trim().split(" ")[0]}!`
+      : "Hello!"
+    : saudacaoDe(nome);
+  const rodape = en ? "EXP Tour — Partner Portal" : "EXP Tour — Portal do Parceiro";
+
+  const corpo = `<p style="color:${t.ink};font-size:18px;margin:0 0 16px;">${saudacao}</p>
+<p style="color:${t.ink};font-size:16px;margin:0 0 8px;font-weight:bold;">${escaparHtml(dados.titulo)}</p>
+<p style="color:${t.ink};font-size:15px;margin:0 0 4px;">${escaparHtml(dados.contexto)}</p>
+<table role="presentation"><tbody>${botaoRow(t, dados.botaoUrl, dados.botaoLabel)}</tbody></table>`;
+  return layout(t, { corpo, footer: rodape });
+}
+
+// Envia um alerta operacional ao usuario do fornecedor. Lanca em caso de falha
+// (o cron trata como erro e segue). Registra em email_logs (alerta_fornecedor).
+export async function enviarAlertaFornecedorEmail(
+  destinatario: string,
+  nome: string,
+  idioma: string,
+  dados: { subject: string; titulo: string; contexto: string; botaoLabel: string; botaoUrl: string }
+) {
+  const t = resolveTheme("exp-tour");
+  return enviarViaResend(
+    t,
+    destinatario,
+    "alerta_fornecedor",
+    dados.subject,
+    templateAlertaFornecedor(t, nome, idioma, {
+      titulo: dados.titulo,
+      contexto: dados.contexto,
+      botaoLabel: dados.botaoLabel,
+      botaoUrl: dados.botaoUrl,
+    })
+  );
+}
+
 // ---- Confirmacao de aceite do Termo de Adesao ------------------------------
 
 type DadosAceite = {

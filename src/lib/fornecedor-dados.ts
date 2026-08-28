@@ -29,21 +29,34 @@ type ContratoRow = {
   titular_id: string | null;
 };
 type DocRow = {
+  id?: string;
   contrato_id: string | null;
   titular_id: string | null;
   tipo_documento: string;
   origem: string | null;
   status: string | null;
   compartilhado_fornecedor: boolean | null;
+  enviado_por_supplier_user?: string | null;
 };
+
+const DOC_COLS_PENDENCIA =
+  "id, contrato_id, titular_id, tipo_documento, origem, status, compartilhado_fornecedor, enviado_por_supplier_user";
 
 // Associa os documentos a cada contrato e monta a entrada do motor de pendencias.
 // Um doc de nivel-titular (contrato_id null) so entra no contrato quando aquele
 // titular tem UM unico contrato no conjunto (evita cruzar docs entre contratos).
-function montarContratosPendencia(contratos: ContratoRow[], docs: DocRow[]): ContratoPendencia[] {
-  const contratosPorTitular = new Map<string, number>();
-  for (const c of contratos) {
-    if (c.titular_id) contratosPorTitular.set(c.titular_id, (contratosPorTitular.get(c.titular_id) ?? 0) + 1);
+function montarContratosPendencia(
+  contratos: ContratoRow[],
+  docs: DocRow[],
+  contratosPorTitularGlobal?: Map<string, number>
+): ContratoPendencia[] {
+  // Contagem de contratos por titular: global quando fornecida (varredura de
+  // varios fornecedores no cron), senao local ao conjunto recebido.
+  const contratosPorTitular = contratosPorTitularGlobal ?? new Map<string, number>();
+  if (!contratosPorTitularGlobal) {
+    for (const c of contratos) {
+      if (c.titular_id) contratosPorTitular.set(c.titular_id, (contratosPorTitular.get(c.titular_id) ?? 0) + 1);
+    }
   }
   const idsValidos = new Set(contratos.map((c) => c.id));
 
@@ -52,6 +65,8 @@ function montarContratosPendencia(contratos: ContratoRow[], docs: DocRow[]): Con
     origem: d.origem ?? null,
     status: d.status ?? null,
     compartilhado: d.compartilhado_fornecedor === true,
+    id: d.id,
+    enviadoPor: d.enviado_por_supplier_user ?? null,
   });
 
   return contratos.map((c) => {
@@ -86,7 +101,7 @@ export async function listarPendenciasDoFornecedor(
   const { data: docs } = titularIds.length
     ? await supabase
         .from("documentos")
-        .select("contrato_id, titular_id, tipo_documento, origem, status, compartilhado_fornecedor")
+        .select(DOC_COLS_PENDENCIA)
         .in("titular_id", titularIds)
     : { data: [] as DocRow[] };
 
@@ -112,7 +127,7 @@ export async function pendenciasDoContratoFornecedor(
   const { data: docs } = c.titular_id
     ? await supabase
         .from("documentos")
-        .select("contrato_id, titular_id, tipo_documento, origem, status, compartilhado_fornecedor")
+        .select(DOC_COLS_PENDENCIA)
         .eq("titular_id", c.titular_id)
     : { data: [] as DocRow[] };
 
@@ -265,4 +280,71 @@ export async function listarDocumentosDoFornecedor(
     status: d.status ?? null,
     criadoEm: d.created_at ?? null,
   }));
+}
+
+// ── Alertas por e-mail (cron) ───────────────────────────────────────────────
+// Dados de TODOS os fornecedores para o cron de alertas: por fornecedor, as
+// pendencias (matriz 1-4) e os usuarios ativos (para rotear os e-mails).
+export type DadosAlertaFornecedor = {
+  supplierId: string;
+  pendencias: Pendencia[];
+  usuarios: UsuarioFornecedorAlertaRow[];
+};
+export type UsuarioFornecedorAlertaRow = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  role: string;
+  language: string | null;
+  active: boolean;
+};
+
+export async function dadosParaAlertasFornecedor(
+  supabase: SupabaseClient
+): Promise<DadosAlertaFornecedor[]> {
+  const { data: contratos } = await supabase
+    .from("contratos")
+    .select("id, estudante_nome, cancelado_em, created_at, titular_id, supplier_id")
+    .not("supplier_id", "is", null);
+  if (!contratos?.length) return [];
+
+  // Contagem GLOBAL de contratos por titular (regra do doc de nivel-titular).
+  const porTitular = new Map<string, number>();
+  for (const c of contratos as (ContratoRow & { supplier_id: string })[]) {
+    if (c.titular_id) porTitular.set(c.titular_id, (porTitular.get(c.titular_id) ?? 0) + 1);
+  }
+
+  const titularIds = [...new Set(contratos.map((c) => c.titular_id).filter(Boolean))] as string[];
+  const { data: docs } = titularIds.length
+    ? await supabase.from("documentos").select(DOC_COLS_PENDENCIA).in("titular_id", titularIds)
+    : { data: [] as DocRow[] };
+
+  const { data: usuarios } = await supabase
+    .from("supplier_user")
+    .select("id, supplier_id, email, name, role, language, active")
+    .eq("active", true)
+    .is("archived_at", null);
+
+  // Agrupa por fornecedor.
+  const contratosPorSupplier = new Map<string, (ContratoRow & { supplier_id: string })[]>();
+  for (const c of contratos as (ContratoRow & { supplier_id: string })[]) {
+    const arr = contratosPorSupplier.get(c.supplier_id) ?? [];
+    arr.push(c);
+    contratosPorSupplier.set(c.supplier_id, arr);
+  }
+  const usuariosPorSupplier = new Map<string, UsuarioFornecedorAlertaRow[]>();
+  for (const u of (usuarios ?? []) as (UsuarioFornecedorAlertaRow & { supplier_id: string })[]) {
+    const arr = usuariosPorSupplier.get(u.supplier_id) ?? [];
+    arr.push({ id: u.id, email: u.email, name: u.name, role: u.role, language: u.language, active: u.active });
+    usuariosPorSupplier.set(u.supplier_id, arr);
+  }
+
+  const hoje = hojeISO();
+  const out: DadosAlertaFornecedor[] = [];
+  for (const [supplierId, cs] of contratosPorSupplier) {
+    const entrada = montarContratosPendencia(cs, (docs ?? []) as DocRow[], porTitular);
+    const pendencias = derivarPendencias(hoje, entrada);
+    out.push({ supplierId, pendencias, usuarios: usuariosPorSupplier.get(supplierId) ?? [] });
+  }
+  return out;
 }
