@@ -1566,3 +1566,34 @@ create table if not exists availability_confirmation (
 create index if not exists idx_avail_confirm_supplier on availability_confirmation(supplier_id, status);
 create index if not exists idx_avail_confirm_contrato on availability_confirmation(contrato_id);
 alter table if exists availability_confirmation enable row level security;
+
+-- ============================================================================
+-- Price list submission (Fase C): a escola sobe o price list, a IA extrai um
+-- RASCUNHO (jsonb, editavel), a escola aprova e o Admin publica. Nada de preco
+-- vivo aqui: a materializacao em price_template/fee (status active) so acontece
+-- na aprovacao final do Admin (fatia seguinte). Aplicar no SQL Editor de prod.
+-- ============================================================================
+create table if not exists price_submission (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  campus_id uuid references campus(id) on delete set null,
+  -- PDF de origem no bucket privado documentos-fornecedor (nao e doc de titular).
+  source_storage_path text,
+  source_filename text,
+  currency char(3),
+  -- Rascunho normalizado extraido do PDF (cursos/faixas/taxas), editavel pela escola.
+  extracted jsonb not null default '{}'::jsonb,
+  status text not null default 'draft'
+    check (status in ('draft','pending_admin','approved','rejected')),
+  extract_status text, -- 'ok' | 'sem_ia' | 'erro' (diagnostico da extracao)
+  created_by text,
+  submitted_by text, supplier_approved_at timestamptz,
+  admin_approved_by text, admin_approved_at timestamptz,
+  rejected_by text, rejected_at timestamptz, reject_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+create index if not exists idx_price_submission_supplier on price_submission(supplier_id, status);
+create index if not exists idx_price_submission_status on price_submission(tenant_id, status);
+alter table if exists price_submission enable row level security;
