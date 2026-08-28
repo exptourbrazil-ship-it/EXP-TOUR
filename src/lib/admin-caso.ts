@@ -49,6 +49,19 @@ export type CasoContrato = {
   cancelado_motivo: string | null;
   cancelado_por: string | null;
   created_at: string | null;
+  supplier_id: string | null;
+};
+
+export type CasoConfirmacao = {
+  id: string;
+  contrato_id: string | null;
+  kind: string;
+  message: string | null;
+  status: string;
+  response_note: string | null;
+  responded_by: string | null;
+  responded_at: string | null;
+  created_at: string | null;
 };
 
 export type CasoParcela = {
@@ -173,6 +186,7 @@ export type Caso = {
   parcelas: CasoParcela[];
   pagamentos: CasoPagamento[];
   documentos: CasoDocumento[];
+  confirmacoes: CasoConfirmacao[];
   comunicacao: CasoComunicacao[];
   eventos: CasoEvento[];
   excecoes: CasoExcecao[];
@@ -206,7 +220,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   const { data: contratos } = await supabase
     .from("contratos")
     .select(
-      "id, nome, valor_total, moeda, estudante_nome, estudante_sexo, estudante_data_nascimento, estudante_email, pais_destino, visto_status, cancelado_em, cancelado_tipo, cancelado_motivo, cancelado_por, created_at"
+      "id, nome, valor_total, moeda, estudante_nome, estudante_sexo, estudante_data_nascimento, estudante_email, pais_destino, visto_status, cancelado_em, cancelado_tipo, cancelado_motivo, cancelado_por, created_at, supplier_id"
     )
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });
@@ -246,6 +260,17 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });
   const documentos = (documentosData || []) as CasoDocumento[];
+
+  // Pedidos de confirmacao de disponibilidade (alerta 5) dos contratos do caso.
+  let confirmacoes: CasoConfirmacao[] = [];
+  if (contratoIds.length > 0) {
+    const { data: confData } = await supabase
+      .from("availability_confirmation")
+      .select("id, contrato_id, kind, message, status, response_note, responded_by, responded_at, created_at")
+      .in("contrato_id", contratoIds)
+      .order("created_at", { ascending: false });
+    confirmacoes = (confData || []) as CasoConfirmacao[];
+  }
 
   // Processos de excecao do titular (doc 01, Secao 4). Ordenados por abertura
   // desc; a UI separa os ativos (nao terminais) para o cabecalho do caso.
@@ -360,6 +385,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     parcelas,
     pagamentos,
     documentos,
+    confirmacoes,
     comunicacao,
     eventos,
     excecoes,

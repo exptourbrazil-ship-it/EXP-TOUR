@@ -1524,3 +1524,45 @@ alter table if exists product_availability_log enable row level security;
 -- escola+admin ao mesmo tempo). Campus 'active' multiplos continuam permitidos
 -- (Edvisor e multi-campus); so o placeholder de rascunho e unico por supplier.
 create unique index if not exists idx_campus_supplier_draft on campus(supplier_id) where status = 'draft';
+
+-- Disponibilidade de ACOMODACAO (doc 06 §3.5): por PERIODO (nao por data de
+-- inicio como o programa) e com status aberto/fechado/sob consulta. Pendura no
+-- product(kind='accommodation'). Reaproveita product_availability_log para a
+-- trilha (period_start vai no campo start_date do log). Aplicar tambem no SQL
+-- Editor de producao (ver CLAUDE.md).
+create table if not exists accommodation_availability (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  product_id uuid not null references product(id) on delete cascade,
+  period_start date not null,
+  period_end date, -- null = "em diante"
+  status text not null default 'open' check (status in ('open','closed','on_request')),
+  notes text,
+  updated_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  unique (product_id, period_start)
+);
+create index if not exists idx_accommodation_availability on accommodation_availability(product_id, period_start);
+alter table if exists accommodation_availability enable row level security;
+
+-- Pedido de confirmacao de disponibilidade (doc 06, alerta 5). O admin/consultor
+-- dispara do Caso 360 (vinculado ao contrato); a escola aceita/recusa no portal;
+-- a resposta fica registrada no caso. Aplicar no SQL Editor de producao.
+create table if not exists availability_confirmation (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  contrato_id uuid references contratos(id) on delete set null,
+  kind text not null default 'vaga' check (kind in ('vaga','adiamento','alteracao')),
+  message text,
+  status text not null default 'pending' check (status in ('pending','accepted','declined')),
+  response_note text,
+  requested_by text,        -- usuario admin que pediu
+  responded_by text,        -- supplier_user (e-mail) que respondeu
+  responded_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_avail_confirm_supplier on availability_confirmation(supplier_id, status);
+create index if not exists idx_avail_confirm_contrato on availability_confirmation(contrato_id);
+alter table if exists availability_confirmation enable row level security;

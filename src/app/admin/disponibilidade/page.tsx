@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
-import { listarProgramasComIntakes } from "@/lib/catalog-disponibilidade";
+import { listarProgramasComIntakes, listarAcomodacoesComPeriodos } from "@/lib/catalog-disponibilidade";
 import DisponibilidadeClient from "@/components/DisponibilidadeClient";
+import AcomodacaoClient from "@/components/AcomodacaoClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,12 @@ export default async function AdminDisponibilidadePage({
     .order("display_name");
 
   const escolhido = (suppliers ?? []).find((s) => s.id === supplierId) ?? null;
-  const programas = escolhido ? await listarProgramasComIntakes(supabase, escolhido.id) : [];
+  const [programas, acomodacoes] = escolhido
+    ? await Promise.all([
+        listarProgramasComIntakes(supabase, escolhido.id),
+        listarAcomodacoesComPeriodos(supabase, escolhido.id),
+      ])
+    : [[], []];
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -58,10 +64,17 @@ export default async function AdminDisponibilidadePage({
       {escolhido ? (
         <>
           <h2 className="mb-3 font-serif text-lg text-brand">{escolhido.display_name}</h2>
+          <h3 className="mb-2 font-serif text-base text-brand">Programas</h3>
           <DisponibilidadeClient
             endpoint="/api/admin/disponibilidade"
             supplierId={escolhido.id}
             programas={programas}
+          />
+          <h3 className="mb-2 mt-7 font-serif text-base text-brand">Acomodações</h3>
+          <AcomodacaoClient
+            endpoint="/api/admin/disponibilidade"
+            supplierId={escolhido.id}
+            acomodacoes={acomodacoes}
           />
         </>
       ) : (

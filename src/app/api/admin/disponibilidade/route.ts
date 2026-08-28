@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
-import { validarPrograma, validarIntake } from "@/lib/disponibilidade";
+import { validarPrograma, validarIntake, validarAcomodacao, validarPeriodo } from "@/lib/disponibilidade";
 import {
   criarPrograma,
   arquivarPrograma,
   salvarIntake,
   removerIntake,
+  criarAcomodacao,
+  arquivarAcomodacao,
+  salvarPeriodo,
+  removerPeriodo,
 } from "@/lib/catalog-disponibilidade";
 
 export const runtime = "nodejs";
@@ -67,6 +71,36 @@ export async function POST(request: Request) {
         tenantId,
         String(body?.productId || ""),
         String(body?.startDate || ""),
+        actor,
+        "admin"
+      );
+      return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 400 });
+    }
+    if (acao === "criar_acomodacao") {
+      const v = validarAcomodacao(body);
+      if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
+      const id = await criarAcomodacao(supabase, supplierId, tenantId, v.dados);
+      return NextResponse.json({ ok: true, id });
+    }
+    if (acao === "arquivar_acomodacao") {
+      const okp = await arquivarAcomodacao(supabase, supplierId, String(body?.productId || ""));
+      return okp
+        ? NextResponse.json({ ok: true })
+        : NextResponse.json({ ok: false, erro: "Acomodação não encontrada." }, { status: 404 });
+    }
+    if (acao === "salvar_periodo") {
+      const v = validarPeriodo(body);
+      if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
+      const r = await salvarPeriodo(supabase, supplierId, tenantId, String(body?.productId || ""), v.dados, actor, "admin");
+      return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 400 });
+    }
+    if (acao === "remover_periodo") {
+      const r = await removerPeriodo(
+        supabase,
+        supplierId,
+        tenantId,
+        String(body?.productId || ""),
+        String(body?.periodStart || ""),
         actor,
         "admin"
       );
