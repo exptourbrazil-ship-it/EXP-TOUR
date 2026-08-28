@@ -3,7 +3,7 @@ import { sessaoFornecedorAtual } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { garantirCampusDoFornecedor } from "@/lib/catalog-disponibilidade";
-import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao } from "@/lib/upload-seguro";
+import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao, TAMANHO_MAXIMO_BYTES } from "@/lib/upload-seguro";
 import { extrairPriceListPdf, normalizarPriceListExtraido } from "@/lib/price-list-extract";
 import { criarSubmission, atualizarExtracted, aprovarPelaEscola } from "@/lib/price-submission-service";
 import { checarELimitar } from "@/lib/rate-limit";
@@ -52,6 +52,12 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const arquivo = formData.get("arquivo") as File | null;
   if (!arquivo) return NextResponse.json({ ok: false, erro: "Envie o arquivo do price list (PDF)." }, { status: 400 });
+
+  // Teto de tamanho ANTES de ler o arquivo inteiro na memoria.
+  if (arquivo.size > TAMANHO_MAXIMO_BYTES) {
+    const mb = Math.floor(TAMANHO_MAXIMO_BYTES / (1024 * 1024));
+    return NextResponse.json({ ok: false, erro: `Arquivo acima do limite de ${mb} MB.` }, { status: 400 });
+  }
 
   const buffer = await arquivo.arrayBuffer();
   const validacao = validarArquivo(arquivo.size, buffer);

@@ -110,6 +110,7 @@ export async function atualizarExtracted(
     .from("price_submission")
     .update({ extracted, currency: extracted.currency, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .eq("supplier_id", supplierId) // defesa em profundidade (posse na propria mutacao)
     .eq("status", "draft");
   if (error) return { ok: false, erro: "Falha ao salvar o rascunho." };
   return { ok: true };
@@ -137,6 +138,7 @@ export async function aprovarPelaEscola(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("supplier_id", supplierId) // defesa em profundidade (posse na propria mutacao)
     .eq("status", "draft")
     .select("id");
   if (error) return { ok: false, erro: "Falha ao enviar o price list." };

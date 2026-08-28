@@ -246,7 +246,8 @@ export async function extrairPriceListPdf(pdfBase64: string): Promise<ResultadoE
   if (!apiKey) {
     return { ok: false, status: "sem_ia", erro: "Extracao por IA nao configurada (sem ANTHROPIC_API_KEY)." };
   }
-  const model = (process.env.PRICE_EXTRACT_MODEL || "claude-sonnet-5").trim();
+  // Default opus-5 (guia do claude-api); PRICE_EXTRACT_MODEL sobrescreve.
+  const model = (process.env.PRICE_EXTRACT_MODEL || "claude-opus-5").trim();
 
   let resp: Response;
   try {
@@ -259,7 +260,11 @@ export async function extrairPriceListPdf(pdfBase64: string): Promise<ResultadoE
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
+        // Extracao mecanica: esforco baixo e sem "thinking" — thinking e
+        // incompativel com tool_choice forcado; a saida vem direto no tool_use.
+        thinking: { type: "disabled" },
+        output_config: { effort: "low" },
         tools: [TOOL_SCHEMA],
         tool_choice: { type: "tool", name: "registrar_price_list" },
         messages: [
