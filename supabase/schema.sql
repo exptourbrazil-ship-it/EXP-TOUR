@@ -1545,3 +1545,24 @@ create table if not exists accommodation_availability (
 );
 create index if not exists idx_accommodation_availability on accommodation_availability(product_id, period_start);
 alter table if exists accommodation_availability enable row level security;
+
+-- Pedido de confirmacao de disponibilidade (doc 06, alerta 5). O admin/consultor
+-- dispara do Caso 360 (vinculado ao contrato); a escola aceita/recusa no portal;
+-- a resposta fica registrada no caso. Aplicar no SQL Editor de producao.
+create table if not exists availability_confirmation (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  contrato_id uuid references contratos(id) on delete set null,
+  kind text not null default 'vaga' check (kind in ('vaga','adiamento','alteracao')),
+  message text,
+  status text not null default 'pending' check (status in ('pending','accepted','declined')),
+  response_note text,
+  requested_by text,        -- usuario admin que pediu
+  responded_by text,        -- supplier_user (e-mail) que respondeu
+  responded_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_avail_confirm_supplier on availability_confirmation(supplier_id, status);
+create index if not exists idx_avail_confirm_contrato on availability_confirmation(contrato_id);
+alter table if exists availability_confirmation enable row level security;

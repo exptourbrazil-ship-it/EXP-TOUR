@@ -6,7 +6,9 @@ import {
   listarPendenciasDoFornecedor,
 } from "@/lib/fornecedor-dados";
 import { contarPorSeveridade } from "@/lib/fornecedor-pendencias";
+import { listarPendentesDoFornecedor } from "@/lib/confirmacao-service";
 import PendenciasLista from "./PendenciasLista";
+import ConfirmacoesFornecedor from "./ConfirmacoesFornecedor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,9 +19,10 @@ export const dynamic = "force-dynamic";
 export default async function PainelFornecedorPage() {
   const sessao = await exigirFornecedor("/fornecedor");
   const supabase = getServiceClient();
-  const [contadores, pendencias] = await Promise.all([
+  const [contadores, pendencias, confirmacoes] = await Promise.all([
     contarPainelFornecedor(supabase, sessao.supplierId),
     listarPendenciasDoFornecedor(supabase, sessao.supplierId),
+    listarPendentesDoFornecedor(supabase, sessao.supplierId),
   ]);
   const sev = contarPorSeveridade(pendencias);
 
@@ -37,6 +40,8 @@ export default async function PainelFornecedorPage() {
       <p style={{ color: "#042f1b", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         Visão geral dos seus estudantes na EXP Tour.
       </p>
+
+      <ConfirmacoesFornecedor pedidos={confirmacoes} />
 
       {pendencias.length > 0 ? (
         <div style={{ marginBottom: 24 }}>

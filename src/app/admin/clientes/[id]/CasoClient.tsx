@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao } from "@/lib/admin-caso";
+import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
   TIPOS_EXCECAO,
@@ -860,6 +861,26 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
 
   return (
     <div className="space-y-5">
+      {/* Confirmação de disponibilidade (alerta 5) */}
+      {permissoes.gerirCaso ? (
+        <ConfirmacaoAdmin
+          contratos={caso.contratos
+            .filter((c) => c.supplier_id)
+            .map((c) => ({ id: c.id, estudanteNome: c.estudante_nome, supplierId: c.supplier_id as string }))}
+          confirmacoes={caso.confirmacoes.map((c) => ({
+            id: c.id,
+            contratoId: c.contrato_id,
+            kind: c.kind,
+            message: c.message,
+            status: c.status,
+            responseNote: c.response_note,
+            respondedBy: c.responded_by,
+            respondedAt: c.responded_at,
+            createdAt: c.created_at,
+          }))}
+        />
+      ) : null}
+
       {/* Reenviar acesso ao cliente */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
         <h2 className="mb-1 font-serif text-xl text-brand">Reenviar acesso</h2>
