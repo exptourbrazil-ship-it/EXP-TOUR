@@ -1524,3 +1524,24 @@ alter table if exists product_availability_log enable row level security;
 -- escola+admin ao mesmo tempo). Campus 'active' multiplos continuam permitidos
 -- (Edvisor e multi-campus); so o placeholder de rascunho e unico por supplier.
 create unique index if not exists idx_campus_supplier_draft on campus(supplier_id) where status = 'draft';
+
+-- Disponibilidade de ACOMODACAO (doc 06 §3.5): por PERIODO (nao por data de
+-- inicio como o programa) e com status aberto/fechado/sob consulta. Pendura no
+-- product(kind='accommodation'). Reaproveita product_availability_log para a
+-- trilha (period_start vai no campo start_date do log). Aplicar tambem no SQL
+-- Editor de producao (ver CLAUDE.md).
+create table if not exists accommodation_availability (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  product_id uuid not null references product(id) on delete cascade,
+  period_start date not null,
+  period_end date, -- null = "em diante"
+  status text not null default 'open' check (status in ('open','closed','on_request')),
+  notes text,
+  updated_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  unique (product_id, period_start)
+);
+create index if not exists idx_accommodation_availability on accommodation_availability(product_id, period_start);
+alter table if exists accommodation_availability enable row level security;

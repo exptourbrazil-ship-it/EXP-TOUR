@@ -6,7 +6,14 @@
 // ou o fornecedor escolhido no admin, ai gateado por capacidade). Nenhuma escola
 // enxerga/edita o catalogo de outra: as escritas conferem product->campus->supplier.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { IntakeDados, ProgramaDados, StatusIntake } from "@/lib/disponibilidade";
+import type {
+  IntakeDados,
+  ProgramaDados,
+  StatusIntake,
+  AcomodacaoDados,
+  PeriodoDados,
+  StatusPeriodo,
+} from "@/lib/disponibilidade";
 
 export type Programa = {
   id: string;
@@ -307,6 +314,190 @@ export async function removerIntake(
     tenant_id: tenantId,
     product_id: productId,
     start_date: startDate,
+    action: "delete",
+    actor,
+    actor_kind: actorKind,
+  });
+  return { ok: true };
+}
+
+// ── Acomodacoes ─────────────────────────────────────────────────────────────
+// Espelham os programas, mas kind='accommodation', detalhe em accommodation_detail
+// e disponibilidade por PERIODO em accommodation_availability. Mesma posse
+// (product -> campus -> supplier) e mesma trilha (product_availability_log).
+
+export type Acomodacao = {
+  id: string;
+  name: string;
+  status: string | null;
+  accommodationType: string | null;
+  mealPlan: string | null;
+};
+
+export type Periodo = {
+  id: string;
+  periodStart: string;
+  periodEnd: string | null;
+  status: StatusPeriodo;
+  notes: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+};
+
+export type AcomodacaoComPeriodos = Acomodacao & { periodos: Periodo[] };
+
+function mapAcomodacao(p: any): Acomodacao {
+  const det = Array.isArray(p.detail) ? p.detail[0] : p.detail;
+  return {
+    id: p.id,
+    name: p.name,
+    status: p.status ?? null,
+    accommodationType: det?.accommodation_type ?? null,
+    mealPlan: det?.meal_plan ?? null,
+  };
+}
+
+// Acomodacoes do fornecedor JA com seus periodos (para as telas).
+export async function listarAcomodacoesComPeriodos(
+  supabase: SupabaseClient,
+  supplierId: string
+): Promise<AcomodacaoComPeriodos[]> {
+  const campusIds = await campusIdsDoFornecedor(supabase, supplierId);
+  if (campusIds.length === 0) return [];
+  const { data: prods } = await supabase
+    .from("product")
+    .select("id, name, status, detail:accommodation_detail(accommodation_type, meal_plan)")
+    .in("campus_id", campusIds)
+    .eq("kind", "accommodation")
+    .is("archived_at", null)
+    .order("name");
+  const acomodacoes = (prods ?? []).map(mapAcomodacao);
+  if (acomodacoes.length === 0) return [];
+
+  const ids = acomodacoes.map((a) => a.id);
+  const { data: disp } = await supabase
+    .from("accommodation_availability")
+    .select("id, product_id, period_start, period_end, status, notes, updated_by, updated_at")
+    .in("product_id", ids)
+    .order("period_start");
+  const porProduto = new Map<string, Periodo[]>();
+  for (const r of (disp ?? []) as any[]) {
+    const arr = porProduto.get(r.product_id) ?? [];
+    arr.push({
+      id: r.id,
+      periodStart: r.period_start,
+      periodEnd: r.period_end ?? null,
+      status: r.status,
+      notes: r.notes ?? null,
+      updatedBy: r.updated_by ?? null,
+      updatedAt: r.updated_at ?? null,
+    });
+    porProduto.set(r.product_id, arr);
+  }
+  return acomodacoes.map((a) => ({ ...a, periodos: porProduto.get(a.id) ?? [] }));
+}
+
+// Cria uma acomodacao (self-service da escola). source='supplier'.
+export async function criarAcomodacao(
+  supabase: SupabaseClient,
+  supplierId: string,
+  tenantId: string,
+  dados: AcomodacaoDados
+): Promise<string> {
+  const campusId = await garantirCampusDoFornecedor(supabase, supplierId, tenantId);
+  const { data: prod, error } = await supabase
+    .from("product")
+    .insert({
+      tenant_id: tenantId,
+      campus_id: campusId,
+      kind: "accommodation",
+      name: dados.name,
+      source: "supplier",
+      visibility: "internal",
+      status: "active",
+      default_unit: "week",
+    })
+    .select("id")
+    .single();
+  if (error || !prod) throw new Error(`Falha ao criar a acomodação: ${error?.message ?? "sem retorno"}`);
+
+  await supabase.from("accommodation_detail").upsert(
+    { product_id: prod.id, accommodation_type: dados.accommodationType, meal_plan: dados.mealPlan },
+    { onConflict: "product_id" }
+  );
+  return prod.id as string;
+}
+
+// Arquiva uma acomodacao (soft-delete), conferindo a posse.
+export async function arquivarAcomodacao(
+  supabase: SupabaseClient,
+  supplierId: string,
+  productId: string
+): Promise<boolean> {
+  const campusId = await productDoFornecedor(supabase, supplierId, productId);
+  if (!campusId) return false;
+  await supabase.from("product").update({ archived_at: new Date().toISOString() }).eq("id", productId);
+  return true;
+}
+
+// Cria/atualiza um periodo (publica na hora) + grava a trilha. Confere a posse.
+export async function salvarPeriodo(
+  supabase: SupabaseClient,
+  supplierId: string,
+  tenantId: string,
+  productId: string,
+  dados: PeriodoDados,
+  actor: string,
+  actorKind: ActorKind
+): Promise<{ ok: boolean; erro?: string }> {
+  const campusId = await productDoFornecedor(supabase, supplierId, productId);
+  if (!campusId) return { ok: false, erro: "Acomodação não encontrada." };
+
+  const { error } = await supabase.from("accommodation_availability").upsert(
+    {
+      tenant_id: tenantId,
+      product_id: productId,
+      period_start: dados.periodStart,
+      period_end: dados.periodEnd,
+      status: dados.status,
+      notes: dados.notes,
+      updated_by: actor,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "product_id,period_start" }
+  );
+  if (error) return { ok: false, erro: "Falha ao salvar a disponibilidade." };
+
+  await supabase.from("product_availability_log").insert({
+    tenant_id: tenantId,
+    product_id: productId,
+    start_date: dados.periodStart,
+    action: "upsert",
+    status: dados.status,
+    actor,
+    actor_kind: actorKind,
+  });
+  return { ok: true };
+}
+
+// Remove um periodo + grava a trilha. Confere a posse.
+export async function removerPeriodo(
+  supabase: SupabaseClient,
+  supplierId: string,
+  tenantId: string,
+  productId: string,
+  periodStart: string,
+  actor: string,
+  actorKind: ActorKind
+): Promise<{ ok: boolean; erro?: string }> {
+  const campusId = await productDoFornecedor(supabase, supplierId, productId);
+  if (!campusId) return { ok: false, erro: "Acomodação não encontrada." };
+
+  await supabase.from("accommodation_availability").delete().eq("product_id", productId).eq("period_start", periodStart);
+  await supabase.from("product_availability_log").insert({
+    tenant_id: tenantId,
+    product_id: productId,
+    start_date: periodStart,
     action: "delete",
     actor,
     actor_kind: actorKind,
