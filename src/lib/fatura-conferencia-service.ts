@@ -191,9 +191,14 @@ export async function conferirFaturaDoContrato(
     previsao: { grossAmount: caso.grossAmount, currency: caso.currency, estudanteNome: caso.estudanteNome },
   });
 
-  // extractStatus: 'ok' se todo doc presente extraiu; senão registra o problema.
-  const problemas = [gExt, nExt].filter((e) => e && e.status !== "ok").map((e) => e!.status);
-  const extractStatus = problemas.length === 0 ? "ok" : problemas.join(",");
+  // extractStatus: 'ok' só quando as duas faturas existem e extraíram; senão
+  // registra o lado ausente/problemático (diagnóstico honesto, não engana a fila).
+  const marcas: string[] = [];
+  if (!gDoc) marcas.push("gross_ausente");
+  else if (gExt && gExt.status !== "ok") marcas.push(`gross_${gExt.status}`);
+  if (!nDoc) marcas.push("net_ausente");
+  else if (nExt && nExt.status !== "ok") marcas.push(`net_${nExt.status}`);
+  const extractStatus = marcas.length === 0 ? "ok" : marcas.join(",");
 
   const currency = grossLado?.currency ?? netLado?.currency ?? caso.currency ?? null;
   return upsert(supabase, tenantId, contratoId, {

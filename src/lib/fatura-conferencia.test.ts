@@ -74,6 +74,18 @@ test("C11 comissao zero (net = gross) e permitida", () => {
   assert.equal(v.commission, 0);
 });
 
+test("C12 fatura net sem moeda -> indeterminado (nao verde falso)", () => {
+  const v = conferirFaturas({ gross: grossOk, net: { amount: 4250, currency: null }, previsao: prev });
+  assert.equal(v.status, "indeterminado");
+  assert.ok(v.divergencias.some((d) => d.campo === "Moeda net"));
+});
+
+test("C13 comissao implausivel (net com typo, muito baixo) -> indeterminado", () => {
+  const v = conferirFaturas({ gross: grossOk, net: { amount: 425, currency: "CAD" }, previsao: prev });
+  assert.equal(v.status, "indeterminado");
+  assert.ok(v.divergencias.some((d) => d.campo === "Comissão"));
+});
+
 test("similaridadeNome: idas e vindas", () => {
   assert.equal(similaridadeNome("Jose Silva", "José da Silva"), 1);
   assert.equal(similaridadeNome("", "x"), 0);

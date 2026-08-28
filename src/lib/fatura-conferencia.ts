@@ -105,11 +105,24 @@ export function conferirFaturas(input: {
     divergencias.push({ campo: "Net vs gross", fatura: fmt(netAmount), esperado: `≤ ${fmt(grossAmount)}`, severidade: "critica" });
   }
 
+  // COMISSAO IMPLAUSIVEL: net muito baixo vs gross (ex.: typo 425 em vez de 4250)
+  // gera comissao > 90% do gross — improvavel em intercambio. Trava para conferir
+  // (nunca deixa passar como verde um net com ordem de grandeza errada).
+  if (commission != null && grossAmount != null && grossAmount > 0 && commission > 0.9 * grossAmount) {
+    naoVerificado.push({ campo: "Comissão", fatura: `${fmt(commission)} (net muito baixo)`, esperado: `net plausível vs gross ${fmt(grossAmount)}`, severidade: "informativa" });
+  }
+
   // MOEDA: gross, net e contrato devem casar (entre os presentes).
   const moedas = [gross?.currency, net?.currency, previsao.currency].map((m) => (m ? m.toUpperCase() : null)).filter(Boolean) as string[];
   const moedasUnicas = [...new Set(moedas)];
   if (moedasUnicas.length > 1) {
     divergencias.push({ campo: "Moeda", fatura: moedasUnicas.join(" / "), esperado: "iguais", severidade: "critica" });
+  }
+  // Fatura presente mas SEM moeda extraida (e contrato tem moeda) -> nao da para
+  // validar a moeda daquela fatura -> indeterminado (nunca "conferida" falso).
+  if (previsao.currency) {
+    if (grossAmount != null && !gross?.currency) naoVerificado.push({ campo: "Moeda gross", fatura: "não extraída", esperado: previsao.currency.toUpperCase(), severidade: "informativa" });
+    if (netAmount != null && !net?.currency) naoVerificado.push({ campo: "Moeda net", fatura: "não extraída", esperado: previsao.currency.toUpperCase(), severidade: "informativa" });
   }
 
   // ESTUDANTE: usa o nome da gross (fallback net) vs contrato.

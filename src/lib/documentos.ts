@@ -27,8 +27,11 @@ export const TIPOS_DOCUMENTO: {
   { valor: "seguro_saude", label: "Seguro Saude", categoria: "escola", palavrasChave: ["insurance", "seguro saude", "seguro-saude"] },
   { valor: "certificado_conclusao", label: "Certificado de Conclusao", categoria: "escola", palavrasChave: ["certificado", "certificate", "certificado de conclusao", "completion certificate", "certificate of completion", "certificate of attendance"] },
   { valor: "contrato_prestacao_servicos", label: "Contrato de Prestacao de Servicos", categoria: "financeiro", palavrasChave: ["contrato de prestacao de servicos", "service agreement"] },
-  { valor: "invoice_escola", label: "Invoice da Escola (Gross)", categoria: "financeiro", palavrasChave: ["invoice gross", "gross invoice", "invoice"] },
+  // NET antes do GROSS e ambos com qualificador: "Net Invoice.pdf" contem o token
+  // "invoice", entao se o gross tivesse a chave nua "invoice" e viesse primeiro,
+  // toda fatura net cairia como gross. Aqui cada um exige gross/net explicito.
   { valor: "invoice_escola_net", label: "Invoice da Escola (Net)", categoria: "financeiro", palavrasChave: ["invoice net", "net invoice"] },
+  { valor: "invoice_escola", label: "Invoice da Escola (Gross)", categoria: "financeiro", palavrasChave: ["invoice gross", "gross invoice"] },
   { valor: "recibo_pagamento", label: "Recibo de Pagamento", categoria: "financeiro", palavrasChave: ["recibo", "receipt", "recibo de pagamento"] },
   ];
 
