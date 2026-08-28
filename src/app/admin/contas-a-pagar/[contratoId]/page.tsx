@@ -84,6 +84,15 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
                 ))}
               </ul>
             </div>
+          ) : conferencia.status === "indeterminado" ? (
+            <div className="text-sm text-amber-800">
+              <p className="mb-1">Não foi possível conferir automaticamente — verifique manualmente antes de pagar:</p>
+              <ul className="ml-4 list-disc">
+                {conferencia.divergencias.map((d, i) => (
+                  <li key={i}>{d.campo}: <b>{d.fatura}</b> (esperado {d.esperado})</li>
+                ))}
+              </ul>
+            </div>
           ) : conferencia.status === "sem_fatura" ? (
             <p className="text-sm text-neutral-600">Nenhuma fatura anexada a este caso ainda.</p>
           ) : (
@@ -108,9 +117,17 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
             currency: caso.currency,
             dueDate: caso.dueDate,
           }}
-          fatura={
-            conferencia && conferencia.valorFatura != null
+          prefillFatura={
+            // Só pré-preenche o bruto pela fatura quando a conferência é VERDE.
+            // Em divergente/indeterminado, o número da fatura vira só referência
+            // (evita o "está preenchido, é porque confere" com valor não validado).
+            conferencia?.status === "conferida" && conferencia.valorFatura != null
               ? { grossAmount: conferencia.valorFatura, currency: conferencia.currency }
+              : null
+          }
+          faturaRef={
+            conferencia && conferencia.valorFatura != null
+              ? { grossAmount: conferencia.valorFatura, currency: conferencia.currency, status: conferencia.status }
               : null
           }
         />

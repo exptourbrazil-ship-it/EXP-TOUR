@@ -1677,14 +1677,16 @@ create table if not exists fatura_conferencia (
   extracted jsonb not null default '{}'::jsonb,      -- fatura extraida (normalizada)
   valor_fatura numeric(14,2),                        -- bruto extraido da fatura
   currency char(3),
+  -- 'indeterminado' = fatura extraida mas faltou comparador essencial (valor do
+  -- contrato, moeda ou nome) — trava a fila como amarelo, nunca vira "conferida".
   status text not null default 'pendente'
-    check (status in ('pendente','conferida','divergente','sem_fatura','erro')),
+    check (status in ('pendente','conferida','divergente','indeterminado','sem_fatura','erro')),
   divergencias jsonb not null default '[]'::jsonb,   -- lista de {campo, fatura, esperado, severidade}
   extract_status text,                               -- ok | sem_ia | erro | sem_pdf
   conferido_em timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz,
-  unique (contrato_id)
+  unique (tenant_id, contrato_id)
 );
 create index if not exists idx_fatura_conferencia_tenant_status on fatura_conferencia(tenant_id, status);
 alter table if exists fatura_conferencia enable row level security;

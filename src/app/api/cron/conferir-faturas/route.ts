@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarContasAPagar } from "@/lib/payout-admin-service";
-import { conferirFaturaDoContrato, contratosSemConferencia } from "@/lib/fatura-conferencia-service";
+import { conferirFaturaDoContrato, contratosParaConferir } from "@/lib/fatura-conferencia-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +25,16 @@ export async function GET(request: Request) {
   }
 
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL as string, process.env.SUPABASE_SERVICE_ROLE_KEY as string);
-  const tenantId = await tenantIdAtual(supabase);
+  let tenantId: string;
+  try {
+    tenantId = await tenantIdAtual(supabase);
+  } catch (err) {
+    console.error("[cron/conferir-faturas] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
 
   const contas = await listarContasAPagar(supabase, tenantId);
-  const pendentes = await contratosSemConferencia(supabase, tenantId, contas.map((c) => c.contratoId));
+  const pendentes = await contratosParaConferir(supabase, tenantId, contas.map((c) => c.contratoId));
   const alvo = pendentes.slice(0, MAX_POR_RUN);
 
   const resultado = { fila: contas.length, sem_conferencia: pendentes.length, conferidos: 0, divergentes: 0, sem_fatura: 0, erros: 0 };

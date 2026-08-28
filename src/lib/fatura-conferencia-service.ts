@@ -15,7 +15,10 @@ const BUCKET_POR_ORIGEM: Record<string, string> = {
   fornecedor: "documentos-fornecedor",
 };
 
-export type StatusConferencia = "pendente" | "conferida" | "divergente" | "sem_fatura" | "erro";
+export type StatusConferencia = "pendente" | "conferida" | "divergente" | "indeterminado" | "sem_fatura" | "erro";
+
+// Teto de tamanho do PDF antes de mandar para a IA (custo/robustez).
+const PDF_MAX_BYTES = 10 * 1024 * 1024;
 
 export type Conferencia = {
   contratoId: string;
@@ -98,7 +101,7 @@ async function upsert(
     conferido_em: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  await supabase.from("fatura_conferencia").upsert(row, { onConflict: "contrato_id" });
+  await supabase.from("fatura_conferencia").upsert(row, { onConflict: "tenant_id,contrato_id" });
   return mapRow(row);
 }
 
@@ -109,10 +112,12 @@ export async function conferirFaturaDoContrato(
   tenantId: string,
   contratoId: string
 ): Promise<Conferencia> {
-  // Previsão do caso (posse por tenant embutida). Sem caso elegível -> não confere.
+  // Previsão do caso (posse por tenant embutida). Sem caso elegível -> NÃO grava
+  // nada (evita plantar linha para contrato de outro tenant / cancelado /
+  // inexistente). Só devolve o resultado efêmero.
   const caso = await obterCasoParaRepasse(supabase, tenantId, contratoId);
   if (!caso) {
-    return upsert(supabase, tenantId, contratoId, { status: "erro", extractStatus: "caso_inelegivel" });
+    return { contratoId, status: "erro", valorFatura: null, currency: null, divergencias: [], extractStatus: "caso_inelegivel", conferidoEm: null };
   }
 
   // Fatura vigente: o invoice_escola mais recente do caso.
@@ -137,6 +142,10 @@ export async function conferirFaturaDoContrato(
   const { data: blob, error: dlErr } = await supabase.storage.from(bucket).download(doc.storage_path);
   if (dlErr || !blob) {
     return upsert(supabase, tenantId, contratoId, { documentoId: doc.id, status: "erro", extractStatus: "download_falhou" });
+  }
+  // Teto de tamanho ANTES de mandar para a IA (custo/robustez).
+  if (typeof blob.size === "number" && blob.size > PDF_MAX_BYTES) {
+    return upsert(supabase, tenantId, contratoId, { documentoId: doc.id, status: "erro", extractStatus: "pdf_grande" });
   }
   const base64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
 
@@ -166,19 +175,43 @@ export async function conferirFaturaDoContrato(
   });
 }
 
-// Casos da fila que ainda NÃO têm veredito (ou têm um veredito velho): usado
-// pelo cron para conferir em lote. Retorna os contrato_ids sem conferência atual.
-export async function contratosSemConferencia(
+// Casos que o cron deve (re)conferir: sem veredito; com veredito transitório
+// (erro/pendente/sem_fatura); OU cuja fatura vigente mudou desde a conferência
+// (a escola corrigiu/subiu outra). Vereditos estáveis (conferida/divergente/
+// indeterminado) da MESMA fatura não são reprocessados (não gasta IA à toa).
+export async function contratosParaConferir(
   supabase: SupabaseClient,
   tenantId: string,
   contratoIds: string[]
 ): Promise<string[]> {
   if (!contratoIds.length) return [];
-  const { data } = await supabase
+
+  const { data: rows } = await supabase
     .from("fatura_conferencia")
-    .select("contrato_id")
+    .select("contrato_id, status, documento_id")
     .eq("tenant_id", tenantId)
     .in("contrato_id", contratoIds);
-  const jaTem = new Set((data ?? []).map((r) => (r as { contrato_id: string }).contrato_id));
-  return contratoIds.filter((id) => !jaTem.has(id));
+  const porContrato = new Map<string, { status: string; documentoId: string | null }>();
+  for (const r of (rows ?? []) as any[]) porContrato.set(r.contrato_id, { status: r.status, documentoId: r.documento_id ?? null });
+
+  // Fatura vigente (mais recente) por contrato.
+  const { data: docs } = await supabase
+    .from("documentos")
+    .select("id, contrato_id, created_at")
+    .in("contrato_id", contratoIds)
+    .eq("tipo_documento", "invoice_escola")
+    .neq("status", "rejeitado")
+    .order("created_at", { ascending: false });
+  const faturaVigente = new Map<string, string>();
+  for (const d of (docs ?? []) as any[]) if (!faturaVigente.has(d.contrato_id)) faturaVigente.set(d.contrato_id, d.id);
+
+  const alvo: string[] = [];
+  for (const id of contratoIds) {
+    const row = porContrato.get(id);
+    if (!row) { alvo.push(id); continue; } // nunca conferido
+    if (row.status === "erro" || row.status === "pendente" || row.status === "sem_fatura") { alvo.push(id); continue; }
+    const vigente = faturaVigente.get(id) ?? null;
+    if (vigente && vigente !== row.documentoId) alvo.push(id); // fatura trocada
+  }
+  return alvo;
 }

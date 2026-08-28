@@ -34,6 +34,7 @@ function selo(c: ContaAPagar): { texto: string; cor: string } | null {
 const CHIP_CONFERENCIA: Record<StatusConferencia, { texto: string; cor: string; bg: string }> = {
   conferida: { texto: "Conferida", cor: "#15803d", bg: "#e7f4ea" },
   divergente: { texto: "Divergente", cor: "#b45309", bg: "#fdf0d5" },
+  indeterminado: { texto: "Verificar", cor: "#b45309", bg: "#fdf0d5" },
   sem_fatura: { texto: "Sem fatura", cor: "#6b7280", bg: "#f0f0ef" },
   pendente: { texto: "A conferir", cor: "#6b7280", bg: "#f0f0ef" },
   erro: { texto: "Erro", cor: "#b91c1c", bg: "#fde8e8" },
@@ -54,7 +55,7 @@ function CelulaFatura({ conferencia, contratoId }: { conferencia: Conferencia | 
       >
         {chip.texto}
       </span>
-      {conferencia.status === "divergente" && conferencia.divergencias.length > 0 ? (
+      {(conferencia.status === "divergente" || conferencia.status === "indeterminado") && conferencia.divergencias.length > 0 ? (
         <div className="mt-1 text-xs text-amber-700">
           {conferencia.divergencias.map((d, i) => (
             <div key={i}>
@@ -63,7 +64,7 @@ function CelulaFatura({ conferencia, contratoId }: { conferencia: Conferencia | 
           ))}
         </div>
       ) : null}
-      {conferencia.status === "pendente" || conferencia.status === "erro" || conferencia.status === "sem_fatura" ? (
+      {conferencia.status === "pendente" || conferencia.status === "erro" || conferencia.status === "sem_fatura" || conferencia.status === "indeterminado" ? (
         <div className="mt-1">
           <ConferirFaturaButton contratoId={contratoId} label="Reconferir" />
         </div>

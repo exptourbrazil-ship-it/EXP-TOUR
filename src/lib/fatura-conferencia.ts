@@ -9,7 +9,10 @@ import type { FaturaExtraida } from "@/lib/fatura-extract";
 
 export type Severidade = "critica" | "informativa";
 export type Divergencia = { campo: string; fatura: string; esperado: string; severidade: Severidade };
-export type StatusVeredito = "conferida" | "divergente";
+// 'indeterminado' = nao deu para verificar (faltou um comparador essencial:
+// valor esperado do contrato, moeda ou nome na fatura). NUNCA vira "conferida" —
+// trava a fila para olho humano, como uma divergencia.
+export type StatusVeredito = "conferida" | "divergente" | "indeterminado";
 export type VeredictoFatura = { status: StatusVeredito; divergencias: Divergencia[] };
 
 export type PrevisaoConferencia = {
@@ -56,16 +59,21 @@ export function conferirFatura(input: {
   const { fatura, previsao } = input;
   const tol = typeof input.toleranciaValorPct === "number" && input.toleranciaValorPct >= 0 ? input.toleranciaValorPct : TOLERANCIA_VALOR_PCT;
   const divergencias: Divergencia[] = [];
+  // Comparadores essenciais que NAO deram para verificar (viram 'indeterminado'
+  // se nao houver divergencia critica — "nao verificado" nunca e "conferido").
+  const naoVerificado: Divergencia[] = [];
 
-  // MOEDA (critica): ambas presentes e diferentes.
+  // MOEDA: ambas presentes e diferentes -> critica; fatura sem moeda -> nao verificado.
   const moedaFatura = fatura.currency ? fatura.currency.toUpperCase() : null;
   const moedaPrev = previsao.currency ? previsao.currency.toUpperCase() : null;
   if (moedaFatura && moedaPrev && moedaFatura !== moedaPrev) {
     divergencias.push({ campo: "Moeda", fatura: moedaFatura, esperado: moedaPrev, severidade: "critica" });
+  } else if (!moedaFatura) {
+    naoVerificado.push({ campo: "Moeda", fatura: "não extraída", esperado: moedaPrev ?? "—", severidade: "informativa" });
   }
 
-  // VALOR (critica): fatura sem valor -> nao da para conferir; com valor ->
-  // divergencia acima da tolerancia.
+  // VALOR: fatura sem valor OU divergencia acima da tolerancia -> critica;
+  // previsao sem valor esperado -> nao verificado (nao da para comparar).
   if (fatura.grossAmount == null) {
     divergencias.push({ campo: "Valor bruto", fatura: "não extraído", esperado: fmt(previsao.grossAmount), severidade: "critica" });
   } else if (previsao.grossAmount != null && previsao.grossAmount > 0) {
@@ -73,17 +81,25 @@ export function conferirFatura(input: {
     if (diff / previsao.grossAmount > tol) {
       divergencias.push({ campo: "Valor bruto", fatura: fmt(fatura.grossAmount), esperado: fmt(previsao.grossAmount), severidade: "critica" });
     }
+  } else {
+    naoVerificado.push({ campo: "Valor bruto", fatura: fmt(fatura.grossAmount), esperado: "sem valor no contrato", severidade: "informativa" });
   }
 
-  // ESTUDANTE (critica): ambos presentes e similaridade abaixo do minimo.
+  // ESTUDANTE: ambos presentes e similaridade baixa -> critica; algum lado
+  // ausente -> nao verificado.
   if (fatura.studentName && previsao.estudanteNome) {
     if (similaridadeNome(fatura.studentName, previsao.estudanteNome) < MIN_SIMILARIDADE_NOME) {
       divergencias.push({ campo: "Estudante", fatura: fatura.studentName, esperado: previsao.estudanteNome, severidade: "critica" });
     }
+  } else {
+    naoVerificado.push({ campo: "Estudante", fatura: fatura.studentName ?? "não extraído", esperado: previsao.estudanteNome ?? "—", severidade: "informativa" });
   }
 
   const temCritica = divergencias.some((d) => d.severidade === "critica");
-  return { status: temCritica ? "divergente" : "conferida", divergencias };
+  if (temCritica) return { status: "divergente", divergencias };
+  // Sem critica, mas faltou verificar algo essencial -> indeterminado (amarelo).
+  if (naoVerificado.length > 0) return { status: "indeterminado", divergencias: naoVerificado };
+  return { status: "conferida", divergencias: [] };
 }
 
 function fmt(v: number | null): string {

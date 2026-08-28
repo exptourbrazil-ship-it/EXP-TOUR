@@ -66,12 +66,36 @@ test("C7 fatura sem valor -> divergente (nao da para conferir)", () => {
   assert.ok(v.divergencias.some((d) => d.campo === "Valor bruto" && d.fatura === "não extraído"));
 });
 
-test("C8 previsao sem valor esperado -> nao trava por valor (so o que der)", () => {
+test("C8 previsao sem valor esperado -> indeterminado (nao verificavel != conferida)", () => {
   const v = conferirFatura({
     fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000, currency: "CAD" }),
     previsao: { grossAmount: null, currency: "CAD", estudanteNome: "Maria Silva" },
   });
-  assert.equal(v.status, "conferida");
+  assert.equal(v.status, "indeterminado");
+});
+
+test("C8b fatura sem moeda -> indeterminado (nao 'conferida' falso)", () => {
+  const v = conferirFatura({
+    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000 }),
+    previsao: prev,
+  });
+  assert.equal(v.status, "indeterminado");
+});
+
+test("C8c fatura sem nome do estudante -> indeterminado", () => {
+  const v = conferirFatura({
+    fatura: normalizarFaturaExtraida({ grossAmount: 5000, currency: "CAD" }),
+    previsao: prev,
+  });
+  assert.equal(v.status, "indeterminado");
+});
+
+test("C8d valor divergente vence 'indeterminado' -> divergente (critica manda)", () => {
+  const v = conferirFatura({
+    fatura: normalizarFaturaExtraida({ grossAmount: 9000, currency: "CAD" }), // sem nome
+    previsao: prev,
+  });
+  assert.equal(v.status, "divergente"); // a critica de valor prevalece
 });
 
 test("C9 tolerancia customizada (0%) reprova qualquer diferenca", () => {
