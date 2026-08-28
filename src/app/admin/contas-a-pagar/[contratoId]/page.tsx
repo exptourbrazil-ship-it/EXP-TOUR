@@ -73,7 +73,7 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
           <h2 className="mb-1 font-serif text-lg text-brand">Conferência da fatura</h2>
           {conferencia.status === "conferida" ? (
             <p className="text-sm text-emerald-800">
-              Fatura confere com a previsão{conferencia.valorFatura != null ? ` (${conferencia.currency || ""} ${conferencia.valorFatura})` : ""}.
+              Faturas conferem: gross {conferencia.currency || ""} {conferencia.valorGross ?? "—"} · comissão {conferencia.commission ?? "—"} · net (a remeter) <b>{conferencia.valorNet ?? "—"}</b>.
             </p>
           ) : conferencia.status === "divergente" ? (
             <div className="text-sm text-amber-800">
@@ -118,16 +118,21 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
             dueDate: caso.dueDate,
           }}
           prefillFatura={
-            // Só pré-preenche o bruto pela fatura quando a conferência é VERDE.
-            // Em divergente/indeterminado, o número da fatura vira só referência
-            // (evita o "está preenchido, é porque confere" com valor não validado).
-            conferencia?.status === "conferida" && conferencia.valorFatura != null
-              ? { grossAmount: conferencia.valorFatura, currency: conferencia.currency }
+            // Só pré-preenche pelo par de faturas quando a conferência é VERDE.
+            // Em divergente/indeterminado, os números viram só referência (evita
+            // o "está preenchido, é porque confere" com valor não validado).
+            conferencia?.status === "conferida" && conferencia.valorGross != null && conferencia.valorNet != null
+              ? {
+                  grossAmount: conferencia.valorGross,
+                  commissionAmount: conferencia.commission,
+                  netAmount: conferencia.valorNet,
+                  currency: conferencia.currency,
+                }
               : null
           }
           faturaRef={
-            conferencia && conferencia.valorFatura != null
-              ? { grossAmount: conferencia.valorFatura, currency: conferencia.currency, status: conferencia.status }
+            conferencia && (conferencia.valorGross != null || conferencia.valorNet != null)
+              ? { grossAmount: conferencia.valorGross, netAmount: conferencia.valorNet, currency: conferencia.currency, status: conferencia.status }
               : null
           }
         />

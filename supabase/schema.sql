@@ -1690,3 +1690,11 @@ create table if not exists fatura_conferencia (
 );
 create index if not exists idx_fatura_conferencia_tenant_status on fatura_conferencia(tenant_id, status);
 alter table if exists fatura_conferencia enable row level security;
+
+-- Conferencia de fatura: DUAS faturas por caso (gross e net). A escola sobe a
+-- gross (invoice_escola) e a net (invoice_escola_net); a comissao sai de
+-- gross - net e o NET e o valor a remeter. Aplicar no SQL Editor de prod.
+alter table if exists fatura_conferencia add column if not exists valor_gross numeric(14,2);
+alter table if exists fatura_conferencia add column if not exists valor_net numeric(14,2);
+alter table if exists fatura_conferencia add column if not exists commission numeric(14,2);
+alter table if exists fatura_conferencia add column if not exists documento_net_id uuid references documentos(id) on delete set null;
