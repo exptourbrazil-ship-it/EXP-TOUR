@@ -1,110 +1,77 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { conferirFatura, similaridadeNome } from "./fatura-conferencia.ts";
+import { conferirFaturas, similaridadeNome, type LadoFatura } from "./fatura-conferencia.ts";
 import { normalizarFaturaExtraida } from "./fatura-extract.ts";
 
 const prev = { grossAmount: 5000, currency: "CAD", estudanteNome: "Maria Silva" };
+const grossOk: LadoFatura = { amount: 5000, currency: "CAD", studentName: "Maria Silva" };
+const netOk: LadoFatura = { amount: 4250, currency: "CAD", studentName: "Maria Silva" };
 
-test("C1 tudo bate -> conferida", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000, currency: "CAD" }),
-    previsao: prev,
-  });
+test("C1 gross+net batem -> conferida, comissao=gross-net, remeter=net", () => {
+  const v = conferirFaturas({ gross: grossOk, net: netOk, previsao: prev });
   assert.equal(v.status, "conferida");
-  assert.equal(v.divergencias.length, 0);
+  assert.equal(v.commission, 750);
+  assert.equal(v.remeter, 4250);
 });
 
-test("C2 valor dentro da tolerancia (2%) -> conferida", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5090, currency: "CAD" }),
-    previsao: prev,
-  });
+test("C2 gross dentro da tolerancia (2%) -> conferida", () => {
+  const v = conferirFaturas({ gross: { amount: 5090, currency: "CAD", studentName: "Maria Silva" }, net: netOk, previsao: prev });
   assert.equal(v.status, "conferida");
 });
 
-test("C3 valor fora da tolerancia -> divergente (critica)", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5200, currency: "CAD" }),
-    previsao: prev,
-  });
+test("C3 gross fora da tolerancia -> divergente", () => {
+  const v = conferirFaturas({ gross: { amount: 5200, currency: "CAD", studentName: "Maria Silva" }, net: netOk, previsao: prev });
   assert.equal(v.status, "divergente");
-  assert.ok(v.divergencias.some((d) => d.campo === "Valor bruto" && d.severidade === "critica"));
+  assert.ok(v.divergencias.some((d) => d.campo === "Valor gross"));
 });
 
-test("C4 moeda divergente -> divergente", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000, currency: "USD" }),
-    previsao: prev,
-  });
+test("C4 net maior que gross -> divergente (comissao negativa)", () => {
+  const v = conferirFaturas({ gross: grossOk, net: { amount: 5300, currency: "CAD" }, previsao: prev });
+  assert.equal(v.status, "divergente");
+  assert.ok(v.divergencias.some((d) => d.campo === "Net vs gross"));
+  assert.equal(v.commission, null); // net > gross -> nao calcula comissao
+});
+
+test("C5 moeda divergente entre gross e net -> divergente", () => {
+  const v = conferirFaturas({ gross: grossOk, net: { amount: 4250, currency: "USD" }, previsao: prev });
   assert.equal(v.status, "divergente");
   assert.ok(v.divergencias.some((d) => d.campo === "Moeda"));
 });
 
-test("C5 estudante trocado (Souza x Silva) -> divergente", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Souza", grossAmount: 5000, currency: "CAD" }),
-    previsao: prev,
-  });
+test("C6 falta a fatura net -> indeterminado (mas remeter/comissao null)", () => {
+  const v = conferirFaturas({ gross: grossOk, net: null, previsao: prev });
+  assert.equal(v.status, "indeterminado");
+  assert.equal(v.remeter, null);
+  assert.ok(v.divergencias.some((d) => d.campo === "Fatura net"));
+});
+
+test("C7 falta a fatura gross -> indeterminado", () => {
+  const v = conferirFaturas({ gross: null, net: netOk, previsao: prev });
+  assert.equal(v.status, "indeterminado");
+  assert.equal(v.remeter, 4250); // remeter e o net (mesmo sem gross para conferir)
+});
+
+test("C8 estudante trocado (Souza x Silva) -> divergente", () => {
+  const v = conferirFaturas({ gross: { amount: 5000, currency: "CAD", studentName: "Maria Souza" }, net: netOk, previsao: prev });
   assert.equal(v.status, "divergente");
   assert.ok(v.divergencias.some((d) => d.campo === "Estudante"));
 });
 
-test("C6 nome com acento/ordem diferente ainda bate", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "SILVA, María", grossAmount: 5000, currency: "CAD" }),
-    previsao: prev,
-  });
+test("C9 nome com acento/ordem ainda bate", () => {
+  const v = conferirFaturas({ gross: { amount: 5000, currency: "CAD", studentName: "SILVA, María" }, net: netOk, previsao: prev });
   assert.equal(v.status, "conferida");
 });
 
-test("C7 fatura sem valor -> divergente (nao da para conferir)", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", currency: "CAD" }),
-    previsao: prev,
-  });
-  assert.equal(v.status, "divergente");
-  assert.ok(v.divergencias.some((d) => d.campo === "Valor bruto" && d.fatura === "não extraído"));
-});
-
-test("C8 previsao sem valor esperado -> indeterminado (nao verificavel != conferida)", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000, currency: "CAD" }),
-    previsao: { grossAmount: null, currency: "CAD", estudanteNome: "Maria Silva" },
-  });
+test("C10 contrato sem valor esperado -> indeterminado (gross nao verificavel)", () => {
+  const v = conferirFaturas({ gross: grossOk, net: netOk, previsao: { grossAmount: null, currency: "CAD", estudanteNome: "Maria Silva" } });
   assert.equal(v.status, "indeterminado");
+  assert.equal(v.commission, 750); // comissao ainda sai das faturas
 });
 
-test("C8b fatura sem moeda -> indeterminado (nao 'conferida' falso)", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000 }),
-    previsao: prev,
-  });
-  assert.equal(v.status, "indeterminado");
-});
-
-test("C8c fatura sem nome do estudante -> indeterminado", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ grossAmount: 5000, currency: "CAD" }),
-    previsao: prev,
-  });
-  assert.equal(v.status, "indeterminado");
-});
-
-test("C8d valor divergente vence 'indeterminado' -> divergente (critica manda)", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ grossAmount: 9000, currency: "CAD" }), // sem nome
-    previsao: prev,
-  });
-  assert.equal(v.status, "divergente"); // a critica de valor prevalece
-});
-
-test("C9 tolerancia customizada (0%) reprova qualquer diferenca", () => {
-  const v = conferirFatura({
-    fatura: normalizarFaturaExtraida({ studentName: "Maria Silva", grossAmount: 5000.5, currency: "CAD" }),
-    previsao: prev,
-    toleranciaValorPct: 0,
-  });
-  assert.equal(v.status, "divergente");
+test("C11 comissao zero (net = gross) e permitida", () => {
+  const v = conferirFaturas({ gross: grossOk, net: { amount: 5000, currency: "CAD", studentName: "Maria Silva" }, previsao: prev });
+  assert.equal(v.status, "conferida");
+  assert.equal(v.commission, 0);
 });
 
 test("similaridadeNome: idas e vindas", () => {

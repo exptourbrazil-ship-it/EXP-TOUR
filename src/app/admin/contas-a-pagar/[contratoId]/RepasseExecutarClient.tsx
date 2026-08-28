@@ -11,12 +11,12 @@ type Previsao = {
   dueDate: string | null;
 };
 
-// prefillFatura: só vem preenchido quando a conferência é VERDE — aí o bruto/
-// moeda pré-preenchem o formulário. faturaRef: valor extraído da fatura para
-// EXIBIR como referência (inclusive quando divergente/indeterminado), sem tocar
+// prefillFatura: só vem preenchido quando a conferência é VERDE — aí o par
+// gross/net pré-preenche bruto+comissão+líquido. faturaRef: valores extraídos
+// para EXIBIR como referência (inclusive divergente/indeterminado), sem tocar
 // no campo.
-type Fatura = { grossAmount: number | null; currency: string | null } | null;
-type FaturaRef = { grossAmount: number | null; currency: string | null; status: string } | null;
+type Fatura = { grossAmount: number | null; commissionAmount: number | null; netAmount: number | null; currency: string | null } | null;
+type FaturaRef = { grossAmount: number | null; netAmount: number | null; currency: string | null; status: string } | null;
 
 // Formulário de execução da remessa (D-30). Pré-preenche com a previsão, mas os
 // valores são editáveis (o financeiro confere contra a fatura). Anexa o
@@ -33,16 +33,17 @@ export default function RepasseExecutarClient({
   faturaRef?: FaturaRef;
 }) {
   const router = useRouter();
-  // Bruto/moeda: só usa a fatura quando a conferência é VERDE (prefillFatura);
-  // caso contrário, cai na previsão do contrato.
-  const grossInicial = prefillFatura?.grossAmount ?? previsao.grossAmount;
-  const moedaInicial = prefillFatura?.currency || previsao.currency || "";
-  // Comissão/líquido: a previsão só é coerente se o bruto usado for o da previsão;
-  // se o bruto vem da fatura verde, começa comissão vazia (o financeiro confere).
-  const usouFatura = prefillFatura?.grossAmount != null;
+  // Quando a conferência é VERDE (prefillFatura), o par gross/net preenche
+  // bruto+comissão+líquido de uma vez (comissão = gross − net, líquido = net).
+  // Caso contrário, cai na previsão do contrato.
+  const usouFatura = prefillFatura?.grossAmount != null && prefillFatura?.netAmount != null;
+  const grossInicial = usouFatura ? prefillFatura!.grossAmount : previsao.grossAmount;
+  const commissionInicial = usouFatura ? prefillFatura!.commissionAmount : previsao.commissionAmount;
+  const netInicial = usouFatura ? prefillFatura!.netAmount : previsao.netAmount;
+  const moedaInicial = (usouFatura ? prefillFatura!.currency : previsao.currency) || "";
   const [gross, setGross] = useState(grossInicial != null ? String(grossInicial) : "");
-  const [commission, setCommission] = useState(!usouFatura && previsao.commissionAmount != null ? String(previsao.commissionAmount) : "");
-  const [net, setNet] = useState(!usouFatura && previsao.netAmount != null ? String(previsao.netAmount) : "");
+  const [commission, setCommission] = useState(commissionInicial != null ? String(commissionInicial) : "");
+  const [net, setNet] = useState(netInicial != null ? String(netInicial) : "");
   const [currency, setCurrency] = useState(moedaInicial);
   const [dueDate, setDueDate] = useState(previsao.dueDate || "");
   const [reference, setReference] = useState("");
@@ -105,9 +106,9 @@ export default function RepasseExecutarClient({
         <div>
           <label className={labelCls}>Bruto</label>
           <input type="number" step="0.01" value={gross} onChange={(e) => { setGross(e.target.value); recalcularLiquido(e.target.value, commission); }} className={inputCls} />
-          {faturaRef && faturaRef.grossAmount != null && faturaRef.status !== "conferida" ? (
+          {faturaRef && faturaRef.status !== "conferida" && (faturaRef.grossAmount != null || faturaRef.netAmount != null) ? (
             <p className="mt-1 text-xs text-amber-700">
-              Fatura (não confirmada): {faturaRef.currency || ""} {faturaRef.grossAmount} — confira antes de usar.
+              Faturas (não confirmadas): gross {faturaRef.currency || ""} {faturaRef.grossAmount ?? "—"} · net {faturaRef.netAmount ?? "—"} — confira antes de usar.
             </p>
           ) : null}
         </div>
