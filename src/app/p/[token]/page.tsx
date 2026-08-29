@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import { createClient } from "@supabase/supabase-js";
 import BrandLogo from "@/components/BrandLogo";
-import { getPublicQuote } from "@/lib/quote-issue-service";
+import { getPublicQuote, getQuoteConvertida } from "@/lib/quote-issue-service";
 import { getTenantBrand, type TenantBrand } from "@/lib/tenant-brand";
 import { tokenValidoFormato } from "@/lib/quote-issue";
 import PortalClient from "./PortalClient";
@@ -98,6 +98,39 @@ export default async function PortalEstudantePage({
   }
 
   if (!dados) {
+    // Reabertura DEPOIS do aceite: mostra o estado terminal "ja aceita" (com a
+    // marca da instancia da cotacao), em vez de "indisponivel".
+    const conv = await getQuoteConvertida(supabase, token).catch(() => null);
+    if (conv) {
+      return (
+        <Moldura brand={getTenantBrand(conv.brandSlug)} logoUrl={conv.logoUrl} nome={conv.brand}>
+          <div className="rounded-2xl border bg-[color:var(--p-surface)] border-[color:var(--p-line)] p-6 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--p-success-soft)]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--p-success)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </div>
+            <h1 className="mt-4 text-2xl text-[color:var(--p-ink)]" style={{ fontFamily: "var(--p-heading)" }}>
+              Matrícula já confirmada
+            </h1>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[color:var(--p-muted)]">
+              {conv.studentFirstName ? `${conv.studentFirstName}, esta ` : "Esta "}proposta já foi aceita. Enviamos
+              um <strong className="text-[color:var(--p-ink)]">código de acesso</strong> para o seu e-mail — entre na
+              Área do Cliente com o seu CPF e o código para acompanhar o seu programa.
+            </p>
+            <a
+              href="/"
+              className="mt-6 inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-6 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+            >
+              Ir para a Área do Cliente
+            </a>
+            <p className="mt-6 text-[11px] text-[color:var(--p-muted)] opacity-70">
+              Cotação {conv.reference} · {conv.brand}
+            </p>
+          </div>
+        </Moldura>
+      );
+    }
     return (
       <Aviso
         brand={marcaPadrao}

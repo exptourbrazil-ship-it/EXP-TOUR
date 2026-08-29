@@ -502,6 +502,51 @@ function visivelNoPortal(status: string, tokenRevokedAt: string | null): boolean
   return status === "issued" || status === "viewed" || status === "option_selected";
 }
 
+// ---------------------------------------------------------------------------
+// getQuoteConvertida — snapshot MINIMO (so marca + 1o nome + referencia) para o
+// estado terminal "matricula ja confirmada" quando o link e reaberto DEPOIS da
+// conversao (status 'converted'). Sem precos nem ids internos. Sem PII alem do
+// primeiro nome. Retorna null se a cotacao nao esta convertida.
+// ---------------------------------------------------------------------------
+
+export type QuoteConvertida = {
+  brand: string;
+  brandSlug: string | null;
+  logoUrl: string | null;
+  studentFirstName: string;
+  reference: string;
+};
+
+export async function getQuoteConvertida(
+  supabase: SupabaseClient,
+  token: string,
+): Promise<QuoteConvertida | null> {
+  const quote = await carregarQuotePorToken(supabase, token);
+  if (!quote) return null;
+  if (quote.status !== "converted") return null;
+
+  const tenantId = quote.tenant_id as string;
+  const { data: student } = await supabase
+    .from("student")
+    .select("first_name")
+    .eq("tenant_id", tenantId)
+    .eq("id", quote.student_id as string)
+    .maybeSingle();
+  const { data: tenant } = await supabase
+    .from("tenant")
+    .select("name, slug, logo_url")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  return {
+    brand: (tenant?.name as string) ?? "EXP Tour",
+    brandSlug: (tenant?.slug as string) ?? null,
+    logoUrl: (tenant?.logo_url as string) ?? null,
+    studentFirstName: (student?.first_name as string) ?? "",
+    reference: (quote.reference as string) ?? "",
+  };
+}
+
 export async function getPublicQuote(
   supabase: SupabaseClient,
   token: string,
