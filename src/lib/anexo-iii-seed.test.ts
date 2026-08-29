@@ -74,3 +74,19 @@ test("A5 prazoD30 sem data usa texto genérico", () => {
 test("A6 lista vazia -> seed vazio", () => {
   assert.deepEqual(montarAnexoIIISeed({ referencia: REF, dataInicioContrato: null, itens: [] }), []);
 });
+
+test("A7 política pré-preenchida do acordo -> politica_cancelamento + fonte cita o acordo", () => {
+  const seed = montarAnexoIIISeed({
+    referencia: REF,
+    dataInicioContrato: null,
+    itens: [
+      { grupo: "program", nome: "Curso", valor: 5000, moeda: "CAD", startDate: null, fornecedor: "ILAC", politicaPagamento: "Depósito não reembolsável; saldo 30 dias antes." },
+      { grupo: "insurance", nome: "Seguro", valor: 500, moeda: "CAD", startDate: null, fornecedor: "Guard.me", politicaPagamento: null },
+    ],
+  });
+  assert.equal(seed[0].politica_cancelamento, "Depósito não reembolsável; saldo 30 dias antes.");
+  assert.match(seed[0].fonte!, /acordo do fornecedor/);
+  // sem acordo -> política null e fonte sem menção ao acordo
+  assert.equal(seed[1].politica_cancelamento, null);
+  assert.equal(seed[1].fonte, "Cotacao 2026-12");
+});

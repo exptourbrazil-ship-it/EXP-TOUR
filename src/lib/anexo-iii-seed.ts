@@ -12,14 +12,18 @@ export type ItemCotacaoAnexo = {
   moeda: string;
   startDate: string | null; // inicio do item (define o prazo D-30 da linha)
   fornecedor: string | null; // display_name do supplier resolvido; null -> a confirmar
+  politicaPagamento?: string | null; // payment_terms do acordo vigente do fornecedor
 };
 
+// Chaves em snake_case: este objeto vira o jsonb p_anexo_iii lido pela funcao
+// SQL converter_cotacao (v_item->>'politica_cancelamento' etc.).
 export type AnexoIIIItemSeed = {
   fornecedor: string;
   natureza: string | null;
   valor: number;
   moeda: string;
   prazo: string | null;
+  politica_cancelamento: string | null; // pre-preenchido do supplier_agreement
   fonte: string | null;
   ordem: number;
 };
@@ -61,13 +65,18 @@ export function montarAnexoIIISeed(args: {
   for (const it of args.itens || []) {
     const valor = centavos(it.valor);
     if (valor <= 0) continue;
+    // Politica pre-preenchida do acordo vigente do fornecedor (payment_terms).
+    // Vazia -> null (a equipe completa no /admin/anexo-iii).
+    const politica = (it.politicaPagamento && it.politicaPagamento.trim()) || null;
     seed.push({
       fornecedor: (it.fornecedor && it.fornecedor.trim()) || "Fornecedor a confirmar",
       natureza: (it.nome && it.nome.trim()) || ROTULO_GRUPO[it.grupo] || it.grupo || null,
       valor,
       moeda: (it.moeda || "").toUpperCase() || "BRL",
       prazo: prazoD30(it.startDate || args.dataInicioContrato),
-      fonte: `Cotacao ${args.referencia}`,
+      politica_cancelamento: politica,
+      // Cita o acordo quando a politica veio dele (rastreabilidade da fonte).
+      fonte: politica ? `Cotacao ${args.referencia} · acordo do fornecedor` : `Cotacao ${args.referencia}`,
       ordem,
     });
     ordem++;

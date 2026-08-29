@@ -756,6 +756,7 @@ export type DadosConversao = {
     moeda: string;
     startDate: string | null;
     fornecedor: string | null;
+    politicaPagamento: string | null; // payment_terms do acordo vigente do fornecedor
   }>;
 };
 
@@ -835,6 +836,30 @@ export async function dadosConversaoCotacao(
     for (const s of sups ?? []) supplierNome.set(s.id as string, (s.display_name as string) ?? "");
   }
 
+  // supplier -> payment_terms do ACORDO VIGENTE (pre-preenche a politica do Anexo
+  // III). Vigente = valid_from <= hoje e (valid_until nulo ou >= hoje), nao
+  // arquivado; entre os validos, o de valid_from mais recente. Batch por supplier.
+  const hojePol = hojeBrasilISO();
+  const supplierTermos = new Map<string, string>();
+  if (supplierIds.length > 0) {
+    const { data: acordos } = await supabase
+      .from("supplier_agreement")
+      .select("supplier_id, payment_terms, valid_until")
+      .eq("tenant_id", tenantId)
+      .in("supplier_id", supplierIds)
+      .is("archived_at", null)
+      .lte("valid_from", hojePol)
+      .order("valid_from", { ascending: false });
+    for (const a of acordos ?? []) {
+      const sid = a.supplier_id as string;
+      if (supplierTermos.has(sid)) continue; // ja fixamos o mais recente valido
+      const ate = (a.valid_until as string) ?? null;
+      if (ate && ate < hojePol) continue; // vencido
+      const termos = ((a.payment_terms as string) ?? "").trim();
+      if (termos) supplierTermos.set(sid, termos);
+    }
+  }
+
   // Programa: define supplier/pais do contrato.
   const progLinha = linhas.find((i) => i.group === "program") ?? linhas[0];
   const progCampus = progLinha?.campus_id ? campusMap.get(progLinha.campus_id as string) : undefined;
@@ -847,7 +872,9 @@ export async function dadosConversaoCotacao(
   const itens = linhas.map((i) => {
     const snap = (i.product_snapshot ?? {}) as Record<string, unknown>;
     const camp = i.campus_id ? campusMap.get(i.campus_id as string) : undefined;
-    const fornecedor = camp?.supplierId ? supplierNome.get(camp.supplierId) ?? null : null;
+    const sid = camp?.supplierId ?? null;
+    const fornecedor = sid ? supplierNome.get(sid) ?? null : null;
+    const politicaPagamento = sid ? supplierTermos.get(sid) ?? null : null;
     return {
       grupo: i.group as string,
       nome: (snap.name as string) ?? (snap.nome as string) ?? null,
@@ -855,6 +882,7 @@ export async function dadosConversaoCotacao(
       moeda: (i.currency as string) || currency,
       startDate: (i.start_date as string) ?? null,
       fornecedor,
+      politicaPagamento,
     };
   });
 
