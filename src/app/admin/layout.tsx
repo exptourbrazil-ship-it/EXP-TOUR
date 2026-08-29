@@ -40,14 +40,27 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // e os tokens --p-* aplicando os styleVars do tenant no wrapper.
   const brand = getTenantBrand(process.env.CATALOGO_TENANT_SLUG ?? null);
 
+  // Titulos do admin usam `font-serif`; no tenant, isso vira a fonte de titulo
+  // da marca (Bellefair no EXP Tour, Inter no Forio). Escopado a `.admin-tenant`
+  // para nao afetar o resto do app.
+  const fonteTitulo = (
+    <style>{`.admin-tenant .font-serif{font-family:var(--p-heading)}`}</style>
+  );
+
   // Sem sessao valida (ex.: /admin/login) — sem moldura de navegacao, mas ainda
   // com a marca do tenant (para o login vestir a identidade certa).
   if (!sessao) {
-    return <div style={brand.styleVars as CSSProperties}>{children}</div>;
+    return (
+      <div className="admin-tenant" style={brand.styleVars as CSSProperties}>
+        {fonteTitulo}
+        {children}
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-brand-cream/30" style={brand.styleVars as CSSProperties}>
+    <div className="admin-tenant min-h-screen bg-brand-cream/30" style={brand.styleVars as CSSProperties}>
+      {fonteTitulo}
       <header className="bg-brand">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
           <Link href="/admin" aria-label="Início do painel">
