@@ -373,3 +373,58 @@ export async function dadosParaAlertasFornecedor(
   }
   return out;
 }
+
+// ── Resumo semanal (alerta 9) ───────────────────────────────────────────────
+// Por fornecedor: pendencias abertas (matriz 1-4), novos estudantes e novos
+// documentos DESDE `desdeISO`, e os usuarios ativos (destinatarios = todos).
+export type DadosResumoSemanal = {
+  supplierId: string;
+  pendenciasAbertas: number;
+  novosEstudantes: number;
+  novosDocumentos: number;
+  usuarios: UsuarioFornecedorAlertaRow[];
+};
+
+export async function dadosResumoSemanal(
+  supabase: SupabaseClient,
+  desdeISO: string
+): Promise<DadosResumoSemanal[]> {
+  const base = await dadosParaAlertasFornecedor(supabase); // pendencias + usuarios por supplier
+
+  // Novos estudantes (contratos criados desde a data) por fornecedor.
+  const { data: novosC } = await supabase
+    .from("contratos")
+    .select("id, supplier_id, created_at")
+    .not("supplier_id", "is", null)
+    .gte("created_at", desdeISO);
+  const novosEstudantesPor = new Map<string, number>();
+  const contratoSupplier = new Map<string, string>();
+  for (const c of (novosC ?? []) as { id: string; supplier_id: string }[]) {
+    novosEstudantesPor.set(c.supplier_id, (novosEstudantesPor.get(c.supplier_id) ?? 0) + 1);
+  }
+
+  // Mapa contrato->supplier (todos os contratos com fornecedor) para atribuir os
+  // documentos novos ao fornecedor certo.
+  const { data: todosC } = await supabase.from("contratos").select("id, supplier_id").not("supplier_id", "is", null);
+  for (const c of (todosC ?? []) as { id: string; supplier_id: string }[]) contratoSupplier.set(c.id, c.supplier_id);
+
+  // Novos documentos (criados desde a data) por fornecedor, via contrato.
+  const { data: novosD } = await supabase
+    .from("documentos")
+    .select("contrato_id, created_at")
+    .not("contrato_id", "is", null)
+    .gte("created_at", desdeISO);
+  const novosDocsPor = new Map<string, number>();
+  for (const d of (novosD ?? []) as { contrato_id: string }[]) {
+    const sup = contratoSupplier.get(d.contrato_id);
+    if (sup) novosDocsPor.set(sup, (novosDocsPor.get(sup) ?? 0) + 1);
+  }
+
+  return base.map((b) => ({
+    supplierId: b.supplierId,
+    pendenciasAbertas: b.pendencias.length,
+    novosEstudantes: novosEstudantesPor.get(b.supplierId) ?? 0,
+    novosDocumentos: novosDocsPor.get(b.supplierId) ?? 0,
+    usuarios: b.usuarios,
+  }));
+}
