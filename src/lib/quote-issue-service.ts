@@ -726,3 +726,97 @@ export async function selectQuoteOption(
 
   return { ok: true, selectedIndex: optionIndex };
 }
+
+// ---------------------------------------------------------------------------
+// dadosConversaoCotacao — dados SERVER-SIDE da opcao escolhida, para o checkout
+// (Fatia 2). Deriva do BANCO (nunca de input do estudante) o total liquido, a
+// moeda de origem, a entrada, a data de inicio, o estudante, o pais e o
+// fornecedor da opcao SELECIONADA. So retorna quando a cotacao esta apta a
+// converter (option_selected, token vivo). Retorna null caso contrario.
+// ---------------------------------------------------------------------------
+
+export type DadosConversao = {
+  tenantId: string;
+  quoteId: string;
+  optionIndex: number;
+  currency: string; // moeda de origem da opcao (o contrato nasce nela)
+  liquido: number; // total da opcao na moeda de origem
+  entrada: number; // deposit na MESMA moeda (0 se moeda difere/ausente)
+  dataInicio: string | null; // menor start_date dos itens da opcao
+  studentId: string | null; // o nome completo e resolvido no servico de checkout
+  paisDestino: string | null;
+  supplierId: string | null;
+  contratoNome: string;
+};
+
+export async function dadosConversaoCotacao(
+  supabase: SupabaseClient,
+  token: string,
+): Promise<DadosConversao | null> {
+  const quote = await carregarQuotePorToken(supabase, token);
+  if (!quote) return null;
+  if (quote.token_revoked_at) return null;
+  if (quote.status !== "option_selected") return null;
+  const selectedId = quote.selected_option_id as string | null;
+  if (!selectedId) return null;
+  const tenantId = quote.tenant_id as string;
+
+  const totais = await carregarTotaisPorOpcao(supabase, tenantId, quote.id as string);
+  const optionIndex = totais.findIndex((t) => t.option.id === selectedId);
+  if (optionIndex < 0) return null;
+  const t = totais[optionIndex];
+
+  const currency = t.currency;
+  const liquido = t.liquido;
+  const deposit = t.option.deposit_amount != null ? toNum(t.option.deposit_amount) : 0;
+  const depositCur = t.option.deposit_currency ?? null;
+  // Entrada so entra na MESMA moeda da opcao (senao viraria mistura de moedas).
+  const entrada = deposit > 0 && (!depositCur || depositCur === currency) ? deposit : 0;
+
+  // Data de inicio: menor start_date entre os itens (define a janela de parcelas).
+  const datas = t.itens.map((i) => i.startDate).filter(Boolean) as string[];
+  const dataInicio = datas.length ? datas.slice().sort()[0] : null;
+
+  // Nome do contrato: nome do item de programa; senao 1o item; senao referencia.
+  const progItem = t.itens.find((i) => i.grupo === "program") ?? t.itens[0];
+  const contratoNome = (progItem?.nome as string) || (quote.reference as string) || "Programa";
+
+  // O nome completo do estudante e resolvido no servico de checkout (fora do
+  // servico do portal publico, que so pode expor o first_name). Aqui devolvemos
+  // apenas o id.
+  const studentId = (quote.student_id as string) ?? null;
+
+  // Fornecedor + pais: via campus do item de programa da opcao selecionada.
+  let supplierId: string | null = null;
+  let paisDestino: string | null = null;
+  const { data: itensOpcao } = await supabase
+    .from("quote_item")
+    .select("\"group\", campus_id, product_snapshot")
+    .eq("tenant_id", tenantId)
+    .eq("quote_option_id", selectedId);
+  const prog = (itensOpcao ?? []).find((i) => i.group === "program") ?? (itensOpcao ?? [])[0];
+  if (prog?.campus_id) {
+    const { data: campus } = await supabase
+      .from("campus")
+      .select("supplier_id, country_code")
+      .eq("tenant_id", tenantId)
+      .eq("id", prog.campus_id as string)
+      .maybeSingle();
+    supplierId = (campus?.supplier_id as string) ?? null;
+    paisDestino = (campus?.country_code as string) ?? null;
+  }
+
+  return {
+    tenantId,
+    quoteId: quote.id as string,
+    optionIndex,
+    currency,
+    liquido,
+    entrada,
+    dataInicio,
+    studentId,
+    paisDestino,
+    supplierId,
+    contratoNome,
+  };
+}
