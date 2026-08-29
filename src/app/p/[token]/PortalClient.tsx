@@ -64,6 +64,7 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [concluido, setConcluido] = useState(false);
   const abertoRef = useRef(false);
 
   // Registra 'opened' uma vez.
@@ -75,6 +76,9 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
 
   const jaEscolhida = selectedIndex != null;
   const fx = dados.fx;
+
+  // Aceite concluido: tela terminal de sucesso (o codigo de acesso foi enviado).
+  if (concluido) return <Sucesso brand={dados.brand} />;
 
   function baixarPDF() {
     // PDF gerado no SERVIDOR (layout de marca). O proprio endpoint registra o
@@ -139,8 +143,8 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
             <path d="M20 6 9 17l-5-5" />
           </svg>
           <span>
-            Você escolheu a <strong>opção {selectedIndex! + 1}</strong>. {dados.brand} dará sequência. A
-            escolha por aqui é definitiva — fale com o seu consultor para ajustes.
+            Você escolheu a <strong>opção {selectedIndex! + 1}</strong>. Para concluir, confirme seus dados
+            e aceite o Termo de Adesão abaixo.
           </span>
         </div>
       ) : null}
@@ -182,6 +186,17 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
           />
         ))}
       </div>
+
+      {/* Checkout (so aceite): aparece depois da opcao escolhida. */}
+      {jaEscolhida ? (
+        <Checkout
+          token={token}
+          brand={dados.brand}
+          opcao={dados.options[selectedIndex!]}
+          fx={fx}
+          onConcluido={() => setConcluido(true)}
+        />
+      ) : null}
 
       {/* Cambio */}
       {fx.necessario ? (
@@ -425,6 +440,204 @@ function ResumoLinha({ rot, val, destaque }: { rot: string; val: string; destaqu
     <div className={`flex items-baseline justify-between ${destaque ? "border-t border-[color:var(--p-line)] pt-1" : ""}`}>
       <dt className="text-[color:var(--p-muted)]">{rot}</dt>
       <dd className={destaque ? "font-semibold text-[color:var(--p-ink)]" : "text-[color:var(--p-ink)] opacity-90"}>{val}</dd>
+    </div>
+  );
+}
+
+// Mascara de CPF apenas para exibicao (o servidor normaliza/valida de verdade).
+function mascararCpf(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+// Checkout (SO ACEITE, sem pagamento): confirma os dados do pagante, exibe o
+// Termo de Adesao vigente e registra o aceite -> a cotacao vira contrato e o
+// titular recebe o codigo de acesso por e-mail. Todo o dinheiro vem do servidor;
+// aqui so coletamos CPF/e-mail/telefone e o aceite (data/hora/IP/versao ficam no
+// servidor).
+function Checkout({
+  token,
+  brand,
+  opcao,
+  fx,
+  onConcluido,
+}: {
+  token: string;
+  brand: string;
+  opcao: OpcaoData;
+  fx: PublicQuote["fx"];
+  onConcluido: () => void;
+}) {
+  const [cpf, setCpf] = useState("");
+  const [email, setEmail] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [aceite, setAceite] = useState(false);
+  const [termo, setTermo] = useState<{ versao: string; conteudo: string | null } | null>(null);
+  const [carregandoTermo, setCarregandoTermo] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/public/quotes/${token}/termo`);
+        const j = await r.json();
+        if (vivo && r.ok && j.ok) setTermo({ versao: j.data.versao, conteudo: j.data.conteudo });
+      } catch {
+        /* sem termo: o botao fica bloqueado e o erro aparece ao tentar */
+      } finally {
+        if (vivo) setCarregandoTermo(false);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [token]);
+
+  const cpfLimpo = cpf.replace(/\D/g, "");
+  const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const podeEnviar = cpfLimpo.length === 11 && emailOk && aceite && !!termo && !enviando;
+
+  const totalNaMoeda = fmtMoeda(opcao.liquido, opcao.currency);
+  const totalConvertido =
+    fx.necessario && opcao.liquidoConvertido != null
+      ? fmtMoeda(opcao.liquidoConvertido, fx.presentmentCurrency)
+      : null;
+
+  async function enviar() {
+    if (!podeEnviar) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/public/quotes/${token}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpf, email: email.trim(), telefone, aceite: true }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        setErro(j?.error?.message ?? "Não foi possível concluir o aceite.");
+      } else {
+        onConcluido();
+      }
+    } catch {
+      setErro("Falha de conexão. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-2xl border border-[color:var(--p-accent)] bg-[color:var(--p-surface)] p-5 print:hidden">
+      <h2 className="titulo-portal text-xl text-[color:var(--p-ink)]">Concluir a matrícula</h2>
+      <p className="mt-1 text-sm text-[color:var(--p-muted)]">
+        Opção escolhida: <strong className="text-[color:var(--p-ink)]">{opcao.label}</strong> — {totalNaMoeda}
+        {totalConvertido ? ` (≈ ${totalConvertido})` : ""}.
+      </p>
+
+      {/* Dados do pagante */}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs font-medium text-[color:var(--p-muted)]">CPF do responsável</span>
+          <input
+            value={cpf}
+            onChange={(e) => setCpf(mascararCpf(e.target.value))}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="000.000.000-00"
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] px-3 py-2 text-[color:var(--p-ink)] outline-none focus:border-[color:var(--p-cta)]"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-[color:var(--p-muted)]">E-mail</span>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="voce@email.com"
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] px-3 py-2 text-[color:var(--p-ink)] outline-none focus:border-[color:var(--p-cta)]"
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-[color:var(--p-muted)]">Telefone (WhatsApp)</span>
+          <input
+            value={telefone}
+            onChange={(e) => setTelefone(e.target.value)}
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="(11) 99999-9999"
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] px-3 py-2 text-[color:var(--p-ink)] outline-none focus:border-[color:var(--p-cta)]"
+          />
+        </label>
+      </div>
+
+      {/* Termo de Adesao */}
+      <div className="mt-4">
+        <span className="text-xs font-medium text-[color:var(--p-muted)]">
+          Termo de Adesão{termo ? ` — versão ${termo.versao}` : ""}
+        </span>
+        <div className="mt-1 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-3 text-xs text-[color:var(--p-ink)] opacity-90">
+          {carregandoTermo ? "Carregando o termo…" : termo?.conteudo || "Termo indisponível no momento."}
+        </div>
+        <label className="mt-3 flex items-start gap-2 text-sm text-[color:var(--p-ink)]">
+          <input
+            type="checkbox"
+            checked={aceite}
+            onChange={(e) => setAceite(e.target.checked)}
+            className="mt-1 h-4 w-4 shrink-0 accent-[color:var(--p-cta)]"
+          />
+          <span>
+            Li e aceito o <strong>Termo de Adesão</strong> e autorizo {brand} a dar sequência à minha
+            matrícula. Registramos a data, hora e IP deste aceite.
+          </span>
+        </label>
+      </div>
+
+      {erro ? <AlertaErro msg={erro} /> : null}
+
+      <button
+        onClick={enviar}
+        disabled={!podeEnviar}
+        className="mt-4 min-h-[44px] w-full rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90 disabled:opacity-50 sm:w-auto"
+      >
+        {enviando ? "Concluindo…" : "Aceitar e concluir"}
+      </button>
+      <p className="mt-2 text-[11px] text-[color:var(--p-muted)] opacity-80">
+        Sem pagamento agora: o acerto das parcelas acontece depois, na sua Área do Cliente.
+      </p>
+    </section>
+  );
+}
+
+// Tela terminal apos o aceite: a cotacao virou contrato e o codigo de acesso foi
+// enviado por e-mail. Sem pagamento aqui (acontece depois, logado).
+function Sucesso({ brand }: { brand: string }) {
+  return (
+    <div className="py-10 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--p-success-soft)]">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--p-success)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7" aria-hidden="true">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </div>
+      <h1 className="titulo-portal mt-4 text-2xl text-[color:var(--p-ink)]">Matrícula confirmada!</h1>
+      <p className="mx-auto mt-2 max-w-md text-sm text-[color:var(--p-muted)]">
+        Enviamos um <strong className="text-[color:var(--p-ink)]">código de acesso</strong> para o seu
+        e-mail. Entre na Área do Cliente com o seu CPF e o código para acompanhar o seu programa e
+        combinar o pagamento das parcelas.
+      </p>
+      <a
+        href="/"
+        className="mt-6 inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-6 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+      >
+        Ir para a Área do Cliente
+      </a>
+      <p className="mt-6 text-[11px] text-[color:var(--p-muted)] opacity-70">{brand}</p>
     </div>
   );
 }
