@@ -1568,10 +1568,13 @@ declare
   v_sum numeric;
   v_neg int;
   v_item jsonb;
+  v_reference text;
+  v_fornecedor text;
+  v_prazo text;
 begin
   -- Trava a cotacao e le o estado sob lock (serializa conversoes concorrentes).
-  select status, tenant_id, selected_option_id, converted_contract_id, valid_until, token_revoked_at
-    into v_status, v_tenant, v_selected, v_converted_contract, v_valid_until, v_token_revoked
+  select status, tenant_id, selected_option_id, converted_contract_id, valid_until, token_revoked_at, reference
+    into v_status, v_tenant, v_selected, v_converted_contract, v_valid_until, v_token_revoked, v_reference
     from quote where id = p_quote_id and tenant_id = p_tenant_id for update;
   if not found then raise exception 'quote_nao_encontrada'; end if;
 
@@ -1635,6 +1638,32 @@ begin
       'pendente'
     );
   end loop;
+
+  -- Anexo III (Politica de Pagamento dos Fornecedores, Clausula 7.5.2): a cotacao
+  -- aceita vira o CONTEUDO BASE de um item por contrato — fornecedor, natureza
+  -- (programa), valor bruto, moeda e o prazo D-30 derivado da data de inicio. Os
+  -- campos de POLITICA da escola (evento, documento, consequencia, cancelamento)
+  -- ficam null para a equipe completar no /admin/anexo-iii. So na 1a conversao
+  -- (a funcao retorna cedo quando ja convertida), entao nao duplica.
+  v_fornecedor := coalesce(
+    (select display_name from supplier where id = p_supplier_id and tenant_id = v_tenant),
+    'Fornecedor a confirmar');
+  v_prazo := case
+    when p_data_inicio is not null
+      then 'Ate ' || to_char(p_data_inicio - interval '30 days', 'DD/MM/YYYY') || ' (30 dias antes do inicio)'
+    else '30 dias antes do inicio do programa'
+  end;
+  insert into anexo_iii_itens (contrato_id, fornecedor, natureza, valor, moeda, prazo, fonte, ordem)
+  values (
+    v_contrato_id,
+    v_fornecedor,
+    p_contrato_nome,
+    p_valor_total,
+    coalesce(p_moeda, 'BRL'),
+    v_prazo,
+    'Cotacao ' || coalesce(v_reference, p_quote_id::text),
+    0
+  );
 
   -- Prova imutavel do aceite (contexto 'checkout'). Idempotente pelo indice
   -- unico (titular, termo): duplo-clique/retry nao gera segunda prova.
