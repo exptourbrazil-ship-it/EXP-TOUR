@@ -95,8 +95,8 @@ export default function AdminLoginPage() {
     padding: "12px 14px",
     borderRadius: 8,
     border: "none",
-    background: "#042f1b",
-    color: "#f5ead9",
+    background: "var(--p-cta)",
+    color: "var(--p-cta-fg)",
     fontSize: 15,
     fontWeight: 600,
     cursor: carregando ? "default" : "pointer",
@@ -110,7 +110,7 @@ export default function AdminLoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#042f1b",
+        backgroundColor: "var(--p-cta)",
         padding: 24,
       }}
     >
@@ -119,7 +119,7 @@ export default function AdminLoginPage() {
         style={{
           width: "100%",
           maxWidth: 380,
-          backgroundColor: "#f5ead9",
+          backgroundColor: "var(--p-cta-fg)",
           borderRadius: 12,
           padding: 28,
           boxShadow: "0 10px 40px rgba(0,0,0,0.3)",
@@ -128,7 +128,7 @@ export default function AdminLoginPage() {
         <h1
           style={{
             fontFamily: "Bellefair, serif",
-            color: "#042f1b",
+            color: "var(--p-ink)",
             fontSize: 26,
             margin: 0,
             marginBottom: 4,
@@ -137,7 +137,7 @@ export default function AdminLoginPage() {
         >
           Painel Administrativo
         </h1>
-        <p style={{ color: "#042f1b", opacity: 0.7, fontSize: 13, textAlign: "center", marginTop: 0, marginBottom: 22 }}>
+        <p style={{ color: "var(--p-ink)", opacity: 0.7, fontSize: 13, textAlign: "center", marginTop: 0, marginBottom: 22 }}>
           {etapa === "solicitar"
             ? "Informe seu e-mail de administrador para receber um código de acesso."
             : "Digite o código de 6 dígitos que enviamos por e-mail."}
@@ -187,7 +187,7 @@ export default function AdminLoginPage() {
           <button
             type="button"
             onClick={() => { setEtapa("solicitar"); setCodigo(""); setErro(null); setInfo(null); }}
-            style={{ width: "100%", marginTop: 12, background: "none", border: "none", color: "#042f1b", fontSize: 13, textDecoration: "underline", cursor: "pointer" }}
+            style={{ width: "100%", marginTop: 12, background: "none", border: "none", color: "var(--p-ink)", fontSize: 13, textDecoration: "underline", cursor: "pointer" }}
           >
             Reenviar código
           </button>
