@@ -738,6 +738,7 @@ export async function selectQuoteOption(
 export type DadosConversao = {
   tenantId: string;
   quoteId: string;
+  reference: string;
   optionIndex: number;
   currency: string; // moeda de origem da opcao (o contrato nasce nela)
   liquido: number; // total da opcao na moeda de origem
@@ -747,6 +748,15 @@ export type DadosConversao = {
   paisDestino: string | null;
   supplierId: string | null;
   contratoNome: string;
+  // Linhas da opcao (com fornecedor resolvido) para semear o Anexo III multi-item.
+  itens: Array<{
+    grupo: string;
+    nome: string | null;
+    valor: number;
+    moeda: string;
+    startDate: string | null;
+    fornecedor: string | null;
+  }>;
 };
 
 export async function dadosConversaoCotacao(
@@ -786,29 +796,72 @@ export async function dadosConversaoCotacao(
   // apenas o id.
   const studentId = (quote.student_id as string) ?? null;
 
-  // Fornecedor + pais: via campus do item de programa da opcao selecionada.
-  let supplierId: string | null = null;
-  let paisDestino: string | null = null;
+  // Linhas da opcao + fornecedor por linha (resolvido em lote: campus->supplier).
   const { data: itensOpcao } = await supabase
     .from("quote_item")
-    .select("\"group\", campus_id, product_snapshot")
+    .select("\"group\", campus_id, product_snapshot, gross_amount, currency, start_date")
     .eq("tenant_id", tenantId)
-    .eq("quote_option_id", selectedId);
-  const prog = (itensOpcao ?? []).find((i) => i.group === "program") ?? (itensOpcao ?? [])[0];
-  if (prog?.campus_id) {
-    const { data: campus } = await supabase
+    .eq("quote_option_id", selectedId)
+    .order("sort", { ascending: true });
+  const linhas = itensOpcao ?? [];
+
+  // campus -> {supplier_id, country_code}
+  const campusIds = Array.from(new Set(linhas.map((i) => i.campus_id as string).filter(Boolean)));
+  const campusMap = new Map<string, { supplierId: string | null; country: string | null }>();
+  if (campusIds.length > 0) {
+    const { data: campi } = await supabase
       .from("campus")
-      .select("supplier_id, country_code")
+      .select("id, supplier_id, country_code")
       .eq("tenant_id", tenantId)
-      .eq("id", prog.campus_id as string)
-      .maybeSingle();
-    supplierId = (campus?.supplier_id as string) ?? null;
-    paisDestino = (campus?.country_code as string) ?? null;
+      .in("id", campusIds);
+    for (const c of campi ?? []) {
+      campusMap.set(c.id as string, {
+        supplierId: (c.supplier_id as string) ?? null,
+        country: (c.country_code as string) ?? null,
+      });
+    }
   }
+  // supplier -> display_name
+  const supplierIds = Array.from(
+    new Set(Array.from(campusMap.values()).map((c) => c.supplierId).filter(Boolean) as string[]),
+  );
+  const supplierNome = new Map<string, string>();
+  if (supplierIds.length > 0) {
+    const { data: sups } = await supabase
+      .from("supplier")
+      .select("id, display_name")
+      .eq("tenant_id", tenantId)
+      .in("id", supplierIds);
+    for (const s of sups ?? []) supplierNome.set(s.id as string, (s.display_name as string) ?? "");
+  }
+
+  // Programa: define supplier/pais do contrato.
+  const progLinha = linhas.find((i) => i.group === "program") ?? linhas[0];
+  const progCampus = progLinha?.campus_id ? campusMap.get(progLinha.campus_id as string) : undefined;
+  const supplierId = progCampus?.supplierId ?? null;
+  const paisDestino = progCampus?.country ?? null;
+
+  // Uma linha de Anexo III por item. O fornecedor sai do campus DA PROPRIA linha;
+  // linha sem campus (ex.: seguro/servico de outro provedor) fica 'a confirmar'
+  // (no motor puro) — melhor honesto do que atribuir a escola do programa por engano.
+  const itens = linhas.map((i) => {
+    const snap = (i.product_snapshot ?? {}) as Record<string, unknown>;
+    const camp = i.campus_id ? campusMap.get(i.campus_id as string) : undefined;
+    const fornecedor = camp?.supplierId ? supplierNome.get(camp.supplierId) ?? null : null;
+    return {
+      grupo: i.group as string,
+      nome: (snap.name as string) ?? (snap.nome as string) ?? null,
+      valor: toNum(i.gross_amount),
+      moeda: (i.currency as string) || currency,
+      startDate: (i.start_date as string) ?? null,
+      fornecedor,
+    };
+  });
 
   return {
     tenantId,
     quoteId: quote.id as string,
+    reference: (quote.reference as string) || "",
     optionIndex,
     currency,
     liquido,
@@ -818,5 +871,6 @@ export async function dadosConversaoCotacao(
     paisDestino,
     supplierId,
     contratoNome,
+    itens,
   };
 }

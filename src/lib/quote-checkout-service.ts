@@ -11,6 +11,7 @@
 //   5. dispara o codigo de acesso por e-mail (boas-vindas), best-effort.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarPlanoConversao } from "@/lib/parcelas";
+import { montarAnexoIIISeed } from "@/lib/anexo-iii-seed";
 import { dadosConversaoCotacao } from "@/lib/quote-issue-service";
 import { normalizarCpf, validarCpf, validarEmail, normalizarTelefone } from "@/lib/cadastro-service";
 import { gerarCodigoAcesso, hashCodigoAcesso } from "@/lib/codigo-acesso";
@@ -96,6 +97,15 @@ export async function acceptQuote(
   });
   if (!plano.ok) return { ok: false, erro: "Não foi possível montar a cobrança desta proposta.", status: 422 };
 
+  // Anexo III (Clausula 7.5.2): a cotacao aceita semeia um item-base POR LINHA da
+  // opcao (programa, acomodacao, seguro, servicos). Derivado do banco; os campos
+  // de politica da escola ficam para a equipe completar no /admin/anexo-iii.
+  const anexoIII = montarAnexoIIISeed({
+    itens: dados.itens,
+    dataInicioContrato: dados.dataInicio,
+    referencia: dados.reference,
+  });
+
   // Conversao transacional (tudo-ou-nada, idempotente por cotacao).
   const { data: rpc, error } = await supabase.rpc("converter_cotacao", {
     p_quote_id: dados.quoteId,
@@ -118,6 +128,7 @@ export async function acceptQuote(
     p_ip: ctx.ip,
     p_user_agent: ctx.userAgent,
     p_option_index: dados.optionIndex,
+    p_anexo_iii: anexoIII,
   });
   if (error) {
     const { erro, status } = mapErroRpc(error.message || "");
