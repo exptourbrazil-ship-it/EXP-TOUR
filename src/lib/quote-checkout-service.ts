@@ -131,12 +131,13 @@ export async function acceptQuote(
   // derruba o aceite (o contrato ja esta gravado). O codigo SEMPRE vai para o
   // e-mail JA cadastrado do titular (nao o digitado): um titular pre-existente
   // recebe no seu proprio e-mail, fechando tomada de conta via CPF alheio.
+  //
+  // SO na PRIMEIRA conversao (jaConvertida=false): num duplo-submit concorrente,
+  // o perdedor recebe jaConvertida=true (titular_id null) — se ele tambem
+  // enviasse, invalidaria o codigo que o vencedor acabou de emitir. Reenvio de
+  // codigo e responsabilidade do fluxo de login, com throttle proprio.
+  const titularId = !jaConvertida ? ((rpc?.titular_id as string) ?? null) : null;
   try {
-    let titularId = (rpc?.titular_id as string) ?? null;
-    if (!titularId) {
-      const { data } = await supabase.from("titulares").select("id").eq("cpf", cpf).maybeSingle();
-      titularId = (data?.id as string) ?? null;
-    }
     if (titularId) {
       const { data: tit } = await supabase
         .from("titulares")
