@@ -321,3 +321,87 @@ export function validarPlanoAplicavel(args: {
   }
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// CONVERSAO DA COTACAO -> CONTRATO (checkout, so aceite) — plano PURO
+// ---------------------------------------------------------------------------
+// Monta o cronograma de parcelas do contrato nascido do checkout a partir do
+// total liquido da opcao escolhida, da entrada (deposit) e da janela ate o
+// inicio do programa. Usa EXATAMENTE as regras acima (as mesmas do webhook
+// Zoho), para o contrato do checkout ter o mesmo cronograma de um provisionado
+// pelo CRM. A escrita atomica (titular+contrato+parcelas+aceite) fica na funcao
+// SQL converter_cotacao; aqui so calculamos e validamos o plano.
+
+export type ParcelaConversao = {
+  numero: number;
+  descricao: string;
+  valor: number;
+  vencimento: string; // YYYY-MM-DD
+  is_entrada: boolean;
+};
+
+export type PlanoConversao = {
+  parcelas: ParcelaConversao[];
+  total: number; // soma efetiva do plano (para conferencia)
+  ok: boolean; // false -> nao gravar (soma nao bate / valor invalido)
+  motivo?: string;
+};
+
+// liquido: total do contrato na moeda de ORIGEM da opcao (o contrato vive na
+// moeda do programa; a conversao p/ BRL e por parcela, no dia do Pix).
+// entrada: valor da entrada (deposit) na mesma moeda; 0 quando nao houver.
+// dataInicioISO null -> sem janela para mensais: o total inteiro vira entrada.
+export function montarPlanoConversao(args: {
+  liquido: number;
+  entrada: number;
+  dataCompraISO: string;
+  dataInicioISO: string | null | undefined;
+}): PlanoConversao {
+  const liquido = centavos(args.liquido);
+  if (liquido <= 0) {
+    return { parcelas: [], total: 0, ok: false, motivo: "valor_invalido" };
+  }
+
+  const vencimentos = calcularVencimentosParcelas(args.dataCompraISO, args.dataInicioISO);
+
+  // Entrada efetiva: sem janela para mensais, absorve o total (a alternativa
+  // seria uma parcela que ja nasce violando a regra dos 30 dias). Nunca
+  // negativa nem acima do total.
+  let entrada = Math.max(0, centavos(args.entrada));
+  if (vencimentos.length === 0) entrada = liquido;
+  if (entrada > liquido) entrada = liquido;
+
+  const restante = centavos(liquido - entrada);
+  const valores = dividirValorParcelas(restante, vencimentos.length);
+
+  const parcelas: ParcelaConversao[] = [];
+  let n = 0;
+
+  // Parcela de entrada quando ha entrada (>0) ou quando nao ha mensais (o total
+  // inteiro vira a unica cobranca "de entrada", vencendo na compra).
+  if (entrada > 0 || vencimentos.length === 0) {
+    n += 1;
+    parcelas.push({
+      numero: n,
+      descricao: "Entrada",
+      valor: entrada,
+      vencimento: args.dataCompraISO.slice(0, 10),
+      is_entrada: true,
+    });
+  }
+
+  vencimentos.forEach((vencimento, i) => {
+    n += 1;
+    parcelas.push({
+      numero: n,
+      descricao: `Parcela ${i + 1}/${vencimentos.length}`,
+      valor: valores[i],
+      vencimento,
+      is_entrada: false,
+    });
+  });
+
+  const total = somaValoresParcelas(parcelas.map((p) => p.valor));
+  const ok = somaParcelasConfere(parcelas.map((p) => p.valor), liquido);
+  return { parcelas, total, ok, motivo: ok ? undefined : "soma_nao_bate" };
+}
