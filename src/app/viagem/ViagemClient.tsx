@@ -13,6 +13,14 @@ type ViagemInfo = {
   observacoes: string | null
 }
 
+type MaterialCliente = {
+  id: string
+  tipo: string
+  titulo: string
+  temArquivo: boolean
+  linkUrl: string | null
+}
+
 type ViagemClientProps = {
   nomeExibicao: string | null
   emergencia: InfoEmergencia | null
@@ -20,6 +28,7 @@ type ViagemClientProps = {
   afiliadoMoedaUrl: string | null
   afiliadoChipUrl: string | null
   afiliadoPassagemUrl: string | null
+  materiais?: MaterialCliente[]
 }
 
 const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
@@ -195,6 +204,29 @@ export default function ViagemClient(props: ViagemClientProps) {
           </section>
         ) : null}
         </div>
+
+        {/* Materiais da escola (expostos ao cliente) */}
+        {props.materiais && props.materiais.length > 0 ? (
+          <section className="mt-6 rounded-3xl bg-white p-6 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">Materiais da escola</p>
+            <p className="mt-2 text-sm text-neutral-600">Guias, brochuras e vídeos que a escola preparou para você.</p>
+            <ul className="mt-4 space-y-2">
+              {props.materiais.map((m) => (
+                <li key={m.id}>
+                  <a
+                    href={m.temArquivo ? `/api/materiais/${m.id}/download` : m.linkUrl || "#"}
+                    target={m.temArquivo ? undefined : "_blank"}
+                    rel={m.temArquivo ? undefined : "noreferrer noopener"}
+                    className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-brand transition hover:bg-brand-cream/40"
+                  >
+                    <span>{m.titulo}</span>
+                    <span className="ml-3 shrink-0 text-brand-gold">{m.temArquivo ? "Baixar" : "Abrir"} &rarr;</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </main>
 
       <BottomNav />

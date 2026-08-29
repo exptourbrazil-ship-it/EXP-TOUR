@@ -127,6 +127,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/materiais",
+    label: "Materiais",
+    descricao: "Biblioteca de materiais das escolas (proposta)",
+    icone: ICONES.documentos,
+    capacidade: "casos.ver",
+  },
+  {
     href: "/admin/disponibilidade",
     label: "Disponibilidade",
     descricao: "Programas e datas de início por fornecedor",
