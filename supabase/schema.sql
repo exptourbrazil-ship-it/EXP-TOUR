@@ -1531,6 +1531,11 @@ alter table if exists quote_event add constraint quote_event_kind_check
 -- A prova de aceite e por (titular, termo): um titular que ja aceitou esta versao
 -- do termo nao gera segunda linha (a trilha desta conversao fica em events +
 -- quote_event + admin_audit, amarrados ao contrato gerado).
+-- A funcao ganhou p_anexo_iii (Anexo III multi-item), o que muda a assinatura.
+-- Dropa a versao anterior (20 args) antes de recriar; o DEFAULT no novo param
+-- mantem compat com chamadas de 20 args na janela de deploy. Reaplicar e seguro
+-- (o drop e "if exists" e a versao nova ja tem 21 args).
+drop function if exists converter_cotacao(uuid,uuid,text,text,text,text,text,numeric,text,text,text,date,uuid,jsonb,uuid,text,text,text,text,int);
 create or replace function converter_cotacao(
   p_quote_id uuid,
   p_tenant_id uuid,
@@ -1551,7 +1556,8 @@ create or replace function converter_cotacao(
   p_hash text,
   p_ip text,
   p_user_agent text,
-  p_option_index int
+  p_option_index int,
+  p_anexo_iii jsonb default '[]'::jsonb
 ) returns jsonb
 language plpgsql
 as $$
@@ -1640,30 +1646,47 @@ begin
   end loop;
 
   -- Anexo III (Politica de Pagamento dos Fornecedores, Clausula 7.5.2): a cotacao
-  -- aceita vira o CONTEUDO BASE de um item por contrato — fornecedor, natureza
-  -- (programa), valor bruto, moeda e o prazo D-30 derivado da data de inicio. Os
-  -- campos de POLITICA da escola (evento, documento, consequencia, cancelamento)
-  -- ficam null para a equipe completar no /admin/anexo-iii. So na 1a conversao
-  -- (a funcao retorna cedo quando ja convertida), entao nao duplica.
-  v_fornecedor := coalesce(
-    (select display_name from supplier where id = p_supplier_id and tenant_id = v_tenant),
-    'Fornecedor a confirmar');
-  v_prazo := case
-    when p_data_inicio is not null
-      then 'Ate ' || to_char(p_data_inicio - interval '30 days', 'DD/MM/YYYY') || ' (30 dias antes do inicio)'
-    else '30 dias antes do inicio do programa'
-  end;
-  insert into anexo_iii_itens (contrato_id, fornecedor, natureza, valor, moeda, prazo, fonte, ordem)
-  values (
-    v_contrato_id,
-    v_fornecedor,
-    p_contrato_nome,
-    p_valor_total,
-    coalesce(p_moeda, 'BRL'),
-    v_prazo,
-    'Cotacao ' || coalesce(v_reference, p_quote_id::text),
-    0
-  );
+  -- aceita vira o CONTEUDO BASE. MULTI-ITEM: se o chamador enviou linhas
+  -- (p_anexo_iii, uma por item da opcao), insere uma a uma; senao cai no item-base
+  -- unico (compat + fallback). Os campos de POLITICA da escola (evento, documento,
+  -- consequencia, cancelamento) ficam null p/ a equipe completar no /admin/anexo-iii.
+  -- So na 1a conversao (a funcao retorna cedo quando ja convertida) -> nao duplica.
+  if jsonb_array_length(coalesce(p_anexo_iii, '[]'::jsonb)) > 0 then
+    for v_item in select * from jsonb_array_elements(p_anexo_iii)
+    loop
+      insert into anexo_iii_itens
+        (contrato_id, fornecedor, natureza, valor, moeda, prazo,
+         evento, documento_viabiliza, consequencia_atraso, politica_cancelamento, fonte, ordem)
+      values (
+        v_contrato_id,
+        coalesce(nullif(v_item->>'fornecedor', ''), 'Fornecedor a confirmar'),
+        v_item->>'natureza',
+        (v_item->>'valor')::numeric,
+        coalesce(nullif(v_item->>'moeda', ''), coalesce(p_moeda, 'BRL')),
+        v_item->>'prazo',
+        v_item->>'evento',
+        v_item->>'documento_viabiliza',
+        v_item->>'consequencia_atraso',
+        v_item->>'politica_cancelamento',
+        v_item->>'fonte',
+        coalesce((v_item->>'ordem')::int, 0)
+      );
+    end loop;
+  else
+    v_fornecedor := coalesce(
+      (select display_name from supplier where id = p_supplier_id and tenant_id = v_tenant),
+      'Fornecedor a confirmar');
+    v_prazo := case
+      when p_data_inicio is not null
+        then 'Ate ' || to_char(p_data_inicio - interval '30 days', 'DD/MM/YYYY') || ' (30 dias antes do inicio)'
+      else '30 dias antes do inicio do programa'
+    end;
+    insert into anexo_iii_itens (contrato_id, fornecedor, natureza, valor, moeda, prazo, fonte, ordem)
+    values (
+      v_contrato_id, v_fornecedor, p_contrato_nome, p_valor_total, coalesce(p_moeda, 'BRL'), v_prazo,
+      'Cotacao ' || coalesce(v_reference, p_quote_id::text), 0
+    );
+  end if;
 
   -- Prova imutavel do aceite (contexto 'checkout'). Idempotente pelo indice
   -- unico (titular, termo): duplo-clique/retry nao gera segunda prova.
