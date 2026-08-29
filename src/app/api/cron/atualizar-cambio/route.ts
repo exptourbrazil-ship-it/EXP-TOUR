@@ -142,7 +142,9 @@ export async function GET(request: Request) {
     const { error } = await supabase
       .from("cotacoes_cambio")
       .upsert(
-        { moeda, data: hojeISO, cotacao_vet: cotacaoVet },
+        // Grava tambem o spread/IOF que compos a VET, para o recibo decompor
+        // depois com os MESMOS percentuais (nao com o env vigente no pagamento).
+        { moeda, data: hojeISO, cotacao_vet: cotacaoVet, spread: spreadPercentual, iof: iofPercentual },
         { onConflict: "moeda,data" }
       );
 

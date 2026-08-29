@@ -749,6 +749,15 @@ alter table if exists pagamentos         enable row level security;
 alter table if exists documentos         enable row level security;
 alter table if exists codigos_acesso     enable row level security;
 alter table if exists cotacoes_cambio    enable row level security;
+-- Spread/IOF que compuseram a cotacao_vet (para o recibo decompor com os MESMOS
+-- percentuais do dia da cobranca, nao com o env vigente no pagamento). Gravados
+-- pelo cron atualizar-cambio e pelo cambio-manual; congelados na parcela em
+-- gerar-cobranca (parcelas.spread_aplicado/iof_aplicado). Linhas antigas ficam
+-- null -> o recibo cai no fallback legado 6,6% (o que ja foi pago permanece).
+alter table if exists cotacoes_cambio add column if not exists spread numeric(6,4);
+alter table if exists cotacoes_cambio add column if not exists iof numeric(6,4);
+alter table if exists parcelas add column if not exists spread_aplicado numeric(6,4);
+alter table if exists parcelas add column if not exists iof_aplicado numeric(6,4);
 alter table if exists events             enable row level security;
 alter table if exists email_logs         enable row level security;
 alter table if exists whatsapp_logs      enable row level security;

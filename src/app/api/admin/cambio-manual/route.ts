@@ -46,7 +46,8 @@ export async function POST(request: Request) {
   const { error } = await supabase
     .from("cotacoes_cambio")
     .upsert(
-      { moeda, data: hojeISO, cotacao_vet: cotacaoVet },
+      // Grava tambem o spread/IOF que compos a VET (ver cron atualizar-cambio).
+      { moeda, data: hojeISO, cotacao_vet: cotacaoVet, spread: spreadPercentual, iof: iofPercentual },
       { onConflict: "moeda,data" }
     );
 

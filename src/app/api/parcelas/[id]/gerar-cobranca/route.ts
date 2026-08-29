@@ -62,13 +62,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // valor_atual; assim o Pix cobra exatamente o que o cliente ve na tela.
     let valorCobranca = valorProgramaAtual(parcela as any);
     let cotacaoAplicada: number | null = null;
+    // Spread/IOF que compuseram a VET congelada nesta cobranca. Ficam gravados na
+    // parcela para o recibo decompor SEMPRE com os mesmos percentuais (regra do
+    // dia da cobranca), nunca com o env vigente no dia do pagamento.
+    let spreadAplicado: number | null = null;
+    let iofAplicado: number | null = null;
 
   if (moeda !== "BRL") {
         const hojeISO = new Date().toISOString().slice(0, 10);
 
       const { data: cotacao } = await supabase
           .from("cotacoes_cambio")
-          .select("cotacao_vet, data")
+          .select("cotacao_vet, data, spread, iof")
           .eq("moeda", moeda)
           .lte("data", hojeISO)
           .order("data", { ascending: false })
@@ -86,6 +91,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
 
       cotacaoAplicada = Number(cotacao.cotacao_vet);
+        // Spread/IOF que compuseram a VET (linhas antigas de cotacoes_cambio nao
+        // tem estas colunas -> ficam null e o recibo cai no fallback legado 6,6%).
+        spreadAplicado = cotacao.spread != null ? Number(cotacao.spread) : null;
+        iofAplicado = cotacao.iof != null ? Number(cotacao.iof) : null;
         // A cotacao_vet ja embute o cambio BACEN do dia + spread + IOF
         // (ver cron atualizar-cambio). O valor cobrado e apenas a conversao,
         // sem taxa administrativa fixa.
@@ -125,6 +134,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                     // O BRL cobrado vai para a coluna dedicada.
                     valor_cobrado_brl: valorCobranca,
                     cotacao_aplicada: cotacaoAplicada,
+                    spread_aplicado: spreadAplicado,
+                    iof_aplicado: iofAplicado,
           })
           .eq("id", id);
 

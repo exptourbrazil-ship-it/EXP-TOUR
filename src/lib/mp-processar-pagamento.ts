@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { consultarPagamento } from "@/lib/mercadopago";
 import { montarLancamentoPagamento } from "@/lib/pagamento-ledger";
-import { itemizarRecibo } from "@/lib/cambio";
+import { itemizarRecibo, SPREAD_LEGADO, IOF_LEGADO } from "@/lib/cambio";
 import { enviarReciboPagamentoEmail } from "@/lib/email";
 import { slugDoTenant } from "@/lib/tenant-slug";
 import { ehStatusDisputaMP } from "@/lib/mp-disputa";
@@ -55,7 +55,7 @@ export async function processarPagamentoMercadoPago(
   // (re)gravar o lancamento do ledger de forma idempotente.
   const { data: parcelasPagamento, error: selErr } = await supabase
     .from("parcelas")
-    .select("id, contrato_id, descricao, valor_original, valor_atual, valor_cobrado_brl, cotacao_aplicada, paid_at, contrato:contratos(moeda)")
+    .select("id, contrato_id, descricao, valor_original, valor_atual, valor_cobrado_brl, cotacao_aplicada, spread_aplicado, iof_aplicado, paid_at, contrato:contratos(moeda)")
     .eq("external_payment_id", paymentId);
 
   if (selErr) {
@@ -110,8 +110,6 @@ export async function processarPagamentoMercadoPago(
     const idsNovos = new Set((data ?? []).map((p: { id: string }) => p.id));
     const recemPagas = (parcelasPagamento ?? []).filter((p: any) => idsNovos.has(p.id));
     if (recemPagas.length > 0) {
-      const spread = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
-      const iof = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
       const fmt = (iso: string) =>
         new Intl.DateTimeFormat("pt-BR", {
           timeZone: "America/Sao_Paulo",
@@ -150,6 +148,11 @@ export async function processarPagamentoMercadoPago(
           .neq("status", "pago");
         const saldo = (abertas ?? []).reduce((s: number, x: any) => s + (Number(x.valor_atual) || 0), 0);
 
+        // Decompoe com o spread/IOF CONGELADO na parcela (mesmos que compuseram
+        // a VET). Cobrancas antigas, sem esses campos, caem no legado 6,6% -> o
+        // recibo do que ja foi pago permanece exatamente como estava.
+        const spread = p.spread_aplicado != null ? Number(p.spread_aplicado) : SPREAD_LEGADO;
+        const iof = p.iof_aplicado != null ? Number(p.iof_aplicado) : IOF_LEGADO;
         const itens = itemizarRecibo(valorPrograma, vet, spread, iof);
         await enviarReciboPagamentoEmail(titular.email, titular.nome_completo || "", {
           dataFormatada: fmt(p.paid_at || agora),

@@ -24,6 +24,14 @@ export function converterParaBRL(valorOriginal: number, cotacaoVet: number): num
 export const SPREAD_PADRAO = 0.05;
 export const IOF_PADRAO = 0.035;
 
+// Percentuais VIGENTES ATE a mudanca do spread para 5% (spread era 6,6%). Usados
+// SOMENTE como fallback na DECOMPOSICAO do recibo de cobrancas cuja VET foi
+// congelada ANTES de passarmos a gravar o spread/iof aplicado na parcela. Assim,
+// "o que ja foi pago/cobrado permanece como esta": um recibo antigo continua
+// itemizado a 6,6%, mesmo que o spread vigente agora seja 5%.
+export const SPREAD_LEGADO = 0.066;
+export const IOF_LEGADO = 0.035;
+
 // Compoe a cotacao VET a partir do cambio comercial (PTAX). Modelo ADITIVO: o
 // IOF-cambio incide sobre o valor convertido, NAO sobre o spread, entao as
 // aliquotas somam. Fonte unica usada pelo cron e pelo cambio manual do admin,
