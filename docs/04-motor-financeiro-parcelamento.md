@@ -111,7 +111,7 @@ A mesma corretora pode cumprir os dois papéis sem conflito: **B2B** (remessas d
 
 ## 7. Próximos passos
 
-1. Definir o `Spread_Percentual` oficial (6% ou 6,6%) e alinhá-lo em contrato-mestre, Termo de Adesão, página de checkout e sistema.
+1. `Spread_Percentual` **definido em 5%** no sistema (env `SPREAD_CAMBIO_PERCENTUAL`, default em `src/lib/cambio.ts`), unificado entre contrato (cobrança da parcela) e cotação (câmbio congelado). **Pendência jurídica**: alinhar o mesmo 5% no contrato-mestre, Termo de Adesão e Anexo II (que ainda citam 6,6%).
 2. Incluir a cláusula de repactuação eletrônica no pacote da validação jurídica já prevista (Termo de Adesão + contrato).
 3. Decidir com a corretora parceira o modelo de tesouraria (conta multimoeda vs. travas) e formalizar o contrato B2B separado do acordo B2C de indicação.
 4. Definir os parâmetros do editor (buffer do Marco 1, D-X do Marco 2, mínimo por parcela, limite de repactuações) como configuração por instância.

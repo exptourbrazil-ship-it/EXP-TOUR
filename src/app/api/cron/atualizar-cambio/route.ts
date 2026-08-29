@@ -123,7 +123,7 @@ export async function GET(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  const spreadPercentual = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.066");
+  const spreadPercentual = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
   const iofPercentual = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
   const hojeISO = new Date().toISOString().slice(0, 10);
 
@@ -142,7 +142,9 @@ export async function GET(request: Request) {
     const { error } = await supabase
       .from("cotacoes_cambio")
       .upsert(
-        { moeda, data: hojeISO, cotacao_vet: cotacaoVet },
+        // Grava tambem o spread/IOF que compos a VET, para o recibo decompor
+        // depois com os MESMOS percentuais (nao com o env vigente no pagamento).
+        { moeda, data: hojeISO, cotacao_vet: cotacaoVet, spread: spreadPercentual, iof: iofPercentual },
         { onConflict: "moeda,data" }
       );
 

@@ -434,7 +434,7 @@ type DadosRecibo = {
   moeda: string; // moeda do programa (ex.: CAD)
   ptax: number; // PTAX de venda aplicada
   subtotal: number; // valor convertido em R$
-  taxaPercentual: number; // ex.: 0.066
+  taxaPercentual: number; // ex.: 0.05
   taxaIntermediacao: number; // em R$
   iofPercentual: number; // ex.: 0.035
   iof: number; // em R$

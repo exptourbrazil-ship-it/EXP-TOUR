@@ -749,6 +749,15 @@ alter table if exists pagamentos         enable row level security;
 alter table if exists documentos         enable row level security;
 alter table if exists codigos_acesso     enable row level security;
 alter table if exists cotacoes_cambio    enable row level security;
+-- Spread/IOF que compuseram a cotacao_vet (para o recibo decompor com os MESMOS
+-- percentuais do dia da cobranca, nao com o env vigente no pagamento). Gravados
+-- pelo cron atualizar-cambio e pelo cambio-manual; congelados na parcela em
+-- gerar-cobranca (parcelas.spread_aplicado/iof_aplicado). Linhas antigas ficam
+-- null -> o recibo cai no fallback legado 6,6% (o que ja foi pago permanece).
+alter table if exists cotacoes_cambio add column if not exists spread numeric(6,4);
+alter table if exists cotacoes_cambio add column if not exists iof numeric(6,4);
+alter table if exists parcelas add column if not exists spread_aplicado numeric(6,4);
+alter table if exists parcelas add column if not exists iof_aplicado numeric(6,4);
 alter table if exists events             enable row level security;
 alter table if exists email_logs         enable row level security;
 alter table if exists whatsapp_logs      enable row level security;
@@ -1477,6 +1486,188 @@ alter table if exists quote_payment_installment enable row level security;
 alter table if exists quote_event               enable row level security;
 alter table if exists saved_note                enable row level security;
 alter table if exists fx_rate                   enable row level security;
+
+-- ============================================================================
+-- Checkout / conversao da cotacao -> contrato (so aceite, sem pagamento)
+-- ============================================================================
+-- Fecha a ponte que faltava: a cotacao emitida, apos o estudante escolher uma
+-- opcao (status 'option_selected'), pode ser CONVERTIDA num contrato real
+-- (titular + contrato + parcelas + prova de aceite do Termo de Adesao), pelo
+-- checkout publico por token. Nao cobra: o pagamento continua sendo por parcela,
+-- via Pix, depois, na Area do Cliente. Aplicar tambem no SQL Editor de producao.
+
+-- Colunas defensivas: ja existem em producao (aplicadas via SQL Editor), mas nao
+-- estavam nos create acima. A funcao converter_cotacao referencia titulares.email
+-- (canal de login) e contratos.data_inicio; sem estes alter, um banco novo a
+-- partir deste schema quebraria na primeira conversao.
+alter table if exists contratos  add column if not exists data_inicio date;
+alter table if exists titulares  add column if not exists email text;
+
+-- Liga a cotacao ao contrato gerado e marca quando/como converteu. converted_at
+-- + converted_contract_id tornam a conversao IDEMPOTENTE (reconhecivel sob lock).
+alter table if exists quote add column if not exists converted_at timestamptz;
+alter table if exists quote add column if not exists converted_contract_id uuid references contratos(id);
+
+-- Novos tipos de evento na telemetria da cotacao: 'accepted' (aceite do termo)
+-- e 'converted' (contrato provisionado). Recria o CHECK para inclui-los.
+alter table if exists quote_event drop constraint if exists quote_event_kind_check;
+alter table if exists quote_event add constraint quote_event_kind_check
+  check (kind in ('created','issued','sent','opened','option_viewed','downloaded',
+                  'option_selected','expired','reissued','accepted','converted'));
+
+-- Funcao TRANSACIONAL da conversao (tudo-ou-nada), no molde de aplicar_alteracao.
+-- Valida sob lock -> resolve titular por CPF (contato de titular JA existente
+-- fica INTOCADO: nem sobrescreve nem preenche em branco; o e-mail e o canal de
+-- login e o checkout e publico -> um CPF alheio nunca vincula/rouba a conta) ->
+-- cria contrato + parcelas -> grava aceite (prova imutavel) -> registra evento
+-- no barramento + telemetria + trilha -> marca a cotacao 'converted'. Idempotente
+-- por cotacao: se ja convertida, devolve o contrato existente sem duplicar nada.
+--
+-- CONTRATO COM O CHAMADOR (rota da Fatia 2): p_valor_total, p_parcelas e p_moeda
+-- tem de ser DERIVADOS NO SERVIDOR a partir da opcao selecionada da propria quote
+-- (getPublicQuote/carregarTotaisPorOpcao), NUNCA de input livre do estudante. A
+-- funcao confere a coerencia interna do plano (soma == total, sem negativos), mas
+-- nao recomputa o preco da opcao aqui; a origem server-side do valor e a garantia.
+-- A prova de aceite e por (titular, termo): um titular que ja aceitou esta versao
+-- do termo nao gera segunda linha (a trilha desta conversao fica em events +
+-- quote_event + admin_audit, amarrados ao contrato gerado).
+create or replace function converter_cotacao(
+  p_quote_id uuid,
+  p_tenant_id uuid,
+  p_cpf text,
+  p_nome text,
+  p_email text,
+  p_telefone text,
+  p_contrato_nome text,
+  p_valor_total numeric,
+  p_moeda text,
+  p_estudante_nome text,
+  p_pais_destino text,
+  p_data_inicio date,
+  p_supplier_id uuid,
+  p_parcelas jsonb,
+  p_termo_id uuid,
+  p_versao text,
+  p_hash text,
+  p_ip text,
+  p_user_agent text,
+  p_option_index int
+) returns jsonb
+language plpgsql
+as $$
+declare
+  v_status text;
+  v_tenant uuid;
+  v_selected uuid;
+  v_converted_contract uuid;
+  v_valid_until date;
+  v_token_revoked timestamptz;
+  v_titular_id uuid;
+  v_titular_tenant uuid;
+  v_contrato_id uuid;
+  v_sum numeric;
+  v_neg int;
+  v_item jsonb;
+begin
+  -- Trava a cotacao e le o estado sob lock (serializa conversoes concorrentes).
+  select status, tenant_id, selected_option_id, converted_contract_id, valid_until, token_revoked_at
+    into v_status, v_tenant, v_selected, v_converted_contract, v_valid_until, v_token_revoked
+    from quote where id = p_quote_id and tenant_id = p_tenant_id for update;
+  if not found then raise exception 'quote_nao_encontrada'; end if;
+
+  -- Idempotente: ja convertida -> devolve o contrato existente, sem duplicar.
+  if v_status = 'converted' then
+    return jsonb_build_object('ja_convertida', true, 'contrato_id', v_converted_contract, 'titular_id', null);
+  end if;
+  if v_status <> 'option_selected' then raise exception 'nao_selecionada'; end if;
+  if v_selected is null then raise exception 'sem_opcao'; end if;
+  -- Link publico ainda valido: nao converte cotacao com token revogado nem vencida
+  -- por data (a expiracao por data nao muda o status sozinha).
+  if v_token_revoked is not null then raise exception 'token_revogado'; end if;
+  if v_valid_until is not null and v_valid_until < current_date then raise exception 'cotacao_expirada'; end if;
+  if p_valor_total <= 0 then raise exception 'valor_invalido'; end if;
+
+  -- A soma do plano tem de bater com o valor do contrato (invariante de dinheiro)
+  -- e nenhuma parcela pode ser negativa (defesa: soma pode fechar com negativos
+  -- que se anulam).
+  select coalesce(sum((x->>'valor')::numeric), 0),
+         count(*) filter (where (x->>'valor')::numeric < 0)
+    into v_sum, v_neg
+    from jsonb_array_elements(p_parcelas) as x;
+  if v_neg > 0 then raise exception 'plano_invalido'; end if;
+  if round(v_sum, 2) <> round(p_valor_total, 2) then raise exception 'plano_invalido'; end if;
+
+  -- Titular por CPF. Contato de titular JA existente fica INTOCADO (nem
+  -- sobrescreve nem preenche em branco): o e-mail e o canal de login e o checkout
+  -- e publico -> um CPF alheio nunca vincula um e-mail a uma conta existente. O
+  -- do-update e um no-op (regrava o proprio cpf) so para o RETURNING funcionar.
+  -- Contato so e definido quando o titular e CRIADO agora (CPF novo).
+  insert into titulares (cpf, nome_completo, telefone, email, tenant_id)
+  values (p_cpf, p_nome, p_telefone, p_email, v_tenant)
+  on conflict (cpf) do update set cpf = excluded.cpf
+  returning id, tenant_id into v_titular_id, v_titular_tenant;
+
+  -- Guarda cross-tenant: um titular pre-existente de OUTRO tenant nao recebe o
+  -- contrato desta cotacao (senao o programa/valor vazaria para o login daquele
+  -- CPF no outro tenant). NULL = tenant padrao, nao conflita.
+  if v_titular_tenant is not null and v_tenant is not null and v_titular_tenant <> v_tenant then
+    raise exception 'titular_outro_tenant';
+  end if;
+
+  -- Contrato novo (na moeda de origem da opcao; conversao p/ BRL e por parcela).
+  insert into contratos (titular_id, nome, valor_total, moeda, estudante_nome, pais_destino, data_inicio, supplier_id)
+  values (v_titular_id, p_contrato_nome, p_valor_total, coalesce(p_moeda, 'BRL'),
+          p_estudante_nome, p_pais_destino, p_data_inicio, p_supplier_id)
+  returning id into v_contrato_id;
+
+  -- Parcelas (entrada + mensais) do plano ja validado.
+  for v_item in select * from jsonb_array_elements(p_parcelas)
+  loop
+    insert into parcelas (contrato_id, numero, descricao, valor_original, valor_atual, vencimento, is_entrada, status)
+    values (
+      v_contrato_id,
+      (v_item->>'numero')::int,
+      coalesce(v_item->>'descricao', 'Parcela'),
+      (v_item->>'valor')::numeric,
+      (v_item->>'valor')::numeric,
+      (v_item->>'vencimento')::date,
+      coalesce((v_item->>'is_entrada')::boolean, false),
+      'pendente'
+    );
+  end loop;
+
+  -- Prova imutavel do aceite (contexto 'checkout'). Idempotente pelo indice
+  -- unico (titular, termo): duplo-clique/retry nao gera segunda prova.
+  insert into aceites (titular_id, termo_id, versao, hash_conteudo, contexto, ip, user_agent)
+  values (v_titular_id, p_termo_id, p_versao, p_hash, 'checkout', p_ip, p_user_agent)
+  on conflict (titular_id, termo_id) do nothing;
+
+  -- Evento no barramento (auditoria/replay externo). Idempotente por cotacao.
+  insert into events (source, event_type, idempotency_key, external_id, payload, status, processed_at)
+  values ('portal_estudante', 'quote_converted', 'quote:converted:' || p_quote_id::text, p_quote_id::text,
+          jsonb_build_object('contrato_id', v_contrato_id, 'titular_id', v_titular_id, 'option_index', p_option_index),
+          'processado', now())
+  on conflict (idempotency_key) do nothing;
+
+  -- Telemetria da cotacao + trilha administrativa (autor = checkout do estudante).
+  insert into quote_event (tenant_id, quote_id, kind, actor_type, metadata)
+  values (v_tenant, p_quote_id, 'converted', 'student',
+          jsonb_build_object('contrato_id', v_contrato_id, 'option_index', p_option_index));
+  insert into admin_audit (usuario, acao, alvo, detalhe, ip)
+  values ('checkout:estudante', 'quote.converted', p_quote_id::text,
+          jsonb_build_object('contrato_id', v_contrato_id, 'titular_id', v_titular_id,
+                             'valor_total', p_valor_total, 'moeda', p_moeda),
+          p_ip);
+
+  -- Marca a cotacao convertida (guarda de corrida: so a partir de option_selected).
+  update quote
+    set status = 'converted', converted_at = now(), converted_contract_id = v_contrato_id, updated_at = now()
+    where id = p_quote_id and status = 'option_selected';
+
+  return jsonb_build_object('ja_convertida', false, 'contrato_id', v_contrato_id,
+                            'titular_id', v_titular_id, 'parcelas', jsonb_array_length(p_parcelas));
+end;
+$$;
 
 -- ============================================================================
 -- Disponibilidade por programa (Portal do Fornecedor, doc 06 secao 3.5)

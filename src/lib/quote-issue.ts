@@ -52,34 +52,10 @@ export function podeEmitir(p: PrecondicoesEmissao): { ok: boolean; motivos: stri
 }
 
 /**
- * A taxa esta vencida? `fxRateAtMs` null (ausente) conta como vencida. Idade em
- * relacao a `agoraMs`; limite em horas (`maxRateAgeHours`).
- */
-export function cambioVencido(
-  fxRateAtMs: number | null,
-  agoraMs: number,
-  maxRateAgeHours: number,
-): boolean {
-  if (fxRateAtMs == null) return true;
-  const idadeMs = agoraMs - fxRateAtMs;
-  if (idadeMs < 0) return false; // taxa "do futuro" (relogio): nao trata como vencida.
-  return idadeMs > maxRateAgeHours * 3600 * 1000;
-}
-
-/**
- * Congela a taxa efetiva aplicando o markup (spread) do tenant sobre a taxa
- * base. Ex.: rate 3,50 com markup 6,6% -> 3,7310. Arredonda a 8 casas (a coluna
- * fx_rate e numeric(18,8)). Markup negativo/invalido conta como 0.
- */
-export function aplicarMarkup(rateBase: number, markupPercent: number): number {
-  const m = Number.isFinite(markupPercent) && markupPercent > 0 ? markupPercent : 0;
-  const efetiva = rateBase * (1 + m / 100);
-  return Math.round(efetiva * 1e8) / 1e8;
-}
-
-/**
  * Converte um valor na moeda de origem para a de apresentacao pela taxa
  * congelada. Retorna 2 casas (dinheiro). `rate` <= 0 -> 0 (defensivo).
+ * `rate` aqui e a cotacao_vet (ja embute PTAX + spread + IOF), a MESMA que o
+ * contrato usa na cobranca -> o BRL exibido casa com a regra da parcela.
  */
 export function converterPelaTaxa(valorOrigem: number, rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 0;
@@ -94,6 +70,42 @@ export function validadePadraoISO(issueISO: string, dias: number): string {
   const base = new Date(`${issueISO}T00:00:00.000Z`).getTime();
   const d = Number.isFinite(dias) && dias > 0 ? Math.floor(dias) : 0;
   return new Date(base + d * 86400000).toISOString().slice(0, 10);
+}
+
+/** Ultimo dia (civil) do mes de `iso` (YYYY-MM-DD). UTC. Ex.: "2026-08-14" -> "2026-08-31". */
+export function ultimoDiaDoMesISO(iso: string): string {
+  const [ano, mes] = iso.slice(0, 10).split("-").map(Number);
+  // Dia 0 do mes SEGUINTE = ultimo dia do mes atual.
+  return new Date(Date.UTC(ano, mes, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * Validade do CAMBIO congelado na cotacao: o que vier PRIMEIRO entre
+ * `issue + dias` (default 10) e o ULTIMO DIA DO MES da emissao. A taxa e
+ * congelada e nao pode ser honrada alem dessa janela curta (o cambio flutua e
+ * o fechamento mensal e um marco); depois disso, reemitir para refrescar. Puro.
+ */
+export const VALIDADE_CAMBIO_DIAS = 10;
+export function validadeCambioQuote(issueISO: string, dias: number = VALIDADE_CAMBIO_DIAS): string {
+  const porDias = validadePadraoISO(issueISO, dias);
+  const fimDoMes = ultimoDiaDoMesISO(issueISO);
+  return porDias <= fimDoMes ? porDias : fimDoMes;
+}
+
+/**
+ * A cotacao_vet (por DIA civil) esta vencida para congelar na emissao? Vencida
+ * se nao ha data, ou se a data do VET esta mais de `maxDias` antes do dia da
+ * emissao (cron diario deveria manter a diferenca em 0-1; a folga cobre
+ * fim de semana/feriado/falha do job). VET "do futuro" nao conta como vencido.
+ */
+export function cambioVencidoPorData(vetDataISO: string | null, issueISO: string, maxDias: number): boolean {
+  if (!vetDataISO || vetDataISO.length < 10) return true;
+  const vet = new Date(`${vetDataISO.slice(0, 10)}T00:00:00.000Z`).getTime();
+  const issue = new Date(`${issueISO.slice(0, 10)}T00:00:00.000Z`).getTime();
+  const diffDias = Math.round((issue - vet) / 86400000);
+  if (diffDias < 0) return false;
+  const limite = Number.isFinite(maxDias) && maxDias >= 0 ? Math.floor(maxDias) : 0;
+  return diffDias > limite;
 }
 
 /** A cotacao ja foi emitida (token vivo)? Estados a partir de `issued`. */

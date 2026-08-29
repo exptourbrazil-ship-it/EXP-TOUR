@@ -20,8 +20,17 @@ export function converterParaBRL(valorOriginal: number, cotacaoVet: number): num
 
 // Percentuais padrao usados na composicao do VET (ver cron atualizar-cambio).
 // Em producao vem das envs SPREAD_CAMBIO_PERCENTUAL / IOF_CAMBIO_PERCENTUAL.
-export const SPREAD_PADRAO = 0.066;
+// Spread de intermediacao e cambio = 5%; IOF-cambio = 3,5%.
+export const SPREAD_PADRAO = 0.05;
 export const IOF_PADRAO = 0.035;
+
+// Percentuais VIGENTES ATE a mudanca do spread para 5% (spread era 6,6%). Usados
+// SOMENTE como fallback na DECOMPOSICAO do recibo de cobrancas cuja VET foi
+// congelada ANTES de passarmos a gravar o spread/iof aplicado na parcela. Assim,
+// "o que ja foi pago/cobrado permanece como esta": um recibo antigo continua
+// itemizado a 6,6%, mesmo que o spread vigente agora seja 5%.
+export const SPREAD_LEGADO = 0.066;
+export const IOF_LEGADO = 0.035;
 
 // Compoe a cotacao VET a partir do cambio comercial (PTAX). Modelo ADITIVO: o
 // IOF-cambio incide sobre o valor convertido, NAO sobre o spread, entao as
@@ -39,7 +48,7 @@ export type ItensRecibo = {
   amortizacaoMoeda: number; // valor amortizado na moeda do programa
   ptax: number; // PTAX de venda (VET decomposto)
   subtotal: number; // amortizacaoMoeda x ptax (valor convertido)
-  taxaPercentual: number; // ex.: 0.066
+  taxaPercentual: number; // ex.: 0.05
   taxaIntermediacao: number; // subtotal x taxaPercentual
   iofPercentual: number; // ex.: 0.035
   iof: number; // (subtotal + taxa) x iofPercentual
@@ -47,7 +56,7 @@ export type ItensRecibo = {
 };
 
 // Decompoe uma conversao pela cotacao_vet nos itens do recibo (Clausula 6.5.2):
-// PTAX, Taxa de Intermediacao e Cambio (6,6%) e IOF-cambio. A cotacao_vet embute
+// PTAX, Taxa de Intermediacao e Cambio (5%) e IOF-cambio. A cotacao_vet embute
 // PTAX x (1 + spread + iof) (modelo aditivo — IOF sobre o valor convertido, nao
 // sobre o spread); reconstruimos cada parte com os MESMOS percentuais.
 // `totalBRL` reproduz converterParaBRL. Puro.

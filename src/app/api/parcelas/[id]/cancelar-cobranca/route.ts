@@ -74,6 +74,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       status: "pendente",
       valor_cobrado_brl: null,
       cotacao_aplicada: null,
+      spread_aplicado: null,
+      iof_aplicado: null,
     })
     .eq("id", parcelaId)
 
