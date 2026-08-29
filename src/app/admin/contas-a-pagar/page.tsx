@@ -27,7 +27,7 @@ function selo(c: ContaAPagar): { texto: string; cor: string } | null {
   const d = c.diasAteVencimento;
   if (d < 0) return { texto: `vencido há ${Math.abs(d)}d`, cor: "#b91c1c" };
   if (d === 0) return { texto: "vence hoje", cor: "#b91c1c" };
-  if (d <= 7) return { texto: `em ${d}d`, cor: "#8a6d2f" };
+  if (d <= 7) return { texto: `em ${d}d`, cor: "var(--p-accent-ink)" };
   return { texto: `em ${d}d`, cor: "#6b7280" };
 }
 

@@ -151,7 +151,7 @@ export default function ViagemInfoClient() {
         type="button"
         onClick={carregarContratos}
         disabled={carregandoLista}
-        style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #042f1b", background: "#042f1b", color: "#f5ead9", cursor: "pointer", marginBottom: 24 }}
+        style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--p-cta)", background: "var(--p-cta)", color: "var(--p-cta-fg)", cursor: "pointer", marginBottom: 24 }}
       >
         {carregandoLista ? "Carregando..." : "Carregar contratos"}
       </button>
@@ -187,7 +187,7 @@ export default function ViagemInfoClient() {
               <button
                 type="submit"
                 disabled={salvando}
-                style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#c9a35e", color: "#042f1b", fontWeight: 600, cursor: "pointer" }}
+                style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-ink)", fontWeight: 600, cursor: "pointer" }}
               >
                 {salvando ? "Salvando..." : "Salvar dados da viagem"}
               </button>

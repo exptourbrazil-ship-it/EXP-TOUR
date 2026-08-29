@@ -82,7 +82,7 @@ export default function DataInicioClient() {
         type="button"
         onClick={carregarTitulares}
         disabled={carregandoLista}
-        style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #042f1b", background: "#042f1b", color: "#f5ead9", cursor: "pointer", marginBottom: 24 }}
+        style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--p-cta)", background: "var(--p-cta)", color: "var(--p-cta-fg)", cursor: "pointer", marginBottom: 24 }}
       >
         {carregandoLista ? "Carregando..." : "Carregar titulares"}
       </button>
@@ -123,7 +123,7 @@ export default function DataInicioClient() {
           <button
             type="submit"
             disabled={!titularId || salvando}
-            style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#c9a35e", color: "#042f1b", fontWeight: 600, cursor: "pointer" }}
+            style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-ink)", fontWeight: 600, cursor: "pointer" }}
           >
             {salvando ? "Salvando..." : "Salvar data de inicio"}
           </button>

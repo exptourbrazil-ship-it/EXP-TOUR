@@ -244,7 +244,7 @@ export default function ForcaMaiorClient({ destinos }: { destinos: string[] }) {
               <li>Comunicações enviadas: {resultado.avisos}</li>
               {resultado.erros > 0 ? <li className="text-red-700">Erros: {resultado.erros}</li> : null}
               {resultado.truncado ? (
-                <li className="text-[#8a6a2f]">
+                <li className="text-brand-golddark">
                   Coorte maior que o teto por execução — aplique de novo para o restante.
                 </li>
               ) : null}

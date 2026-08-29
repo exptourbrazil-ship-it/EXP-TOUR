@@ -53,7 +53,7 @@ const ABAS: { id: Aba; label: string }[] = [
 function BadgeJornada({ estado }: { estado: "concluida" | "andamento" | "pendente" }) {
   const mapa = {
     concluida: { icone: "✓", texto: "Concluída", cls: "bg-emerald-100 text-emerald-800" },
-    andamento: { icone: "◐", texto: "Em andamento", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    andamento: { icone: "◐", texto: "Em andamento", cls: "bg-brand-gold/20 text-brand-golddark" },
     pendente: { icone: "○", texto: "Pendente", cls: "bg-neutral-100 text-neutral-500" },
   }[estado];
   return (
@@ -83,7 +83,7 @@ function BadgeDocumento({ status }: { status: string | null }) {
   const mapa: Record<string, { icone: string; texto: string; cls: string }> = {
     aprovado: { icone: "✓", texto: "Aprovado", cls: "bg-emerald-100 text-emerald-800" },
     rejeitado: { icone: "×", texto: "Rejeitado", cls: "bg-red-100 text-red-700" },
-    pendente: { icone: "○", texto: "Em análise", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    pendente: { icone: "○", texto: "Em análise", cls: "bg-brand-gold/20 text-brand-golddark" },
   };
   const m = mapa[status || ""] || { icone: "•", texto: status || "—", cls: "bg-neutral-100 text-neutral-600" };
   return (
@@ -113,8 +113,8 @@ function BadgeEnvio({ sucesso }: { sucesso: boolean | null }) {
 
 function BadgeExcecao({ status }: { status: string }) {
   const mapa: Record<string, { icone: string; texto: string; cls: string }> = {
-    aberta: { icone: "○", texto: "Aberta", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
-    em_andamento: { icone: "◐", texto: "Em andamento", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    aberta: { icone: "○", texto: "Aberta", cls: "bg-brand-gold/20 text-brand-golddark" },
+    em_andamento: { icone: "◐", texto: "Em andamento", cls: "bg-brand-gold/20 text-brand-golddark" },
     resolvida: { icone: "✓", texto: "Resolvida", cls: "bg-emerald-100 text-emerald-800" },
     cancelada: { icone: "×", texto: "Cancelada", cls: "bg-neutral-100 text-neutral-500" },
   };
@@ -264,7 +264,7 @@ export default function CasoClient({
         <div className="mt-4 flex items-center gap-2">
           <span className="text-xs text-neutral-500">Estado atual:</span>
           {caso.etapaAtual < caso.jornada.length ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#c9a35e]/20 px-2.5 py-1 text-xs font-medium text-[#8a6a2f]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-gold/20 px-2.5 py-1 text-xs font-medium text-brand-golddark">
               <span aria-hidden>◐</span>
               {caso.jornada[caso.etapaAtual].nome}
             </span>
@@ -279,12 +279,12 @@ export default function CasoClient({
         {/* Processo(s) de excecao ativo(s) — doc 01 §4: enquanto ha excecao
             aberta, o caso esta num processo paralelo. */}
         {caso.excecoesAtivas.length > 0 ? (
-          <div className="mt-3 rounded-xl border border-[#c9a35e]/50 bg-[#c9a35e]/10 p-3">
+          <div className="mt-3 rounded-xl border border-brand-gold/50 bg-brand-gold/10 p-3">
             <div className="flex items-center gap-2">
-              <span aria-hidden className="text-[#8a6a2f]">
+              <span aria-hidden className="text-brand-golddark">
                 ⚑
               </span>
-              <span className="text-xs font-semibold uppercase tracking-wide text-[#8a6a2f]">
+              <span className="text-xs font-semibold uppercase tracking-wide text-brand-golddark">
                 {caso.excecoesAtivas.length === 1
                   ? "Processo de exceção ativo"
                   : `${caso.excecoesAtivas.length} processos de exceção ativos`}
@@ -292,11 +292,11 @@ export default function CasoClient({
             </div>
             <ul className="mt-2 space-y-1">
               {caso.excecoesAtivas.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-center gap-2 text-sm text-[#6f551f]">
+                <li key={e.id} className="flex flex-wrap items-center gap-2 text-sm text-brand-golddark">
                   <span className="font-medium">{labelTipoExcecao(e.tipo)}</span>
                   <BadgeExcecao status={e.status} />
                   {Array.isArray(e.suspende) && e.suspende.length > 0 ? (
-                    <span className="text-xs text-[#8a6a2f]">
+                    <span className="text-xs text-brand-golddark">
                       suspende: {e.suspende.join(", ")}
                     </span>
                   ) : null}
@@ -353,7 +353,7 @@ function AbaJornada({ caso }: { caso: Caso }) {
                 (etapa.estado === "concluida"
                   ? "bg-emerald-600 text-white"
                   : etapa.estado === "andamento"
-                  ? "bg-[#c9a35e] text-white"
+                  ? "bg-brand-gold text-white"
                   : "bg-neutral-200 text-neutral-500")
               }
               aria-hidden
@@ -813,7 +813,7 @@ function AbaEventos({ caso }: { caso: Caso }) {
 // admin; vermelho fica para estados de erro.
 function SeloSensivel({ texto = "Ação sensível" }: { texto?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-[#c9a35e]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a6a2f]">
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand-gold/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-golddark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
         <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
         <path d="M9.5 12l2 2 3.5-4" />
@@ -1017,7 +1017,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-5">
         <div className="mb-3 flex items-center gap-2">
           <h2 className="font-serif text-xl text-brand">Ações avançadas</h2>
-          <span className="rounded-full bg-[#c9a35e]/20 px-2.5 py-1 text-xs font-medium text-[#8a6a2f]">
+          <span className="rounded-full bg-brand-gold/20 px-2.5 py-1 text-xs font-medium text-brand-golddark">
             Em breve
           </span>
         </div>
@@ -2173,7 +2173,7 @@ function BotaoAplicarAlteracao({
   if (status !== "rascunho") return null;
   if (bloqueioCredito) {
     return (
-      <p className="mt-2 text-xs text-[#8a6a2f]">
+      <p className="mt-2 text-xs text-brand-golddark">
         Há crédito a devolver — conduza pelo motor de acerto (refund). A cascata não devolve dinheiro.
       </p>
     );
@@ -2342,7 +2342,7 @@ function AlteracaoCard({
         <span className="text-xs text-neutral-400">{fmtDataHora(alteracao.criado_em)}</span>
       </div>
       {alteracao.provisorio && alteracao.status === "rascunho" ? (
-        <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+        <p className="mt-1 rounded-lg bg-brand-gold/15 px-2.5 py-1.5 text-xs text-brand-golddark">
           ⚠ Prévia provisória — não reescreve parcelas nem gera aditivo. A aplicação é um passo à
           parte, após revisão do Financeiro/Operação.
         </p>
@@ -2638,7 +2638,7 @@ function AlteracaoEscopoCard({
         <span className="text-xs text-neutral-400">{fmtDataHora(alteracao.criado_em)}</span>
       </div>
       {alteracao.provisorio && alteracao.status === "rascunho" ? (
-        <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+        <p className="mt-1 rounded-lg bg-brand-gold/15 px-2.5 py-1.5 text-xs text-brand-golddark">
           ⚠ Prévia provisória — não reescreve parcelas, não cobra e não devolve. O aditivo (folga nas
           parcelas a vencer) entra ao aplicar; o crédito (motor de acerto) é passo à parte.
         </p>
@@ -2859,7 +2859,7 @@ function SecaoAlteracaoEscopo({
 function AcertoStatusChip({ status }: { status: string }) {
   const mapa: Record<string, { txt: string; cls: string }> = {
     rascunho: { txt: "Rascunho", cls: "bg-neutral-100 text-neutral-600" },
-    proposto: { txt: "Proposto ao cliente", cls: "bg-[#c9a35e]/20 text-[#8a6a2f]" },
+    proposto: { txt: "Proposto ao cliente", cls: "bg-brand-gold/20 text-brand-golddark" },
     aceito: { txt: "✓ Aceito pelo cliente", cls: "bg-emerald-100 text-emerald-800" },
     executado: { txt: "✓ Executado", cls: "bg-emerald-100 text-emerald-800" },
     cancelado: { txt: "Cancelado", cls: "bg-neutral-100 text-neutral-500 line-through" },
@@ -3000,7 +3000,7 @@ function BotaoPreviaEstorno({
             <span className="text-neutral-700">{fmtMoeda(plano.refundBRL, "BRL")}</span>
           </div>
           {plano.meio === "manual" ? (
-            <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+            <p className="mt-1 rounded-lg bg-brand-gold/15 px-2.5 py-1.5 text-xs text-brand-golddark">
               Devolução manual ({motivoManualLabel(plano.motivoManual)}) — o estorno automático não se
               aplica; o Financeiro devolve por fora e anexa o comprovante.
             </p>
@@ -3190,7 +3190,7 @@ function AcertoCard({
         <span className="text-xs text-neutral-400">{fmtDataHora(acerto.criado_em)}</span>
       </div>
       {acerto.provisorio ? (
-        <p className="mt-1 rounded-lg bg-[#c9a35e]/15 px-2.5 py-1.5 text-xs text-[#8a6a2f]">
+        <p className="mt-1 rounded-lg bg-brand-gold/15 px-2.5 py-1.5 text-xs text-brand-golddark">
           ⚠ Valores provisórios — regras de retenção pendentes de validação jurídica (config).
         </p>
       ) : null}
