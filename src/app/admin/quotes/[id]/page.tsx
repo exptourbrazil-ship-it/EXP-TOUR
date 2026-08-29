@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
+import { materiaisParaCotacao } from "@/lib/material-service";
+import { TIPO_MATERIAL_LABEL, type TipoMaterial } from "@/lib/material-helpers";
 import ConstrutorClient, {
   type QuoteHeader,
   type OptionView,
@@ -83,5 +85,41 @@ export default async function AdminQuoteBuilderPage({
     options.push({ id: opt.id, label: opt.label, items });
   }
 
-  return <ConstrutorClient header={header} initialOptions={options} />;
+  // Materiais da escola para anexar à proposta (brochura certa, automático).
+  const hoje = new Date().toISOString().slice(0, 10);
+  const materiais = await materiaisParaCotacao(supabase, tenantId, id, hoje);
+
+  return (
+    <>
+      <ConstrutorClient header={header} initialOptions={options} />
+      {materiais.length > 0 ? (
+        <div className="mx-auto mt-6 max-w-6xl">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+            <h2 className="mb-1 font-serif text-lg text-brand">Materiais da escola para a proposta</h2>
+            <p className="mb-3 text-sm text-neutral-500">
+              Materiais que a escola liberou ao cliente (não vencidos). Anexe/compartilhe com a proposta.
+            </p>
+            <ul className="divide-y divide-neutral-100">
+              {materiais.map((m) => (
+                <li key={m.id} className="flex items-center justify-between py-2 text-sm">
+                  <span>
+                    <span className="font-medium text-brand">{m.titulo}</span>
+                    <span className="ml-2 text-xs text-neutral-500">
+                      {TIPO_MATERIAL_LABEL[m.tipo as TipoMaterial] || m.tipo}
+                      {m.supplierNome ? ` · ${m.supplierNome}` : ""}
+                    </span>
+                  </span>
+                  {m.temArquivo ? (
+                    <a href={`/api/admin/materiais/${m.id}/download`} className="text-brand-golddark hover:underline">Baixar</a>
+                  ) : m.linkUrl ? (
+                    <a href={m.linkUrl} target="_blank" rel="noopener noreferrer" className="text-brand-golddark hover:underline">Abrir link</a>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
