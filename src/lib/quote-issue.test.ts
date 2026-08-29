@@ -2,10 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   podeEmitir,
-  cambioVencido,
-  aplicarMarkup,
   converterPelaTaxa,
   validadePadraoISO,
+  ultimoDiaDoMesISO,
+  validadeCambioQuote,
+  cambioVencidoPorData,
   jaEmitida,
   tokenValidoFormato,
   moedaOrigemUnica,
@@ -55,28 +56,6 @@ test("podeEmitir: warnings bloqueantes barram", () => {
   assert.equal(podeEmitir({ ...base, warningsBloqueantes: 1 }).ok, false);
 });
 
-test("cambioVencido: ausente conta como vencido", () => {
-  assert.equal(cambioVencido(null, 1_000_000, 24), true);
-});
-
-test("cambioVencido: dentro e fora da janela", () => {
-  const agora = 100 * 3600 * 1000;
-  const dentro = agora - 23 * 3600 * 1000;
-  const fora = agora - 25 * 3600 * 1000;
-  assert.equal(cambioVencido(dentro, agora, 24), false);
-  assert.equal(cambioVencido(fora, agora, 24), true);
-});
-
-test("cambioVencido: taxa do futuro nao e vencida", () => {
-  assert.equal(cambioVencido(200 * 3600 * 1000, 100 * 3600 * 1000, 24), false);
-});
-
-test("aplicarMarkup: spread de 6,6% e arredondamento de 8 casas", () => {
-  assert.equal(aplicarMarkup(3.5, 6.6), 3.731);
-  assert.equal(aplicarMarkup(4.2024, 0), 4.2024);
-  assert.equal(aplicarMarkup(3.5, -1), 3.5); // markup invalido = 0
-});
-
 test("converterPelaTaxa: 2 casas e defesa de taxa invalida", () => {
   assert.equal(converterPelaTaxa(1000, 3.731), 3731);
   assert.equal(converterPelaTaxa(1000, 0), 0);
@@ -107,4 +86,28 @@ test("moedaOrigemUnica: unica, mistura e vazio", () => {
   assert.equal(moedaOrigemUnica(["CAD", "CAD"], "BRL"), "CAD");
   assert.equal(moedaOrigemUnica(["CAD", "EUR"], "BRL"), null);
   assert.equal(moedaOrigemUnica([], "BRL"), "BRL");
+});
+
+test("ultimoDiaDoMesISO: fim do mes (inclui bissexto)", () => {
+  assert.equal(ultimoDiaDoMesISO("2026-08-14"), "2026-08-31");
+  assert.equal(ultimoDiaDoMesISO("2026-02-10"), "2026-02-28");
+  assert.equal(ultimoDiaDoMesISO("2028-02-10"), "2028-02-29"); // ano bissexto
+  assert.equal(ultimoDiaDoMesISO("2026-12-31"), "2026-12-31");
+});
+
+test("validadeCambioQuote: min(issue+10, ultimo dia do mes)", () => {
+  // Meio do mes: os 10 dias vencem antes do fim do mes.
+  assert.equal(validadeCambioQuote("2026-08-05"), "2026-08-15");
+  // Fim do mes: o fim do mes vem antes dos 10 dias.
+  assert.equal(validadeCambioQuote("2026-08-28"), "2026-08-31");
+  // Exatamente no limite: issue+10 == ultimo dia -> usa a data (<=).
+  assert.equal(validadeCambioQuote("2026-08-21"), "2026-08-31");
+});
+
+test("cambioVencidoPorData: janela de folga em dias", () => {
+  assert.equal(cambioVencidoPorData("2026-08-29", "2026-08-29", 4), false); // mesmo dia
+  assert.equal(cambioVencidoPorData("2026-08-25", "2026-08-29", 4), false); // 4 dias, no limite
+  assert.equal(cambioVencidoPorData("2026-08-24", "2026-08-29", 4), true); // 5 dias, vencido
+  assert.equal(cambioVencidoPorData(null, "2026-08-29", 4), true); // sem VET
+  assert.equal(cambioVencidoPorData("2026-08-30", "2026-08-29", 4), false); // VET "do futuro"
 });

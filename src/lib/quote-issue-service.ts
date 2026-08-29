@@ -16,18 +16,15 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
 import {
   podeEmitir,
-  cambioVencido,
-  aplicarMarkup,
   converterPelaTaxa,
-  validadePadraoISO,
+  validadeCambioQuote,
+  cambioVencidoPorData,
   jaEmitida,
   moedaOrigemUnica,
   type PrecondicoesEmissao,
 } from "@/lib/quote-issue";
 
 export type ServiceActor = { usuario: string; ip?: string | null };
-
-const VALIDADE_PADRAO_DIAS = 30;
 
 function toNum(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -218,37 +215,43 @@ export async function issueQuote(
   const fxMoedasMisturadas = source === null;
   const fxNecessario = !fxMoedasMisturadas && source !== presentment;
 
-  // Politica de cambio do tenant (markup, idade maxima).
+  // Idade maxima da cotacao_vet (em DIAS) tolerada para congelar. Vem da politica
+  // do tenant (max_rate_age_hours -> dias, arredondando pra cima); o cron diario
+  // mantem a VET do dia, e a folga cobre fim de semana/feriado/falha do job.
   const { data: policy } = await supabase
     .from("tenant_fx_policy")
-    .select("markup_percent, max_rate_age_hours, disclaimer")
+    .select("max_rate_age_hours")
     .eq("tenant_id", args.tenantId)
     .maybeSingle();
-  const markupPercent = toNum(policy?.markup_percent);
-  const maxRateAgeHours = policy?.max_rate_age_hours != null ? toNum(policy.max_rate_age_hours) : 24;
+  const maxRateAgeHours = policy?.max_rate_age_hours != null ? toNum(policy.max_rate_age_hours) : 72;
+  const maxDiasCambio = Math.max(1, Math.ceil(maxRateAgeHours / 24));
 
-  // Busca e congela a taxa, se necessaria.
+  const issueDate = hojeBrasilISO();
+
+  // Congela a MESMA cotacao_vet que o contrato usa na cobranca (cotacoes_cambio:
+  // PTAX do BACEN + spread + IOF, modelo aditivo; NZD via BCE). Fonte unica ->
+  // o BRL exibido na cotacao casa, por construcao, com a regra da parcela. A VET
+  // ja embute spread/IOF, entao NAO ha markup adicional aqui.
   let fxRate: number | null = null;
   let fxRateAt: string | null = null;
   let fxSource: string | null = null;
   let fxPresente = false;
   let fxVencido = false;
   if (fxNecessario && source) {
-    const { data: rateRow } = await supabase
-      .from("fx_rate")
-      .select("rate, source, effective_at")
-      .eq("base_currency", source)
-      .eq("quote_currency", presentment)
-      .order("effective_at", { ascending: false })
+    const { data: vetRow } = await supabase
+      .from("cotacoes_cambio")
+      .select("cotacao_vet, data")
+      .eq("moeda", source)
+      .lte("data", issueDate)
+      .order("data", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (rateRow) {
+    if (vetRow && vetRow.cotacao_vet != null) {
       fxPresente = true;
-      const atMs = new Date(rateRow.effective_at as string).getTime();
-      fxVencido = cambioVencido(atMs, Date.now(), maxRateAgeHours);
-      fxRate = aplicarMarkup(toNum(rateRow.rate), markupPercent);
-      fxRateAt = rateRow.effective_at as string;
-      fxSource = (rateRow.source as string) ?? "fx_rate";
+      fxRate = toNum(vetRow.cotacao_vet);
+      fxRateAt = `${(vetRow.data as string).slice(0, 10)}T00:00:00.000Z`;
+      fxSource = "BACEN PTAX + spread/IOF (cotacoes_cambio); NZD via BCE";
+      fxVencido = cambioVencidoPorData(vetRow.data as string, issueDate, maxDiasCambio);
     }
   }
 
@@ -266,9 +269,11 @@ export async function issueQuote(
   const veredito = podeEmitir(precond);
   if (!veredito.ok) throw new EmissaoBloqueada(veredito.motivos);
 
-  const issueDate = hojeBrasilISO();
-  const validUntil =
-    (quote.valid_until as string | null) ?? validadePadraoISO(issueDate, args.validadeDias ?? VALIDADE_PADRAO_DIAS);
+  // Validade: o cambio congelado so vale ate min(emissao+10, ultimo dia do mes).
+  // Um valid_until manual EARLIER e respeitado; nunca alem da janela do cambio.
+  const cambioValidade = validadeCambioQuote(issueDate);
+  const manual = quote.valid_until as string | null;
+  const validUntil = manual && manual < cambioValidade ? manual : cambioValidade;
   const token = randomBytes(32).toString("base64url");
 
   // Guard de corrida: so emite se ainda estiver em draft. Duas emissoes
@@ -285,7 +290,7 @@ export async function issueQuote(
       fx_rate: fxRate,
       fx_rate_at: fxRateAt,
       fx_source: fxSource,
-      fx_markup_percent: fxNecessario ? markupPercent : null,
+      fx_markup_percent: null, // VET ja embute spread + IOF; sem markup separado
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", args.tenantId)

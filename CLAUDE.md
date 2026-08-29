@@ -109,7 +109,9 @@ Valem a partir da construção da Área Administrativa e dos módulos seguintes
 - **Dinheiro só muda de estado por webhook confirmado (idempotente), nunca por
   tela.** (Já é assim no pagamento; manter para todo fluxo financeiro novo.)
 - **Parâmetros de negócio por instância (TENANT), nunca hardcoded**: spread
-  (6,6%), IOF (3,5%), buffers, SLAs, D-30 de fornecedor etc. vêm de config.
+  (5%), IOF (3,5%), buffers, SLAs, D-30 de fornecedor etc. vêm de config
+  (spread/IOF via `SPREAD_CAMBIO_PERCENTUAL`/`IOF_CAMBIO_PERCENTUAL`; defaults
+  em `src/lib/cambio.ts`).
 - **RBAC**: a Área Administrativa tem papéis (ver `docs/07`); rota admin checa o
   papel, não só a sessão. Overrides sensíveis exigem justificativa registrada.
 - **Marca**: vermelho **apenas no admin**, nunca na Área do Cliente; dourado

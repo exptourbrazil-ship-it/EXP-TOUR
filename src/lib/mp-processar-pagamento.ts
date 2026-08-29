@@ -110,7 +110,7 @@ export async function processarPagamentoMercadoPago(
     const idsNovos = new Set((data ?? []).map((p: { id: string }) => p.id));
     const recemPagas = (parcelasPagamento ?? []).filter((p: any) => idsNovos.has(p.id));
     if (recemPagas.length > 0) {
-      const spread = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.066");
+      const spread = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
       const iof = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
       const fmt = (iso: string) =>
         new Intl.DateTimeFormat("pt-BR", {
