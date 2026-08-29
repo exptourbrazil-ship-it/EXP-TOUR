@@ -39,8 +39,8 @@ export default function UploadPriceList() {
   }
 
   return (
-    <div style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#042f1b", marginBottom: 8 }}>Enviar price list (PDF)</div>
+    <div style={{ border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-ink)", marginBottom: 8 }}>Enviar price list (PDF)</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <input
           ref={inputRef}
@@ -54,8 +54,8 @@ export default function UploadPriceList() {
           onClick={enviar}
           disabled={enviando}
           style={{
-            background: "#042f1b",
-            color: "#f5ead9",
+            background: "var(--p-cta)",
+            color: "var(--p-cta-fg)",
             border: "none",
             borderRadius: 8,
             padding: "8px 14px",
@@ -68,7 +68,7 @@ export default function UploadPriceList() {
         </button>
       </div>
       {msg ? (
-        <p style={{ marginTop: 8, fontSize: 12, color: msg.tipo === "ok" ? "#15803d" : "#b91c1c" }}>{msg.texto}</p>
+        <p style={{ marginTop: 8, fontSize: 12, color: msg.tipo === "ok" ? "var(--p-success-ink)" : "#b91c1c" }}>{msg.texto}</p>
       ) : null}
     </div>
   );

@@ -5,8 +5,8 @@ import type { Pendencia, Severidade } from "@/lib/fornecedor-pendencias";
 // icone + cor + texto (marca: dourado so para atencao; vermelho so urgente).
 const ESTILO: Record<Severidade, { cor: string; fundo: string; rotulo: string }> = {
   urgente: { cor: "#b91c1c", fundo: "#fdf2f2", rotulo: "Urgente" },
-  atencao: { cor: "#8a6d2f", fundo: "#faf6ec", rotulo: "Atenção" },
-  info: { cor: "#15803d", fundo: "#f2f8f4", rotulo: "Info" },
+  atencao: { cor: "var(--p-accent-ink)", fundo: "var(--p-accent-soft)", rotulo: "Atenção" },
+  info: { cor: "var(--p-success-ink)", fundo: "var(--p-success-soft)", rotulo: "Info" },
 };
 
 function subtexto(p: Pendencia): string {
@@ -50,9 +50,9 @@ export default function PendenciasLista({
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: "#042f1b", fontSize: 14, fontWeight: 600 }}>{p.titulo}</div>
+              <div style={{ color: "var(--p-ink)", fontSize: 14, fontWeight: 600 }}>{p.titulo}</div>
               {subtexto(p) ? (
-                <div style={{ color: "#6b7280", fontSize: 12 }}>{subtexto(p)}</div>
+                <div style={{ color: "var(--p-muted)", fontSize: 12 }}>{subtexto(p)}</div>
               ) : null}
             </div>
             <span

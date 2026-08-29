@@ -66,18 +66,18 @@ export default function PriceListEditor({
   return (
     <div>
       {!editavel ? (
-        <div style={{ marginBottom: 14, borderRadius: 10, padding: "10px 14px", fontSize: 13, border: "1px solid #d8ccb4", background: "#faf6ec", color: "#8a6d2f" }}>
+        <div style={{ marginBottom: 14, borderRadius: 10, padding: "10px 14px", fontSize: 13, border: "1px solid var(--p-line)", background: "var(--p-accent-soft)", color: "var(--p-accent-ink)" }}>
           Este price list já foi enviado — somente leitura.
         </div>
       ) : null}
       {msg ? (
-        <div style={{ marginBottom: 14, borderRadius: 10, padding: "10px 14px", fontSize: 14, border: `1px solid ${msg.tipo === "ok" ? "#bbf7d0" : "#fecaca"}`, background: msg.tipo === "ok" ? "#f0fdf4" : "#fef2f2", color: msg.tipo === "ok" ? "#166534" : "#b91c1c" }}>
+        <div style={{ marginBottom: 14, borderRadius: 10, padding: "10px 14px", fontSize: 14, border: `1px solid ${msg.tipo === "ok" ? "var(--p-success-soft)" : "#fecaca"}`, background: msg.tipo === "ok" ? "var(--p-success-soft)" : "#fef2f2", color: msg.tipo === "ok" ? "var(--p-success-ink)" : "#b91c1c" }}>
           {msg.texto}
         </div>
       ) : null}
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <label style={{ fontSize: 13, color: "#042f1b" }}>Moeda</label>
+        <label style={{ fontSize: 13, color: "var(--p-ink)" }}>Moeda</label>
         <input
           value={d.currency ?? ""}
           onChange={(e) => setD({ ...d, currency: e.target.value.toUpperCase().slice(0, 3) || null })}
@@ -85,7 +85,7 @@ export default function PriceListEditor({
           disabled={!editavel}
           style={{ ...inp(80), textTransform: "uppercase" }}
         />
-        <span style={{ fontSize: 12, color: "#6b7280" }}>{totalItens} item(ns)</span>
+        <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{totalItens} item(ns)</span>
       </div>
 
       {/* Programas */}
@@ -202,15 +202,15 @@ function TiersEditor({ tiers, unit, editavel, onTiers }: { tiers: FaixaPreco[]; 
     <div style={{ marginLeft: 4 }}>
       {tiers.map((t, i) => (
         <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, fontSize: 13 }}>
-          <span style={{ color: "#6b7280" }}>a partir de</span>
+          <span style={{ color: "var(--p-muted)" }}>a partir de</span>
           <input value={String(t.minQuantity)} onChange={(e) => onTiers(patch(tiers, i, { minQuantity: Number(e.target.value) || 0 }))} inputMode="numeric" disabled={!editavel} style={inp(60)} />
-          <span style={{ color: "#6b7280" }}>{unit} →</span>
+          <span style={{ color: "var(--p-muted)" }}>{unit} →</span>
           <input value={String(t.unitPrice)} onChange={(e) => onTiers(patch(tiers, i, { unitPrice: Number(e.target.value) || 0 }))} inputMode="decimal" disabled={!editavel} style={inp(90)} />
           {editavel ? <button type="button" onClick={() => onTiers(tiers.filter((_, j) => j !== i))} style={btnRemover}>x</button> : null}
         </div>
       ))}
       {editavel ? (
-        <button type="button" onClick={() => onTiers([...tiers, { minQuantity: 1, unitPrice: 0 }])} style={{ background: "none", border: "none", color: "#8a6d2f", fontSize: 12, cursor: "pointer", padding: 0 }}>
+        <button type="button" onClick={() => onTiers([...tiers, { minQuantity: 1, unitPrice: 0 }])} style={{ background: "none", border: "none", color: "var(--p-accent-ink)", fontSize: 12, cursor: "pointer", padding: 0 }}>
           + faixa
         </button>
       ) : null}
@@ -221,14 +221,14 @@ function TiersEditor({ tiers, unit, editavel, onTiers }: { tiers: FaixaPreco[]; 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <h3 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 16, margin: "0 0 8px" }}>{titulo}</h3>
+      <h3 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, margin: "0 0 8px" }}>{titulo}</h3>
       <div style={{ display: "grid", gap: 10 }}>{children}</div>
     </div>
   );
 }
 function Adicionar({ onClick, rotulo }: { onClick: () => void; rotulo: string }) {
   return (
-    <button type="button" onClick={onClick} style={{ textAlign: "left", background: "#faf6ec", border: "1px dashed #d8ccb4", borderRadius: 10, padding: "8px 12px", fontSize: 13, color: "#8a6d2f", cursor: "pointer" }}>
+    <button type="button" onClick={onClick} style={{ textAlign: "left", background: "var(--p-accent-soft)", border: "1px dashed var(--p-line)", borderRadius: 10, padding: "8px 12px", fontSize: 13, color: "var(--p-accent-ink)", cursor: "pointer" }}>
       + {rotulo}
     </button>
   );
@@ -239,14 +239,14 @@ function patch<T>(arr: T[], i: number, campos: Partial<T>): T[] {
   return arr.map((x, j) => (j === i ? { ...x, ...campos } : x));
 }
 
-const cardStyle: React.CSSProperties = { border: "1px solid #d8ccb4", borderRadius: 10, background: "#fff", padding: 12 };
+const cardStyle: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 10, background: "#fff", padding: 12 };
 const btnRemover: React.CSSProperties = { background: "none", border: "none", color: "#b91c1c", fontSize: 12, cursor: "pointer" };
 function inp(width: number): React.CSSProperties {
-  return { width, border: "1px solid #d8ccb4", borderRadius: 8, padding: "6px 8px", fontSize: 13, background: "#fff" };
+  return { width, border: "1px solid var(--p-line)", borderRadius: 8, padding: "6px 8px", fontSize: 13, background: "#fff" };
 }
 function btnPrim(disabled: boolean): React.CSSProperties {
-  return { background: "#042f1b", color: "#f5ead9", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 };
+  return { background: "var(--p-cta)", color: "var(--p-cta-fg)", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 };
 }
 function btnSec(disabled: boolean): React.CSSProperties {
-  return { background: "#fff", color: "#042f1b", border: "1px solid #d8ccb4", borderRadius: 8, padding: "10px 16px", fontSize: 14, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 };
+  return { background: "#fff", color: "var(--p-ink)", border: "1px solid var(--p-line)", borderRadius: 8, padding: "10px 16px", fontSize: 14, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 };
 }

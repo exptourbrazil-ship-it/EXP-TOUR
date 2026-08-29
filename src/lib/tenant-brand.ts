@@ -109,6 +109,9 @@ const EXP_TOUR: TenantBrand = {
     "--p-success": "#042f1b",
     "--p-success-ink": "#042f1b",
     "--p-success-soft": "#eef4f0",
+    // Navegacao do Portal do Parceiro (link no cabecalho + item ativo).
+    "--p-nav": "#c9a35e",
+    "--p-nav-active": "#ffffff",
     "--p-heading": '"Bellefair", Georgia, "Times New Roman", serif',
     "--p-body": "ui-sans-serif, system-ui, -apple-system, sans-serif",
   } as CSSProperties,
@@ -181,6 +184,9 @@ const FORIO: TenantBrand = {
     "--p-success": "#1c8c6a",   /* Confirmed */
     "--p-success-ink": "#12634b",
     "--p-success-soft": "#e6f4ee",
+    // Navegacao: sobre o cabecalho branco, link Slate e ativo Night.
+    "--p-nav": "#4a4e6a",
+    "--p-nav-active": "#0f1020",
     "--p-heading": INTER,
     "--p-body": INTER,
   } as CSSProperties,

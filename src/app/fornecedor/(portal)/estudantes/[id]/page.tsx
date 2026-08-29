@@ -51,13 +51,13 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
-        <Link href="/fornecedor/estudantes" style={{ color: "#8a6d2f", fontSize: 13, textDecoration: "none" }}>
+        <Link href="/fornecedor/estudantes" style={{ color: "var(--p-accent-ink)", fontSize: 13, textDecoration: "none" }}>
           ← Voltar para Estudantes
         </Link>
       </div>
 
-      <div style={{ border: "1px solid #d8ccb4", borderRadius: 14, background: "#fff", padding: 22 }}>
-        <h1 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 24, margin: "0 0 4px" }}>
+      <div style={{ border: "1px solid var(--p-line)", borderRadius: 14, background: "#fff", padding: 22 }}>
+        <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 24, margin: "0 0 4px" }}>
           {e.estudanteNome || "(sem nome)"}
         </h1>
         {e.canceladoEm ? (
@@ -80,10 +80,10 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
           {linhas.map(([rotulo, valor]) => (
             <div
               key={rotulo}
-              style={{ display: "flex", gap: 12, padding: "8px 0", borderTop: "1px solid #f0e9da", fontSize: 14 }}
+              style={{ display: "flex", gap: 12, padding: "8px 0", borderTop: "1px solid var(--p-line)", fontSize: 14 }}
             >
-              <dt style={{ width: 200, color: "#6b7280", flexShrink: 0 }}>{rotulo}</dt>
-              <dd style={{ margin: 0, color: "#042f1b" }}>{valor || "—"}</dd>
+              <dt style={{ width: 200, color: "var(--p-muted)", flexShrink: 0 }}>{rotulo}</dt>
+              <dd style={{ margin: 0, color: "var(--p-ink)" }}>{valor || "—"}</dd>
             </div>
           ))}
         </dl>
@@ -91,23 +91,23 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
 
       {pendencias.length > 0 ? (
         <div style={{ marginTop: 18 }}>
-          <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "0 0 10px" }}>
+          <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "0 0 10px" }}>
             Pendências
           </h2>
           <PendenciasLista pendencias={pendencias} />
         </div>
       ) : null}
 
-      <div style={{ marginTop: 18, border: "1px solid #d8ccb4", borderRadius: 14, background: "#fff", padding: 22 }}>
-        <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "0 0 4px" }}>
+      <div style={{ marginTop: 18, border: "1px solid var(--p-line)", borderRadius: 14, background: "#fff", padding: 22 }}>
+        <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "0 0 4px" }}>
           Documentos compartilhados
         </h2>
-        <p style={{ color: "#6b7280", fontSize: 13, margin: "0 0 14px" }}>
+        <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 14px" }}>
           Documentos que a EXP Tour compartilhou com a sua instituição para este estudante.
         </p>
 
         {documentos.length === 0 ? (
-          <p style={{ color: "#6b7280", fontSize: 14, margin: 0 }}>
+          <p style={{ color: "var(--p-muted)", fontSize: 14, margin: 0 }}>
             Nenhum documento compartilhado ainda.
           </p>
         ) : (
@@ -121,16 +121,16 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
                   justifyContent: "space-between",
                   gap: 12,
                   padding: "10px 0",
-                  borderTop: "1px solid #f0e9da",
+                  borderTop: "1px solid var(--p-line)",
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ color: "#042f1b", fontSize: 14, fontWeight: 600 }}>
+                  <div style={{ color: "var(--p-ink)", fontSize: 14, fontWeight: 600 }}>
                     {labelDoTipoDocumento(d.tipoDocumento)}
                   </div>
                   <div
                     style={{
-                      color: "#6b7280",
+                      color: "var(--p-muted)",
                       fontSize: 12,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -142,7 +142,7 @@ export default async function EstudanteDetalhePage({ params }: { params: Promise
                 </div>
                 <a
                   href={`/api/fornecedor/documentos/${d.id}/download`}
-                  style={{ color: "#c9a35e", textDecoration: "none", fontSize: 13, flexShrink: 0 }}
+                  style={{ color: "var(--p-accent-ink)", textDecoration: "none", fontSize: 13, flexShrink: 0 }}
                 >
                   Baixar →
                 </a>

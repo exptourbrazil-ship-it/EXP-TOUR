@@ -44,7 +44,7 @@ export default function ConfirmacoesFornecedor({ pedidos }: { pedidos: Confirmac
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "0 0 10px" }}>
+      <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "0 0 10px" }}>
         Confirmações pendentes
       </h2>
       {erro ? <p style={{ color: "#b91c1c", fontSize: 13, margin: "0 0 8px" }}>{erro}</p> : null}
@@ -52,25 +52,25 @@ export default function ConfirmacoesFornecedor({ pedidos }: { pedidos: Confirmac
         {pedidos.map((p) => (
           <div
             key={p.id}
-            style={{ border: "1px solid #d8ccb4", borderLeft: "4px solid #c9a35e", borderRadius: 10, background: "#fff", padding: 14 }}
+            style={{ border: "1px solid var(--p-line)", borderLeft: "4px solid var(--p-accent)", borderRadius: 10, background: "#fff", padding: 14 }}
           >
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#042f1b" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--p-ink)" }}>
               {CONFIRM_KIND_LABEL[p.kind]}
               {p.estudanteNome ? ` · ${p.estudanteNome}` : ""}
             </div>
-            {p.message ? <div style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>{p.message}</div> : null}
+            {p.message ? <div style={{ fontSize: 13, color: "var(--p-muted)", marginTop: 4 }}>{p.message}</div> : null}
             <input
               value={notaPor[p.id] || ""}
               onChange={(e) => setNotaPor((s) => ({ ...s, [p.id]: e.target.value }))}
               placeholder="Observação (opcional)"
-              style={{ marginTop: 8, width: "100%", maxWidth: 420, border: "1px solid #d8ccb4", borderRadius: 8, padding: "8px 10px", fontSize: 13 }}
+              style={{ marginTop: 8, width: "100%", maxWidth: 420, border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 13 }}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button
                 type="button"
                 onClick={() => responder(p.id, "accepted")}
                 disabled={ocupado}
-                style={{ background: "#15803d", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, cursor: ocupado ? "default" : "pointer", opacity: ocupado ? 0.6 : 1 }}
+                style={{ background: "var(--p-success-ink)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, cursor: ocupado ? "default" : "pointer", opacity: ocupado ? 0.6 : 1 }}
               >
                 Confirmar
               </button>

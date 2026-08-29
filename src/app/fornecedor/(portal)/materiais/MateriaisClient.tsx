@@ -29,9 +29,9 @@ type Material = {
 const IDIOMA_LABEL: Record<string, string> = { en: "EN", pt: "PT", es: "ES" };
 const HOJE_ISO = new Date().toISOString().slice(0, 10);
 
-const card: React.CSSProperties = { border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16 };
-const inputCls: React.CSSProperties = { width: "100%", borderRadius: 8, border: "1px solid #cbb98f", padding: "7px 9px", fontSize: 14, marginTop: 3 };
-const labelCls: React.CSSProperties = { fontSize: 12, color: "#6b5a2f", fontWeight: 600 };
+const card: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16 };
+const inputCls: React.CSSProperties = { width: "100%", borderRadius: 8, border: "1px solid var(--p-line)", padding: "7px 9px", fontSize: 14, marginTop: 3 };
+const labelCls: React.CSSProperties = { fontSize: 12, color: "var(--p-accent-ink)", fontWeight: 600 };
 
 export default function MateriaisClient({ materiais }: { materiais: Material[] }) {
   const router = useRouter();
@@ -103,8 +103,8 @@ export default function MateriaisClient({ materiais }: { materiais: Material[] }
               onClick={() => setModo(m)}
               style={{
                 borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                border: modo === m ? "1px solid #042f1b" : "1px solid #cbb98f",
-                background: modo === m ? "#042f1b" : "#fff", color: modo === m ? "#f5ead9" : "#6b5a2f",
+                border: modo === m ? "1px solid var(--p-cta)" : "1px solid var(--p-line)",
+                background: modo === m ? "var(--p-cta)" : "#fff", color: modo === m ? "var(--p-cta-fg)" : "var(--p-accent-ink)",
               }}
             >
               {m === "arquivo" ? "Arquivo (PDF/imagem)" : "Link (vídeo/URL)"}
@@ -162,7 +162,7 @@ export default function MateriaisClient({ materiais }: { materiais: Material[] }
             type="button"
             onClick={adicionar}
             disabled={ocupado}
-            style={{ borderRadius: 8, background: "#042f1b", color: "#f5ead9", border: "none", padding: "9px 16px", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: ocupado ? 0.6 : 1 }}
+            style={{ borderRadius: 8, background: "var(--p-cta)", color: "var(--p-cta-fg)", border: "none", padding: "9px 16px", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: ocupado ? 0.6 : 1 }}
           >
             {ocupado ? "Salvando…" : "Adicionar material"}
           </button>
@@ -171,24 +171,24 @@ export default function MateriaisClient({ materiais }: { materiais: Material[] }
 
       {/* Lista */}
       {materiais.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: 14 }}>Nenhum material ainda.</p>
+        <p style={{ color: "var(--p-muted)", fontSize: 14 }}>Nenhum material ainda.</p>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {materiais.map((m) => (
             <div key={m.id} style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600, color: "#042f1b" }}>
+                <div style={{ fontWeight: 600, color: "var(--p-ink)" }}>
                   {m.titulo}
                   {m.validade && m.validade < HOJE_ISO ? (
                     <span style={{ marginLeft: 8, background: "#fde8e8", color: "#b91c1c", borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 600 }}>vencido</span>
                   ) : null}
                 </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 2 }}>
                   {TIPO_MATERIAL_LABEL[m.tipo as TipoMaterial] || m.tipo} · {IDIOMA_LABEL[m.idioma] || m.idioma}
                   {m.programa ? ` · ${m.programa}` : ""}
                   {m.validade ? ` · validade ${m.validade}` : ""}
                   {" · "}
-                  <span style={{ color: m.permissao === "cliente" ? "#15803d" : "#8a6d2f" }}>
+                  <span style={{ color: m.permissao === "cliente" ? "var(--p-success-ink)" : "var(--p-accent-ink)" }}>
                     {m.permissao === "cliente" ? "exposto ao cliente" : "uso interno"}
                   </span>
                 </div>

@@ -27,17 +27,17 @@ export default async function PainelFornecedorPage() {
   const sev = contarPorSeveridade(pendencias);
 
   const cards = [
-    { label: "Estudantes", valor: contadores.total, cor: "#042f1b" },
-    { label: "Ativos", valor: contadores.ativos, cor: "#15803d" },
+    { label: "Estudantes", valor: contadores.total, cor: "var(--p-ink)" },
+    { label: "Ativos", valor: contadores.ativos, cor: "var(--p-success-ink)" },
     { label: "Cancelados", valor: contadores.cancelados, cor: "#b91c1c" },
   ];
 
   return (
     <div>
-      <h1 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 26, margin: "0 0 4px" }}>
+      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 4px" }}>
         Painel
       </h1>
-      <p style={{ color: "#042f1b", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
+      <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         Visão geral dos seus estudantes na EXP Tour.
       </p>
 
@@ -46,10 +46,10 @@ export default async function PainelFornecedorPage() {
       {pendencias.length > 0 ? (
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-            <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: 0 }}>
+            <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: 0 }}>
               Pendências
             </h2>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>
+            <span style={{ fontSize: 12, color: "var(--p-muted)" }}>
               {sev.urgente > 0 ? `${sev.urgente} urgente${sev.urgente > 1 ? "s" : ""} · ` : ""}
               {pendencias.length} no total
             </span>
@@ -60,11 +60,11 @@ export default async function PainelFornecedorPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
         {cards.map((c) => (
-          <div key={c.label} style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16 }}>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, color: "#6b7280" }}>
+          <div key={c.label} style={{ border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, color: "var(--p-muted)" }}>
               {c.label}
             </div>
-            <div style={{ fontFamily: "Bellefair, serif", fontSize: 30, color: c.cor }}>{c.valor}</div>
+            <div style={{ fontFamily: "var(--p-heading)", fontSize: 30, color: c.cor }}>{c.valor}</div>
           </div>
         ))}
       </div>
@@ -73,8 +73,8 @@ export default async function PainelFornecedorPage() {
         href="/fornecedor/estudantes"
         style={{
           display: "inline-block",
-          background: "#042f1b",
-          color: "#f5ead9",
+          background: "var(--p-cta)",
+          color: "var(--p-cta-fg)",
           borderRadius: 8,
           padding: "10px 16px",
           fontSize: 14,
@@ -85,7 +85,7 @@ export default async function PainelFornecedorPage() {
       </Link>
 
       {contadores.total === 0 ? (
-        <p style={{ marginTop: 20, fontSize: 13, color: "#6b7280" }}>
+        <p style={{ marginTop: 20, fontSize: 13, color: "var(--p-muted)" }}>
           Ainda não há estudantes vinculados à sua instituição. Assim que os contratos forem
           vinculados no sistema, eles aparecem aqui.
         </p>
