@@ -6,9 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const STATUS: Record<StatusRepasse, { texto: string; cor: string; bg: string }> = {
-  pago: { texto: "Pago", cor: "#15803d", bg: "#e7f4ea" },
-  previsto: { texto: "Previsto", cor: "#8a6d2f", bg: "#f6efdd" },
-  cancelado: { texto: "Cancelado", cor: "#6b7280", bg: "#f0f0ef" },
+  pago: { texto: "Pago", cor: "var(--p-success-ink)", bg: "var(--p-success-soft)" },
+  previsto: { texto: "Previsto", cor: "var(--p-accent-ink)", bg: "var(--p-accent-soft)" },
+  cancelado: { texto: "Cancelado", cor: "var(--p-muted)", bg: "#f0f0ef" },
 };
 
 function fmtMoeda(valor: number | null, moeda: string | null): string {
@@ -32,8 +32,8 @@ function seloVencimento(l: LinhaExtrato): { texto: string; cor: string } | null 
   const d = l.diasAteVencimento;
   if (d < 0) return { texto: `vencido há ${Math.abs(d)}d`, cor: "#b91c1c" };
   if (d === 0) return { texto: "vence hoje", cor: "#b91c1c" };
-  if (d <= 7) return { texto: `em ${d}d`, cor: "#8a6d2f" };
-  return { texto: `em ${d}d`, cor: "#6b7280" };
+  if (d <= 7) return { texto: `em ${d}d`, cor: "var(--p-accent-ink)" };
+  return { texto: `em ${d}d`, cor: "var(--p-muted)" };
 }
 
 // Extrato financeiro do fornecedor (doc 06 secao 3.6): repasses por caso —
@@ -49,8 +49,8 @@ export default async function FinanceiroPage() {
 
   return (
     <div>
-      <h1 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 26, margin: "0 0 4px" }}>Financeiro</h1>
-      <p style={{ color: "#042f1b", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
+      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 4px" }}>Financeiro</h1>
+      <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         Seus repasses por estudante: valor bruto do programa, comissão da EXP Tour, líquido a receber e a
         previsão de pagamento (D-{extrato.prazoDias}, {extrato.prazoDias} dias antes do início). Quando a remessa
         é enviada, o comprovante aparece aqui.
@@ -58,16 +58,16 @@ export default async function FinanceiroPage() {
 
       {/* Resumo por moeda */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-        <ResumoCard titulo="Líquido previsto" porMoeda={extrato.previstoPorMoeda} moedas={moedasPrev} destaque="#8a6d2f" />
-        <ResumoCard titulo="Já pago" porMoeda={extrato.pagoPorMoeda} moedas={moedasPago} destaque="#15803d" />
+        <ResumoCard titulo="Líquido previsto" porMoeda={extrato.previstoPorMoeda} moedas={moedasPrev} destaque="var(--p-accent-ink)" />
+        <ResumoCard titulo="Já pago" porMoeda={extrato.pagoPorMoeda} moedas={moedasPago} destaque="var(--p-success-ink)" />
       </div>
 
       {!extrato.temAcordo ? (
         <div
           style={{
-            border: "1px solid #e3d6b8",
-            background: "#f9f3e2",
-            color: "#8a6d2f",
+            border: "1px solid var(--p-line)",
+            background: "var(--p-accent-soft)",
+            color: "var(--p-accent-ink)",
             borderRadius: 10,
             padding: "10px 14px",
             fontSize: 13,
@@ -80,12 +80,12 @@ export default async function FinanceiroPage() {
       ) : null}
 
       {extrato.linhas.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: 14 }}>Nenhum caso vinculado a você ainda.</p>
+        <p style={{ color: "var(--p-muted)", fontSize: 14 }}>Nenhum caso vinculado a você ainda.</p>
       ) : (
-        <div style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", overflow: "auto" }}>
+        <div style={{ border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 720 }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280", fontSize: 12 }}>
+              <tr style={{ textAlign: "left", color: "var(--p-muted)", fontSize: 12 }}>
                 <th style={{ padding: "10px 14px" }}>Estudante</th>
                 <th style={{ padding: "10px 14px", textAlign: "right" }}>Bruto</th>
                 <th style={{ padding: "10px 14px", textAlign: "right" }}>Comissão</th>
@@ -102,13 +102,13 @@ export default async function FinanceiroPage() {
                 const liquido = l.status === "pago" ? l.paidNet : l.netAmount;
                 const moedaLiquido = l.status === "pago" ? l.paidCurrency ?? l.currency : l.currency;
                 return (
-                  <tr key={l.contratoId} style={{ borderTop: "1px solid #eee7d8", color: "#042f1b" }}>
+                  <tr key={l.contratoId} style={{ borderTop: "1px solid var(--p-line)", color: "var(--p-ink)" }}>
                     <td style={{ padding: "10px 14px" }}>
                       <div style={{ fontWeight: 600 }}>{l.estudanteNome || "—"}</div>
-                      {l.programa ? <div style={{ fontSize: 12, color: "#6b7280" }}>{l.programa}</div> : null}
+                      {l.programa ? <div style={{ fontSize: 12, color: "var(--p-muted)" }}>{l.programa}</div> : null}
                     </td>
                     <td style={{ padding: "10px 14px", textAlign: "right" }}>{fmtMoeda(l.grossAmount, l.currency)}</td>
-                    <td style={{ padding: "10px 14px", textAlign: "right", color: "#6b7280" }}>
+                    <td style={{ padding: "10px 14px", textAlign: "right", color: "var(--p-muted)" }}>
                       {l.comissaoDefinida ? fmtMoeda(l.commissionAmount, l.currency) : "a definir"}
                     </td>
                     <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600 }}>
@@ -116,7 +116,7 @@ export default async function FinanceiroPage() {
                     </td>
                     <td style={{ padding: "10px 14px" }}>
                       {l.status === "pago" ? (
-                        <span style={{ color: "#15803d" }}>pago em {fmtData(l.paidAt)}</span>
+                        <span style={{ color: "var(--p-success-ink)" }}>pago em {fmtData(l.paidAt)}</span>
                       ) : (
                         <>
                           {fmtData(l.dueDate)}
@@ -157,7 +157,7 @@ export default async function FinanceiroPage() {
         </div>
       )}
 
-      <p style={{ color: "#9ca3af", fontSize: 12, marginTop: 14 }}>
+      <p style={{ color: "var(--p-muted)", fontSize: 12, marginTop: 14 }}>
         Os valores previstos são uma estimativa com base no contrato e no acordo vigente; o valor final é
         confirmado no momento da remessa.
       </p>
@@ -180,18 +180,18 @@ function ResumoCard({
     <div
       style={{
         flex: "1 1 220px",
-        border: "1px solid #d8ccb4",
+        border: "1px solid var(--p-line)",
         borderRadius: 12,
         background: "#fff",
         padding: "14px 16px",
       }}
     >
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>{titulo}</div>
+      <div style={{ fontSize: 12, color: "var(--p-muted)", marginBottom: 6 }}>{titulo}</div>
       {moedas.length === 0 ? (
-        <div style={{ fontSize: 18, color: "#9ca3af" }}>—</div>
+        <div style={{ fontSize: 18, color: "var(--p-muted)" }}>—</div>
       ) : (
         moedas.map((m) => (
-          <div key={m} style={{ fontFamily: "Bellefair, serif", fontSize: 22, color: destaque }}>
+          <div key={m} style={{ fontFamily: "var(--p-heading)", fontSize: 22, color: destaque }}>
             {fmtMoeda(porMoeda[m], m)}
           </div>
         ))

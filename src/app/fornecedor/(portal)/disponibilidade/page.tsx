@@ -19,17 +19,17 @@ export default async function DisponibilidadePage() {
 
   return (
     <div>
-      <h1 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 26, margin: "0 0 4px" }}>
+      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 4px" }}>
         Disponibilidade
       </h1>
-      <p style={{ color: "#042f1b", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
+      <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         Cadastre seus programas (datas de início) e acomodações (períodos) com status e vagas. As alterações valem na hora.
       </p>
 
-      <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "0 0 12px" }}>Programas</h2>
+      <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "0 0 12px" }}>Programas</h2>
       <DisponibilidadeClient endpoint="/api/fornecedor/disponibilidade" programas={programas} />
 
-      <h2 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 20, margin: "28px 0 12px" }}>Acomodações</h2>
+      <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "28px 0 12px" }}>Acomodações</h2>
       <AcomodacaoClient endpoint="/api/fornecedor/disponibilidade" acomodacoes={acomodacoes} />
     </div>
   );

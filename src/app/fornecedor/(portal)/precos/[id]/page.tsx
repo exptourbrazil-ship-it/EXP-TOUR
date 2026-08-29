@@ -18,14 +18,14 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
-        <Link href="/fornecedor/precos" style={{ color: "#8a6d2f", fontSize: 13, textDecoration: "none" }}>
+        <Link href="/fornecedor/precos" style={{ color: "var(--p-accent-ink)", fontSize: 13, textDecoration: "none" }}>
           ← Voltar para Preços
         </Link>
       </div>
-      <h1 style={{ fontFamily: "Bellefair, serif", color: "#042f1b", fontSize: 24, margin: "0 0 4px" }}>
+      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 24, margin: "0 0 4px" }}>
         {sub.sourceFilename || "Price list"}
       </h1>
-      <p style={{ color: "#6b7280", fontSize: 13, margin: "0 0 16px" }}>
+      <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 16px" }}>
         {sub.extractStatus === "ok"
           ? "Rascunho extraído do PDF pela IA. Revise e corrija antes de aprovar."
           : sub.extractStatus === "sem_ia"

@@ -27,10 +27,11 @@ export default function LogoutButton() {
       disabled={saindo}
       style={{
         background: "none",
-        border: "1px solid #d8ccb4",
+        // Header-aware: acompanha a marca do tenant (cor do texto do cabecalho).
+        border: "1px solid color-mix(in srgb, var(--p-header-fg, #042f1b) 40%, transparent)",
         borderRadius: 8,
         padding: "8px 14px",
-        color: "#042f1b",
+        color: "var(--p-header-fg, #042f1b)",
         fontSize: 13,
         cursor: saindo ? "default" : "pointer",
         opacity: saindo ? 0.7 : 1,
