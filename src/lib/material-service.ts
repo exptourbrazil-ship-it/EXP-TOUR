@@ -197,6 +197,51 @@ export async function listarMateriaisAdmin(
   });
 }
 
+// Materiais para anexar a uma COTAÇÃO (doc 06 §3.3): resolve a(s) escola(s) do
+// quote pelos campi dos itens (quote_item.campus_id, ou product.campus_id) e
+// devolve os materiais 'cliente', ativos e NÃO vencidos dessas escolas — a
+// brochura certa "automaticamente". Escopo por tenant. Brochura primeiro.
+export async function materiaisParaCotacao(
+  supabase: SupabaseClient,
+  tenantId: string,
+  quoteId: string,
+  hojeISO: string
+): Promise<MaterialAdmin[]> {
+  const { data: opts } = await supabase.from("quote_option").select("id").eq("tenant_id", tenantId).eq("quote_id", quoteId);
+  const optIds = (opts ?? []).map((o: any) => o.id);
+  if (!optIds.length) return [];
+
+  const { data: items } = await supabase.from("quote_item").select("campus_id, product_id").eq("tenant_id", tenantId).in("quote_option_id", optIds);
+  const campusIds = new Set<string>();
+  const productIds = new Set<string>();
+  for (const it of (items ?? []) as any[]) {
+    if (it.campus_id) campusIds.add(it.campus_id);
+    else if (it.product_id) productIds.add(it.product_id);
+  }
+  if (productIds.size) {
+    const { data: prods } = await supabase.from("product").select("campus_id").in("id", [...productIds]);
+    for (const p of (prods ?? []) as any[]) if (p.campus_id) campusIds.add(p.campus_id);
+  }
+  if (!campusIds.size) return [];
+
+  const { data: campuses } = await supabase.from("campus").select("supplier_id").in("id", [...campusIds]);
+  const supplierIds = [...new Set((campuses ?? []).map((c: any) => c.supplier_id).filter(Boolean))] as string[];
+  if (!supplierIds.length) return [];
+
+  const vistos = new Set<string>();
+  const out: MaterialAdmin[] = [];
+  for (const sid of supplierIds) {
+    for (const m of await listarMateriaisAdmin(supabase, tenantId, hojeISO, sid)) {
+      if (m.permissao !== "cliente" || m.vencido || vistos.has(m.id)) continue;
+      vistos.add(m.id);
+      out.push(m);
+    }
+  }
+  // Brochura primeiro (é o que normalmente vai à proposta).
+  out.sort((a, b) => (a.tipo === "brochura" ? -1 : 0) - (b.tipo === "brochura" ? -1 : 0));
+  return out;
+}
+
 // Download de material pelo ADMIN: posse por tenant (materiais são do tenant).
 export async function materialAdminParaDownload(
   supabase: SupabaseClient,
