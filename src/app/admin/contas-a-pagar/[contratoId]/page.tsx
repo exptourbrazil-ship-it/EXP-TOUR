@@ -6,6 +6,7 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { obterCasoParaRepasse } from "@/lib/payout-admin-service";
 import { obterConferencia } from "@/lib/fatura-conferencia-service";
 import RepasseExecutarClient from "./RepasseExecutarClient";
+import TravaPanel from "./TravaPanel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,6 +108,8 @@ export default async function ContaAPagarDetalhe({ params }: { params: Promise<{
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
           Este caso já tem uma remessa registrada. Veja o extrato do fornecedor no portal.
         </p>
+      ) : !caso.trava.liberado ? (
+        <TravaPanel contratoId={caso.contratoId} liberaEmISO={caso.trava.liberaEmISO} />
       ) : (
         <RepasseExecutarClient
           contratoId={caso.contratoId}

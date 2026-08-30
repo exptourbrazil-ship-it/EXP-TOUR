@@ -57,6 +57,11 @@ create index if not exists idx_contratos_zoho_contact on contratos(zoho_contact_
 -- retencao escalonada. Null = derivar dos sinais (entrada paga / LOA / visto).
 -- Ver src/lib/etapa-anexo-i.ts e reembolso-anexo-i.ts. Aplicar no SQL Editor.
 alter table if exists contratos add column if not exists etapa_anexo_i text;
+-- Trava de remessa da Entrada (Clausulas 2.5.2 / 8.4 / CDC art. 49): enquanto o
+-- direito de arrependimento (7 dias do aceite) corre, NAO se remete dinheiro ao
+-- fornecedor, SALVO se o cliente marcou "processamento imediato". Default false =
+-- protegido. Ver src/lib/trava-remessa.ts e executarRepasse. Aplicar no SQL Editor.
+alter table if exists contratos add column if not exists processamento_imediato boolean not null default false;
 -- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL
 -- dos dados CONTRATADOS congelado no momento do aceite (contratante, participante,
 -- programa, valores, regime de pagamento, itens, versao do Termo). E o "documento

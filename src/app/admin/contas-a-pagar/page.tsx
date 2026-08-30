@@ -133,6 +133,12 @@ export default async function ContasAPagarPage() {
                     <td className="px-4 py-2">
                       <div className="text-brand font-medium">{c.supplierNome || "—"}</div>
                       <div className="text-xs text-neutral-500">{c.estudanteNome || c.programa || "—"}</div>
+                      {!c.trava.liberado ? (
+                        <div className="mt-0.5 text-xs font-medium text-amber-700">
+                          🔒 remessa travada (arrependimento
+                          {c.trava.liberaEmISO ? " até " + fmtData(c.trava.liberaEmISO) : ""})
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2 text-right">{fmtMoeda(c.grossAmount, c.currency)}</td>
                     <td className="px-4 py-2 text-right text-neutral-500">
@@ -148,7 +154,7 @@ export default async function ContasAPagarPage() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <Link href={`/admin/contas-a-pagar/${c.contratoId}`} className="text-brand-golddark hover:underline">
-                        Pagar →
+                        {c.trava.liberado ? "Pagar →" : "Ver →"}
                       </Link>
                     </td>
                   </tr>
