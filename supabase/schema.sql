@@ -53,6 +53,26 @@ alter table if exists contratos add column if not exists visto_status text
 -- qual CPF vira titular). Ver src/app/api/integrations/zoho/webhook/route.ts.
 alter table if exists contratos add column if not exists zoho_contact_id text;
 create index if not exists idx_contratos_zoho_contact on contratos(zoho_contact_id);
+-- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL
+-- dos dados CONTRATADOS congelado no momento do aceite (contratante, participante,
+-- programa, valores, regime de pagamento, itens, versao do Termo). E o "documento
+-- aceito" junto das Condicoes Gerais + Anexos. Preenchido pela converter_cotacao;
+-- nunca reescrito depois. Ver src/lib/quadro-resumo.ts.
+--
+-- Estes tres campos ficam no grao do CONTRATO (nao em `aceites`): cada conversao
+-- e um ato de marcacao e produz um contrato, enquanto `aceites` e deduplicado por
+-- (titular, termo) e nao comportaria metadados por-contrato sem ficar defasado.
+--   quadro_resumo : o snapshot (jsonb).
+--   hash_quadro   : sha256 da forma CANONICA do snapshot (chaves ordenadas). Para
+--                   RE-VERIFICAR, reaplicar serializarQuadroResumo() ao objeto lido
+--                   e hashear — NAO hashear quadro_resumo::text cru (o Postgres
+--                   reordena as chaves do jsonb e o hash divergiria).
+--   session_id    : identificador da sessao do ato de marcacao (17.1). Vem do
+--                   cliente (wizard) ou UUID server-side. E METADADO DE AUDITORIA,
+--                   nao controle de seguranca: pode ser forjado/repetido.
+alter table if exists contratos add column if not exists quadro_resumo jsonb;
+alter table if exists contratos add column if not exists hash_quadro text;
+alter table if exists contratos add column if not exists session_id text;
 
 -- Parcelas: cronograma de pagamento de cada contrato
 create table if not exists parcelas (
@@ -1535,7 +1555,12 @@ alter table if exists quote_event add constraint quote_event_kind_check
 -- Dropa a versao anterior (20 args) antes de recriar; o DEFAULT no novo param
 -- mantem compat com chamadas de 20 args na janela de deploy. Reaplicar e seguro
 -- (o drop e "if exists" e a versao nova ja tem 21 args).
+-- Assinaturas anteriores (20 args pre-Anexo III; 21 args pos-Anexo III). Como
+-- estamos ADICIONANDO parametros, e preciso DROP das versoes antigas antes do
+-- CREATE (o create-or-replace nao troca a assinatura, e duas assinaturas com
+-- default causariam "function is not unique" na chamada por nome).
 drop function if exists converter_cotacao(uuid,uuid,text,text,text,text,text,numeric,text,text,text,date,uuid,jsonb,uuid,text,text,text,text,int);
+drop function if exists converter_cotacao(uuid,uuid,text,text,text,text,text,numeric,text,text,text,date,uuid,jsonb,uuid,text,text,text,text,int,jsonb);
 create or replace function converter_cotacao(
   p_quote_id uuid,
   p_tenant_id uuid,
@@ -1557,7 +1582,10 @@ create or replace function converter_cotacao(
   p_ip text,
   p_user_agent text,
   p_option_index int,
-  p_anexo_iii jsonb default '[]'::jsonb
+  p_anexo_iii jsonb default '[]'::jsonb,
+  p_quadro_resumo jsonb default '{}'::jsonb,
+  p_hash_quadro text default null,
+  p_session_id text default null
 ) returns jsonb
 language plpgsql
 as $$
@@ -1624,9 +1652,15 @@ begin
   end if;
 
   -- Contrato novo (na moeda de origem da opcao; conversao p/ BRL e por parcela).
-  insert into contratos (titular_id, nome, valor_total, moeda, estudante_nome, pais_destino, data_inicio, supplier_id)
+  -- Congela o Quadro Resumo (snapshot IMUTAVEL) + hash + id de sessao do ato de
+  -- marcacao (Clausula 17.1). O hash so e gravado junto de um snapshot presente
+  -- (nunca hash orfao com quadro null).
+  insert into contratos (titular_id, nome, valor_total, moeda, estudante_nome, pais_destino, data_inicio, supplier_id, quadro_resumo, hash_quadro, session_id)
   values (v_titular_id, p_contrato_nome, p_valor_total, coalesce(p_moeda, 'BRL'),
-          p_estudante_nome, p_pais_destino, p_data_inicio, p_supplier_id)
+          p_estudante_nome, p_pais_destino, p_data_inicio, p_supplier_id,
+          nullif(p_quadro_resumo, '{}'::jsonb),
+          case when p_quadro_resumo is not null and p_quadro_resumo <> '{}'::jsonb then p_hash_quadro else null end,
+          p_session_id)
   returning id into v_contrato_id;
 
   -- Parcelas (entrada + mensais) do plano ja validado.
@@ -1688,8 +1722,10 @@ begin
     );
   end if;
 
-  -- Prova imutavel do aceite (contexto 'checkout'). Idempotente pelo indice
-  -- unico (titular, termo): duplo-clique/retry nao gera segunda prova.
+  -- Prova imutavel do aceite (contexto 'checkout') = versao+hash do TEXTO do Termo.
+  -- Idempotente pelo indice unico (titular, termo): duplo-clique/retry nao gera
+  -- segunda prova. Os metadados por-contrato do ato de marcacao (hash do Quadro
+  -- Resumo, id de sessao) ficam em `contratos`, nao aqui — este grao e por termo.
   insert into aceites (titular_id, termo_id, versao, hash_conteudo, contexto, ip, user_agent)
   values (v_titular_id, p_termo_id, p_versao, p_hash, 'checkout', p_ip, p_user_agent)
   on conflict (titular_id, termo_id) do nothing;
