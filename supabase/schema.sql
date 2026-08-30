@@ -128,6 +128,14 @@ create table if not exists pagamentos (
 
 create index if not exists idx_pagamentos_contrato on pagamentos(contrato_id);
 create index if not exists idx_pagamentos_parcela on pagamentos(parcela_id);
+-- Saldo devedor remanescente na moeda APOS este pagamento (Clausula 6.5.2 (f)),
+-- CONGELADO no instante da liquidacao (= mesma base do recibo por e-mail: soma do
+-- valor_atual das parcelas ainda nao pagas). Frozen porque o recibo e documento
+-- historico/imprimivel e `contratos.valor_total` muda em alteracao de escopo (E3)
+-- — reconstruir a partir dele mudaria um recibo antigo retroativamente. Preenchido
+-- best-effort no processamento; ausente (cobrancas antigas) -> reconstrucao no
+-- data layer. Aplicar no SQL Editor do Supabase.
+alter table if exists pagamentos add column if not exists saldo_apos_moeda numeric(12,2);
 
 -- Events: barramento/ledger de eventos externos (webhooks). Fonte de
 -- idempotencia e auditoria. Cada notificacao externa vira uma linha; o efeito
