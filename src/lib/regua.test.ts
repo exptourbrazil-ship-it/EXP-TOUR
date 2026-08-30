@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diasAteVencimento, janelaLembrete, janelaEhAtraso, janelaQuitacao } from "./regua.ts";
+import { diasAteVencimento, janelaLembrete, janelaEhAtraso, janelaQuitacao, janelasMoraAplicaveis } from "./regua.ts";
 
 test("diasAteVencimento conta dias corridos (vencimento - hoje)", () => {
   assert.equal(diasAteVencimento("2026-08-01", "2026-08-08"), 7);
@@ -56,4 +56,16 @@ test("janelaQuitacao dispara 30/15/5 dias antes da data-limite", () => {
   assert.equal(janelaQuitacao("2026-08-20", limite), null); // fora das janelas
   assert.equal(janelaQuitacao("2026-09-01", limite), null); // no dia da quitacao
   assert.equal(janelaQuitacao("2026-08-02", null), null); // sem data-limite
+});
+
+test("janelasMoraAplicaveis: limiar de atraso pos data-limite", () => {
+  const limite = "2026-09-01";
+  assert.deepEqual(janelasMoraAplicaveis("2026-08-30", limite), []); // ainda antes do vencimento
+  assert.deepEqual(janelasMoraAplicaveis("2026-09-01", limite), []); // no dia (atraso 0)
+  assert.deepEqual(janelasMoraAplicaveis("2026-09-03", limite), []); // 2 dias -> antes do 1o limiar (3)
+  assert.deepEqual(janelasMoraAplicaveis("2026-09-04", limite), ["mora_1"]); // 3 dias
+  assert.deepEqual(janelasMoraAplicaveis("2026-09-10", limite), ["mora_1"]); // 9 dias
+  assert.deepEqual(janelasMoraAplicaveis("2026-09-11", limite), ["mora_1", "mora_2"]); // 10 dias -> ambas (robusto a lacuna)
+  assert.deepEqual(janelasMoraAplicaveis("2026-10-01", limite), ["mora_1", "mora_2"]);
+  assert.deepEqual(janelasMoraAplicaveis("2026-09-11", null), []);
 });

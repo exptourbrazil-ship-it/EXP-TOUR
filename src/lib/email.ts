@@ -529,6 +529,48 @@ export async function enviarLembreteQuitacaoEmail(
   );
 }
 
+// ---- Aviso amigavel de mora (Clausula 13) ----------------------------------
+
+type DadosAvisoMora = {
+  saldo: string; // saldo devedor ja formatado (ex.: "CAD 6.000,00")
+  encargos: string; // total de encargos ja formatado
+  saldoComEncargos: string; // saldo + encargos ja formatado
+  diasAtraso: number;
+  portalUrl?: string | null;
+};
+
+function templateAvisoMora(t: EmailTheme, nome: string, d: DadosAvisoMora) {
+  const saudacao = saudacaoDe(nome);
+  const botao = d.portalUrl ? botaoRow(t, d.portalUrl, "Regularizar na Área do Cliente") : "";
+  const corpo = `<p style="color:${t.ink};font-size:18px;margin:0 0 12px;">${saudacao}</p>
+<p style="color:${t.ink};font-size:15px;margin:0 0 12px;">Notamos que o prazo de quitação do seu programa venceu há <strong>${d.diasAtraso} dias</strong> e ainda há saldo em aberto. Queremos ajudar você a regularizar.</p>
+<p style="color:${t.ink};font-size:14px;margin:0 0 4px;">Saldo devedor:</p>
+<p style="color:${t.ink};font-size:18px;font-weight:bold;margin:0 0 8px;">${d.saldo}</p>
+<p style="color:${t.ink};font-size:14px;margin:0 0 4px;">Encargos por atraso (Cláusula 13): <strong>${d.encargos}</strong></p>
+<p style="color:${t.ink};font-size:14px;margin:0 0 8px;">Saldo com encargos: <strong>${d.saldoComEncargos}</strong></p>
+<p style="color:${t.ink};font-size:13px;margin:12px 0 0;">Os encargos deixam de correr assim que você quita. Se estiver com dificuldade, responda este e-mail — podemos combinar uma forma de regularizar.</p>
+<table role="presentation">${botao}</table>`;
+  return layout(t, { corpo });
+}
+
+// Aviso amigavel de mora (Clausula 13): >=2 comunicacoes apos a data-limite,
+// antes da suspensao. Best-effort. Lanca em caso de falha para o chamador contar.
+export async function enviarAvisoMoraEmail(
+  destinatario: string,
+  nome: string,
+  dados: DadosAvisoMora,
+  tenantSlug?: string | null,
+) {
+  const t = resolveTheme(tenantSlug);
+  return enviarViaResend(
+    t,
+    destinatario,
+    "aviso_mora",
+    `Seu programa está com pagamento em atraso - ${t.brandName}`,
+    templateAvisoMora(t, nome, dados),
+  );
+}
+
 // ---- Aviso de documento (aprovado/recusado) --------------------------------
 
 type DadosAvisoDocumento = {

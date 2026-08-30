@@ -75,3 +75,25 @@ export function janelaQuitacao(
   const encontrada = JANELAS_QUITACAO.find((j) => j.offsetDias === dias);
   return encontrada ? encontrada.janela : null;
 }
+
+// Avisos AMIGAVEIS de mora (Clausula 13): >=2 comunicacoes APOS a data-limite de
+// quitacao, ANTES da suspensao (D+15). Diferente das janelas de quitacao (match
+// exato de dia), aqui usamos LIMIAR de atraso — robusto a lacunas do cron: cada
+// aviso dispara uma vez quando seu limiar e cruzado (idempotencia por
+// (contrato, janela) em lembretes_quitacao). Percentuais/prazos sao [colchetes].
+export const JANELAS_MORA = [
+  { janela: "mora_1", atrasoDias: 3 },
+  { janela: "mora_2", atrasoDias: 10 },
+] as const;
+
+export type JanelaMora = (typeof JANELAS_MORA)[number]["janela"];
+
+// Janelas de aviso de mora cujo limiar de atraso JA foi alcancado hoje (o cron
+// pula as ja enviadas). Vazio quando em dia ou antes do 1o limiar.
+export function janelasMoraAplicaveis(hojeISO: string, dataLimiteISO: string | null | undefined): JanelaMora[] {
+  if (!dataLimiteISO) return [];
+  const dias = diasAteVencimento(hojeISO, dataLimiteISO); // negativo = atrasado
+  if (dias === null) return [];
+  const atraso = -dias;
+  return JANELAS_MORA.filter((j) => atraso >= j.atrasoDias).map((j) => j.janela);
+}
