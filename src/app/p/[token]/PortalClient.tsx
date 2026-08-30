@@ -29,6 +29,22 @@ function fmtData(iso: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+// Id de sessao do checkout (Clausula 17.1): estavel por token e sobrevivendo a
+// navegacao entre etapas (sessionStorage). Vai no aceite como identificador do
+// ato de marcacao eletronica. Se o storage falhar, o servidor sintetiza um.
+function checkoutSessionId(token: string): string {
+  const chave = `checkout_sid:${token}`;
+  try {
+    const existente = window.sessionStorage.getItem(chave);
+    if (existente) return existente;
+    const novo = (window.crypto?.randomUUID?.() ?? `sid-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    window.sessionStorage.setItem(chave, novo);
+    return novo;
+  } catch {
+    return "";
+  }
+}
+
 async function postEvento(token: string, kind: string, metadata?: Record<string, unknown>) {
   try {
     await fetch(`/api/public/quotes/${token}/events`, {
@@ -516,7 +532,7 @@ function Checkout({
       const r = await fetch(`/api/public/quotes/${token}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cpf, email: email.trim(), telefone, aceite: true }),
+        body: JSON.stringify({ cpf, email: email.trim(), telefone, aceite: true, sessionId: checkoutSessionId(token) }),
       });
       const j = await r.json();
       if (!r.ok || !j.ok) {

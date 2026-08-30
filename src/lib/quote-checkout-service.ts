@@ -9,9 +9,11 @@
 //   4. chama a funcao TRANSACIONAL converter_cotacao (titular + contrato +
 //      parcelas + aceite + trilha, tudo-ou-nada, idempotente por cotacao);
 //   5. dispara o codigo de acesso por e-mail (boas-vindas), best-effort.
+import { createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarPlanoConversao } from "@/lib/parcelas";
 import { montarAnexoIIISeed } from "@/lib/anexo-iii-seed";
+import { montarQuadroResumo, serializarQuadroResumo } from "@/lib/quadro-resumo";
 import { dadosConversaoCotacao } from "@/lib/quote-issue-service";
 import { normalizarCpf, validarCpf, validarEmail, normalizarTelefone } from "@/lib/cadastro-service";
 import { gerarCodigoAcesso, hashCodigoAcesso } from "@/lib/codigo-acesso";
@@ -19,7 +21,7 @@ import { enviarCodigoAcessoEmail } from "@/lib/email";
 import { slugDoTenant } from "@/lib/tenant-slug";
 
 export type DadosPagante = { cpf: string; email: string; telefone: string; nome?: string | null };
-export type AceiteCtx = { ip: string | null; userAgent: string | null };
+export type AceiteCtx = { ip: string | null; userAgent: string | null; sessionId: string | null };
 export type AcceptResult =
   | { ok: true; contratoId: string; jaConvertida: boolean }
   | { ok: false; erro: string; status: number };
@@ -106,6 +108,30 @@ export async function acceptQuote(
     referencia: dados.reference,
   });
 
+  // Quadro Resumo (Clausula 17.1): snapshot dos dados CONTRATADOS congelado no
+  // aceite + hash de integridade (sha256 da forma canonica). O contratante e o
+  // que foi PREENCHIDO no checkout (cpf/telefone mascarados no snapshot; o dado
+  // completo vive em `titulares`, ligavel por titular_id). O fornecedor do
+  // programa sai da linha de programa da opcao.
+  const progFornecedor = (dados.itens.find((i) => i.grupo === "program") ?? dados.itens[0])?.fornecedor ?? null;
+  const quadro = montarQuadroResumo({
+    contratante: { nome, cpf, email, telefone },
+    participante: { nome: estudanteNome, paisDestino: dados.paisDestino },
+    programa: {
+      nome: dados.contratoNome,
+      fornecedor: progFornecedor,
+      referencia: dados.reference,
+      opcaoIndice: dados.optionIndex,
+      dataInicio: dados.dataInicio,
+    },
+    valores: { moeda: dados.currency, total: dados.liquido, entrada: dados.entrada },
+    parcelas: plano.parcelas,
+    itens: dados.itens,
+    termo: { versao: termo.versao, hash: termo.hash },
+    geradoEm: new Date().toISOString(),
+  });
+  const hashQuadro = createHash("sha256").update(serializarQuadroResumo(quadro)).digest("hex");
+
   // Conversao transacional (tudo-ou-nada, idempotente por cotacao).
   const { data: rpc, error } = await supabase.rpc("converter_cotacao", {
     p_quote_id: dados.quoteId,
@@ -129,6 +155,9 @@ export async function acceptQuote(
     p_user_agent: ctx.userAgent,
     p_option_index: dados.optionIndex,
     p_anexo_iii: anexoIII,
+    p_quadro_resumo: quadro,
+    p_hash_quadro: hashQuadro,
+    p_session_id: ctx.sessionId,
   });
   if (error) {
     const { erro, status } = mapErroRpc(error.message || "");
