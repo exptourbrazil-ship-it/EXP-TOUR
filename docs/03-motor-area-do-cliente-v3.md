@@ -186,7 +186,7 @@ Documento curto (1 a 2 páginas), aceito por checkbox no checkout, que garante a
 
 1. Identificação das partes e do programa (dados puxados do Deal).
 2. Objeto: reserva de vaga no programa descrito, condicionada à assinatura do contrato de prestação de serviços.
-3. Valor total do programa na moeda de origem e valor da entrada em R$, com a regra de conversão (BACEN Turismo Venda + IOF 3,5% + taxa 6,6%) explicitada.
+3. Valor total do programa na moeda de origem e valor da entrada em R$, com a regra de conversão (BACEN Turismo Venda + IOF 3,5% + taxa 5%) explicitada.
 4. **Direito de arrependimento**: 7 dias corridos a partir do pagamento, com devolução integral da entrada (art. 49 do CDC, obrigatório em contratação a distância; escrever com clareza é proteção jurídica e argumento de venda: "você tem 7 dias para mudar de ideia").
 5. Política de cancelamento após os 7 dias (referência à cláusula do contrato-mestre).
 6. Compromisso da empresa: envio do contrato completo em até X dias úteis; a matrícula na instituição ocorre após a assinatura.
