@@ -3,8 +3,15 @@
 // null (404). Reune contrato + parcelas (saldo autoritativo) + pagamentos
 // (movimentos com cotacao) + cotacao do dia, e delega ao motor puro.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { montarExtratoSaldo, type ExtratoSaldo, type MovimentoInput } from "@/lib/extrato-saldo";
+import { montarExtratoSaldo, diasEntre, type ExtratoSaldo, type MovimentoInput } from "@/lib/extrato-saldo";
 import { saldoDevedorMoeda, dataLimiteQuitacao } from "@/lib/parcelas";
+import {
+  calcularMoraSaldo,
+  MORA_MULTA_PADRAO,
+  MORA_JUROS_MES_PADRAO,
+  MORA_INDICE_PADRAO,
+  type MoraResultado,
+} from "@/lib/mora";
 
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -12,15 +19,21 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Percentuais de mora VIGENTES por instancia (env; default de codigo como fallback).
+function envPct(nome: string, padrao: number): number {
+  const v = Number(process.env[nome]);
+  return Number.isFinite(v) && v >= 0 ? v : padrao;
+}
+
 export async function carregarExtrato(
   supabase: SupabaseClient,
   titularId: string,
   contratoId: string,
-): Promise<{ extrato: ExtratoSaldo; programaNome: string } | null> {
+): Promise<{ extrato: ExtratoSaldo; programaNome: string; mora: MoraResultado } | null> {
   // POSSE: o contrato tem de ser DESTE titular.
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("id, nome, moeda, valor_total, data_inicio, created_at")
+    .select("id, nome, moeda, valor_total, data_inicio, created_at, cancelado_em")
     .eq("id", contratoId)
     .eq("titular_id", titularId)
     .maybeSingle();
@@ -94,16 +107,30 @@ export async function carregarExtrato(
     cotacaoHoje = num(cot?.cotacao_vet);
   }
 
+  const dataLimite = dataLimiteQuitacao((contrato.data_inicio as string) ?? null);
   const extrato = montarExtratoSaldo({
     moeda,
     valorTotal: num(contrato.valor_total) ?? 0,
     dataAbertura: (contrato.created_at as string) ?? (contrato.data_inicio as string) ?? null,
-    dataLimiteQuitacao: dataLimiteQuitacao((contrato.data_inicio as string) ?? null),
+    dataLimiteQuitacao: dataLimite,
     hojeISO,
     cotacaoHoje,
     saldoAtualMoeda,
     pagamentos,
   });
 
-  return { extrato, programaNome: (contrato.nome as string) || "Programa" };
+  // Encargos de mora (Clausula 13): dias de atraso = hoje - data-limite de
+  // quitacao (>0 so apos vencer). Percentuais VIGENTES por instancia. Contrato
+  // CANCELADO nao acumula mora (o motor de acerto assume o saldo) -> saldo 0.
+  const cancelado = !!(contrato.cancelado_em as string | null);
+  const diasAtraso = dataLimite ? diasEntre(dataLimite, hojeISO) ?? 0 : 0;
+  const mora = calcularMoraSaldo({
+    saldoMoeda: cancelado ? 0 : saldoAtualMoeda,
+    diasAtraso,
+    multaPercent: envPct("MORA_MULTA_PERCENTUAL", MORA_MULTA_PADRAO),
+    jurosMesPercent: envPct("MORA_JUROS_MES_PERCENTUAL", MORA_JUROS_MES_PADRAO),
+    indicePercent: envPct("MORA_INDICE_PERCENTUAL", MORA_INDICE_PADRAO),
+  });
+
+  return { extrato, programaNome: (contrato.nome as string) || "Programa", mora };
 }
