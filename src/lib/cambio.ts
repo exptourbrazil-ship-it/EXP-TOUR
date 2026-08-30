@@ -51,7 +51,7 @@ export type ItensRecibo = {
   taxaPercentual: number; // ex.: 0.05
   taxaIntermediacao: number; // subtotal x taxaPercentual
   iofPercentual: number; // ex.: 0.035
-  iof: number; // (subtotal + taxa) x iofPercentual
+  iof: number; // subtotal x iofPercentual (aditivo: IOF sobre o valor convertido)
   totalBRL: number; // subtotal + taxa + iof (== valorPrograma x cotacaoVet)
 };
 

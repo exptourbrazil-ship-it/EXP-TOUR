@@ -147,6 +147,18 @@ export async function processarPagamentoMercadoPago(
           .eq("contrato_id", p.contrato_id)
           .neq("status", "pago");
         const saldo = (abertas ?? []).reduce((s: number, x: any) => s + (Number(x.valor_atual) || 0), 0);
+        const saldoArred = Math.round(saldo * 100) / 100;
+
+        // Congela o saldo remanescente NO PAGAMENTO (Clausula 6.5.2 (f)) para o
+        // recibo na Area do Cliente ser historicamente fiel — nao reconstruido de
+        // contratos.valor_total, que muda em alteracao de escopo (E3). So recem-pagas
+        // -> grava uma vez. Best-effort: coluna ausente (banco nao migrado) ou erro
+        // nao derruba o processamento nem o e-mail.
+        await supabase
+          .from("pagamentos")
+          .update({ saldo_apos_moeda: saldoArred })
+          .eq("parcela_id", p.id)
+          .eq("external_payment_id", paymentId);
 
         // Decompoe com o spread/IOF CONGELADO na parcela (mesmos que compuseram
         // a VET). Cobrancas antigas, sem esses campos, caem no legado 6,6% -> o
@@ -159,7 +171,7 @@ export async function processarPagamentoMercadoPago(
           descricao: p.descricao || "Pagamento",
           moeda,
           ...itens,
-          saldoRestanteMoeda: Math.round(saldo * 100) / 100,
+          saldoRestanteMoeda: saldoArred,
         }, slug);
       }
     }

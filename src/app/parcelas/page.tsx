@@ -6,6 +6,7 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import AcertoPropostaClient from "./AcertoPropostaClient";
 import AditivoPropostaClient from "./AditivoPropostaClient";
 import { converterParaBRL } from "@/lib/cambio";
+import { pagamentosPorParcela } from "@/lib/recibo-service";
 import { valorProgramaAtual, dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import ParcelasClient from "./ParcelasClient";
 
@@ -90,6 +91,9 @@ export default async function ParcelasPage() {
     }
   }
 
+  // Recibo itemizado (Clausula 6.5.2) por parcela paga: mapa parcela_id -> pagamento_id.
+  const reciboPorParcela = await pagamentosPorParcela(supabase, contratoIds);
+
   parcelas = parcelas.map((p) => {
     const cotacaoEstimada = cotacoesPorMoeda.get(p.moeda) || null;
     // A cotacao_vet ja embute cambio BACEN + spread + IOF; o valor estimado
@@ -98,7 +102,7 @@ export default async function ParcelasPage() {
     const valorEstimadoBRL = cotacaoEstimada
       ? converterParaBRL(valorProgramaAtual(p), cotacaoEstimada)
       : null;
-    return { ...p, cotacaoEstimada, valorEstimadoBRL };
+    return { ...p, cotacaoEstimada, valorEstimadoBRL, reciboId: reciboPorParcela.get(p.id) || null };
   });
 
   const pagoAteAgora = parcelas.filter((p) => p.status === "pago").reduce((soma, p) => soma + Number(p.valor_original || 0), 0);

@@ -24,6 +24,7 @@ type Parcela = {
   qr_code_url: string | null
   paid_at: string | null
   recibo_url?: string | null
+  reciboId?: string | null
   moeda: string
   cotacaoEstimada?: number | null
   valorEstimadoBRL?: number | null
@@ -517,7 +518,11 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       ) : null}
                       <div className="mt-1">
                         {paga ? (
-                          parcela.recibo_url ? (
+                          parcela.reciboId ? (
+                            // Recibo itemizado na Area do Cliente (Clausula 6.5.2):
+                            // PTAX, Taxa 5%, IOF, total, amortizado e saldo.
+                            <a href={`/recibo/${parcela.reciboId}`} className="text-xs font-medium text-brand underline">Ver recibo</a>
+                          ) : parcela.recibo_url ? (
                             <a href={parcela.recibo_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand underline">Ver recibo</a>
                           ) : (
                             <span className="cursor-not-allowed text-xs text-neutral-500" title="O recibo ficará disponível em breve">Recibo em breve</span>
