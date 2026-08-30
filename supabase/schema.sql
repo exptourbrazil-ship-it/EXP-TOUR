@@ -53,6 +53,10 @@ alter table if exists contratos add column if not exists visto_status text
 -- qual CPF vira titular). Ver src/app/api/integrations/zoho/webhook/route.ts.
 alter table if exists contratos add column if not exists zoho_contact_id text;
 create index if not exists idx_contratos_zoho_contact on contratos(zoho_contact_id);
+-- Etapa concluida do Anexo I (Clausula 9): OVERRIDE manual do admin da etapa de
+-- retencao escalonada. Null = derivar dos sinais (entrada paga / LOA / visto).
+-- Ver src/lib/etapa-anexo-i.ts e reembolso-anexo-i.ts. Aplicar no SQL Editor.
+alter table if exists contratos add column if not exists etapa_anexo_i text;
 -- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL
 -- dos dados CONTRATADOS congelado no momento do aceite (contratante, participante,
 -- programa, valores, regime de pagamento, itens, versao do Termo). E o "documento
