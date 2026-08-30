@@ -261,6 +261,12 @@ export default function ContratosClient({
                         >
                           Cancelar contrato
                         </button>
+                        <a
+                          href={`/admin/contratos/${c.id}/reembolso`}
+                          className="text-xs text-neutral-500 underline underline-offset-2 transition hover:text-neutral-800"
+                        >
+                          Reembolso (Anexo I)
+                        </a>
                       </div>
                     )}
                   </td>
