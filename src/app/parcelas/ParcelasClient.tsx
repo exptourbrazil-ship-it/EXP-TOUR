@@ -446,6 +446,12 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
               O saldo é na moeda do programa; o valor em Reais é uma estimativa pela cotação do dia
               e só se confirma na geração de cada Pix.
             </p>
+            {contratoId ? (
+              // Extrato completo (Clausulas 6.8/7.12): historico de movimentos com cotacao.
+              <a href={`/extrato/${contratoId}`} className="mt-3 inline-block text-xs font-medium text-brand underline">
+                Ver extrato completo
+              </a>
+            ) : null}
           </div>
         ) : null}
 
