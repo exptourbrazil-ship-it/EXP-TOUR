@@ -11,6 +11,7 @@ import {
   type ComissaoBasis,
   type ComissaoType,
 } from "@/lib/payout-calc";
+import { avaliarTravaRemessa, type TravaRemessa } from "@/lib/trava-remessa";
 
 function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -29,6 +30,7 @@ export type ContaAPagar = {
   comissaoDefinida: boolean;
   dueDate: string | null;
   diasAteVencimento: number | null;
+  trava: TravaRemessa; // trava da remessa (arrependimento / processamento imediato)
 };
 
 type ContratoRow = {
@@ -39,6 +41,8 @@ type ContratoRow = {
   moeda: string | null;
   data_inicio: string | null;
   cancelado_em: string | null;
+  created_at: string | null;
+  processamento_imediato: boolean | null;
   titular_id: string | null;
   supplier_id: string;
   supplier: { id: string; display_name: string | null; tenant_id: string; prazo_pagamento_dias: number | null } | { id: string; display_name: string | null; tenant_id: string; prazo_pagamento_dias: number | null }[] | null;
@@ -88,7 +92,7 @@ export async function listarContasAPagar(
   const { data: contratos } = await supabase
     .from("contratos")
     .select(
-      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
+      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, created_at, processamento_imediato, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
     )
     .not("supplier_id", "is", null)
     .is("cancelado_em", null);
@@ -155,6 +159,11 @@ export async function listarContasAPagar(
       comissaoDefinida: prev.comissaoDefinida,
       dueDate: prev.dueDate,
       diasAteVencimento: prev.diasAteVencimento,
+      trava: avaliarTravaRemessa({
+        aceiteISO: c.created_at ?? null,
+        agoraISO: new Date().toISOString(),
+        processamentoImediato: !!c.processamento_imediato,
+      }),
     });
   }
 
@@ -178,7 +187,7 @@ export async function obterCasoParaRepasse(
   const { data } = await supabase
     .from("contratos")
     .select(
-      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
+      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, created_at, processamento_imediato, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
     )
     .eq("id", contratoId)
     .maybeSingle();
@@ -234,6 +243,11 @@ export async function obterCasoParaRepasse(
     comissaoDefinida: prev.comissaoDefinida,
     dueDate: prev.dueDate,
     diasAteVencimento: prev.diasAteVencimento,
+    trava: avaliarTravaRemessa({
+      aceiteISO: c.created_at ?? null,
+      agoraISO: new Date().toISOString(),
+      processamentoImediato: !!c.processamento_imediato,
+    }),
     jaPago,
   };
 }
@@ -287,6 +301,24 @@ async function gravarEvento(
 // caso (posse por tenant), valida os valores (motor puro), impede remessa
 // duplicada no mesmo caso (salvo exceção explícita), grava o ledger
 // supplier_payout e o evento. NÃO envia e-mail (a rota faz o alerta 6).
+// Marca/desmarca "processamento imediato" (Clausulas 2.5.2 / 8.4): a autorizacao
+// EXPRESSA do cliente para remeter a Entrada antes de decorrido o arrependimento.
+// Grava so o metadado; a trava e reavaliada na proxima leitura/execucao. Retorna
+// false se o contrato nao existir (confirma a linha afetada).
+export async function definirProcessamentoImediato(
+  supabase: SupabaseClient,
+  contratoId: string,
+  imediato: boolean,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("contratos")
+    .update({ processamento_imediato: !!imediato })
+    .eq("id", contratoId)
+    .select("id");
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
+
 export async function executarRepasse(
   supabase: SupabaseClient,
   e: EntradaExecutarRepasse
@@ -299,6 +331,19 @@ export async function executarRepasse(
   // Pre-check rapido (UX); a garantia REAL contra dupla remessa e o indice
   // unico (tenant_id, contrato_id), tratado no 23505 do insert abaixo.
   if (caso.jaPago) return { ok: false, erro: "Este caso já tem uma remessa registrada." };
+
+  // Trava da Entrada (Clausulas 2.5.2 / 8.4): fail-closed. Nao remete enquanto o
+  // arrependimento corre e "processamento imediato" nao esta marcado. A garantia
+  // e no CODIGO (a UI so reflete): a remessa e a acao que move dinheiro.
+  if (!caso.trava.liberado) {
+    const ate = caso.trava.liberaEmISO
+      ? new Date(caso.trava.liberaEmISO).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+      : "";
+    return {
+      ok: false,
+      erro: `Remessa travada: direito de arrependimento em curso${ate ? ` até ${ate}` : ""}. Marque "processamento imediato" (autorização do cliente) para liberar antes.`,
+    };
+  }
 
   const val = validarValoresRepasse({
     grossAmount: e.grossAmount,
