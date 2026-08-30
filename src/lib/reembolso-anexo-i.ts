@@ -1,8 +1,9 @@
 // Motor PURO do reembolso escalonado do Anexo I (Clausula 9): a retencao em caso
 // de cancelamento e ESCALONADA POR ETAPA concluida (percentual do tuition),
-// limitada a um TETO, somada aos valores NAO RECUPERAVEIS (ja comprometidos), com
-// DISPENSA (I.4) para os casos sem retencao (ex.: culpa da escola). Produz a
-// MEMORIA DE CALCULO (linha a linha) para a Area do Cliente e o admin.
+// SOMADA aos valores NAO RECUPERAVEIS (ja comprometidos) e o conjunto e limitado
+// a um TETO (o teto incide sobre o TOTAL retido — retencao + nao recuperaveis).
+// Ha DISPENSA (I.4) para os casos sem retencao percentual (ex.: culpa da escola).
+// Produz a MEMORIA DE CALCULO (linha a linha) para a Area do Cliente e o admin.
 //
 // SEM imports (nem "@/..." nem extensao): roda no runner nativo do Node. Puro e
 // deterministico. Nao decide dinheiro nem grava — apenas calcula e itemiza.
@@ -30,7 +31,7 @@ export type ReembolsoInput = {
   etapaChave: string | null; // etapa CONCLUIDA (null = nenhuma -> sem retencao percentual)
   totalPago: number; // ja amortizado na moeda
   naoRecuperaveis?: number; // valores nao recuperaveis (application/placement fee, deposito remetido)
-  teto?: number; // teto da retencao (default TETO_RETENCAO_PADRAO)
+  teto?: number; // teto do TOTAL retido (default TETO_RETENCAO_PADRAO)
   dispensaRetencao?: boolean; // I.4: dispensa a retencao percentual (nao os nao-recuperaveis)
   etapas?: EtapaRetencao[]; // config (default ETAPAS_ANEXO_I_PADRAO)
 };
@@ -42,11 +43,11 @@ export type ReembolsoResultado = {
   etapa: EtapaRetencao | null;
   dispensada: boolean;
   retencaoPercentual: number;
-  retencaoBruta: number; // percentual x tuition (antes do teto)
-  tetoAtingido: boolean;
-  retencaoAplicada: number; // min(bruta, teto), 0 se dispensa
+  retencaoBruta: number; // percentual x tuition
   naoRecuperaveis: number;
-  totalRetido: number; // retencaoAplicada + naoRecuperaveis
+  subtotalRetido: number; // retencaoBruta + naoRecuperaveis (antes do teto)
+  tetoAtingido: boolean; // subtotalRetido > teto
+  totalRetido: number; // min(subtotalRetido, teto) — o teto incide sobre o TOTAL
   totalPago: number;
   reembolso: number; // max(0, totalPago - totalRetido) — a devolver ao cliente
   aindaDevido: number; // max(0, totalRetido - totalPago) — se pagou menos que o retido
@@ -72,30 +73,36 @@ export function calcularReembolsoEscalonado(input: ReembolsoInput): ReembolsoRes
   const etapa = input.etapaChave ? etapas.find((e) => e.chave === input.etapaChave) ?? null : null;
   const retencaoPercentual = dispensada ? 0 : etapa ? etapa.percentual : 0;
   const retencaoBruta = round2(tuition * retencaoPercentual);
-  const tetoAtingido = !dispensada && teto != null && retencaoBruta > teto;
-  const retencaoAplicada = dispensada ? 0 : teto != null ? Math.min(retencaoBruta, teto) : retencaoBruta;
 
-  const totalRetido = round2(retencaoAplicada + naoRecuperaveis);
+  // O teto incide sobre o TOTAL retido (retencao escalonada + nao recuperaveis).
+  const subtotalRetido = round2(retencaoBruta + naoRecuperaveis);
+  const tetoAtingido = teto != null && subtotalRetido > teto;
+  const totalRetido = teto != null ? Math.min(subtotalRetido, teto) : subtotalRetido;
+
   const reembolso = round2(naoNeg(totalPago - totalRetido));
   const aindaDevido = round2(naoNeg(totalRetido - totalPago));
 
   const memoria: LinhaMemoria[] = [];
   memoria.push({ rotulo: "Base de cálculo (tuition)", valor: tuition, tipo: "moeda" });
   if (dispensada) {
-    memoria.push({ rotulo: "Retenção dispensada (Anexo I.4)", valor: 0, tipo: "moeda" });
+    memoria.push({ rotulo: "Retenção escalonada dispensada (Anexo I.4)", valor: 0, tipo: "moeda" });
   } else {
     memoria.push({
       rotulo: `Retenção da etapa${etapa ? " — " + etapa.rotulo : ""}`,
       valor: retencaoPercentual,
       tipo: "pct",
     });
-    memoria.push({ rotulo: "Retenção calculada", valor: retencaoBruta, tipo: "moeda" });
-    if (tetoAtingido) {
-      memoria.push({ rotulo: `Teto da retenção (${moeda} ${teto})`, valor: retencaoAplicada, tipo: "moeda" });
-    }
+    memoria.push({ rotulo: "Retenção escalonada", valor: retencaoBruta, tipo: "moeda" });
   }
   if (naoRecuperaveis > 0) {
     memoria.push({ rotulo: "Valores não recuperáveis", valor: naoRecuperaveis, tipo: "moeda" });
+  }
+  // Subtotal so aparece quando ha mais de um componente somando.
+  if (!dispensada && retencaoBruta > 0 && naoRecuperaveis > 0) {
+    memoria.push({ rotulo: "Subtotal a reter", valor: subtotalRetido, tipo: "moeda" });
+  }
+  if (tetoAtingido) {
+    memoria.push({ rotulo: `Limitado ao teto (${moeda} ${teto})`, valor: totalRetido, tipo: "moeda" });
   }
   memoria.push({ rotulo: "Total retido", valor: totalRetido, tipo: "moeda" });
   memoria.push({ rotulo: "Total pago pelo cliente", valor: totalPago, tipo: "moeda" });
@@ -111,9 +118,9 @@ export function calcularReembolsoEscalonado(input: ReembolsoInput): ReembolsoRes
     dispensada,
     retencaoPercentual,
     retencaoBruta,
-    tetoAtingido,
-    retencaoAplicada,
     naoRecuperaveis,
+    subtotalRetido,
+    tetoAtingido,
     totalRetido,
     totalPago,
     reembolso,

@@ -23,15 +23,15 @@ test("A1 retencao por etapa + nao recuperaveis", () => {
   const r = calcularReembolsoEscalonado(base());
   assert.equal(r.retencaoPercentual, 0.02);
   assert.equal(r.retencaoBruta, 200); // 2% de 10000
-  assert.equal(r.retencaoAplicada, 200);
   assert.equal(r.naoRecuperaveis, 300);
-  assert.equal(r.totalRetido, 500);
+  assert.equal(r.subtotalRetido, 500);
+  assert.equal(r.totalRetido, 500); // abaixo do teto
   assert.equal(r.reembolso, 2500); // 3000 - 500
   assert.equal(r.aindaDevido, 0);
 });
 
-// A2 — teto limita a retencao (tuition alto).
-test("A2 teto da retencao", () => {
+// A2 — teto limita o TOTAL retido (tuition alto).
+test("A2 teto sobre o total", () => {
   const i = base();
   i.tuition = 100000; // 5% seria 5000; etapa visto_embarque
   i.etapaChave = "visto_embarque"; // 5%
@@ -39,19 +39,33 @@ test("A2 teto da retencao", () => {
   i.totalPago = 100000;
   const r = calcularReembolsoEscalonado(i);
   assert.equal(r.retencaoBruta, 5000);
+  assert.equal(r.subtotalRetido, 5000);
   assert.equal(r.tetoAtingido, true);
-  assert.equal(r.retencaoAplicada, TETO_RETENCAO_PADRAO); // 800
-  assert.equal(r.totalRetido, 800);
+  assert.equal(r.totalRetido, TETO_RETENCAO_PADRAO); // 800
 });
 
-// A3 — dispensa I.4 zera a retencao percentual (mantem nao recuperaveis).
+// A2b — os NAO RECUPERAVEIS entram no teto: retencao + nao recuperaveis > 800 -> 800.
+test("A2b nao recuperaveis dentro do teto", () => {
+  const i = base();
+  i.tuition = 10000; // 2% = 200
+  i.etapaChave = "entrada";
+  i.naoRecuperaveis = 700; // subtotal 900
+  i.totalPago = 5000;
+  const r = calcularReembolsoEscalonado(i);
+  assert.equal(r.subtotalRetido, 900);
+  assert.equal(r.tetoAtingido, true);
+  assert.equal(r.totalRetido, 800); // 200 + 700 limitado a 800
+  assert.equal(r.reembolso, 4200); // 5000 - 800
+});
+
+// A3 — dispensa I.4 zera a retencao percentual (mantem nao recuperaveis, sob teto).
 test("A3 dispensa I.4", () => {
   const i = base();
   i.dispensaRetencao = true;
   const r = calcularReembolsoEscalonado(i);
   assert.equal(r.dispensada, true);
-  assert.equal(r.retencaoAplicada, 0);
-  assert.equal(r.totalRetido, 300); // so os nao recuperaveis
+  assert.equal(r.retencaoBruta, 0);
+  assert.equal(r.totalRetido, 300); // so os nao recuperaveis (< teto)
   assert.equal(r.reembolso, 2700);
 });
 
@@ -62,7 +76,8 @@ test("A4 sem etapa", () => {
   i.naoRecuperaveis = 0;
   const r = calcularReembolsoEscalonado(i);
   assert.equal(r.etapa, null);
-  assert.equal(r.retencaoAplicada, 0);
+  assert.equal(r.retencaoBruta, 0);
+  assert.equal(r.totalRetido, 0);
   assert.equal(r.reembolso, 3000);
 });
 
@@ -105,5 +120,5 @@ test("A8 config de etapas", () => {
   i.naoRecuperaveis = 0;
   i.teto = 100000; // nao limita
   const r = calcularReembolsoEscalonado(i);
-  assert.equal(r.retencaoAplicada, 1000); // 10% de 10000
+  assert.equal(r.totalRetido, 1000); // 10% de 10000
 });
