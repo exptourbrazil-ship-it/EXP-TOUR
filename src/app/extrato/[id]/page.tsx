@@ -40,7 +40,7 @@ export default async function ExtratoPage({ params }: { params: Promise<{ id: st
 
   const dados = await carregarExtrato(supabase, sessao.titularId, id);
   if (!dados) notFound();
-  const { extrato, programaNome } = dados;
+  const { extrato, programaNome, mora } = dados;
   const r = extrato.resumo;
 
   return (
@@ -95,6 +95,44 @@ export default async function ExtratoPage({ params }: { params: Promise<{ id: st
               {r.marco === "vencido" ? "." : ` (${fmtData(r.dataLimite)}).`} Você pode pagar quando e quanto quiser até
               essa data — o valor em reais é definido pela cotação do dia em cada pagamento.
             </p>
+          )}
+
+          {/* Encargos de mora (Clausula 13) — so quando ha atraso apos a data-limite */}
+          {mora.aplicavel && (
+            <section className="mt-4 rounded-xl border border-brand-gold/50 bg-brand-gold/5 p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-serif text-lg text-brand-golddark">Encargos por atraso</h2>
+                <span className="rounded-full bg-brand-gold/20 px-2 py-0.5 text-xs font-medium text-brand-golddark">
+                  {mora.diasAtraso} {mora.diasAtraso === 1 ? "dia" : "dias"} de atraso
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-neutral-700">
+                O prazo de quitação venceu. Sobre o saldo incidem, na forma da Cláusula 13, os encargos abaixo — que
+                deixam de correr assim que você quita.
+              </p>
+              <dl className="mt-3 divide-y divide-brand-gold/20 rounded-lg border border-brand-gold/30 bg-white">
+                {mora.memoria.map((l, i) => {
+                  const ultimo = i === mora.memoria.length - 1;
+                  return (
+                    <div key={i} className={`flex justify-between px-3 py-1.5 text-sm ${ultimo ? "bg-brand-gold/5" : ""}`}>
+                      <dt className={ultimo ? "font-semibold text-neutral-900" : "text-neutral-600"}>{l.rotulo}</dt>
+                      <dd className={`text-right ${ultimo ? "font-bold text-brand-golddark" : "font-medium text-neutral-900"}`}>
+                        {moe(l.valor, r.moeda)}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+              {mora.estagio === "suspensao" ? (
+                <p className="mt-2 text-xs text-brand-golddark">
+                  Atenção: o atraso já autoriza a suspensão do programa. Regularize para evitar a rescisão.
+                </p>
+              ) : mora.estagio === "resolucao" ? (
+                <p className="mt-2 text-xs text-brand-golddark">
+                  Atenção: o atraso já autoriza a rescisão do contrato. Fale com a gente o quanto antes.
+                </p>
+              ) : null}
+            </section>
           )}
 
           {/* Historico de movimentos */}
