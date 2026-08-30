@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento } from "@/lib/regua";
+import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento, janelasMoraAplicaveis } from "@/lib/regua";
 import { dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
-import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail } from "@/lib/email";
+import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail, enviarAvisoMoraEmail } from "@/lib/email";
+import {
+  calcularMoraSaldo,
+  MORA_MULTA_PADRAO,
+  MORA_JUROS_MES_PADRAO,
+  MORA_INDICE_PADRAO,
+} from "@/lib/mora";
 import { slugDoTenant } from "@/lib/tenant-slug";
 import { removerDeContratosCancelados, contratoCancelado } from "@/lib/cancelamento";
 import { contratosComSuspensao } from "@/lib/excecao";
@@ -273,5 +279,102 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, ...resultado, quitacao });
+  // ==========================================================================
+  // Avisos AMIGAVEIS de mora (Clausula 13): >=2 comunicacoes APOS a data-limite
+  // de quitacao, enquanto ha saldo. Idempotente por (contrato, janela) reusando
+  // lembretes_quitacao (janelas 'mora_1'/'mora_2'). Nao suspende nem rescinde —
+  // so comunica (a escalada de rescisao e o processo E5).
+  // ==========================================================================
+  const mora = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, suspensa_por_excecao: 0, erros: 0 };
+  const moraMulta = envMoraPct("MORA_MULTA_PERCENTUAL", MORA_MULTA_PADRAO);
+  const moraJuros = envMoraPct("MORA_JUROS_MES_PERCENTUAL", MORA_JUROS_MES_PADRAO);
+  const moraIndice = envMoraPct("MORA_INDICE_PERCENTUAL", MORA_INDICE_PADRAO);
+  // Contratos com a data-limite ja vencida (data_inicio em [hoje-30, hoje+30] ->
+  // data-limite em [hoje-60, hoje]); a janela de mora cobre o atraso ate ~60d.
+  const moraInicioMin = isoMaisDias(hoje, -30);
+  const moraInicioMax = isoMaisDias(hoje, 30);
+
+  const { data: contratosMora, error: erroMora } = await supabase
+    .from("contratos")
+    .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo, tenant_id)")
+    .is("cancelado_em", null)
+    .not("data_inicio", "is", null)
+    .gte("data_inicio", moraInicioMin)
+    .lte("data_inicio", moraInicioMax);
+  if (erroMora) console.error("[regua-cobranca] falha ao carregar contratos para aviso de mora");
+
+  for (const c of contratosMora || []) {
+    if (contratoCancelado(c as any)) { mora.contrato_cancelado++; continue; }
+    if (contratosSuspensos.has((c as any).id)) { mora.suspensa_por_excecao++; continue; }
+
+    const dataLimite = dataLimiteQuitacao((c as any).data_inicio);
+    const janelas = janelasMoraAplicaveis(hojeISO, dataLimite);
+    if (janelas.length === 0) continue;
+    mora.analisados++;
+
+    const titular = (c as any).titular;
+    if (!titular?.email) { mora.sem_email++; continue; }
+
+    const { data: parc } = await supabase
+      .from("parcelas")
+      .select("valor_atual, status")
+      .eq("contrato_id", (c as any).id);
+    const saldo = saldoDevedorMoeda((parc || []) as any);
+    if (saldo <= 0) { mora.sem_saldo++; continue; }
+
+    const moeda = (c as any).moeda || "BRL";
+    const diasAtraso = -(diasAteVencimento(hojeISO, dataLimite as string) ?? 0);
+    const enc = calcularMoraSaldo({
+      saldoMoeda: saldo,
+      diasAtraso,
+      multaPercent: moraMulta,
+      jurosMesPercent: moraJuros,
+      indicePercent: moraIndice,
+    });
+
+    // NO MAXIMO um aviso por execucao: o de MENOR limiar ainda nao enviado.
+    // Espalha as >=2 comunicacoes em dias distintos (empatia da Clausula 13) e
+    // evita dois e-mails no mesmo minuto quando o cron "pula" e ambos os limiares
+    // ja foram cruzados — o proximo run cobre a janela seguinte.
+    let tratou = false;
+    for (const janela of janelas) {
+      const { data: jaEnviado } = await supabase
+        .from("lembretes_quitacao")
+        .select("id")
+        .eq("contrato_id", (c as any).id)
+        .eq("janela", janela)
+        .maybeSingle();
+      if (jaEnviado) continue; // ja enviado -> tenta a proxima janela pendente
+      try {
+        const slug = await slugDoTenant(supabase, titular.tenant_id);
+        await enviarAvisoMoraEmail(titular.email, titular.nome_completo, {
+          saldo: formatarMoeda(saldo, moeda),
+          encargos: formatarMoeda(enc.encargos, moeda),
+          saldoComEncargos: formatarMoeda(enc.saldoComEncargos, moeda),
+          diasAtraso,
+          portalUrl,
+        }, slug);
+        const { error: erroInsert } = await supabase
+          .from("lembretes_quitacao")
+          .insert({ contrato_id: (c as any).id, janela });
+        if (erroInsert) mora.ja_enviados++; // corrida: outra execucao registrou
+        else mora.enviados++;
+      } catch {
+        // Best-effort: nao derruba o cron. Sem PII (nunca o e-mail) no log.
+        console.error(`[regua-cobranca] falha ao enviar aviso de mora (contrato ${(c as any).id}, ${janela})`);
+        mora.erros++;
+      }
+      tratou = true;
+      break; // um aviso por execucao
+    }
+    if (!tratou) mora.ja_enviados++; // todas as janelas aplicaveis ja foram enviadas
+  }
+
+  return NextResponse.json({ ok: true, ...resultado, quitacao, mora });
+}
+
+// Percentual de mora VIGENTE por instancia (env; default de codigo como fallback).
+function envMoraPct(nome: string, padrao: number): number {
+  const v = Number(process.env[nome]);
+  return Number.isFinite(v) && v >= 0 ? v : padrao;
 }
