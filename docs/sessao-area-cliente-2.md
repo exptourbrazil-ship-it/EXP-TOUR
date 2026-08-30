@@ -70,7 +70,7 @@ Sem conflito entre si (arquivos/regiões diferentes).
   obrigação "dura" é o **Saldo Devedor** na moeda + **quitação até D-30** +
   antecipação por exigência. Sem reescrita do modelo de parcelas.
 - **Câmbio:** IOF aditivo (não sobre o spread); alíquota via env
-  `IOF_CAMBIO_PERCENTUAL` ("vigente"). Recibo mostra PTAX + 6,6% + IOF separados.
+  `IOF_CAMBIO_PERCENTUAL` ("vigente"). Recibo mostra PTAX + 5% + IOF separados.
 - **Assinatura do contrato = marcação eletrônica** (nosso aceite). **Zoho Sign =
   Ficha de matrícula** (bilíngue, multi-signatário, campo "processamento
   imediato").

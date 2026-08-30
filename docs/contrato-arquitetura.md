@@ -36,14 +36,21 @@ pontuais por exigência de visto/fornecedor** (Cláusula 7.5).
   de plano — a obrigação é o saldo. **Maior mudança de modelo de dados e de UI.**
 
 ### 2. Câmbio: fórmula do **Anexo II** (Cláusula 6.4)
-Contrato: `Valor R$ = valor_moeda × PTAX_venda × (1 + 6,6%) + IOF‑câmbio`, com
+Contrato: `Valor R$ = valor_moeda × PTAX_venda × (1 + 5%) + IOF‑câmbio`, com
 **IOF aditivo** (alíquota **vigente na data**, sobre o valor convertido/remetido)
-e **6,6%** = Taxa de Intermediação e Câmbio.
-- **Hoje:** `cotacao_vet = PTAX × (1+0,066) × (1+0,035)` — IOF **embutido** como
-  multiplicador fixo de 3,5% num VET único e opaco (`atualizar-cambio`).
+e **5%** = Taxa de Intermediação e Câmbio.
+
+> **Spread reduzido de 6,6% → 5% e modelo aditivo IMPLEMENTADOS** (ver
+> [`nota-alteracao-spread-2026-08.md`](./nota-alteracao-spread-2026-08.md)):
+> `cotacao_vet = PTAX × (1 + 0,05 + 0,035)` (aditivo). Cobranças anteriores à
+> vigência permanecem a 6,6% (spread congelado por parcela). O trecho
+> "Hoje/Ajuste" abaixo descreve a migração já concluída.
+
+- **Antes:** `cotacao_vet = PTAX × (1+0,066) × (1+0,035)` — spread 6,6% e IOF
+  **embutido** como multiplicador fixo de 3,5% num VET único e opaco.
 - **Ajuste:** (a) **IOF aditivo e configurável** (alíquota vigente, não fixa em
   3,5%); (b) **armazenar os componentes separados** (PTAX + data de divulgação,
-  6,6%, IOF) em vez de um VET único, porque o **recibo** e o Anexo II exigem
+  5%, IOF) em vez de um VET único, porque o **recibo** e o Anexo II exigem
   itemização; (c) base do IOF = valor convertido (tuition+taxas+acomodação).
 - **Confirmar com o financeiro/jurídico** a base exata do IOF e a alíquota vigente.
 
@@ -78,7 +85,7 @@ próprio contrato, art. 46/49 CDC).
 |---|---|---|---|
 | 2.5 sequência | Proposta→acesso→assinatura→entrada→ficha | titular criado pelo admin | **Novo fluxo de proposta/checkout** + estado "pré‑contratação" (sem parecer matrícula confirmada, 2.5b) |
 | 2.5.2 / 8.4 / nota | **Não remeter a Entrada** ao fornecedor durante os 7 dias, salvo "processamento imediato" | não há remessa nem trava | **Trava de remessa da Entrada** enquanto arrependimento correndo e campo não marcado |
-| 6.5 / 6.5.2 recibo | Cobrança PIX exibe PTAX, 6,6%, IOF, R$ e amortização; **recibo** itemizado + e‑mail; **sem** linha de tarifa/remessa | `pagamentos` guarda valor_brl/cotação; sem itemização | **Recibo enriquecido** (PTAX+data, 6,6% %/valor, IOF, amortização, saldo) na Área do Cliente **e por e‑mail** |
+| 6.5 / 6.5.2 recibo | Cobrança PIX exibe PTAX, 5%, IOF, R$ e amortização; **recibo** itemizado + e‑mail; **sem** linha de tarifa/remessa | `pagamentos` guarda valor_brl/cotação; sem itemização | **Recibo enriquecido** (PTAX+data, 5% %/valor, IOF, amortização, saldo) na Área do Cliente **e por e‑mail** |
 | 6.5 validade | Cobrança PIX vale até **23h59 do dia** | idempotência por valor | Marcar validade/expiração diária da cobrança |
 | 6.8 / 7.12 | **Extrato de Saldo Devedor** sempre visível (moeda + R$ do dia); histórico com cotação; valor de quitação; avisos **D‑30/D‑15/D‑5** | régua D‑7/D‑2/D+1/D+5 | Tela de **Saldo Devedor**; ajustar janelas da régua p/ D‑30/D‑15/D‑5 |
 | 6.7 / 6.2.1 / nota 335 | **Simulação em R$ não vinculante**, destacada; obrigação é em moeda | UI mostra estimativa BRL | Rotular como **"simulação informativa, não vinculante"** com destaque; nunca como preço |
@@ -99,7 +106,7 @@ próprio contrato, art. 46/49 CDC).
 ## Roadmap sugerido (por dependência e valor)
 
 **Bloco A — Fundamentos financeiros (base para cumprir o núcleo do contrato)**
-1. **Câmbio Anexo II:** reescrever a apuração (PTAX venda + 6,6% + IOF aditivo/
+1. **Câmbio Anexo II:** reescrever a apuração (PTAX venda + 5% + IOF aditivo/
    configurável) e **guardar componentes separados**. Recibo itemizado.
 2. **Saldo Devedor:** modelar saldo em moeda de referência + pagamentos livres
    que amortizam; extrato (moeda + R$ do dia) na Área do Cliente.

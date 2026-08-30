@@ -158,7 +158,7 @@ Todo evento: ID único, idempotente, logado, roteado a um handler que atualiza o
 | Autonomia das empresas | Total nos dados; base de código única com dois deployments |
 | Checkout | Próprio desde o MVP, PIX/QR Mercado Pago, webhook como gatilho-mestre |
 | Aceite jurídico | Termo de Adesão no checkout + contrato Sign; repactuações e alterações por aceite eletrônico com valor de aditivo |
-| Spread | 6,6% (parâmetro `Spread_Percentual` por instância), IOF 3,5%, BACEN Turismo Venda |
+| Spread | 5% (parâmetro `Spread_Percentual` por instância), IOF 3,5%, BACEN Turismo Venda |
 | Recebimento | Sempre em R$; tesouraria converte continuamente para conta multimoeda (ou trava forward) |
 | Pagamento a escolas | Padrão D-30, configurável por fornecedor e caso; fatura conferida antes de pagar |
 | Fornecedores | Portal restrito com magic link como padrão; link seguro expirável como fallback; nunca anexo |
