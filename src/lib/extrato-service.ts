@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarExtratoSaldo, diasEntre, type ExtratoSaldo, type MovimentoInput } from "@/lib/extrato-saldo";
 import { saldoDevedorMoeda, dataLimiteQuitacao } from "@/lib/parcelas";
 import { calcularMoraSaldo, type MoraResultado } from "@/lib/mora";
+import { recomporVetTenant } from "@/lib/cambio";
 import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
 
 function num(v: unknown): number | null {
@@ -81,19 +82,34 @@ export async function carregarExtrato(
     saldoFrozen: frozenPorPag.get(p.id as string) ?? null,
   }));
 
-  // Cotacao do dia (VET) da moeda -> valor de quitacao hoje.
+  // Percentuais de cambio + mora por TENANT (linha do tenant -> env -> default).
+  const cfg = await carregarConfigTenant(supabase, await tenantDoTitular(supabase, titularId));
+
+  // Cotacao do dia (VET) da moeda -> valor de quitacao hoje. A linha de
+  // cotacoes_cambio guarda a VET GLOBAL; recompomos para o spread/IOF deste
+  // tenant (mesma logica do gerar-cobranca) para o "valor hoje" exibido bater
+  // com o que a cobranca realmente geraria. Tudo-ou-nada: so recompoe com os dois
+  // percentuais finitos; senao mostra a VET global.
   const hojeISO = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   let cotacaoHoje: number | null = null;
   if (moeda && moeda !== "BRL") {
+    // Deploy-safe: se spread/iof faltarem no ambiente, o select erra -> cot null
+    // -> cotacaoHoje null -> "valor hoje" simplesmente nao aparece (degrada, nao
+    // quebra). Em producao as colunas existem (o gerar-cobranca ja depende delas).
     const { data: cot } = await supabase
       .from("cotacoes_cambio")
-      .select("cotacao_vet")
+      .select("cotacao_vet, spread, iof")
       .eq("moeda", moeda)
       .lte("data", hojeISO)
       .order("data", { ascending: false })
       .limit(1)
       .maybeSingle();
     cotacaoHoje = num(cot?.cotacao_vet);
+    const spreadArmazenado = num(cot?.spread);
+    const iofArmazenado = num(cot?.iof);
+    if (cotacaoHoje != null && spreadArmazenado != null && iofArmazenado != null) {
+      cotacaoHoje = recomporVetTenant(cotacaoHoje, spreadArmazenado, iofArmazenado, cfg.spreadCambio, cfg.iofCambio);
+    }
   }
 
   const dataLimite = dataLimiteQuitacao((contrato.data_inicio as string) ?? null);
@@ -113,8 +129,7 @@ export async function carregarExtrato(
   // CANCELADO nao acumula mora (o motor de acerto assume o saldo) -> saldo 0.
   const cancelado = !!(contrato.cancelado_em as string | null);
   const diasAtraso = dataLimite ? diasEntre(dataLimite, hojeISO) ?? 0 : 0;
-  // Percentuais de mora por TENANT (linha do tenant -> env -> default).
-  const cfg = await carregarConfigTenant(supabase, await tenantDoTitular(supabase, titularId));
+  // Reusa a mesma cfg do tenant carregada acima (mora + cambio da instancia).
   const mora = calcularMoraSaldo({
     saldoMoeda: cancelado ? 0 : saldoAtualMoeda,
     diasAtraso,

@@ -3,8 +3,8 @@
 // entrada do motor puro. Retorna null quando o contrato NAO e do titular — a
 // pagina traduz isso em 404 (nunca vaza contrato de outro cliente).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SPREAD_PADRAO, IOF_PADRAO } from "@/lib/cambio";
 import type { DocumentoIntegralInput, DocIntegralAnexoIIIItem } from "@/lib/documento-integral";
+import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
 
 function num(v: unknown): number {
   const x = Number(v);
@@ -30,6 +30,9 @@ export async function carregarDocumentoIntegral(
     .select("nome_completo")
     .eq("id", titularId)
     .maybeSingle();
+
+  // Percentuais de cambio (spread/IOF) por TENANT do titular.
+  const cfg = await carregarConfigTenant(supabase, await tenantDoTitular(supabase, titularId));
 
   const snap = (contrato.quadro_resumo ?? null) as Record<string, unknown> | null;
 
@@ -123,10 +126,10 @@ export async function carregarDocumentoIntegral(
     condicoesGerais: termo ? { versao: termo.versao, hash: termo.hash, conteudo: termo.conteudo ?? "" } : null,
     anexoIII,
     aceite,
-    // Percentuais VIGENTES por instancia (mesma fonte das rotas de cambio): o env
-    // manda; o default de codigo e so fallback. Nunca hardcodar no documento legal.
-    spread: Number(process.env.SPREAD_CAMBIO_PERCENTUAL || String(SPREAD_PADRAO)),
-    iof: Number(process.env.IOF_CAMBIO_PERCENTUAL || String(IOF_PADRAO)),
+    // Percentuais VIGENTES por TENANT (linha do tenant -> env -> default). Nunca
+    // hardcodar no documento legal. Mesma config usada no gerar-cobranca.
+    spread: cfg.spreadCambio,
+    iof: cfg.iofCambio,
   };
 }
 
