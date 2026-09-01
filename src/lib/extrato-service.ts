@@ -5,24 +5,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarExtratoSaldo, diasEntre, type ExtratoSaldo, type MovimentoInput } from "@/lib/extrato-saldo";
 import { saldoDevedorMoeda, dataLimiteQuitacao } from "@/lib/parcelas";
-import {
-  calcularMoraSaldo,
-  MORA_MULTA_PADRAO,
-  MORA_JUROS_MES_PADRAO,
-  MORA_INDICE_PADRAO,
-  type MoraResultado,
-} from "@/lib/mora";
+import { calcularMoraSaldo, type MoraResultado } from "@/lib/mora";
+import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
 
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
-}
-
-// Percentuais de mora VIGENTES por instancia (env; default de codigo como fallback).
-function envPct(nome: string, padrao: number): number {
-  const v = Number(process.env[nome]);
-  return Number.isFinite(v) && v >= 0 ? v : padrao;
 }
 
 export async function carregarExtrato(
@@ -124,12 +113,14 @@ export async function carregarExtrato(
   // CANCELADO nao acumula mora (o motor de acerto assume o saldo) -> saldo 0.
   const cancelado = !!(contrato.cancelado_em as string | null);
   const diasAtraso = dataLimite ? diasEntre(dataLimite, hojeISO) ?? 0 : 0;
+  // Percentuais de mora por TENANT (linha do tenant -> env -> default).
+  const cfg = await carregarConfigTenant(supabase, await tenantDoTitular(supabase, titularId));
   const mora = calcularMoraSaldo({
     saldoMoeda: cancelado ? 0 : saldoAtualMoeda,
     diasAtraso,
-    multaPercent: envPct("MORA_MULTA_PERCENTUAL", MORA_MULTA_PADRAO),
-    jurosMesPercent: envPct("MORA_JUROS_MES_PERCENTUAL", MORA_JUROS_MES_PADRAO),
-    indicePercent: envPct("MORA_INDICE_PERCENTUAL", MORA_INDICE_PADRAO),
+    multaPercent: cfg.moraMulta,
+    jurosMesPercent: cfg.moraJurosMes,
+    indicePercent: cfg.moraIndice,
   });
 
   return { extrato, programaNome: (contrato.nome as string) || "Programa", mora };

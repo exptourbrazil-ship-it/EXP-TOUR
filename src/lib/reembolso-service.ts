@@ -5,8 +5,9 @@
 // A etapa concluida vem do OVERRIDE do admin (contratos.etapa_anexo_i) quando
 // presente; senao e DERIVADA dos sinais (entrada paga / LOA / visto aprovado).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { calcularReembolsoEscalonado, ETAPAS_ANEXO_I_PADRAO, type ReembolsoResultado } from "@/lib/reembolso-anexo-i";
+import { calcularReembolsoEscalonado, type ReembolsoResultado } from "@/lib/reembolso-anexo-i";
 import { derivarEtapaAnexoI, etapaValida, type EtapaChave, type SinaisEtapa } from "@/lib/etapa-anexo-i";
+import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
 
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -89,6 +90,9 @@ export async function carregarReembolsoContrato(
   const etapaQuery = etapaValida(opts.etapaOverrideEntrada) ? (opts.etapaOverrideEntrada as EtapaChave) : null;
   const etapaAplicada = etapaQuery ?? etapaOverride ?? etapaDerivada;
 
+  // Teto + escalonamento por TENANT (linha do tenant -> env -> default).
+  const cfg = await carregarConfigTenant(supabase, await tenantDoTitular(supabase, contrato.titular_id as string));
+
   const resultado = calcularReembolsoEscalonado({
     moeda,
     tuition,
@@ -96,6 +100,8 @@ export async function carregarReembolsoContrato(
     totalPago,
     naoRecuperaveis: Math.max(0, num(opts.naoRecuperaveis) ?? 0),
     dispensaRetencao: !!opts.dispensa,
+    teto: cfg.reembolsoTeto,
+    etapas: cfg.reembolsoEtapas,
   });
 
   return {
@@ -108,7 +114,7 @@ export async function carregarReembolsoContrato(
     etapaDerivada,
     etapaOverride,
     etapaAplicada,
-    etapas: ETAPAS_ANEXO_I_PADRAO,
+    etapas: cfg.reembolsoEtapas,
     resultado,
   };
 }
