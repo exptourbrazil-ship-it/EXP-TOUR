@@ -135,6 +135,21 @@ export type CasoAcerto = {
   criado_em: string | null;
 };
 
+export type CasoRepactuacao = {
+  id: string;
+  contrato_id: string;
+  status: string;
+  moeda: string | null;
+  total_moeda: number | null;
+  cronograma_anterior: { numero: number; vencimento: string; valor: number }[] | null;
+  cronograma_novo: { numero: number; vencimento: string; valor: number }[] | null;
+  exige_aprovacao: boolean | null;
+  solicitado_por: string | null;
+  aceito_em: string | null;
+  trimestre: string | null;
+  created_at: string | null;
+};
+
 export type CasoAlteracao = {
   id: string;
   contrato_id: string;
@@ -192,6 +207,7 @@ export type Caso = {
   excecoes: CasoExcecao[];
   acertos: CasoAcerto[];
   alteracoes: CasoAlteracao[];
+  repactuacoes: CasoRepactuacao[];
   // Derivados
   excecoesAtivas: CasoExcecao[]; // processos ativos (nao terminais) — "processo ativo" do caso
   jornada: EtapaJornada[];
@@ -306,6 +322,18 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .order("criado_em", { ascending: false });
   const alteracoes = (alteracoesData || []) as CasoAlteracao[];
 
+  // Repactuacoes AGUARDANDO APROVACAO do titular (Clausula 7.11): a 3a+ do
+  // trimestre que precisa de decisao humana. So as pendentes entram na fila.
+  const { data: repactData } = await supabase
+    .from("repactuacoes")
+    .select(
+      "id, contrato_id, status, moeda, total_moeda, cronograma_anterior, cronograma_novo, exige_aprovacao, solicitado_por, aceito_em, trimestre, created_at"
+    )
+    .eq("titular_id", titularId)
+    .eq("status", "aguardando_aprovacao")
+    .order("created_at", { ascending: false });
+  const repactuacoes = (repactData || []) as CasoRepactuacao[];
+
   // Comunicacao: e-mail (por destinatario = e-mail do titular) + WhatsApp (por
   // destinatario = telefone do titular). So consulta se houver o contato.
   const comunicacao: CasoComunicacao[] = [];
@@ -391,6 +419,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     excecoes,
     acertos,
     alteracoes,
+    repactuacoes,
     excecoesAtivas,
     jornada,
     etapaAtual,

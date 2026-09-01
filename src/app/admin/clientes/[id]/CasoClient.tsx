@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao } from "@/lib/admin-caso";
+import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao, CasoRepactuacao } from "@/lib/admin-caso";
 import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
@@ -374,6 +374,97 @@ function AbaJornada({ caso }: { caso: Caso }) {
   );
 }
 
+function RepactuacoesPendentes({ repactuacoes }: { repactuacoes: CasoRepactuacao[] }) {
+  const router = useRouter();
+  const [processando, setProcessando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function decidir(id: string, acao: "aprovar" | "recusar") {
+    setErro(null);
+    // Aprovar REESCREVE as parcelas do cliente (move dinheiro): confirma o ato.
+    if (acao === "aprovar" && !window.confirm("Aprovar e aplicar esta repactuação? O cronograma de parcelas do cliente será reescrito agora.")) return;
+    if (acao === "recusar" && !window.confirm("Recusar esta repactuação? O cronograma atual do cliente permanece inalterado.")) return;
+    setProcessando(id + acao);
+    try {
+      const resp = await fetch(`/api/admin/repactuacoes/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao }),
+      });
+      const r = await resp.json();
+      if (r.ok) {
+        router.refresh();
+      } else {
+        setErro(r.erro || "Não foi possível processar a repactuação.");
+      }
+    } catch {
+      setErro("Não foi possível processar a repactuação.");
+    } finally {
+      setProcessando(null);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-300 bg-amber-50/50 p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Repactuações aguardando aprovação</h2>
+      <p className="mb-3 text-sm text-neutral-600">
+        Solicitações self-service que passaram do limite do trimestre (Cláusula 7.11). Ao aprovar, os guarda-corpos
+        são revalidados contra o estado atual das parcelas.
+      </p>
+      {erro ? <p className="mb-3 text-sm text-red-700">{erro}</p> : null}
+      <div className="space-y-4">
+        {repactuacoes.map((r) => {
+          const moeda = r.moeda || "BRL";
+          return (
+            <div key={r.id} className="rounded-xl border border-amber-200 bg-white p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium text-neutral-700">
+                  Novo total: {fmtMoeda(r.total_moeda ?? 0, moeda)} <span className="text-xs text-neutral-400">({r.trimestre ?? "—"})</span>
+                </span>
+                <span className="text-xs text-neutral-400">Aceito em {r.aceito_em ? fmtData(r.aceito_em) : "—"}</span>
+              </div>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium text-neutral-500">Cronograma anterior</p>
+                  <ul className="mt-1 space-y-0.5 text-sm text-neutral-700">
+                    {(r.cronograma_anterior ?? []).map((p, i) => (
+                      <li key={i} className="flex justify-between"><span>{p.vencimento}</span><span>{fmtMoeda(p.valor, moeda)}</span></li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-neutral-500">Novo cronograma</p>
+                  <ul className="mt-1 space-y-0.5 text-sm text-neutral-800">
+                    {(r.cronograma_novo ?? []).map((p, i) => (
+                      <li key={i} className="flex justify-between"><span>{p.vencimento}</span><span className="font-medium">{fmtMoeda(p.valor, moeda)}</span></li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => decidir(r.id, "aprovar")}
+                  disabled={!!processando}
+                  className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
+                >
+                  {processando === r.id + "aprovar" ? "Aprovando..." : "Aprovar e aplicar"}
+                </button>
+                <button
+                  onClick={() => decidir(r.id, "recusar")}
+                  disabled={!!processando}
+                  className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600 disabled:opacity-50"
+                >
+                  {processando === r.id + "recusar" ? "Recusando..." : "Recusar"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function AbaFinanceiro({ caso }: { caso: Caso }) {
   const { contratos, parcelas, pagamentos, moedaPorContrato, saldoPorMoeda, estimativaBRL } = caso;
   const saldoEntradas = Object.entries(saldoPorMoeda);
@@ -400,6 +491,9 @@ function AbaFinanceiro({ caso }: { caso: Caso }) {
           </div>
         )}
       </div>
+
+      {/* Repactuações aguardando aprovação (Cláusula 7.11, 3ª+/trimestre) */}
+      {caso.repactuacoes.length > 0 ? <RepactuacoesPendentes repactuacoes={caso.repactuacoes} /> : null}
 
       {/* Parcelas por contrato */}
       {contratos.map((c) => {
