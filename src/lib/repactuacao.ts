@@ -176,13 +176,22 @@ export function validarRepactuacao(args: {
     if (p.vencimento < hoje) return { ok: false, motivo: "vencimento_no_passado", detalhe: p.vencimento };
   }
 
-  // Guarda 7: a soma do novo plano tem de bater com o total do contrato (a divida
-  // se redistribui, nunca reduz). Pulada quando valorTotal ausente (legado).
-  if (args.valorTotal != null && Number(args.valorTotal) > 0) {
-    const total = somaValores(novas.map((p) => p.valor));
-    if (Math.abs(total - round2(args.valorTotal)) > tol) {
-      return { ok: false, motivo: "soma_diverge", detalhe: `${total} != ${round2(args.valorTotal)}` };
-    }
+  // Guarda 7: a soma do novo plano tem de bater com a DIVIDA ATUAL (a divida se
+  // redistribui, nunca reduz). Ancora: o valor_total do contrato quando conhecido;
+  // senao a soma das parcelas ATUAIS (a divida vigente do plano — sempre inclui as
+  // pagas, que aparecem inalteradas em novas). NUNCA pula: sem ancora alguma,
+  // BLOQUEIA (falha fechada) — nao se aplica um aditivo sem provar que a divida foi
+  // preservada. Isto endurece o desvio do /ajustar (que pulava a checagem no legado).
+  const total = somaValores(novas.map((p) => p.valor));
+  const ancora =
+    args.valorTotal != null && Number(args.valorTotal) > 0
+      ? round2(args.valorTotal)
+      : somaValores(atuais.map((p) => p.valorAtual));
+  if (!(ancora > 0)) {
+    return { ok: false, motivo: "total_indisponivel" };
+  }
+  if (Math.abs(total - ancora) > tol) {
+    return { ok: false, motivo: "soma_diverge", detalhe: `${total} != ${ancora}` };
   }
 
   // Guarda 8: regra dos 30 dias — o ultimo vencimento tem de ser <= inicio-30.
@@ -196,9 +205,18 @@ export function validarRepactuacao(args: {
     }
   }
 
-  const total = somaValores(novas.map((p) => p.valor));
   const exigeAprovacao = args.repactuacoesNoTrimestre >= cfg.limiteSelfServiceTrimestre;
   return { ok: true, exigeAprovacao, totalPlano: total };
+}
+
+// Trimestre-calendario de uma data (YYYY-Qn), em UTC. Usado para contar as
+// repactuacoes self-service por trimestre (limite antes de exigir aprovacao).
+export function trimestreISO(iso: string): string {
+  const s = (iso || "").slice(0, 10);
+  const ano = s.slice(0, 4);
+  const mes = Number(s.slice(5, 7)) || 1;
+  const q = Math.floor((mes - 1) / 3) + 1;
+  return `${ano}-Q${q}`;
 }
 
 // Snapshot CANONICO do cronograma para o registro antes/depois (prova do aditivo).
