@@ -3,12 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { janelaLembrete, janelaEhAtraso, janelaQuitacao, diasAteVencimento, janelasMoraAplicaveis } from "@/lib/regua";
 import { dataLimiteQuitacao, saldoDevedorMoeda } from "@/lib/parcelas";
 import { enviarLembreteCobrancaEmail, enviarLembreteQuitacaoEmail, enviarAvisoMoraEmail } from "@/lib/email";
-import {
-  calcularMoraSaldo,
-  MORA_MULTA_PADRAO,
-  MORA_JUROS_MES_PADRAO,
-  MORA_INDICE_PADRAO,
-} from "@/lib/mora";
+import { calcularMoraSaldo } from "@/lib/mora";
+import { carregarConfigTenant, type ConfigTenant } from "@/lib/tenant-config";
 import { slugDoTenant } from "@/lib/tenant-slug";
 import { removerDeContratosCancelados, contratoCancelado } from "@/lib/cancelamento";
 import { contratosComSuspensao } from "@/lib/excecao";
@@ -286,9 +282,16 @@ export async function GET(request: Request) {
   // so comunica (a escalada de rescisao e o processo E5).
   // ==========================================================================
   const mora = { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, suspensa_por_excecao: 0, erros: 0 };
-  const moraMulta = envMoraPct("MORA_MULTA_PERCENTUAL", MORA_MULTA_PADRAO);
-  const moraJuros = envMoraPct("MORA_JUROS_MES_PERCENTUAL", MORA_JUROS_MES_PADRAO);
-  const moraIndice = envMoraPct("MORA_INDICE_PERCENTUAL", MORA_INDICE_PADRAO);
+  // Config de mora por TENANT (cache por execucao; chave "" = tenant nulo/padrao).
+  const cfgPorTenant = new Map<string, ConfigTenant>();
+  async function configDoTenant(tenantId: string | null): Promise<ConfigTenant> {
+    const chave = tenantId ?? "";
+    const cache = cfgPorTenant.get(chave);
+    if (cache) return cache;
+    const cfg = await carregarConfigTenant(supabase, tenantId);
+    cfgPorTenant.set(chave, cfg);
+    return cfg;
+  }
   // Contratos com a data-limite ja vencida (data_inicio em [hoje-30, hoje+30] ->
   // data-limite em [hoje-60, hoje]); a janela de mora cobre o atraso ate ~60d.
   const moraInicioMin = isoMaisDias(hoje, -30);
@@ -324,12 +327,13 @@ export async function GET(request: Request) {
 
     const moeda = (c as any).moeda || "BRL";
     const diasAtraso = -(diasAteVencimento(hojeISO, dataLimite as string) ?? 0);
+    const cfg = await configDoTenant((titular?.tenant_id as string) ?? null);
     const enc = calcularMoraSaldo({
       saldoMoeda: saldo,
       diasAtraso,
-      multaPercent: moraMulta,
-      jurosMesPercent: moraJuros,
-      indicePercent: moraIndice,
+      multaPercent: cfg.moraMulta,
+      jurosMesPercent: cfg.moraJurosMes,
+      indicePercent: cfg.moraIndice,
     });
 
     // NO MAXIMO um aviso por execucao: o de MENOR limiar ainda nao enviado.
@@ -371,10 +375,4 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ ok: true, ...resultado, quitacao, mora });
-}
-
-// Percentual de mora VIGENTE por instancia (env; default de codigo como fallback).
-function envMoraPct(nome: string, padrao: number): number {
-  const v = Number(process.env[nome]);
-  return Number.isFinite(v) && v >= 0 ? v : padrao;
 }

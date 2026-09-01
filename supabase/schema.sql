@@ -100,6 +100,8 @@ create table if not exists fichas_matricula_assinaturas (
 );
 create index if not exists idx_fichas_assinaturas_ficha on fichas_matricula_assinaturas(ficha_id);
 alter table if exists fichas_matricula_assinaturas enable row level security;
+
+-- ============================================================================
 -- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL
 -- dos dados CONTRATADOS congelado no momento do aceite (contratante, participante,
 -- programa, valores, regime de pagamento, itens, versao do Termo). E o "documento
@@ -1040,6 +1042,26 @@ create table if not exists tenant_fx_policy (
   disclaimer text not null default '',
   created_at timestamptz not null default now(), updated_at timestamptz
 );
+
+-- Parametros de negocio por TENANT (config por instancia no banco). Substitui,
+-- gradualmente, os parametros lidos so por env — permitindo tenants diferentes no
+-- mesmo deploy. Precedencia de leitura (ver src/lib/tenant-config.ts): linha do
+-- tenant -> env -> default de codigo. Toda coluna e NULLABLE (null = cair no env/
+-- default), entao a tabela vazia preserva o comportamento atual. Fica aqui, logo
+-- apos `tenant`, para a FK tenant_id nao referenciar uma tabela ainda inexistente
+-- num apply limpo. Aplicar no SQL Editor do Supabase.
+create table if not exists tenant_config (
+  tenant_id uuid primary key references tenant(id) on delete cascade,
+  spread_cambio numeric,        -- fracao (ex.: 0.05) — [cambio: migracao futura]
+  iof_cambio numeric,           -- fracao (ex.: 0.035) — [cambio: migracao futura]
+  mora_multa numeric,           -- fracao (ex.: 0.02)
+  mora_juros_mes numeric,       -- fracao ao mes (ex.: 0.01)
+  mora_indice numeric,          -- fracao (correcao monetaria; ex.: 0)
+  reembolso_teto numeric,       -- teto do total retido (ex.: 800), na moeda de referencia
+  reembolso_etapas jsonb,       -- [{chave, rotulo, percentual}] do Anexo I
+  atualizado_em timestamptz not null default now()
+);
+alter table if exists tenant_config enable row level security;
 
 create table if not exists supplier (
   id uuid primary key default gen_random_uuid(),
