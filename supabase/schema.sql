@@ -62,6 +62,44 @@ alter table if exists contratos add column if not exists etapa_anexo_i text;
 -- fornecedor, SALVO se o cliente marcou "processamento imediato". Default false =
 -- protegido. Ver src/lib/trava-remessa.ts e executarRepasse. Aplicar no SQL Editor.
 alter table if exists contratos add column if not exists processamento_imediato boolean not null default false;
+
+-- ============================================================================
+-- Ficha de Matricula bilingue (Clausulas 2.5e / 8.4). Assinada DEPOIS da Entrada
+-- por marcacao eletronica no portal; signatarios pela IDADE do participante
+-- (menor -> tambem o responsavel). O campo "processamento imediato" (marcado na
+-- ficha) libera a trava da remessa. Ver src/lib/ficha-matricula.ts. Aplicar no
+-- SQL Editor do Supabase.
+-- ============================================================================
+create table if not exists fichas_matricula (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid references titulares(id) on delete set null,
+  versao text not null,
+  status text not null default 'pendente' check (status in ('pendente','assinada')),
+  processamento_imediato boolean not null default false,  -- o que foi marcado na ficha
+  hash_conteudo text,                                     -- impressao digital do texto+dados
+  criada_em timestamptz not null default now(),
+  atualizada_em timestamptz,
+  assinada_em timestamptz,
+  unique (contrato_id)                                    -- uma ficha por contrato
+);
+create index if not exists idx_fichas_matricula_contrato on fichas_matricula(contrato_id);
+alter table if exists fichas_matricula enable row level security;
+
+-- Assinaturas (multi-signatario por idade): uma prova por papel.
+create table if not exists fichas_matricula_assinaturas (
+  id uuid primary key default gen_random_uuid(),
+  ficha_id uuid not null references fichas_matricula(id) on delete cascade,
+  papel text not null check (papel in ('participante','responsavel')),
+  assinante_nome text,
+  ip text,
+  user_agent text,
+  session_id text,                                        -- id de sessao do ato (17.1)
+  assinada_em timestamptz not null default now(),
+  unique (ficha_id, papel)                                -- uma assinatura por papel
+);
+create index if not exists idx_fichas_assinaturas_ficha on fichas_matricula_assinaturas(ficha_id);
+alter table if exists fichas_matricula_assinaturas enable row level security;
 -- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL
 -- dos dados CONTRATADOS congelado no momento do aceite (contratante, participante,
 -- programa, valores, regime de pagamento, itens, versao do Termo). E o "documento
