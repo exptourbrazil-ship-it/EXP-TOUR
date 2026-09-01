@@ -58,3 +58,23 @@ export async function tenantDoTitular(supabase: SupabaseClient, titularId: strin
   const { data } = await supabase.from("titulares").select("tenant_id").eq("id", titularId).maybeSingle();
   return (data?.tenant_id as string) ?? null;
 }
+
+// Indica se o tenant tem config de reembolso EXPLICITA (etapas OU teto nao-nulos
+// em tenant_config). Serve de GATE juridico: sem config propria, a retencao do
+// Anexo I usa os DEFAULTS de codigo ("a confirmar pelo juridico") — nesse caso o
+// acerto deve permanecer provisorio (trava a execucao do refund). Deploy-safe:
+// erro/tabela ausente -> false (mantem provisorio, o lado seguro).
+export async function tenantTemConfigReembolso(
+  supabase: SupabaseClient,
+  tenantId: string | null | undefined,
+): Promise<boolean> {
+  if (!tenantId) return false;
+  const { data, error } = await supabase
+    .from("tenant_config")
+    .select("reembolso_etapas, reembolso_teto")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error || !data) return false;
+  return (data as { reembolso_etapas?: unknown; reembolso_teto?: unknown }).reembolso_etapas != null ||
+    (data as { reembolso_teto?: unknown }).reembolso_teto != null;
+}
