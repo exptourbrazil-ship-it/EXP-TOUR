@@ -44,6 +44,31 @@ export function comporCotacaoVet(
   return Math.round(comercial * (1 + spread + iof) * 1e6) / 1e6;
 }
 
+// Recupera o cambio comercial (PTAX) embutido numa VET, dado o spread/iof que a
+// compuseram. Inverso EXATO de comporCotacaoVet (modelo aditivo: 1 + spread + iof).
+// Puro.
+export function extrairComercial(vet: number, spread: number, iof: number): number {
+  return vet / (1 + spread + iof);
+}
+
+// Recompoe a VET para o spread/iof de um TENANT a partir de uma VET GLOBAL
+// (composta com spreadArmazenado/iofArmazenado). A PTAX e global-por-moeda (taxa
+// do BACEN, igual para todos): recuperamos ela da VET armazenada e recompomos com
+// o spread/iof do tenant. Assim `cotacoes_cambio` permanece global (uma linha por
+// moeda/dia) e a diferenca por instancia entra so na composicao. Se o spread/iof
+// do tenant forem iguais aos armazenados, retorna a MESMA VET (idempotente, ate a
+// precisao de 6 casas). Puro.
+export function recomporVetTenant(
+  vetArmazenada: number,
+  spreadArmazenado: number,
+  iofArmazenado: number,
+  spreadTenant: number,
+  iofTenant: number
+): number {
+  const comercial = extrairComercial(vetArmazenada, spreadArmazenado, iofArmazenado);
+  return comporCotacaoVet(comercial, spreadTenant, iofTenant);
+}
+
 export type ItensRecibo = {
   amortizacaoMoeda: number; // valor amortizado na moeda do programa
   ptax: number; // PTAX de venda (VET decomposto)
