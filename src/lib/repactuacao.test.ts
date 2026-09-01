@@ -5,6 +5,7 @@ import {
   validarRepactuacao,
   montarSnapshotCronograma,
   renderizarTermoRepactuacao,
+  trimestreISO,
   type ParcelaAtual,
   type ParcelaNova,
 } from "./repactuacao.ts";
@@ -187,6 +188,35 @@ test("R9 snapshot canonico", () => {
     { numero: 1, vencimento: "2026-06-15", valor: 800 },
     { numero: 2, vencimento: "2026-07-15", valor: 1000.01, status: "pendente" },
   ]);
+});
+
+// R12 — sem valor_total (legado): ancora na soma das ATUAIS. Redistribuicao que
+// preserva o total passa; reducao e barrada (falha fechada, nao pula o guarda).
+test("R12 sem valorTotal ancora na soma das atuais", () => {
+  const okNovas: ParcelaNova[] = [
+    { id: "e", numero: 0, valor: 500, vencimento: "2026-02-01" },
+    { id: "a", numero: 1, valor: 700, vencimento: "2026-06-15" },
+    { id: "b", numero: 2, valor: 1300, vencimento: "2026-08-15" },
+  ]; // soma 2500 == soma das atuais
+  const rOk = validarRepactuacao({ ...argsBase(), valorTotal: 0, novas: okNovas });
+  assert.equal(rOk.ok, true);
+
+  const reduz: ParcelaNova[] = [
+    { id: "e", numero: 0, valor: 500, vencimento: "2026-02-01" },
+    { id: "a", numero: 1, valor: 700, vencimento: "2026-06-15" },
+    { id: "b", numero: 2, valor: 900, vencimento: "2026-08-15" },
+  ]; // soma 2100 < 2500
+  const rReduz = validarRepactuacao({ ...argsBase(), valorTotal: 0, novas: reduz });
+  assert.equal(rReduz.ok, false);
+  if (!rReduz.ok) assert.equal(rReduz.motivo, "soma_diverge");
+});
+
+// R11 — trimestre-calendario (YYYY-Qn) em UTC.
+test("R11 trimestreISO", () => {
+  assert.equal(trimestreISO("2026-01-15"), "2026-Q1");
+  assert.equal(trimestreISO("2026-03-31"), "2026-Q1");
+  assert.equal(trimestreISO("2026-04-01"), "2026-Q2");
+  assert.equal(trimestreISO("2026-12-31"), "2026-Q4");
 });
 
 // R10 — termo deterministico (mesma entrada -> mesmo texto) e cita os totais.

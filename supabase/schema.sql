@@ -1062,6 +1062,49 @@ create table if not exists tenant_config (
   atualizado_em timestamptz not null default now()
 );
 alter table if exists tenant_config enable row level security;
+-- Parametros da REPACTUACAO (Clausula 7.11) por instancia. Nullable = cair no
+-- env/default (ver src/lib/repactuacao-service.ts). valor_minimo na moeda do
+-- programa; limite self-service por trimestre; D-min da proxima parcela.
+alter table if exists tenant_config add column if not exists repactuacao_valor_minimo_parcela numeric;
+alter table if exists tenant_config add column if not exists repactuacao_limite_trimestre int;
+alter table if exists tenant_config add column if not exists repactuacao_dias_min_proxima int;
+
+-- REPACTUACOES (Clausula 7.11): registro de cada repactuacao do cronograma de
+-- parcelas. O aceite eletronico do cliente vale como ADITIVO — por isso guardamos
+-- o cronograma ANTERIOR e o NOVO (prova antes/depois), o texto+hash do Termo, o
+-- IP e o instante do aceite. A 3a+ no trimestre entra como 'aguardando_aprovacao'
+-- (nao aplica ate um admin aprovar). Ver src/lib/repactuacao-service.ts.
+create table if not exists repactuacoes (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid references titulares(id),
+  status text not null check (status in ('aguardando_aprovacao','aplicada','recusada','cancelada')),
+  cronograma_anterior jsonb not null,   -- snapshot canonico (antes)
+  cronograma_novo jsonb not null,       -- snapshot canonico (proposto/aplicado)
+  parcelas_propostas jsonb,             -- payload cru (com ids) p/ replay na aprovacao
+  termo_texto text,
+  termo_hash text,                      -- sha256 do termo determinístico
+  moeda text,
+  total_moeda numeric(12,2),            -- soma do novo cronograma (== valor_total)
+  exige_aprovacao boolean not null default false,
+  solicitado_por text,                  -- 'cliente' (self-service) | admin
+  ip text,
+  aceito_em timestamptz,                -- quando o cliente aceitou o Termo
+  aplicada_em timestamptz,
+  aprovada_por text,                    -- admin (quando 3a+)
+  aprovada_em timestamptz,
+  recusa_motivo text,
+  trimestre text,                       -- 'YYYY-Qn' (contagem self-service/trimestre)
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_repactuacoes_contrato on repactuacoes(contrato_id);
+-- Contagem self-service por (contrato, trimestre): so as APLICADAS pelo cliente.
+create index if not exists idx_repactuacoes_contrato_trimestre on repactuacoes(contrato_id, trimestre, status);
+-- No maximo UMA repactuacao pendente por contrato (evita corrida de multiplas
+-- solicitacoes 'aguardando_aprovacao' e aprovacao duplicada).
+create unique index if not exists uidx_repactuacoes_pendente
+  on repactuacoes(contrato_id) where status = 'aguardando_aprovacao';
+alter table if exists repactuacoes enable row level security;
 
 create table if not exists supplier (
   id uuid primary key default gen_random_uuid(),
