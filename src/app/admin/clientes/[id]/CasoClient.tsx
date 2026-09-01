@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao, CasoRepactuacao } from "@/lib/admin-caso";
+import { CATALOGO_CONSENTIMENTOS } from "@/lib/consentimento";
 import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
@@ -607,8 +608,40 @@ function AbaDocumentos({ caso, permissoes }: { caso: Caso; permissoes: Permissoe
   const porCategoria = (cat: CategoriaDocumento): CasoDocumento[] =>
     caso.documentos.filter((d) => categoriaDoTipoDocumento(d.tipo_documento) === cat);
 
+  const estadoConsent = new Map(caso.consentimentos.map((c) => [c.tipo, c]));
+
   return (
     <div className="space-y-5">
+      {/* Consentimentos (LGPD 15/16) — read-only. Prova em consentimentos/events. */}
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-3 font-serif text-xl text-brand">Consentimentos (LGPD)</h2>
+        <ul className="divide-y divide-neutral-100">
+          {CATALOGO_CONSENTIMENTOS.map((t) => {
+            const e = estadoConsent.get(t.chave);
+            const vigente = !!e?.vigente;
+            const concedidoAntigo = !!e?.concedido && !vigente;
+            return (
+              <li key={t.chave} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="text-neutral-800">
+                  {t.rotulo}
+                  {t.sensivel ? <span className="ml-2 text-xs text-amber-700">(sensível)</span> : null}
+                  {t.facultativo ? <span className="ml-2 text-xs text-neutral-400">(opcional)</span> : null}
+                </span>
+                <span className="shrink-0 text-xs">
+                  {vigente ? (
+                    <span className="text-emerald-700">Autorizado{e?.em ? ` · ${fmtData(e.em)}` : ""}</span>
+                  ) : concedidoAntigo ? (
+                    <span className="text-amber-700">Versão desatualizada</span>
+                  ) : (
+                    <span className="text-neutral-400">Não autorizado</span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
       {CATEGORIAS_DOCUMENTO.map((cat) => {
         const docs = porCategoria(cat.valor);
         return (
