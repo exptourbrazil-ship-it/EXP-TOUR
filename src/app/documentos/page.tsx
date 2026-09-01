@@ -122,7 +122,25 @@ export default async function DocumentosPage() {
             )
           )
         ),
-      createElement(DocumentosClient, { documentos: documentos || [], afiliadoVistoUrl })
+      createElement(DocumentosClient, { documentos: documentos || [], afiliadoVistoUrl }),
+      createElement(
+        "section",
+        { className: "mt-6 rounded-2xl border border-brand/15 bg-white p-4 shadow-sm" },
+        createElement("h2", { className: "font-serif text-xl text-brand" }, "Privacidade e consentimentos"),
+        createElement(
+          "p",
+          { className: "mt-1 mb-3 text-sm text-neutral-600" },
+          "Gerencie como seus dados são usados — saúde, imagem e compartilhamento. Você pode autorizar ou revogar a qualquer momento."
+        ),
+        createElement(
+          Link,
+          {
+            href: "/privacidade",
+            className: "inline-block rounded-full border border-brand/30 px-4 py-2 text-sm font-medium text-brand hover:bg-brand/5",
+          },
+          "Gerenciar consentimentos"
+        )
+      )
     ),
     createElement(SuporteRodape, { contexto: "Dúvida sobre um documento, passaporte ou visto? Fale com a gente." }),
     createElement(BottomNav)
