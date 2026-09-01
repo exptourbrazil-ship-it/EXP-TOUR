@@ -115,7 +115,7 @@ function CopiarPix({ codigo }: { codigo: string }) {
   )
 }
 
-function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalContrato, onFechar, onSalvo }: { parcelas: Parcela[]; contratoId: string; dataInicio: string | null; moeda: string; valorTotalContrato?: number; onFechar: () => void; onSalvo: () => void }) {
+function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalContrato, onFechar, onSalvo }: { parcelas: Parcela[]; contratoId: string; dataInicio: string | null; moeda: string; valorTotalContrato?: number; onFechar: () => void; onSalvo: (pendente?: boolean) => void }) {
   const iniciais: LinhaEdicao[] = parcelas.map((p) => ({
     id: p.id,
     descricao: p.descricao,
@@ -126,6 +126,10 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
   const [linhas, setLinhas] = useState<LinhaEdicao[]>(iniciais)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
+  // Repactuacao (Clausula 7.11): o cliente edita (etapa "editar"), revisa o Termo
+  // e ACEITA (etapa "aceitar") — o aceite eletronico vale como aditivo.
+  const [etapa, setEtapa] = useState<"editar" | "aceitar">("editar")
+  const [aceite, setAceite] = useState(false)
 
   const limite30 = (() => {
     if (!dataInicio) return null
@@ -172,31 +176,43 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
         return
       }
     }
+    // Validado localmente: avanca para a revisao + aceite do Termo.
+    setEtapa("aceitar")
+  }
+
+  function payloadParcelas() {
+    return linhas.map((l, i) => ({
+      id: l.id,
+      numero: i + 1,
+      descricao: l.descricao,
+      valor: Number(l.valor),
+      vencimento: l.vencimento,
+    }))
+  }
+
+  async function confirmar() {
+    setErro(null)
+    if (!aceite) {
+      setErro("É preciso aceitar o termo de repactuação para continuar.")
+      return
+    }
     setSalvando(true)
     try {
-      const payload = {
-        contratoId,
-        parcelas: linhas.map((l, i) => ({
-          id: l.id,
-          numero: i + 1,
-          descricao: l.descricao,
-          valor: Number(l.valor),
-          vencimento: l.vencimento,
-        })),
-      }
-      const resp = await fetch("/api/parcelas/ajustar", {
+      const resp = await fetch("/api/parcelas/repactuar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ contratoId, parcelas: payloadParcelas(), aceite: true }),
       })
       const resultado = await resp.json()
       if (resultado.ok) {
-        onSalvo()
+        onSalvo(resultado.status === "aguardando_aprovacao")
       } else {
-        setErro(resultado.erro || "Não foi possível salvar as alterações.")
+        setErro(resultado.erro || "Não foi possível concluir a repactuação.")
+        setEtapa("editar") // deixa o cliente corrigir
       }
     } catch {
-      setErro("Não foi possível salvar as alterações.")
+      setErro("Não foi possível concluir a repactuação.")
+      setEtapa("editar")
     } finally {
       setSalvando(false)
     }
@@ -206,15 +222,21 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
       <div className="my-6 w-full max-w-lg animate-scale-in rounded-3xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between">
-          <h2 className="font-serif text-2xl text-brand">Ajustar parcelas</h2>
+          <h2 className="font-serif text-2xl text-brand">{etapa === "editar" ? "Repactuar parcelas" : "Revisar e aceitar"}</h2>
           <button onClick={onFechar} className="text-sm text-neutral-500 underline">Fechar</button>
         </div>
-        <p className="mt-1 text-sm text-neutral-500">Edite valores e datas das parcelas ainda em aberto. A soma precisa bater com o total do contrato.</p>
-        {limite30 ? (
+        <p className="mt-1 text-sm text-neutral-500">
+          {etapa === "editar"
+            ? "Redistribua o saldo entre as parcelas em aberto. A soma continua igual — a repactuação nunca reduz a dívida."
+            : "Confira o novo cronograma. Ao aceitar, o registro eletrônico vale como aditivo ao contrato (Cláusula 7.11)."}
+        </p>
+        {etapa === "editar" && limite30 ? (
           <p className="mt-2 text-sm text-neutral-500">
             O último pagamento precisa ser até 30 dias antes do início do programa ({limite30.toLocaleDateString("pt-BR")}).
           </p>
         ) : null}
+        {etapa === "editar" ? (
+        <>
         <div className="mt-4 space-y-3">
           {linhas.map((l, index) => (
             <div key={l.id || "nova-" + index} className="rounded-2xl border border-neutral-200 p-3">
@@ -260,8 +282,36 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
           ))}
         </div>
         <button onClick={adicionar} className="mt-3 rounded-xl border border-neutral-300 px-4 py-2 text-sm text-brand">+ Adicionar parcela</button>
+        </>
+        ) : (
+        <div className="mt-4 space-y-3">
+          <div className="rounded-2xl border border-neutral-200 p-3">
+            <p className="text-xs font-medium text-neutral-500">Novo cronograma</p>
+            <ul className="mt-2 space-y-1 text-sm text-neutral-800">
+              {linhas.map((l, i) => (
+                <li key={l.id || "nova-" + i} className="flex justify-between">
+                  <span>{l.descricao || "Parcela " + (i + 1)} · {l.vencimento || "—"}</span>
+                  <span className="font-medium">{formatarMoeda(Number(l.valor) || 0, moeda)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 flex justify-between border-t border-neutral-200 pt-2 text-sm font-medium text-neutral-700">
+              <span>Total</span>
+              <span>{formatarMoeda(total, moeda)}</span>
+            </div>
+          </div>
+          <p className="text-xs leading-relaxed text-neutral-500">
+            A dívida em moeda estrangeira é a mesma — apenas redistribuída entre as parcelas acima. O registro
+            eletrônico deste aceite vale como aditivo ao contrato (Cláusula 7.11), observados os limites contratuais.
+          </p>
+          <label className="flex items-start gap-2 text-sm text-neutral-700">
+            <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-1" />
+            <span>Li e aceito o novo cronograma de pagamentos.</span>
+          </label>
+        </div>
+        )}
         {erro ? <p className="mt-3 text-sm text-amber-700">{erro}</p> : null}
-        {conferirSoma && !somaConfere ? (
+        {etapa === "editar" && conferirSoma && !somaConfere ? (
           <p className="mt-3 text-sm text-amber-700">
             A soma das parcelas ({formatarMoeda(total, moeda)}) precisa ser igual ao total do contrato ({formatarMoeda(valorTotalContrato as number, moeda)}).
           </p>
@@ -272,10 +322,21 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
             {conferirSoma ? <span className="text-neutral-500"> / {formatarMoeda(valorTotalContrato as number, moeda)}</span> : null}
           </span>
           <div className="flex gap-2">
-            <button onClick={onFechar} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600">Cancelar</button>
-            <button onClick={salvar} disabled={salvando || (conferirSoma && !somaConfere)} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
-              {salvando ? "Salvando..." : "Salvar"}
-            </button>
+            {etapa === "editar" ? (
+              <>
+                <button onClick={onFechar} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600">Cancelar</button>
+                <button onClick={salvar} disabled={salvando || (conferirSoma && !somaConfere)} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
+                  Revisar
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setEtapa("editar"); setErro(null) }} disabled={salvando} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600 disabled:opacity-50">Voltar</button>
+                <button onClick={confirmar} disabled={salvando || !aceite} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
+                  {salvando ? "Enviando..." : "Aceitar e aplicar"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -462,7 +523,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
             <h2 className="font-serif text-2xl text-brand">Parcelas</h2>
             {contratoId ? (
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setEditando(true)} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Ajustar parcelas</button>
+                <button onClick={() => setEditando(true)} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Repactuar parcelas</button>
                 <button onClick={restaurarPlano} disabled={restaurando} className="rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-50">{restaurando ? "Restaurando..." : "Restaurar plano original"}</button>
               </div>
             ) : null}
@@ -635,8 +696,11 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
           moeda={moedaPrograma}
           valorTotalContrato={valorTotalContrato}
           onFechar={() => setEditando(false)}
-          onSalvo={() => {
+          onSalvo={(pendente) => {
             setEditando(false)
+            mostrarAviso(pendente
+              ? "Repactuação enviada para aprovação. Você será avisado quando for concluída."
+              : "Cronograma repactuado com sucesso.")
             router.refresh()
           }}
         />
