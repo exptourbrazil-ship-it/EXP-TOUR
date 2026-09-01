@@ -101,6 +101,30 @@ create table if not exists fichas_matricula_assinaturas (
 create index if not exists idx_fichas_assinaturas_ficha on fichas_matricula_assinaturas(ficha_id);
 alter table if exists fichas_matricula_assinaturas enable row level security;
 
+-- CONSENTIMENTOS (LGPD, Clausulas 15/16). LEDGER append-only por titular: conceder
+-- e revogar geram linhas NOVAS; o estado vigente e a ultima linha por (titular,
+-- tipo). Guardamos o texto+hash+versao consentidos, o IP e a origem — a prova do
+-- ato. Nada e pre-marcado; imagem e opt-in facultativo (nao condiciona a
+-- contratacao). Ver src/lib/consentimento.ts / consentimento-service.ts.
+create table if not exists consentimentos (
+  id uuid primary key default gen_random_uuid(),
+  -- on delete RESTRICT (nao cascade): o ledger e a PROVA juridica do consentimento
+  -- (onus da prova, LGPD art. 8o §2o). Apagar o titular nao pode destruir a prova
+  -- em silencio; a eliminacao/retencao passa por um fluxo proprio (anonimizar/
+  -- arquivar), decidido explicitamente — nao por cascata.
+  titular_id uuid not null references titulares(id) on delete restrict,
+  tipo text not null,                   -- saude | imagem | compartilhamento_fornecedores | transferencia_internacional
+  concedido boolean not null,           -- false = revogacao/recusa
+  versao text,                          -- versao do texto consentido
+  texto_hash text,                      -- sha256 do texto determinístico (prova)
+  ip text,
+  origem text,                          -- 'portal' | admin
+  criado_em timestamptz not null default now()
+);
+create index if not exists idx_consentimentos_titular on consentimentos(titular_id);
+create index if not exists idx_consentimentos_titular_tipo on consentimentos(titular_id, tipo, criado_em desc);
+alter table if exists consentimentos enable row level security;
+
 -- ============================================================================
 -- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL
 -- dos dados CONTRATADOS congelado no momento do aceite (contratante, participante,
