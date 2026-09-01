@@ -16,6 +16,8 @@ import {
   estimarSaldoBRL,
 } from "@/lib/caso";
 import { excecaoAtiva, type StatusExcecao } from "@/lib/excecao";
+import { carregarEstadoConsentimentos } from "@/lib/consentimento-service";
+import type { EstadoConsentimento } from "@/lib/consentimento";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -208,6 +210,7 @@ export type Caso = {
   acertos: CasoAcerto[];
   alteracoes: CasoAlteracao[];
   repactuacoes: CasoRepactuacao[];
+  consentimentos: EstadoConsentimento[]; // LGPD 15/16: estado vigente por finalidade
   // Derivados
   excecoesAtivas: CasoExcecao[]; // processos ativos (nao terminais) — "processo ativo" do caso
   jornada: EtapaJornada[];
@@ -334,6 +337,15 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .order("created_at", { ascending: false });
   const repactuacoes = (repactData || []) as CasoRepactuacao[];
 
+  // Consentimentos (LGPD 15/16): estado VIGENTE por finalidade (read-only no admin).
+  // Deploy-safe: uma falha de leitura (ex.: tabela ausente) nao derruba o Caso 360.
+  let consentimentos: EstadoConsentimento[] = [];
+  try {
+    consentimentos = await carregarEstadoConsentimentos(supabase, titularId);
+  } catch {
+    consentimentos = [];
+  }
+
   // Comunicacao: e-mail (por destinatario = e-mail do titular) + WhatsApp (por
   // destinatario = telefone do titular). So consulta se houver o contato.
   const comunicacao: CasoComunicacao[] = [];
@@ -420,6 +432,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     acertos,
     alteracoes,
     repactuacoes,
+    consentimentos,
     excecoesAtivas,
     jornada,
     etapaAtual,
