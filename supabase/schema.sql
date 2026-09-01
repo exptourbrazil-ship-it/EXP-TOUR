@@ -1130,6 +1130,103 @@ create unique index if not exists uidx_repactuacoes_pendente
   on repactuacoes(contrato_id) where status = 'aguardando_aprovacao';
 alter table if exists repactuacoes enable row level security;
 
+-- Aplicacao ATOMICA do cronograma de parcelas (repactuacao / editor). Reescreve o
+-- plano numa unica transacao, sob LOCK do contrato — fecha a janela de estado
+-- parcial (delete/update/insert sequencial) e a corrida de dupla submissao. Os
+-- guarda-corpos de NEGOCIO (atraso, D-3, valor minimo, 30 dias, limite/trimestre)
+-- sao validados no app (motor puro, antes); esta funcao garante SOB LOCK os
+-- invariantes de DINHEIRO: a soma bate com a divida; nenhuma parcela paga/com Pix
+-- e alterada ou removida; contrato cancelado nao e reescrito.
+-- `p_parcelas` = [{id?, numero, descricao, valor, vencimento}].
+create or replace function aplicar_cronograma_parcelas(
+  p_contrato_id uuid,
+  p_parcelas jsonb,
+  p_tolerancia numeric default 0.01
+) returns jsonb
+language plpgsql
+as $aplcron$
+declare
+  v_valor_total numeric;
+  v_cancelado_em timestamptz;
+  v_anchor numeric;
+  v_soma numeric;
+  v_ids uuid[];
+  v_removidas int;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_contrato_id::text, 0));
+
+  select valor_total, cancelado_em into v_valor_total, v_cancelado_em
+    from contratos where id = p_contrato_id for update;
+  if not found then raise exception 'contrato_nao_encontrado'; end if;
+  if v_cancelado_em is not null then raise exception 'contrato_cancelado'; end if;
+  perform 1 from parcelas where contrato_id = p_contrato_id and status <> 'pago' for update;
+
+  v_anchor := coalesce(nullif(v_valor_total, 0),
+    (select coalesce(sum(valor_atual), 0) from parcelas where contrato_id = p_contrato_id));
+  if v_anchor is null or not (v_anchor > 0) then raise exception 'total_indisponivel'; end if;
+
+  select coalesce(sum((e->>'valor')::numeric), 0) into v_soma
+    from jsonb_array_elements(p_parcelas) e;
+  if abs(v_soma - v_anchor) > p_tolerancia then raise exception 'soma_diverge'; end if;
+
+  select coalesce(array_agg((e->>'id')::uuid), '{}') into v_ids
+    from jsonb_array_elements(p_parcelas) e
+    where (e ? 'id') and nullif(e->>'id', '') is not null;
+
+  if exists (
+    select 1 from unnest(v_ids) t(id)
+    where not exists (select 1 from parcelas pa where pa.id = t.id and pa.contrato_id = p_contrato_id)
+  ) then raise exception 'parcela_nao_encontrada'; end if;
+
+  if exists (
+    select 1 from parcelas pa
+    where pa.contrato_id = p_contrato_id
+      and (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null)
+      and not (pa.id = any(v_ids))
+  ) then raise exception 'parcela_bloqueada_removida'; end if;
+
+  if exists (
+    select 1 from jsonb_array_elements(p_parcelas) e
+    join parcelas pa on pa.id = (e->>'id')::uuid and pa.contrato_id = p_contrato_id
+    where (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null)
+      and ( round((e->>'valor')::numeric, 2) <> round(pa.valor_atual, 2)
+            or (e->>'vencimento')::date <> pa.vencimento )
+  ) then raise exception 'parcela_bloqueada_alterada'; end if;
+
+  delete from parcelas pa
+   where pa.contrato_id = p_contrato_id and not (pa.id = any(v_ids));
+  get diagnostics v_removidas = row_count;
+
+  -- Desloca as NAO bloqueadas para uma faixa negativa temporaria antes de aplicar
+  -- os numeros finais: uma renumeracao (permuta de `numero`) violaria transitoria-
+  -- mente o unique(contrato_id, numero) num UPDATE multi-linha. Negativos nao
+  -- colidem com os numeros finais (positivos) nem com as bloqueadas (intactas).
+  update parcelas pa set numero = -pa.numero - 1
+   where pa.contrato_id = p_contrato_id
+     and not (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null);
+
+  update parcelas pa set
+      numero = (e->>'numero')::int,
+      descricao = coalesce(e->>'descricao', pa.descricao),
+      valor_atual = (e->>'valor')::numeric,
+      vencimento = (e->>'vencimento')::date
+  from jsonb_array_elements(p_parcelas) e
+  where (e ? 'id') and nullif(e->>'id', '') is not null
+    and pa.id = (e->>'id')::uuid and pa.contrato_id = p_contrato_id
+    and not (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null);
+
+  insert into parcelas (contrato_id, numero, descricao, valor_original, valor_atual, vencimento, status, is_entrada)
+  select p_contrato_id, (e->>'numero')::int,
+         coalesce(e->>'descricao', 'Parcela ' || (e->>'numero')),
+         (e->>'valor')::numeric, (e->>'valor')::numeric, (e->>'vencimento')::date,
+         'pendente', false
+  from jsonb_array_elements(p_parcelas) e
+  where not (e ? 'id') or nullif(e->>'id', '') is null;
+
+  return jsonb_build_object('ok', true, 'anchor', v_anchor, 'soma', v_soma, 'removidas', v_removidas);
+end;
+$aplcron$;
+
 create table if not exists supplier (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),

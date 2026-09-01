@@ -49,6 +49,8 @@ function mensagemMotivo(motivo: string, detalhe?: string): string {
     case "posse":
     case "contrato_nao_encontrado":
       return "Contrato não encontrado.";
+    case "contrato_cancelado":
+      return "Este contrato está cancelado e não pode ser repactuado.";
     default:
       return "Não foi possível concluir a repactuação.";
   }

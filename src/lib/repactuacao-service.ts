@@ -97,7 +97,7 @@ type ContratoRepact = {
 async function carregarAtuais(supabase: SupabaseClient, contratoId: string): Promise<ParcelaAtual[]> {
   const { data } = await supabase
     .from("parcelas")
-    .select("id, numero, valor_atual, vencimento, status, qr_code_url, is_entrada")
+    .select("id, numero, valor_atual, vencimento, status, qr_code_url, external_payment_id, is_entrada")
     .eq("contrato_id", contratoId);
   return (data ?? []).map((p) => ({
     id: p.id as string,
@@ -105,7 +105,9 @@ async function carregarAtuais(supabase: SupabaseClient, contratoId: string): Pro
     valorAtual: num(p.valor_atual) ?? 0,
     vencimento: ((p.vencimento as string) || "").slice(0, 10),
     status: (p.status as string) || "pendente",
-    temCobranca: !!p.qr_code_url,
+    // Bloqueada tambem quando ha ordem MP em voo (external_payment_id) mesmo sem
+    // qr_code_url — mesma regra da funcao Postgres, evita ordem orfa.
+    temCobranca: !!p.qr_code_url || !!p.external_payment_id,
     isEntrada: !!p.is_entrada,
   }));
 }
@@ -123,15 +125,56 @@ async function contarNoTrimestre(supabase: SupabaseClient, contratoId: string, t
   return count ?? 0;
 }
 
-// Aplica o novo cronograma nas parcelas: remove as que sumiram, atualiza as
-// existentes (valor_original INTOCADO), insere as novas. Espelha o /ajustar.
-//
-// [limitacao conhecida] delete+update+insert em SEQUENCIA, sem transacao (mesmo
-// padrao do /ajustar). Uma falha no meio deixaria o cronograma parcial. A correcao
-// definitiva e uma funcao Postgres transacional para reescrever o cronograma (a
-// mesma que o /ajustar deveria usar) — fatia futura, junto de um lock por contrato
-// que fecha a corrida de dupla submissao self-service.
+// Guarda-corpos que a funcao Postgres revalida SOB LOCK e devolve como raise.
+const RAISES_CRONOGRAMA = new Set([
+  "contrato_nao_encontrado",
+  "contrato_cancelado",
+  "total_indisponivel",
+  "soma_diverge",
+  "parcela_nao_encontrada",
+  "parcela_bloqueada_removida",
+  "parcela_bloqueada_alterada",
+]);
+
+// Aplica o novo cronograma ATOMICAMENTE via a funcao Postgres
+// `aplicar_cronograma_parcelas` (transacao unica + lock do contrato) — fecha a
+// janela de estado parcial e a corrida de dupla submissao. Deploy-safe: se a
+// funcao ainda nao existe no banco, cai no caminho sequencial legado.
 async function aplicarCronograma(
+  supabase: SupabaseClient,
+  contratoId: string,
+  novas: ParcelaNova[],
+  atuais: ParcelaAtual[],
+): Promise<void> {
+  const payload = novas.map((p) => ({
+    id: p.id ?? null,
+    numero: p.numero,
+    descricao: p.descricao ?? `Parcela ${p.numero}`,
+    valor: p.valor,
+    vencimento: p.vencimento,
+  }));
+  const { error } = await supabase.rpc("aplicar_cronograma_parcelas", {
+    p_contrato_id: contratoId,
+    p_parcelas: payload,
+  });
+  if (!error) return;
+  const code = (error as { code?: string }).code;
+  const msg = (error as { message?: string }).message ?? "";
+  // Funcao ausente (banco nao migrado) -> fallback sequencial. Deteccao ESTRITA:
+  // so o PGRST202 (assinatura nao encontrada no schema cache) do PostgREST, ou a
+  // frase especifica dele. Um "does not exist" generico (coluna/relacao por drift
+  // de schema) NAO degrada em silencio para o caminho nao-atomico.
+  if (code === "PGRST202" || /could not find the function/i.test(msg)) {
+    return aplicarCronogramaSequencial(supabase, contratoId, novas, atuais);
+  }
+  // Guarda-corpo revalidado sob lock falhou (o estado mudou desde a validacao).
+  if (RAISES_CRONOGRAMA.has(msg)) throw new RepactuacaoBloqueada(msg);
+  throw new RepactuacaoBloqueada("falha_aplicar", msg);
+}
+
+// Caminho sequencial legado (fallback quando a funcao Postgres nao existe).
+// [limitacao] delete+update+insert sem transacao — janela de estado parcial.
+async function aplicarCronogramaSequencial(
   supabase: SupabaseClient,
   contratoId: string,
   novas: ParcelaNova[],
