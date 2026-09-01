@@ -2,7 +2,15 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { converterParaBRL, itemizarRecibo, comporCotacaoVet, SPREAD_PADRAO, IOF_PADRAO } from "./cambio.ts";
+import {
+  converterParaBRL,
+  itemizarRecibo,
+  comporCotacaoVet,
+  extrairComercial,
+  recomporVetTenant,
+  SPREAD_PADRAO,
+  IOF_PADRAO,
+} from "./cambio.ts";
 
 test("converterParaBRL multiplica valor pela cotacao_vet, sem taxa fixa", () => {
   // cotacao_vet ja embute BACEN + spread + IOF; sem os R$ 4,99 antigos.
@@ -54,4 +62,45 @@ test("itemizarRecibo respeita percentuais customizados (ex.: IOF alterado)", () 
   assert.equal(itens.iofPercentual, 0.011);
   assert.equal(itens.iof, 11); // 1,1% de 1000
   assert.equal(itens.totalBRL, converterParaBRL(200, vet));
+});
+
+// --- Câmbio por TENANT (recomposicao da VET a partir da PTAX global) ---
+
+test("extrairComercial e o inverso EXATO de comporCotacaoVet", () => {
+  const vet = comporCotacaoVet(4, 0.05, 0.035); // 4,34
+  assert.equal(Math.round(extrairComercial(vet, 0.05, 0.035) * 1e6) / 1e6, 4);
+});
+
+test("recomporVetTenant: spread/iof iguais aos armazenados -> VET identica (idempotente)", () => {
+  const vet = comporCotacaoVet(4.1234, 0.05, 0.035);
+  assert.equal(recomporVetTenant(vet, 0.05, 0.035, 0.05, 0.035), vet);
+});
+
+test("recomporVetTenant: tenant com spread MAIOR -> VET maior (mesma PTAX)", () => {
+  const vetGlobal = comporCotacaoVet(4, 0.05, 0.035); // 4,34
+  // Tenant com spread 6,6% (mantendo IOF 3,5%): 4 * (1 + 0.066 + 0.035) = 4.404
+  const vetTenant = recomporVetTenant(vetGlobal, 0.05, 0.035, 0.066, 0.035);
+  assert.equal(vetTenant, 4.404);
+  assert.ok(vetTenant > vetGlobal);
+});
+
+test("recomporVetTenant: tenant com spread MENOR -> VET menor (mesma PTAX)", () => {
+  const vetGlobal = comporCotacaoVet(4, 0.066, 0.035); // PTAX 4 com spread 6,6%
+  // Tenant com spread 5% => 4 * 1.085 = 4.34
+  const vetTenant = recomporVetTenant(vetGlobal, 0.066, 0.035, 0.05, 0.035);
+  assert.equal(vetTenant, 4.34);
+  assert.ok(vetTenant < vetGlobal);
+});
+
+test("recomporVetTenant: a conversao resultante bate com a decomposicao do recibo do tenant", () => {
+  const vetGlobal = comporCotacaoVet(5, 0.05, 0.035);
+  // Tenant spread 8%, IOF 3,5%.
+  const vetTenant = recomporVetTenant(vetGlobal, 0.05, 0.035, 0.08, 0.035);
+  const itens = itemizarRecibo(1000, vetTenant, 0.08, 0.035);
+  // PTAX recuperada volta a ~5,00; subtotal 5000; taxa 8% = 400; iof 3,5% = 175.
+  assert.equal(Math.round(itens.ptax * 100) / 100, 5);
+  assert.equal(itens.subtotal, 5000);
+  assert.equal(itens.taxaIntermediacao, 400);
+  assert.equal(itens.iof, 175);
+  assert.equal(itens.totalBRL, converterParaBRL(1000, vetTenant));
 });
