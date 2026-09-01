@@ -103,5 +103,12 @@ export async function registrarConsentimento(args: {
     ip: args.ip ?? null,
   });
 
-  return carregarEstadoConsentimentos(args.supabase, args.titularId);
+  // O ato JA foi gravado (append-only). Uma falha na RELEITURA final nao pode
+  // transformar um registro bem-sucedido em erro — senao o cliente reenvia e o
+  // ledger ganha uma linha duplicada. Best-effort: o cliente reidrata via refresh.
+  try {
+    return await carregarEstadoConsentimentos(args.supabase, args.titularId);
+  } catch {
+    return [];
+  }
 }
