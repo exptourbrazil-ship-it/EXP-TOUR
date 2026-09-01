@@ -92,20 +92,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
 
       cotacaoAplicada = Number(cotacao.cotacao_vet);
-        // Spread/IOF que compuseram a VET GLOBAL (linhas antigas de cotacoes_cambio
-        // nao tem estas colunas -> ficam null e o recibo cai no fallback legado).
-        const spreadArmazenado = cotacao.spread != null ? Number(cotacao.spread) : null;
-        const iofArmazenado = cotacao.iof != null ? Number(cotacao.iof) : null;
-        spreadAplicado = spreadArmazenado;
-        iofAplicado = iofArmazenado;
+        // Spread/IOF que compuseram a VET GLOBAL. Parse defensivo: so um numero
+        // FINITO conta. Qualquer outra coisa (null, "", texto -> NaN) vira null e a
+        // VET NAO e recomposta — nao deixamos NaN entrar no caminho do dinheiro (a
+        // recomposicao alimenta o valor cobrado, nao so a decomposicao do recibo).
+        const numFin = (v: unknown): number | null => {
+              const n = Number(v);
+              return v != null && v !== "" && Number.isFinite(n) ? n : null;
+        };
+        const spreadArmazenado = numFin(cotacao.spread);
+        const iofArmazenado = numFin(cotacao.iof);
         // Câmbio por TENANT: a PTAX (cambio comercial do BACEN) e global-por-moeda,
         // mas o spread e o IOF sao parametros por instancia (tenant_config). A linha
         // de cotacoes_cambio guarda a VET GLOBAL + o spread/iof que a compuseram;
         // recuperamos a PTAX e RECOMPOMOS a VET com o spread/iof deste tenant. Assim
         // congelamos na parcela o spread/iof do tenant, mantendo a invariante do
-        // recibo (o % decomposto == o % embutido na VET cobrada). So recompomos
-        // quando a linha carrega spread/iof (senao a PTAX nao e recuperavel: fica a
-        // VET global e o recibo cai no legado, exatamente como antes).
+        // recibo (o % decomposto == o % embutido na VET cobrada). Tudo-ou-nada: so
+        // recompomos com os DOIS percentuais finitos (senao a PTAX nao e recuperavel
+        // de forma consistente); do contrario mantem a VET global e congela null ->
+        // o recibo cai no legado, exatamente como antes.
         if (spreadArmazenado != null && iofArmazenado != null) {
               const cfg = await carregarConfigTenant(
                 supabase,
@@ -120,6 +125,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                       );
               spreadAplicado = cfg.spreadCambio;
               iofAplicado = cfg.iofCambio;
+        } else {
+              // Sem os dois percentuais nao ha recomposicao nem decomposicao
+              // consistente -> nao congela nenhum (evita o estado meio-nulo em que o
+              // recibo usaria SPREAD_LEGADO com um IOF congelado).
+              spreadAplicado = null;
+              iofAplicado = null;
         }
         // A cotacao_vet ja embute o cambio BACEN do dia + spread + IOF do tenant.
         // O valor cobrado e apenas a conversao, sem taxa administrativa fixa.
