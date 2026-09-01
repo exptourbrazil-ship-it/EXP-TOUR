@@ -97,13 +97,26 @@ export default async function DocumentosPage() {
                     : null
                 ),
                 createElement(
-                  Link,
-                  {
-                    href: `/contrato/${c.id}`,
-                    className:
-                      "shrink-0 rounded-full border border-brand/30 px-3 py-1 text-xs font-medium text-brand hover:bg-brand/5",
-                  },
-                  "Abrir via integral"
+                  "div",
+                  { className: "flex shrink-0 items-center gap-2" },
+                  createElement(
+                    Link,
+                    {
+                      href: `/ficha/${c.id}`,
+                      className:
+                        "rounded-full border border-brand/30 px-3 py-1 text-xs font-medium text-brand hover:bg-brand/5",
+                    },
+                    "Ficha de matrícula"
+                  ),
+                  createElement(
+                    Link,
+                    {
+                      href: `/contrato/${c.id}`,
+                      className:
+                        "rounded-full border border-brand/30 px-3 py-1 text-xs font-medium text-brand hover:bg-brand/5",
+                    },
+                    "Abrir via integral"
+                  )
                 )
               )
             )
