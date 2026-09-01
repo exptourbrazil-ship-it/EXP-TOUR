@@ -10,12 +10,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
-import { diasAteInicio } from "@/lib/caso";
 import { labelTipoExcecao } from "@/lib/excecao";
+import { carregarReembolsoContrato } from "@/lib/reembolso-service";
+import { montarAcertoDeReembolso } from "@/lib/acerto-anexo-i";
+import { tenantDoTitular, tenantTemConfigReembolso } from "@/lib/tenant-config";
 import {
-  calcularAcerto,
   calcularAcertoCreditoEscopo,
-  determinarRetencaoPercentual,
   validarFaixasRetencao,
   renderizarTermoAcerto,
   transicaoAcertoPermitida,
@@ -120,7 +120,7 @@ export async function calcularERegistrarAcerto(args: {
 
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("id, titular_id, valor_total, moeda, data_inicio")
+    .select("id, titular_id, valor_total, moeda")
     .eq("id", args.contratoId)
     .maybeSingle();
   if (!contrato) {
@@ -146,47 +146,42 @@ export async function calcularERegistrarAcerto(args: {
   }
   const excecaoIdAlvo: string = excecao.id; // local (evita perda de narrowing na closure)
 
-  // Total pago = soma do ledger de pagamentos (moeda do programa) — fonte
-  // imutavel da "fotografia" de cada pagamento.
-  const { data: pagamentos } = await supabase
-    .from("pagamentos")
-    .select("valor_programa")
-    .eq("contrato_id", args.contratoId);
-  const totalPago = (pagamentos || []).reduce(
-    (s, p) => s + (Number((p as { valor_programa?: number }).valor_programa) || 0),
-    0
-  );
-
-  // Dias ate o inicio (para a faixa de retencao). A data canonica e a do
-  // CONTRATO (titular so como fallback) — mesmo criterio do resto do codigo
-  // (inicio/regua). O acerto e por contrato, entao usar a do titular daria a
-  // faixa errada em titular multi-contrato.
-  const { data: titular } = await supabase
-    .from("titulares")
-    .select("data_inicio")
-    .eq("id", contrato.titular_id)
-    .maybeSingle();
-  const dataInicio =
-    (contrato as { data_inicio?: string | null }).data_inicio ??
-    (titular as { data_inicio?: string | null })?.data_inicio ??
-    null;
-  const dias = diasAteInicio(dataInicio, hojeBrasilISO());
-
-  // Faixas de retencao da CONFIG por instancia (Fatia A) — nao mais hardcoded.
-  const config = await carregarConfigRetencao(supabase);
+  // Retencao pela regra do ANEXO I (escalonada por etapa concluida + teto — a
+  // regra contratual real, Clausula 9), FONTE UNICA em reembolso-anexo-i via
+  // reembolso-service. Substitui as faixas placeholder por dias-ate-inicio, que
+  // eram provisorias. A mesma derivacao de etapa (sinais entrada/LOA/visto +
+  // override) e o teto/etapas por tenant da simulacao admin — os dois trilhos
+  // agora concordam.
   const tipo = excecao.tipo as string;
-  const retencaoPercentual = determinarRetencaoPercentual(
-    tipo,
-    dias ?? 0,
-    config.faixas,
-    config.tiposSemRetencao
-  );
-  const acerto = calcularAcerto({
+  // Config de retencao por instancia: hoje so governa (a) quais tipos de excecao
+  // DISPENSAM a retencao percentual (Anexo I.4, ex.: culpa da escola) e (b) o
+  // gate juridico `provisorio` que trava a EXECUCAO do refund enquanto as regras
+  // nao forem validadas. As faixas por dias nao alimentam mais o valor.
+  const config = await carregarConfigRetencao(supabase);
+  const dispensa = config.tiposSemRetencao.includes(tipo);
+
+  const reembolso = await carregarReembolsoContrato(supabase, args.contratoId, { dispensa });
+  if (!reembolso) {
+    throw new AcertoBloqueado("contrato_nao_encontrado", "Contrato nao encontrado para o reembolso");
+  }
+  const totalPago = reembolso.resultado.totalPago;
+  const acerto = montarAcertoDeReembolso({
     valorTotal: Number(contrato.valor_total) || 0,
-    totalPago,
-    retencaoPercentual,
+    resultado: reembolso.resultado,
     refundEscolaEsperado: Math.max(0, Number(args.refundEscolaEsperado) || 0),
   });
+
+  // Gate juridico do money-out: alem de config_retencao.validado_juridicamente,
+  // exige que o tenant tenha config de reembolso EXPLICITA. Sem ela a retencao
+  // veio dos DEFAULTS "a confirmar" do Anexo I -> mantem provisorio (executarAcerto
+  // recusa refund enquanto provisorio=true). Evita que uma flag antiga (validando
+  // as faixas por dias, hoje ociosas) libere refund sobre percentuais/teto ainda
+  // nao validados.
+  const reembolsoConfigurado = await tenantTemConfigReembolso(
+    supabase,
+    await tenantDoTitular(supabase, contrato.titular_id as string),
+  );
+  const provisorio = config.provisorio || !reembolsoConfigurado;
 
   // Campos recalculados (comuns a insert e update). criado_por NAO entra no
   // update — quem recalcula nao vira "criador" do rascunho (a trilha real fica
@@ -203,7 +198,7 @@ export async function calcularERegistrarAcerto(args: {
     refund_escola_esperado: acerto.refundEscolaEsperado,
     saldo_devolver_cliente: acerto.saldoDevolverCliente,
     memoria: acerto.memoria,
-    provisorio: config.provisorio, // false quando a retencao ja foi validada juridicamente
+    provisorio, // false so quando validado juridicamente E com config de reembolso propria
     atualizada_em: new Date().toISOString(),
   };
 
@@ -257,7 +252,7 @@ export async function calcularERegistrarAcerto(args: {
       tipo: labelTipoExcecao(tipo),
       retencao_percentual: acerto.retencaoPercentual,
       saldo_devolver: acerto.saldoDevolverCliente,
-      provisorio: config.provisorio,
+      provisorio,
     },
     ip: args.ip ?? null,
   });
