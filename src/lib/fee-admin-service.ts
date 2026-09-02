@@ -48,6 +48,7 @@ async function templateDoTenantECampus(
     .from("price_template")
     .select("id, tenant_id, campus_id")
     .eq("id", templateId)
+    .is("archived_at", null) // nao derivar valor de tabela arquivada
     .maybeSingle();
   return (
     !!data &&
@@ -127,9 +128,10 @@ export async function salvarTaxa(
   let criado: boolean;
 
   if (feeId) {
+    // Carrega a linha INTEIRA para servir de snapshot de restauracao.
     const { data: existente } = await supabase
       .from("fee")
-      .select("id, tenant_id, source_submission_id")
+      .select("*")
       .eq("id", feeId)
       .maybeSingle();
     if (!existente || (existente as { tenant_id?: string }).tenant_id !== tenantId) {
@@ -159,7 +161,9 @@ export async function salvarTaxa(
     try {
       await persistirVinculos(supabase, id, product_ids);
     } catch (e) {
-      await restaurarVinculos(supabase, id, snapProdutos);
+      // Restaura COLUNAS + vinculos (as colunas do fee ja foram atualizadas —
+      // reverter so os vinculos deixaria campus novo com produtos antigos).
+      await restaurarTaxa(supabase, existente as Record<string, unknown>, snapProdutos);
       throw e;
     }
   } else {
@@ -216,15 +220,40 @@ async function persistirVinculos(supabase: SupabaseClient, feeId: string, produc
   }
 }
 
-// Restaura (best-effort) os vinculos a partir do snapshot. NUNCA lanca.
-async function restaurarVinculos(supabase: SupabaseClient, feeId: string, snapshot: string[]): Promise<void> {
+// Restaura (best-effort) as COLUNAS do fee + os vinculos a partir do snapshot.
+// NUNCA lanca — o erro original da mutacao e que deve propagar; aqui so tentamos
+// nao deixar o estado corrompido (ex.: campus novo com produtos do campus antigo).
+async function restaurarTaxa(
+  supabase: SupabaseClient,
+  linhaAnterior: Record<string, unknown>,
+  snapshotProdutos: string[],
+): Promise<void> {
+  const id = linhaAnterior.id as string;
   try {
-    await supabase.from("fee_product").delete().eq("fee_id", feeId);
-    if (snapshot.length > 0) {
-      await supabase.from("fee_product").insert(snapshot.map((pid) => ({ fee_id: feeId, product_id: pid })));
+    await supabase
+      .from("fee")
+      .update({
+        campus_id: linhaAnterior.campus_id,
+        name: linhaAnterior.name,
+        fee_type: linhaAnterior.fee_type,
+        charge_basis: linhaAnterior.charge_basis,
+        amount: linhaAnterior.amount,
+        currency: linhaAnterior.currency,
+        price_template_id: linhaAnterior.price_template_id,
+        is_refundable: linhaAnterior.is_refundable,
+        is_mandatory: linhaAnterior.is_mandatory,
+        applies_to_kinds: linhaAnterior.applies_to_kinds,
+        valid_from: linhaAnterior.valid_from,
+        valid_until: linhaAnterior.valid_until,
+        updated_at: linhaAnterior.updated_at ?? null,
+      })
+      .eq("id", id);
+    await supabase.from("fee_product").delete().eq("fee_id", id);
+    if (snapshotProdutos.length > 0) {
+      await supabase.from("fee_product").insert(snapshotProdutos.map((pid) => ({ fee_id: id, product_id: pid })));
     }
   } catch (err) {
-    console.error("[taxas] restauracao de vínculos falhou:", err instanceof Error ? err.message : err);
+    console.error("[taxas] restauracao apos falha parcial falhou:", err instanceof Error ? err.message : err);
   }
 }
 
