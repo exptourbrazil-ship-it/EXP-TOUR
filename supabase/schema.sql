@@ -9,6 +9,11 @@ create table if not exists titulares (
   created_at timestamptz not null default now()
   );
 create index if not exists idx_titulares_tenant on titulares(tenant_id);
+-- Anonimizacao (LGPD art. 18): marca quando/por quem/por que a PII do titular foi
+-- redigida. Ver funcao anonimizar_titular e src/lib/anonimizacao-service.ts.
+alter table if exists titulares add column if not exists anonimizado_em timestamptz;
+alter table if exists titulares add column if not exists anonimizado_por text;
+alter table if exists titulares add column if not exists anonimizado_justificativa text;
 
 -- Contratos: uma viagem/grupo contratado por um titular
 create table if not exists contratos (
@@ -124,6 +129,95 @@ create table if not exists consentimentos (
 create index if not exists idx_consentimentos_titular on consentimentos(titular_id);
 create index if not exists idx_consentimentos_titular_tipo on consentimentos(titular_id, tipo, criado_em desc);
 alter table if exists consentimentos enable row level security;
+
+-- Anonimizacao de dados do titular (LGPD art. 18). Modelo: ANONIMIZAR, nao apagar.
+-- Redige a PII (titulares/contratos + IPs de prova) e apaga os documentos de
+-- IDENTIDADE do cofre (origem titular/admin) numa UNICA transacao, sob lock —
+-- PRESERVANDO os registros financeiros/contratuais e o ledger de consentimentos
+-- (retencao legal, art. 16). Re-checa a elegibilidade SOB LOCK: so anonimiza
+-- quando TODOS os contratos estao encerrados (cancelado, ou sem parcela em aberto
+-- e programa ja iniciado). Retorna os storage_paths dos docs apagados para a rota
+-- remover os objetos do Storage. Idempotente por titular (ja anonimizado -> raise).
+create or replace function anonimizar_titular(
+  p_titular_id uuid,
+  p_autor text,
+  p_justificativa text
+) returns jsonb
+language plpgsql
+as $anon$
+declare
+  v_ja timestamptz;
+  v_ativos int;
+  v_docs jsonb;
+begin
+  select anonimizado_em into v_ja from titulares where id = p_titular_id for update;
+  if not found then raise exception 'titular_nao_encontrado'; end if;
+  if v_ja is not null then raise exception 'ja_anonimizado'; end if;
+
+  -- Elegibilidade SOB LOCK: nenhum contrato ATIVO. Ativo = nao cancelado E (tem
+  -- parcela em aberto OU sem data_inicio OU programa ainda nao iniciado).
+  select count(*) into v_ativos
+  from contratos c
+  where c.titular_id = p_titular_id
+    and c.cancelado_em is null
+    and (
+      exists (select 1 from parcelas p where p.contrato_id = c.id and p.status <> 'pago')
+      or c.data_inicio is null
+      or c.data_inicio >= current_date
+    );
+  if v_ativos > 0 then raise exception 'contrato_ativo'; end if;
+
+  -- Coleta os documentos de IDENTIDADE (uploads do titular / do staff sobre ele)
+  -- para a rota remover do Storage. Contrato assinado (origem 'sistema') e docs de
+  -- fornecedor NAO entram (retencao / nao sao PII do titular).
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'bucket', case when origem = 'admin' then 'documentos-admin' else 'documentos-titular' end,
+           'path', storage_path)), '[]'::jsonb)
+    into v_docs
+  from documentos
+  where titular_id = p_titular_id and origem in ('titular','admin') and storage_path is not null;
+
+  -- Redige a PII do titular. cpf e NOT NULL UNIQUE -> tombstone unico por id (id
+  -- inteiro, sem risco teorico de colisao). email e o canal de login: NULA.
+  update titulares set
+     nome_completo = '[anonimizado]',
+     cpf = 'ANON:' || replace(id::text, '-', ''),
+     telefone = null,
+     email = null,
+     anonimizado_em = now(),
+     anonimizado_por = p_autor,
+     anonimizado_justificativa = p_justificativa
+   where id = p_titular_id;
+
+  -- Contrato: nula a PII do estudante. O Quadro Resumo (snapshot IMUTAVEL) contem
+  -- nome/cpf/email do contratante e participante — a eliminacao (art. 18) SOBREPÕE
+  -- a imutabilidade: nula o snapshot e o hash (os TERMOS financeiros ficam nas
+  -- colunas do contrato + parcelas + pagamentos, que sao preservadas).
+  update contratos set
+     estudante_nome = null, estudante_sexo = null, estudante_email = null,
+     quadro_resumo = null, hash_quadro = null
+   where titular_id = p_titular_id;
+
+  -- IPs/PII de PROVA (mantem o registro do ato; remove o dado identificavel).
+  update consentimentos set ip = null where titular_id = p_titular_id;
+  update repactuacoes set ip = null where titular_id = p_titular_id;
+  update aceites set ip = null, user_agent = null where titular_id = p_titular_id;
+  -- Assinaturas da ficha: escopa por CONTRATO (fichas.titular_id e nullable/set null).
+  update fichas_matricula_assinaturas set ip = null, assinante_nome = null, user_agent = null
+   where ficha_id in (
+     select id from fichas_matricula
+     where contrato_id in (select id from contratos where titular_id = p_titular_id)
+   );
+  -- Espelho do envelope de assinatura (nome/email dos signatarios).
+  update contratos_assinatura set signatarios = null
+   where contrato_id in (select id from contratos where titular_id = p_titular_id);
+
+  -- Apaga as LINHAS dos documentos de identidade (os objetos do Storage saem na rota).
+  delete from documentos where titular_id = p_titular_id and origem in ('titular','admin');
+
+  return jsonb_build_object('ok', true, 'documentos', v_docs);
+end;
+$anon$;
 
 -- ============================================================================
 -- Quadro Resumo (Clausula 17.1 / contrato-arquitetura item 3): snapshot IMUTAVEL

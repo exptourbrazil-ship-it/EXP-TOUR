@@ -18,11 +18,13 @@ export const TOMBSTONE = "[anonimizado]";
 // Catalogo (documental) dos campos de PII redigidos pela funcao SQL. Mantido aqui
 // como fonte unica da INTENCAO; a redacao em si roda no banco (transacao).
 export const CAMPOS_PII: Record<string, string[]> = {
-  titulares: ["nome_completo", "cpf", "telefone"],
-  contratos: ["estudante_nome", "estudante_sexo"],
+  titulares: ["nome_completo", "cpf", "telefone", "email"],
+  contratos: ["estudante_nome", "estudante_sexo", "estudante_email", "quadro_resumo", "hash_quadro"],
   consentimentos: ["ip"],
-  fichas_matricula_assinaturas: ["ip", "assinante_nome", "user_agent"],
   repactuacoes: ["ip"],
+  aceites: ["ip", "user_agent"],
+  fichas_matricula_assinaturas: ["ip", "assinante_nome", "user_agent"],
+  contratos_assinatura: ["signatarios"],
 };
 
 export type ContratoParaAnonimizar = {
