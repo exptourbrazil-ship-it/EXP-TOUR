@@ -136,6 +136,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/precos/tabelas",
+    label: "Tabelas de preço",
+    descricao: "Montar tabelas de preço à mão (faixas por quantidade)",
+    icone: ICONES.cotacoes,
+    capacidade: "fornecedores.gerir",
+  },
+  {
     href: "/admin/materiais",
     label: "Materiais",
     descricao: "Biblioteca de materiais das escolas (proposta)",
