@@ -68,8 +68,11 @@ test("A7 sem contratos -> elegivel", () => {
 test("A8 catalogo de PII", () => {
   assert.ok(CAMPOS_PII.titulares.includes("cpf"));
   assert.ok(CAMPOS_PII.titulares.includes("nome_completo"));
+  assert.ok(CAMPOS_PII.titulares.includes("email")); // canal de login — nao pode sobreviver
   assert.ok(CAMPOS_PII.contratos.includes("estudante_nome"));
+  assert.ok(CAMPOS_PII.contratos.includes("quadro_resumo")); // snapshot com PII
   assert.ok(CAMPOS_PII.consentimentos.includes("ip"));
   assert.ok(CAMPOS_PII.repactuacoes.includes("ip"));
+  assert.ok(CAMPOS_PII.aceites.includes("ip"));
   assert.equal(TOMBSTONE, "[anonimizado]");
 });
