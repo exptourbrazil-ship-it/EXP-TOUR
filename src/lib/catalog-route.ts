@@ -56,6 +56,27 @@ export async function guardCatalog(request: Request): Promise<GuardResult> {
   return { ok: true, usuario, papel: sessao?.papel ?? null, ip: obterIp(request) };
 }
 
+/**
+ * Autorizacao por CAPACIDADE ('fornecedores.gerir') para ESCRITA no catalogo
+ * (produtos/precos/promocoes — autoria do Admin, espelho do self-service do
+ * fornecedor). Falha fechada: sem sessao com a capacidade -> 401. Distinta de
+ * guardCatalog ('propostas.gerir'), que gateia a construcao de COTACAO.
+ */
+export async function guardCatalogWrite(request: Request): Promise<GuardResult> {
+  if (!(await checarCapacidadeAdmin("fornecedores.gerir"))) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, error: { code: "nao_autorizado", message: "Nao autorizado." } },
+        { status: 401 },
+      ),
+    };
+  }
+  const sessao = await sessaoAdminAtual();
+  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  return { ok: true, usuario, papel: sessao?.papel ?? null, ip: obterIp(request) };
+}
+
 /** Resposta de erro de validacao (400 por padrao). */
 export function bad(message: string, code = "invalido", status = 400): NextResponse {
   return NextResponse.json({ ok: false, error: { code, message } }, { status });
