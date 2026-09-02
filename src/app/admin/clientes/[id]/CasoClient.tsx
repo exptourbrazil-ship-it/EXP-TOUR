@@ -36,6 +36,7 @@ export type PermissoesCaso = {
   gerirCancelamento: boolean;
   gerirFinanceiro: boolean;
   editarCpf: boolean;
+  anonimizarDados: boolean;
 };
 
 type Aba = "jornada" | "financeiro" | "documentos" | "comunicacao" | "eventos" | "acoes";
@@ -1162,6 +1163,87 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
           ))}
         </ul>
       </div>
+
+      {/* Anonimizacao de dados (LGPD art. 18) — so Gestor (config.gerir) */}
+      {permissoes.anonimizarDados ? <SecaoAnonimizar caso={caso} /> : null}
+    </div>
+  );
+}
+
+// Anonimizacao IRREVERSIVEL do titular (LGPD art. 18). So aparece para o Gestor.
+// Exige justificativa + dupla confirmacao. A rota re-checa a capacidade e a
+// elegibilidade (todos os contratos encerrados).
+function SecaoAnonimizar({ caso }: { caso: Caso }) {
+  const router = useRouter();
+  const [justificativa, setJustificativa] = useState("");
+  const [processando, setProcessando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const jaAnon = !!caso.titular.anonimizado_em;
+
+  async function anonimizar() {
+    setErro(null);
+    if (!justificativa.trim()) {
+      setErro("Informe a justificativa.");
+      return;
+    }
+    if (!window.confirm("Anonimizar os dados deste titular? Esta ação é IRREVERSÍVEL — a PII (nome, CPF, e-mail, documentos de identidade) será apagada; os registros financeiros são preservados.")) return;
+    if (!window.confirm("Confirmação final: os dados NÃO poderão ser recuperados. Prosseguir com a anonimização?")) return;
+    setProcessando(true);
+    try {
+      const resp = await fetch(`/api/admin/titulares/${caso.titular.id}/anonimizar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ justificativa: justificativa.trim() }),
+      });
+      const r = await resp.json();
+      if (r.ok) {
+        router.refresh();
+      } else {
+        setErro(r.erro || "Não foi possível anonimizar.");
+      }
+    } catch {
+      setErro("Não foi possível anonimizar.");
+    } finally {
+      setProcessando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-red-300 bg-red-50/40 p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Anonimizar dados (LGPD)</h2>
+      {jaAnon ? (
+        <p className="text-sm text-neutral-600">
+          Dados já anonimizados em {fmtData(caso.titular.anonimizado_em as string)}. A PII foi removida; os registros
+          financeiros/contratuais e o histórico de consentimentos foram preservados.
+        </p>
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-neutral-600">
+            Direito de eliminação (art. 18). Apaga a PII do titular (nome, CPF, e-mail, telefone, nome do estudante,
+            documentos de identidade e IPs de prova) e <span className="font-medium">preserva</span> os registros
+            financeiros/contratuais e o histórico de consentimentos. <span className="font-medium text-red-700">Irreversível.</span>{" "}
+            Só é permitido quando todos os contratos estão encerrados (cancelados ou concluídos).
+          </p>
+          <label className="block text-xs text-neutral-500">
+            Justificativa (registrada na auditoria)
+            <textarea
+              value={justificativa}
+              onChange={(e) => setJustificativa(e.target.value)}
+              rows={2}
+              className="mt-1 w-full rounded-lg border border-neutral-300 p-2 text-sm text-neutral-800"
+              placeholder="Ex.: solicitação de eliminação do titular em DD/MM/AAAA."
+            />
+          </label>
+          {erro ? <p className="mt-2 text-sm text-red-700">{erro}</p> : null}
+          <button
+            onClick={anonimizar}
+            disabled={processando}
+            className="mt-3 rounded-xl bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {processando ? "Anonimizando..." : "Anonimizar dados"}
+          </button>
+        </>
+      )}
     </div>
   );
 }
