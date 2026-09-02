@@ -143,6 +143,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/precos/taxas",
+    label: "Taxas",
+    descricao: "Taxas de matrícula, material, serviço etc. (fixas ou por tabela)",
+    icone: ICONES.financeiro,
+    capacidade: "fornecedores.gerir",
+  },
+  {
     href: "/admin/materiais",
     label: "Materiais",
     descricao: "Biblioteca de materiais das escolas (proposta)",
