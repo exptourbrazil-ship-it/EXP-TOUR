@@ -369,19 +369,19 @@ export async function obterProdutoAdmin(
   return { core: prod as Record<string, unknown>, detalhe: (det as Record<string, unknown>) ?? null, itens };
 }
 
-// Campi do tenant (para o seletor do editor): id, nome e fornecedor.
+// Campi do tenant (para o seletor do editor): id, nome, supplier_id e fornecedor.
 export async function listarCampusDoTenant(
   supabase: SupabaseClient,
   tenantId: string,
-): Promise<{ id: string; name: string; supplierName: string | null }[]> {
+): Promise<{ id: string; name: string; supplierId: string | null; supplierName: string | null }[]> {
   const { data } = await supabase
     .from("campus")
-    .select("id, name, supplier:supplier(display_name)")
+    .select("id, name, supplier_id, supplier:supplier(display_name)")
     .eq("tenant_id", tenantId)
     .is("archived_at", null)
     .order("name");
   return (data ?? []).map((c: any) => {
     const supplier = Array.isArray(c.supplier) ? c.supplier[0] : c.supplier;
-    return { id: c.id, name: c.name, supplierName: supplier?.display_name ?? null };
+    return { id: c.id, name: c.name, supplierId: c.supplier_id ?? null, supplierName: supplier?.display_name ?? null };
   });
 }
