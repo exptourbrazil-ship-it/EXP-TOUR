@@ -5,8 +5,10 @@ import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { obterProdutoAdmin, listarCampusDoTenant, listarProdutosAdmin } from "@/lib/produto-admin-service";
 import { obterElegibilidadeAdmin } from "@/lib/elegibilidade-admin-service";
+import { obterConteudoProdutoAdmin } from "@/lib/produto-conteudo-admin-service";
 import ProdutoEditor from "@/components/ProdutoEditor";
 import ElegibilidadeEditor from "@/components/ElegibilidadeEditor";
+import ConteudoEditor from "@/components/ConteudoEditor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +32,11 @@ export default async function EditarProdutoPage({
   const produto = await obterProdutoAdmin(supabase, tenantId, id);
   if (!produto) notFound();
 
-  const [campi, produtos, regrasElig] = await Promise.all([
+  const [campi, produtos, regrasElig, conteudo] = await Promise.all([
     listarCampusDoTenant(supabase, tenantId),
     listarProdutosAdmin(supabase, tenantId),
     obterElegibilidadeAdmin(supabase, tenantId, id),
+    obterConteudoProdutoAdmin(supabase, tenantId, id),
   ]);
 
   return (
@@ -50,6 +53,7 @@ export default async function EditarProdutoPage({
         />
       </div>
       <ElegibilidadeEditor productId={id} inicial={regrasElig ?? []} />
+      <ConteudoEditor productId={id} inicialContent={conteudo?.content ?? []} inicialMedia={conteudo?.media ?? []} />
     </div>
   );
 }

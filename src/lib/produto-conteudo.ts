@@ -81,6 +81,32 @@ function ehUrlHttp(v: string): boolean {
   return /^https?:\/\/[^\s]+$/i.test(v);
 }
 
+// Limites (defesa em profundidade + higiene de dados).
+const MAX_DESCRICAO = 20000;
+const MAX_BULLETS = 60;
+const MAX_BULLET = 500;
+const MAX_MIDIAS = 40;
+
+// Padroes claramente perigosos em HTML de descricao. Nao substitui a sanitizacao
+// no PONTO DE RENDERIZACAO (o portal DEVE sanitizar antes de exibir; nao usar
+// dangerouslySetInnerHTML cru): e uma barreira extra na gravacao, ja que o autor
+// (fornecedor) e semi-confiavel e o leitor (estudante) e de outra fronteira.
+function htmlPerigoso(s: string): boolean {
+  return (
+    /<\s*script/i.test(s) ||
+    /<\s*iframe/i.test(s) ||
+    /<\s*style/i.test(s) ||
+    /\son\w+\s*=/i.test(s) || // handlers de evento: onerror=, onclick=, ...
+    /javascript:/i.test(s) ||
+    /\bdata:text\/html/i.test(s)
+  );
+}
+
+// Corta bullets ao teto (comprimento e quantidade).
+function capBullets(lista: string[]): string[] {
+  return lista.slice(0, MAX_BULLETS).map((x) => x.slice(0, MAX_BULLET));
+}
+
 // ── Entrada principal ───────────────────────────────────────────────────────
 // entrada = { product_id, content: [...], media: [...] }. Conteudo/midia vazios
 // sao validos (produto sem ficha). O service injeta o product_id da URL.
@@ -112,11 +138,19 @@ export function validarConteudoProduto(entrada: unknown): Resultado<ConteudoNorm
     locaisVistos.add(locale);
 
     const description = optStrOuNull(c.description_html);
-    const highlights = listaStr(c.highlights);
-    const inclusions = listaStr(c.inclusions);
-    const exclusions = listaStr(c.exclusions);
+    const highlights = capBullets(listaStr(c.highlights));
+    const inclusions = capBullets(listaStr(c.inclusions));
+    const exclusions = capBullets(listaStr(c.exclusions));
     // Locale sem nenhum conteudo -> descarta (nao grava linha vazia).
     if (!description && highlights.length === 0 && inclusions.length === 0 && exclusions.length === 0) {
+      return;
+    }
+    if (description && description.length > MAX_DESCRICAO) {
+      falhas.push({ campo: `content[${i}].description_html`, erro: `descrição muito longa (máx. ${MAX_DESCRICAO} caracteres)` });
+      return;
+    }
+    if (description && htmlPerigoso(description)) {
+      falhas.push({ campo: `content[${i}].description_html`, erro: "remova scripts/handlers de evento/iframe da descrição" });
       return;
     }
     content.push({
@@ -131,6 +165,9 @@ export function validarConteudoProduto(entrada: unknown): Resultado<ConteudoNorm
 
   // Midia.
   const mediaRaw = Array.isArray(entrada.media) ? entrada.media : [];
+  if (mediaRaw.length > MAX_MIDIAS) {
+    falhas.push({ campo: "media", erro: `no máximo ${MAX_MIDIAS} itens de mídia` });
+  }
   const media: MidiaItem[] = [];
   mediaRaw.forEach((m, i) => {
     if (!isObj(m)) {
