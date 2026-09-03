@@ -15,6 +15,7 @@ const KIND_LABEL: Record<string, string> = {
 };
 const STATUS_LABEL: Record<string, string> = { draft: "Rascunho", active: "Ativo", inactive: "Inativo" };
 const VIS_LABEL: Record<string, string> = { hidden: "Oculto", internal: "Interno", quotable: "Cotável", sellable: "Vendável" };
+const SOURCE_LABEL: Record<string, string> = { internal: "Interno", supplier: "Fornecedor" };
 
 const FILTROS = [
   { k: "", label: "Todos" },
@@ -78,6 +79,7 @@ export default async function AdminProdutosPage({
                 <th className="px-4 py-2">Nome</th>
                 <th className="px-4 py-2">Tipo</th>
                 <th className="px-4 py-2">Fornecedor / Campus</th>
+                <th className="px-4 py-2">Fonte</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2">Visibilidade</th>
                 <th className="px-4 py-2"></th>
@@ -91,6 +93,7 @@ export default async function AdminProdutosPage({
                   <td className="px-4 py-2 text-neutral-500">
                     {p.supplierName ?? "—"}{p.campusName ? ` · ${p.campusName}` : ""}
                   </td>
+                  <td className="px-4 py-2 text-neutral-500">{SOURCE_LABEL[p.source] ?? p.source}</td>
                   <td className="px-4 py-2">{STATUS_LABEL[p.status] ?? p.status}</td>
                   <td className="px-4 py-2">{VIS_LABEL[p.visibility] ?? p.visibility}</td>
                   <td className="px-4 py-2 text-right">

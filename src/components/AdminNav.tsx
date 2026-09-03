@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ADMIN_NAV } from "@/lib/admin-nav";
+import { ADMIN_NAV, GRUPOS_NAV, grupoDe } from "@/lib/admin-nav";
 import { podeAdmin, type PapelAdmin } from "@/lib/admin-roles";
 
 // Menu de navegacao do painel admin. Em telas grandes vira uma barra lateral
@@ -11,6 +11,27 @@ import { podeAdmin, type PapelAdmin } from "@/lib/admin-roles";
 // conteudo. Destaca a aba ativa (aria-current) e traz o botao "Sair".
 // Filtra os itens pelo PAPEL: esconde o que o papel nao pode acessar (o menu
 // espelha o guard da pagina). Itens sem capacidade ficam visiveis a todos.
+type EntradaNav =
+  | { tipo: "grupo"; grupo: string }
+  | { tipo: "item"; item: (typeof ADMIN_NAV)[number] };
+
+// Monta a sequencia de renderizacao: itens sem grupo (Início) no topo e, para
+// cada grupo na ordem de GRUPOS_NAV, um cabecalho seguido dos seus itens (so os
+// que o papel enxerga). Grupo sem itens visiveis nao gera cabecalho.
+function construirEntradas(itens: (typeof ADMIN_NAV)[number][]): EntradaNav[] {
+  const entradas: EntradaNav[] = [];
+  for (const item of itens) {
+    if (grupoDe(item.href) === null) entradas.push({ tipo: "item", item });
+  }
+  for (const grupo of GRUPOS_NAV) {
+    const doGrupo = itens.filter((i) => grupoDe(i.href) === grupo);
+    if (doGrupo.length === 0) continue;
+    entradas.push({ tipo: "grupo", grupo });
+    for (const item of doGrupo) entradas.push({ tipo: "item", item });
+  }
+  return entradas;
+}
+
 export default function AdminNav({ papel }: { papel?: PapelAdmin }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -43,7 +64,21 @@ export default function AdminNav({ papel }: { papel?: PapelAdmin }) {
       className="flex gap-1 overflow-x-auto p-3 lg:h-full lg:w-64 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:border-r lg:border-neutral-200 lg:p-4"
     >
       <ul className="flex gap-1 lg:flex-1 lg:flex-col">
-        {itens.map((item) => {
+        {construirEntradas(itens).map((entrada) => {
+          // Cabecalho de grupo (estilo Edvisor). So no desktop (menu vertical);
+          // no mobile a nav vira faixa horizontal e os cabecalhos ficam ocultos.
+          if (entrada.tipo === "grupo") {
+            return (
+              <li
+                key={`grupo-${entrada.grupo}`}
+                aria-hidden="true"
+                className="hidden px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 lg:block"
+              >
+                {entrada.grupo}
+              </li>
+            );
+          }
+          const item = entrada.item;
           const ativo = estaAtivo(item.href);
           const conteudo = (
             <>

@@ -230,3 +230,42 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icone: ICONES.viagem,
   },
 ];
+
+// Agrupamento da navegacao (estrutura estilo Edvisor: "Inventory" e demais
+// blocos). Ordem em que os grupos aparecem no menu. "Início" fica no topo, sem
+// cabecalho. Um item sem grupo mapeado cai em "Outros" (fim).
+export const GRUPOS_NAV = ["Inventário", "Comercial", "Clientes", "Financeiro", "Operação", "Configuração"] as const;
+export type GrupoNav = (typeof GRUPOS_NAV)[number];
+
+const GRUPO_POR_HREF: Record<string, GrupoNav> = {
+  "/admin/catalogo": "Inventário",
+  "/admin/produtos": "Inventário",
+  "/admin/precos": "Inventário",
+  "/admin/precos/tabelas": "Inventário",
+  "/admin/precos/taxas": "Inventário",
+  "/admin/precos/promocoes": "Inventário",
+  "/admin/disponibilidade": "Inventário",
+  "/admin/fornecedores": "Inventário",
+  "/admin/materiais": "Inventário",
+  "/admin/anexo-iii": "Inventário",
+  "/admin/propostas": "Comercial",
+  "/admin/quotes": "Comercial",
+  "/admin/clientes": "Clientes",
+  "/admin/contratos": "Clientes",
+  "/admin/data-inicio": "Clientes",
+  "/admin/viagem": "Clientes",
+  "/admin/financeiro": "Financeiro",
+  "/admin/contas-a-pagar": "Financeiro",
+  "/admin/antecipacoes": "Financeiro",
+  "/admin/cambio": "Financeiro",
+  "/admin/documentos": "Operação",
+  "/admin/termos": "Configuração",
+  "/admin/sistema": "Configuração",
+  "/admin/forca-maior": "Configuração",
+};
+
+// Grupo de um item da nav (null = topo/sem cabecalho, ex.: "Início").
+export function grupoDe(href: string): GrupoNav | null {
+  if (href === "/admin") return null;
+  return GRUPO_POR_HREF[href] ?? null;
+}
