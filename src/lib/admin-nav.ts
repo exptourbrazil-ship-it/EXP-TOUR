@@ -150,6 +150,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/precos/promocoes",
+    label: "Promoções",
+    descricao: "Descontos, isenções e ofertas por fornecedor",
+    icone: ICONES.antecipacoes,
+    capacidade: "fornecedores.gerir",
+  },
+  {
     href: "/admin/materiais",
     label: "Materiais",
     descricao: "Biblioteca de materiais das escolas (proposta)",
