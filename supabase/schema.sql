@@ -2346,3 +2346,37 @@ create table if not exists material (
 create index if not exists idx_material_supplier on material(supplier_id, archived_at);
 create index if not exists idx_material_tenant_perm on material(tenant_id, permissao, archived_at);
 alter table if exists material enable row level security;
+
+-- Substituicao ATOMICA das regras de elegibilidade de um produto (compliance-
+-- sensivel: is_blocking impede a emissao da cotacao). delete+insert numa unica
+-- transacao, sob advisory lock por produto — sem fail-open em falha parcial nem
+-- corrida com a emissao. Chamada por src/lib/elegibilidade-admin-service.ts.
+create or replace function substituir_elegibilidade(
+  p_tenant_id uuid,
+  p_product_id uuid,
+  p_regras jsonb
+) returns int
+language plpgsql
+as $subelig$
+declare
+  v_total int;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_product_id::text, 0));
+
+  delete from eligibility_rule
+   where tenant_id = p_tenant_id and product_id = p_product_id;
+
+  insert into eligibility_rule (tenant_id, product_id, group_index, attribute, operator, value, is_blocking)
+  select p_tenant_id,
+         p_product_id,
+         coalesce((r->>'group_index')::int, 0),
+         r->>'attribute',
+         r->>'operator',
+         r->'value',
+         coalesce((r->>'is_blocking')::boolean, false)
+    from jsonb_array_elements(coalesce(p_regras, '[]'::jsonb)) as r;
+
+  get diagnostics v_total = row_count;
+  return v_total;
+end;
+$subelig$;
