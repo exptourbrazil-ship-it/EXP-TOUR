@@ -51,16 +51,31 @@ async function campusDoTenantESupplier(
   );
 }
 
-// Alvo especifico (taxa ou produto) do tenant.
-async function refDoTenant(
+// Alvo especifico (taxa ou produto) do tenant E do MESMO fornecedor da promocao
+// (e do mesmo campus, quando a promocao fixa um campus). fee/product penduram num
+// campus (campus_id NOT NULL) que tem supplier_id — e por ai que amarramos ao
+// fornecedor, sem deixar a promocao do supplier A mirar taxa/produto do supplier B.
+async function refDoTenantSupplier(
   supabase: SupabaseClient,
   tenantId: string,
+  supplierId: string,
+  campusId: string | null,
   appliesTo: string,
   refId: string,
 ): Promise<boolean> {
   const tabela = appliesTo === "specific_fee" ? "fee" : "product";
-  const { data } = await supabase.from(tabela).select("id, tenant_id").eq("id", refId).maybeSingle();
-  return !!data && (data as { tenant_id?: string }).tenant_id === tenantId;
+  const { data } = await supabase
+    .from(tabela)
+    .select("id, tenant_id, campus_id, campus:campus(supplier_id)")
+    .eq("id", refId)
+    .maybeSingle();
+  if (!data || (data as { tenant_id?: string }).tenant_id !== tenantId) return false;
+  const campus = (data as any).campus;
+  const donoId = Array.isArray(campus) ? campus[0]?.supplier_id : campus?.supplier_id;
+  if (donoId !== supplierId) return false;
+  // Se a promocao fixa um campus, o alvo tem que ser daquele campus.
+  if (campusId && (data as { campus_id?: string }).campus_id !== campusId) return false;
+  return true;
 }
 
 export type SalvarPromocaoArgs = {
@@ -87,7 +102,10 @@ export async function salvarPromocao(
   if (promotion.campus_id && !(await campusDoTenantESupplier(supabase, tenantId, promotion.supplier_id, promotion.campus_id))) {
     throw new PromocaoAdminErro("campus_invalido");
   }
-  if (promotion.applies_to_ref_id && !(await refDoTenant(supabase, tenantId, promotion.applies_to, promotion.applies_to_ref_id))) {
+  if (
+    promotion.applies_to_ref_id &&
+    !(await refDoTenantSupplier(supabase, tenantId, promotion.supplier_id, promotion.campus_id, promotion.applies_to, promotion.applies_to_ref_id))
+  ) {
     throw new PromocaoAdminErro("ref_invalido");
   }
 
