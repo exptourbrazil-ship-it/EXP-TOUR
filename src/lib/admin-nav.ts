@@ -57,6 +57,8 @@ const ICONES = {
     "M3 21V8l6-4 6 4v13M9 21v-5h4v5M13 8h5a1 1 0 0 1 1 1v12M17 12h.01M17 16h.01",
   produtos:
     "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12l8.73-5.04M12 22V12",
+  catalogo:
+    "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 13h6v6h-6z",
 } as const;
 
 // Itens ja disponiveis (telas que existem hoje) + estrutura futura (emBreve).
@@ -119,6 +121,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Fornecedores",
     descricao: "Sincronizar escolas do Zoho e acessos do portal",
     icone: ICONES.fornecedores,
+    capacidade: "fornecedores.gerir",
+  },
+  {
+    href: "/admin/catalogo",
+    label: "Catálogo",
+    descricao: "Inventário: contagem por tipo, ações rápidas e campi",
+    icone: ICONES.catalogo,
     capacidade: "fornecedores.gerir",
   },
   {
