@@ -385,3 +385,34 @@ export async function listarCampusDoTenant(
     return { id: c.id, name: c.name, supplierId: c.supplier_id ?? null, supplierName: supplier?.display_name ?? null };
   });
 }
+
+// Contagem de produtos por vertical (para o hub de Inventário). Leve: seleciona
+// só a coluna kind do tenant (não arquivados) e agrega em memória.
+export type ContagemInventario = {
+  program: number;
+  accommodation: number;
+  insurance: number;
+  other: number;
+  package: number;
+  total: number;
+};
+
+export async function contarInventario(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<ContagemInventario> {
+  const base: ContagemInventario = { program: 0, accommodation: 0, insurance: 0, other: 0, package: 0, total: 0 };
+  const { data } = await supabase
+    .from("product")
+    .select("kind")
+    .eq("tenant_id", tenantId)
+    .is("archived_at", null);
+  for (const r of (data ?? []) as { kind?: string }[]) {
+    const k = r.kind as keyof ContagemInventario | undefined;
+    if (k && k in base && k !== "total") {
+      base[k] += 1;
+      base.total += 1;
+    }
+  }
+  return base;
+}
