@@ -418,3 +418,79 @@ export async function contarInventario(
   }
   return base;
 }
+
+// Vínculos de preço/taxa de UM produto (para a página unificada "Editar produto"
+// estilo Edvisor). Lista as tabelas de preço e as taxas ligadas a este produto
+// pelas tabelas de junção (price_template_product / fee_product), sempre escopado
+// pelo tenant — o join !inner filtra pelo product_id e o .eq(tenant_id) garante
+// posse (nenhuma tabela/taxa de outro tenant vaza). `gerida` marca linhas vindas
+// de price list de escola (só leitura no editor dedicado).
+export type PrecoVinculado = {
+  id: string;
+  name: string;
+  status: string;
+  currency: string;
+  unit: string;
+  validFrom: string;
+  validUntil: string | null;
+  gerida: boolean;
+};
+export type TaxaVinculada = {
+  id: string;
+  name: string;
+  feeType: string;
+  chargeBasis: string;
+  amount: number | null;
+  currency: string | null;
+  isMandatory: boolean;
+  gerida: boolean;
+};
+
+export async function listarVinculosDoProduto(
+  supabase: SupabaseClient,
+  tenantId: string,
+  productId: string,
+): Promise<{ precos: PrecoVinculado[]; taxas: TaxaVinculada[] }> {
+  const [precosRes, taxasRes] = await Promise.all([
+    supabase
+      .from("price_template")
+      .select(
+        "id, name, status, currency, unit, valid_from, valid_until, source_submission_id, vinc:price_template_product!inner(product_id)",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("price_template_product.product_id", productId)
+      .is("archived_at", null)
+      .order("valid_from", { ascending: false }),
+    supabase
+      .from("fee")
+      .select(
+        "id, name, fee_type, charge_basis, amount, currency, is_mandatory, source_submission_id, vinc:fee_product!inner(product_id)",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("fee_product.product_id", productId)
+      .is("archived_at", null)
+      .order("name"),
+  ]);
+
+  const precos: PrecoVinculado[] = (precosRes.data ?? []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    status: t.status,
+    currency: t.currency,
+    unit: t.unit,
+    validFrom: t.valid_from,
+    validUntil: t.valid_until ?? null,
+    gerida: t.source_submission_id != null,
+  }));
+  const taxas: TaxaVinculada[] = (taxasRes.data ?? []).map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    feeType: f.fee_type,
+    chargeBasis: f.charge_basis,
+    amount: f.amount != null ? Number(f.amount) : null,
+    currency: f.currency ?? null,
+    isMandatory: !!f.is_mandatory,
+    gerida: f.source_submission_id != null,
+  }));
+  return { precos, taxas };
+}
