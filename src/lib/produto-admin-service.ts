@@ -451,26 +451,41 @@ export async function listarVinculosDoProduto(
   tenantId: string,
   productId: string,
 ): Promise<{ precos: PrecoVinculado[]; taxas: TaxaVinculada[] }> {
-  const [precosRes, taxasRes] = await Promise.all([
-    supabase
-      .from("price_template")
-      .select(
-        "id, name, status, currency, unit, valid_from, valid_until, source_submission_id, vinc:price_template_product!inner(product_id)",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("price_template_product.product_id", productId)
-      .is("archived_at", null)
-      .order("valid_from", { ascending: false }),
-    supabase
-      .from("fee")
-      .select(
-        "id, name, fee_type, charge_basis, amount, currency, is_mandatory, source_submission_id, vinc:fee_product!inner(product_id)",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("fee_product.product_id", productId)
-      .is("archived_at", null)
-      .order("name"),
+  // Padrão de dois passos (o mesmo de catalog-service.ts): busca os ids na tabela
+  // de junção por product_id e depois carrega as linhas na tabela pai filtrada por
+  // tenant_id (posse). Evita a ambiguidade de filtrar recurso embutido por alias.
+  const [ptpRes, fpRes] = await Promise.all([
+    supabase.from("price_template_product").select("price_template_id").eq("product_id", productId),
+    supabase.from("fee_product").select("fee_id").eq("product_id", productId),
   ]);
+  if (ptpRes.error) throw new Error(`Falha ao carregar vínculos de preço: ${ptpRes.error.message}`);
+  if (fpRes.error) throw new Error(`Falha ao carregar vínculos de taxa: ${fpRes.error.message}`);
+
+  const templateIds = (ptpRes.data ?? []).map((r: any) => r.price_template_id);
+  const feeIds = (fpRes.data ?? []).map((r: any) => r.fee_id);
+
+  const [precosRes, taxasRes] = await Promise.all([
+    templateIds.length === 0
+      ? Promise.resolve({ data: [], error: null } as { data: any[]; error: null })
+      : supabase
+          .from("price_template")
+          .select("id, name, status, currency, unit, valid_from, valid_until, source_submission_id")
+          .eq("tenant_id", tenantId)
+          .in("id", templateIds)
+          .is("archived_at", null)
+          .order("valid_from", { ascending: false }),
+    feeIds.length === 0
+      ? Promise.resolve({ data: [], error: null } as { data: any[]; error: null })
+      : supabase
+          .from("fee")
+          .select("id, name, fee_type, charge_basis, amount, currency, is_mandatory, source_submission_id")
+          .eq("tenant_id", tenantId)
+          .in("id", feeIds)
+          .is("archived_at", null)
+          .order("name"),
+  ]);
+  if (precosRes.error) throw new Error(`Falha ao carregar tabelas de preço: ${precosRes.error.message}`);
+  if (taxasRes.error) throw new Error(`Falha ao carregar taxas: ${taxasRes.error.message}`);
 
   const precos: PrecoVinculado[] = (precosRes.data ?? []).map((t: any) => ({
     id: t.id,

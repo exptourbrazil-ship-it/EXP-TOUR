@@ -11,8 +11,8 @@ import type { PrecoVinculado, TaxaVinculada } from "@/lib/produto-admin-service"
 const UNIT_LABEL: Record<string, string> = { week: "semana", day: "dia", month: "mês", unit: "unidade", stay: "estadia" };
 const STATUS_LABEL: Record<string, string> = { draft: "Rascunho", active: "Ativa", inactive: "Inativa" };
 const FEE_TYPE_LABEL: Record<string, string> = {
-  enrollment: "Matrícula", material: "Material", accommodation_placement: "Colocação",
-  courier: "Correio", insurance: "Seguro", bank: "Bancária", other: "Outra",
+  registration: "Matrícula", material: "Material", bank: "Bancária", placement: "Colocação",
+  service: "Serviço", courier: "Correio", courier_of_documents: "Envio de documentos", custom: "Outra",
 };
 
 function SeloGerida() {
