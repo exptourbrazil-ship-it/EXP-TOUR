@@ -295,6 +295,7 @@ export type ProdutoLista = {
   name: string;
   status: string;
   visibility: string;
+  source: string;
   campusId: string;
   campusName: string | null;
   supplierName: string | null;
@@ -310,7 +311,7 @@ export async function listarProdutosAdmin(
 ): Promise<ProdutoLista[]> {
   let q = supabase
     .from("product")
-    .select("id, kind, name, status, visibility, campus_id, updated_at, campus:campus(name, supplier:supplier(display_name))")
+    .select("id, kind, name, status, visibility, source, campus_id, updated_at, campus:campus(name, supplier:supplier(display_name))")
     .eq("tenant_id", tenantId)
     .is("archived_at", null)
     .order("updated_at", { ascending: false, nullsFirst: false })
@@ -326,6 +327,7 @@ export async function listarProdutosAdmin(
       name: p.name,
       status: p.status,
       visibility: p.visibility,
+      source: p.source ?? "internal",
       campusId: p.campus_id,
       campusName: campus?.name ?? null,
       supplierName: supplier?.display_name ?? null,
