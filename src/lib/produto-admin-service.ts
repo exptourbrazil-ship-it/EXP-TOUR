@@ -509,3 +509,122 @@ export async function listarVinculosDoProduto(
   }));
   return { precos, taxas };
 }
+
+// Disponibilidade (datas) de UM produto, para a aba "Datas & Disponibilidade" da
+// página unificada. Programa → product_availability (data de início, status,
+// vagas); acomodação → accommodation_availability (janela período_start/end,
+// status). Sempre escopado por tenant + product_id (posse; o produto já foi
+// pré-checado como do tenant na página). Só leitura aqui — a edição vive no
+// editor de disponibilidade (supplier-scoped).
+export type IntakeDoProduto = {
+  id: string;
+  startDate: string;
+  endDate: string | null; // só acomodação (janela); programa = null
+  status: string;
+  capacity: number | null; // só programa
+  notes: string | null;
+};
+
+export async function listarDisponibilidadeDoProduto(
+  supabase: SupabaseClient,
+  tenantId: string,
+  productId: string,
+  kind: string,
+): Promise<IntakeDoProduto[]> {
+  if (kind === "program") {
+    const { data, error } = await supabase
+      .from("product_availability")
+      .select("id, start_date, status, capacity, notes")
+      .eq("tenant_id", tenantId)
+      .eq("product_id", productId)
+      .order("start_date");
+    if (error) throw new Error(`Falha ao carregar disponibilidade: ${error.message}`);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      startDate: r.start_date,
+      endDate: null,
+      status: r.status,
+      capacity: r.capacity ?? null,
+      notes: r.notes ?? null,
+    }));
+  }
+  if (kind === "accommodation") {
+    const { data, error } = await supabase
+      .from("accommodation_availability")
+      .select("id, period_start, period_end, status, notes")
+      .eq("tenant_id", tenantId)
+      .eq("product_id", productId)
+      .order("period_start");
+    if (error) throw new Error(`Falha ao carregar disponibilidade: ${error.message}`);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      startDate: r.period_start,
+      endDate: r.period_end ?? null,
+      status: r.status,
+      capacity: null,
+      notes: r.notes ?? null,
+    }));
+  }
+  // Seguro/complementar/pacote não têm calendário próprio hoje.
+  return [];
+}
+
+// Promoções que MIRAM este produto, para a aba "Promoções" da página unificada.
+// Uma promoção mira o produto de dois jeitos: um alvo (promotion_target) com
+// dimension='product' e value=<productId>, ou applies_to='specific_product' com
+// applies_to_ref_id=<productId>. Padrão de dois passos + tenant na tabela pai
+// (posse). Só leitura — a edição vive no editor de promoção dedicado.
+export type PromocaoDoProduto = {
+  id: string;
+  name: string;
+  promoType: string;
+  appliesTo: string;
+  value: number | null;
+  status: string;
+  isStackable: boolean;
+  priority: number;
+};
+
+export async function listarPromocoesDoProduto(
+  supabase: SupabaseClient,
+  tenantId: string,
+  productId: string,
+): Promise<PromocaoDoProduto[]> {
+  const [alvosRes, refRes] = await Promise.all([
+    supabase.from("promotion_target").select("promotion_id").eq("dimension", "product").eq("value", productId),
+    supabase
+      .from("promotion")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("applies_to", "specific_product")
+      .eq("applies_to_ref_id", productId)
+      .is("archived_at", null),
+  ]);
+  if (alvosRes.error) throw new Error(`Falha ao carregar alvos de promoção: ${alvosRes.error.message}`);
+  if (refRes.error) throw new Error(`Falha ao carregar promoções: ${refRes.error.message}`);
+
+  const ids = new Set<string>();
+  for (const r of (alvosRes.data ?? []) as any[]) ids.add(r.promotion_id);
+  for (const r of (refRes.data ?? []) as any[]) ids.add(r.id);
+  if (ids.size === 0) return [];
+
+  const { data, error } = await supabase
+    .from("promotion")
+    .select("id, name, promo_type, applies_to, value, status, is_stackable, priority")
+    .eq("tenant_id", tenantId)
+    .in("id", Array.from(ids))
+    .is("archived_at", null)
+    .order("priority")
+    .order("name");
+  if (error) throw new Error(`Falha ao carregar promoções: ${error.message}`);
+  return (data ?? []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    promoType: p.promo_type,
+    appliesTo: p.applies_to,
+    value: p.value != null ? Number(p.value) : null,
+    status: p.status,
+    isStackable: !!p.is_stackable,
+    priority: p.priority,
+  }));
+}
