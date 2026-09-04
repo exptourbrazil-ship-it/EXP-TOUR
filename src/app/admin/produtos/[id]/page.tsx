@@ -91,7 +91,7 @@ export default async function EditarProdutoPage({
           {
             chave: "precos",
             label: "Preços & Taxas",
-            conteudo: <SecaoPrecosTaxas precos={vinculos.precos} taxas={vinculos.taxas} />,
+            conteudo: <SecaoPrecosTaxas precos={vinculos.precos} taxas={vinculos.taxas} productId={id} />,
           },
           {
             chave: "disponibilidade",
@@ -101,7 +101,7 @@ export default async function EditarProdutoPage({
           {
             chave: "promocoes",
             label: "Promoções",
-            conteudo: <SecaoPromocoes promocoes={promocoes} />,
+            conteudo: <SecaoPromocoes promocoes={promocoes} productId={id} />,
           },
           {
             chave: "elegibilidade",
