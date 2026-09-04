@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { brandDoFornecedor } from "@/lib/fornecedor-brand";
+import { FORNECEDOR_NAV } from "@/lib/fornecedor-nav";
 import LogoutButton from "../LogoutButton";
 
 export const runtime = "nodejs";
@@ -24,14 +25,14 @@ function LogoForio() {
   );
 }
 
-const NAV = [
-  { href: "/fornecedor", label: "Painel" },
-  { href: "/fornecedor/estudantes", label: "Estudantes" },
-  { href: "/fornecedor/disponibilidade", label: "Disponibilidade" },
-  { href: "/fornecedor/precos", label: "Preços" },
-  { href: "/fornecedor/materiais", label: "Materiais" },
-  { href: "/fornecedor/financeiro", label: "Financeiro" },
-];
+// Ícone do item de nav (SVG path). Stroke herda a cor do link (--p-nav).
+function IconeNav({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" width={16} height={16} aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d={d} />
+    </svg>
+  );
+}
 
 // Layout das telas AUTENTICADAS do Portal do Parceiro. Aplica a MARCA do tenant
 // do supplier (EXP Tour / Forio) via variaveis CSS (--p-*), do mesmo jeito que a
@@ -66,9 +67,14 @@ export default async function PortalLayout({ children }: { children: React.React
           ) : (
             <span style={{ fontFamily: "var(--p-heading)", fontSize: 20 }}>EXP Tour · Portal do Parceiro</span>
           )}
-          <nav style={{ display: "flex", gap: 16, fontSize: 14 }}>
-            {NAV.map((n) => (
-              <Link key={n.href} href={n.href} style={{ color: "var(--p-nav)", textDecoration: "none" }}>
+          <nav style={{ display: "flex", gap: 16, fontSize: 14, flexWrap: "wrap" }}>
+            {FORNECEDOR_NAV.map((n) => (
+              <Link
+                key={n.href}
+                href={n.href}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--p-nav)", textDecoration: "none" }}
+              >
+                <IconeNav d={n.icone} />
                 {n.label}
               </Link>
             ))}
