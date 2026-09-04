@@ -418,3 +418,94 @@ export async function contarInventario(
   }
   return base;
 }
+
+// Vínculos de preço/taxa de UM produto (para a página unificada "Editar produto"
+// estilo Edvisor). Lista as tabelas de preço e as taxas ligadas a este produto
+// pelas tabelas de junção (price_template_product / fee_product), sempre escopado
+// pelo tenant — o join !inner filtra pelo product_id e o .eq(tenant_id) garante
+// posse (nenhuma tabela/taxa de outro tenant vaza). `gerida` marca linhas vindas
+// de price list de escola (só leitura no editor dedicado).
+export type PrecoVinculado = {
+  id: string;
+  name: string;
+  status: string;
+  currency: string;
+  unit: string;
+  validFrom: string;
+  validUntil: string | null;
+  gerida: boolean;
+};
+export type TaxaVinculada = {
+  id: string;
+  name: string;
+  feeType: string;
+  chargeBasis: string;
+  amount: number | null;
+  currency: string | null;
+  isMandatory: boolean;
+  gerida: boolean;
+};
+
+export async function listarVinculosDoProduto(
+  supabase: SupabaseClient,
+  tenantId: string,
+  productId: string,
+): Promise<{ precos: PrecoVinculado[]; taxas: TaxaVinculada[] }> {
+  // Padrão de dois passos (o mesmo de catalog-service.ts): busca os ids na tabela
+  // de junção por product_id e depois carrega as linhas na tabela pai filtrada por
+  // tenant_id (posse). Evita a ambiguidade de filtrar recurso embutido por alias.
+  const [ptpRes, fpRes] = await Promise.all([
+    supabase.from("price_template_product").select("price_template_id").eq("product_id", productId),
+    supabase.from("fee_product").select("fee_id").eq("product_id", productId),
+  ]);
+  if (ptpRes.error) throw new Error(`Falha ao carregar vínculos de preço: ${ptpRes.error.message}`);
+  if (fpRes.error) throw new Error(`Falha ao carregar vínculos de taxa: ${fpRes.error.message}`);
+
+  const templateIds = (ptpRes.data ?? []).map((r: any) => r.price_template_id);
+  const feeIds = (fpRes.data ?? []).map((r: any) => r.fee_id);
+
+  const [precosRes, taxasRes] = await Promise.all([
+    templateIds.length === 0
+      ? Promise.resolve({ data: [], error: null } as { data: any[]; error: null })
+      : supabase
+          .from("price_template")
+          .select("id, name, status, currency, unit, valid_from, valid_until, source_submission_id")
+          .eq("tenant_id", tenantId)
+          .in("id", templateIds)
+          .is("archived_at", null)
+          .order("valid_from", { ascending: false }),
+    feeIds.length === 0
+      ? Promise.resolve({ data: [], error: null } as { data: any[]; error: null })
+      : supabase
+          .from("fee")
+          .select("id, name, fee_type, charge_basis, amount, currency, is_mandatory, source_submission_id")
+          .eq("tenant_id", tenantId)
+          .in("id", feeIds)
+          .is("archived_at", null)
+          .order("name"),
+  ]);
+  if (precosRes.error) throw new Error(`Falha ao carregar tabelas de preço: ${precosRes.error.message}`);
+  if (taxasRes.error) throw new Error(`Falha ao carregar taxas: ${taxasRes.error.message}`);
+
+  const precos: PrecoVinculado[] = (precosRes.data ?? []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    status: t.status,
+    currency: t.currency,
+    unit: t.unit,
+    validFrom: t.valid_from,
+    validUntil: t.valid_until ?? null,
+    gerida: t.source_submission_id != null,
+  }));
+  const taxas: TaxaVinculada[] = (taxasRes.data ?? []).map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    feeType: f.fee_type,
+    chargeBasis: f.charge_basis,
+    amount: f.amount != null ? Number(f.amount) : null,
+    currency: f.currency ?? null,
+    isMandatory: !!f.is_mandatory,
+    gerida: f.source_submission_id != null,
+  }));
+  return { precos, taxas };
+}
