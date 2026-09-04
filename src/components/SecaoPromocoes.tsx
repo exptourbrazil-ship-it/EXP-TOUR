@@ -24,7 +24,7 @@ function fmtValor(p: PromocaoDoProduto): string {
   return p.value.toFixed(2);
 }
 
-export default function SecaoPromocoes({ promocoes }: { promocoes: PromocaoDoProduto[] }) {
+export default function SecaoPromocoes({ promocoes, productId }: { promocoes: PromocaoDoProduto[]; productId: string }) {
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
@@ -32,7 +32,7 @@ export default function SecaoPromocoes({ promocoes }: { promocoes: PromocaoDoPro
           <h2 className="font-serif text-lg text-brand">Promoções</h2>
           <p className="text-xs text-neutral-500">Promoções que miram este produto (alvo por produto).</p>
         </div>
-        <Link href="/admin/precos/promocoes/nova" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+        <Link href={`/admin/precos/promocoes/nova?produto=${productId}`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
           + Nova promoção
         </Link>
       </div>

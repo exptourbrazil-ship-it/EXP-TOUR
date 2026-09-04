@@ -32,10 +32,13 @@ function fmtData(d: string | null): string {
 export default function SecaoPrecosTaxas({
   precos,
   taxas,
+  productId,
 }: {
   precos: PrecoVinculado[];
   taxas: TaxaVinculada[];
+  productId: string;
 }) {
+  const q = `?produto=${productId}`;
   return (
     <div className="space-y-8">
       {/* Preço */}
@@ -45,7 +48,7 @@ export default function SecaoPrecosTaxas({
             <h2 className="font-serif text-lg text-brand">Preço</h2>
             <p className="text-xs text-neutral-500">Tabelas de preço vinculadas a este produto.</p>
           </div>
-          <Link href="/admin/precos/tabelas/nova" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+          <Link href={`/admin/precos/tabelas/nova${q}`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
             + Nova tabela
           </Link>
         </div>
@@ -101,7 +104,7 @@ export default function SecaoPrecosTaxas({
             <h2 className="font-serif text-lg text-brand">Outras taxas</h2>
             <p className="text-xs text-neutral-500">Taxas vinculadas a este produto (matrícula, material, correio etc.).</p>
           </div>
-          <Link href="/admin/precos/taxas/nova" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+          <Link href={`/admin/precos/taxas/nova${q}`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
             + Nova taxa
           </Link>
         </div>
