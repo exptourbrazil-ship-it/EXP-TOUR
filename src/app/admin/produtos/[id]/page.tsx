@@ -8,6 +8,8 @@ import {
   listarCampusDoTenant,
   listarProdutosAdmin,
   listarVinculosDoProduto,
+  listarDisponibilidadeDoProduto,
+  listarPromocoesDoProduto,
 } from "@/lib/produto-admin-service";
 import { obterElegibilidadeAdmin } from "@/lib/elegibilidade-admin-service";
 import { obterConteudoProdutoAdmin } from "@/lib/produto-conteudo-admin-service";
@@ -15,6 +17,8 @@ import ProdutoEditor from "@/components/ProdutoEditor";
 import ElegibilidadeEditor from "@/components/ElegibilidadeEditor";
 import ConteudoEditor from "@/components/ConteudoEditor";
 import SecaoPrecosTaxas from "@/components/SecaoPrecosTaxas";
+import SecaoDisponibilidade from "@/components/SecaoDisponibilidade";
+import SecaoPromocoes from "@/components/SecaoPromocoes";
 import ProdutoTabs from "@/components/ProdutoTabs";
 
 export const runtime = "nodejs";
@@ -45,15 +49,21 @@ export default async function EditarProdutoPage({
   const produto = await obterProdutoAdmin(supabase, tenantId, id);
   if (!produto) notFound();
 
-  const [campi, produtos, regrasElig, conteudo, vinculos] = await Promise.all([
+  const kind = String(produto.core.kind ?? "");
+
+  const [campi, produtos, regrasElig, conteudo, vinculos, intakes, promocoes] = await Promise.all([
     listarCampusDoTenant(supabase, tenantId),
     listarProdutosAdmin(supabase, tenantId),
     obterElegibilidadeAdmin(supabase, tenantId, id),
     obterConteudoProdutoAdmin(supabase, tenantId, id),
     listarVinculosDoProduto(supabase, tenantId, id),
+    listarDisponibilidadeDoProduto(supabase, tenantId, id, kind),
+    listarPromocoesDoProduto(supabase, tenantId, id),
   ]);
 
-  const kind = String(produto.core.kind ?? "");
+  // Fornecedor do produto (para o link do editor de disponibilidade): via campus.
+  const campusId = String(produto.core.campus_id ?? "");
+  const supplierId = campi.find((c) => c.id === campusId)?.supplierId ?? null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -82,6 +92,16 @@ export default async function EditarProdutoPage({
             chave: "precos",
             label: "Preços & Taxas",
             conteudo: <SecaoPrecosTaxas precos={vinculos.precos} taxas={vinculos.taxas} />,
+          },
+          {
+            chave: "disponibilidade",
+            label: "Datas & Disponibilidade",
+            conteudo: <SecaoDisponibilidade kind={kind} supplierId={supplierId} intakes={intakes} />,
+          },
+          {
+            chave: "promocoes",
+            label: "Promoções",
+            conteudo: <SecaoPromocoes promocoes={promocoes} />,
           },
           {
             chave: "elegibilidade",
