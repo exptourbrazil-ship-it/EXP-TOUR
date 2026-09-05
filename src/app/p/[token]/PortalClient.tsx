@@ -251,6 +251,50 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
 }
 
 type OpcaoData = PublicQuote["options"][number];
+type FichaItem = NonNullable<OpcaoData["itens"][number]["ficha"]>;
+
+// Bloco de bullets da ficha. Renderiza como TEXTO (o React escapa) — nunca HTML.
+function BlocoBullets({ titulo, itens }: { titulo: string; itens: string[] }) {
+  if (itens.length === 0) return null;
+  return (
+    <div className="mt-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">{titulo}</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[color:var(--p-ink)]">
+        {itens.map((t, i) => (
+          <li key={i}>{t}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Disclosure com a ficha do produto (do snapshot). A descrição vem SANITIZADA do
+// servidor (fichaDoSnapshot → sanitizarHtml); só ela usa dangerouslySetInnerHTML.
+// Os bullets são texto puro. <details> nativo: acessível e sem estado.
+function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
+  const temAlgo =
+    !!ficha.descriptionHtml || ficha.highlights.length > 0 || ficha.inclusions.length > 0 || ficha.exclusions.length > 0;
+  if (!temAlgo) return null;
+  return (
+    <details className="mt-1.5 rounded-lg border border-[color:var(--p-line)] px-3 py-2">
+      <summary className="cursor-pointer text-xs font-medium text-[color:var(--p-nav)]">Detalhes do programa</summary>
+      <div className="mt-2 text-sm leading-relaxed">
+        {ficha.isMachineTranslated ? (
+          <p className="mb-2 text-[11px] italic text-[color:var(--p-muted)]">Tradução automática — sujeita a revisão.</p>
+        ) : null}
+        {ficha.descriptionHtml ? (
+          <div
+            className="space-y-2 text-[color:var(--p-ink)] [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ul]:list-disc"
+            dangerouslySetInnerHTML={{ __html: ficha.descriptionHtml }}
+          />
+        ) : null}
+        <BlocoBullets titulo="Destaques" itens={ficha.highlights} />
+        <BlocoBullets titulo="Incluído" itens={ficha.inclusions} />
+        <BlocoBullets titulo="Não incluído" itens={ficha.exclusions} />
+      </div>
+    </details>
+  );
+}
 
 function Opcao({
   token,
@@ -359,18 +403,21 @@ function Opcao({
       {aba === "detalhe" ? (
         <ul className="mt-3 space-y-2 text-sm">
           {op.itens.map((it, i) => (
-            <li key={i} className="flex items-baseline justify-between gap-3">
-              <span className="text-[color:var(--p-ink)] opacity-90">
-                {it.nome}
-                {it.startDate ? (
-                  <span className="text-[color:var(--p-muted)]">
-                    {" "}
-                    · {fmtData(it.startDate)}
-                    {it.endDate ? ` a ${fmtData(it.endDate)}` : ""}
-                  </span>
-                ) : null}
-              </span>
-              <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(it.grossAmount, it.currency)}</span>
+            <li key={i}>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[color:var(--p-ink)] opacity-90">
+                  {it.nome}
+                  {it.startDate ? (
+                    <span className="text-[color:var(--p-muted)]">
+                      {" "}
+                      · {fmtData(it.startDate)}
+                      {it.endDate ? ` a ${fmtData(it.endDate)}` : ""}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(it.grossAmount, it.currency)}</span>
+              </div>
+              {it.ficha ? <FichaDetalhes ficha={it.ficha} /> : null}
             </li>
           ))}
         </ul>
