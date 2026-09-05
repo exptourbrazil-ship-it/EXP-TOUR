@@ -121,7 +121,7 @@ async function carregarTotaisPorOpcao(
         unit: it.unit as string,
         grossAmount: toNum(it.gross_amount),
         currency: (it.currency as string) ?? currency,
-        ficha: fichaDoSnapshot(snap.content, locale),
+        ficha: fichaDoSnapshot(snap.content, locale, snap.media),
       });
     }
 

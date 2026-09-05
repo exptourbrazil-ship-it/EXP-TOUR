@@ -178,3 +178,27 @@ test("fichaDoSnapshot retorna null sem conteúdo utilizável", () => {
   assert.equal(fichaDoSnapshot(null, "pt-BR"), null);
   assert.equal(fichaDoSnapshot([{ locale: "pt-BR", description_html: "", highlights: [], inclusions: [], exclusions: [] }], "pt-BR"), null);
 });
+
+test("fichaDoSnapshot inclui mídia; filtra URL não-http e ordena por sort", () => {
+  const media = [
+    { url: "https://cdn/x2.jpg", kind: "image", sort: 2, caption: "sala" },
+    { url: "javascript:alert(1)", kind: "image", sort: 0, caption: "xss" }, // descartada
+    { url: "https://cdn/x1.jpg", kind: "image", sort: 1, caption: null },
+    { url: "https://cdn/v.mp4", kind: "video", sort: 3, caption: null },
+    { url: "ftp://x/doc.pdf", kind: "document", sort: 4 }, // descartada (não http)
+  ];
+  const f = fichaDoSnapshot(SNAP, "pt-BR", media);
+  assert.ok(f);
+  assert.deepEqual(f!.midias.map((m) => m.url), ["https://cdn/x1.jpg", "https://cdn/x2.jpg", "https://cdn/v.mp4"]);
+  assert.equal(f!.midias[2].kind, "video");
+});
+
+test("fichaDoSnapshot: só mídia (sem texto) ainda rende ficha; kind default = image", () => {
+  const soMidia = fichaDoSnapshot([], "pt-BR", [{ url: "https://cdn/a.jpg", kind: "banana", sort: 0 }]);
+  assert.ok(soMidia);
+  assert.equal(soMidia!.descriptionHtml, "");
+  assert.equal(soMidia!.midias.length, 1);
+  assert.equal(soMidia!.midias[0].kind, "image"); // kind desconhecido -> image
+  // sem texto e sem mídia utilizável -> null
+  assert.equal(fichaDoSnapshot([], "pt-BR", [{ url: "javascript:x", kind: "image", sort: 0 }]), null);
+});

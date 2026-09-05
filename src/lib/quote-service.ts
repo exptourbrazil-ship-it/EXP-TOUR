@@ -460,7 +460,16 @@ export async function addQuoteItem(
     .select("*")
     .eq("product_id", args.productId);
 
-  const productSnapshot = { ...product, content: content ?? [] };
+  // Mídia congelada junto (para a ficha no portal do estudante). Ordenada por
+  // sort; a ficha revalida as URLs (só http/https) no ponto de render.
+  const { data: media } = await supabase
+    .from("product_media")
+    .select("url, kind, sort, caption")
+    .eq("tenant_id", args.tenantId)
+    .eq("product_id", args.productId)
+    .order("sort", { ascending: true });
+
+  const productSnapshot = { ...product, content: content ?? [], media: media ?? [] };
 
   // Ordem do item na opcao.
   const { count } = await supabase

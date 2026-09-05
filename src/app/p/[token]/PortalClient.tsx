@@ -271,9 +271,57 @@ function BlocoBullets({ titulo, itens }: { titulo: string; itens: string[] }) {
 // Disclosure com a ficha do produto (do snapshot). A descrição vem SANITIZADA do
 // servidor (fichaDoSnapshot → sanitizarHtml); só ela usa dangerouslySetInnerHTML.
 // Os bullets são texto puro. <details> nativo: acessível e sem estado.
+// Galeria de mídia da ficha. As URLs já vêm validadas (só http/https) do
+// servidor (midiasDoSnapshot). Imagens viram <img>; vídeo/documento viram link
+// externo seguro (rel noopener). Nunca injeta HTML.
+function GaleriaMidia({ midias }: { midias: FichaItem["midias"] }) {
+  if (midias.length === 0) return null;
+  const imagens = midias.filter((m) => m.kind === "image");
+  const outros = midias.filter((m) => m.kind !== "image");
+  return (
+    <div className="mt-3">
+      {imagens.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {imagens.map((m, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={m.url}
+              alt={m.caption ?? "Foto do programa"}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="h-28 w-full rounded-lg object-cover"
+            />
+          ))}
+        </div>
+      ) : null}
+      {outros.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-sm">
+          {outros.map((m, i) => (
+            <li key={i}>
+              <a
+                href={m.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="text-[color:var(--p-nav)] underline"
+              >
+                {m.caption ?? (m.kind === "video" ? "Assistir ao vídeo" : "Abrir documento")}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
   const temAlgo =
-    !!ficha.descriptionHtml || ficha.highlights.length > 0 || ficha.inclusions.length > 0 || ficha.exclusions.length > 0;
+    !!ficha.descriptionHtml ||
+    ficha.highlights.length > 0 ||
+    ficha.inclusions.length > 0 ||
+    ficha.exclusions.length > 0 ||
+    ficha.midias.length > 0;
   if (!temAlgo) return null;
   return (
     <details className="mt-1.5 rounded-lg border border-[color:var(--p-line)] px-3 py-2">
@@ -291,6 +339,7 @@ function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
         <BlocoBullets titulo="Destaques" itens={ficha.highlights} />
         <BlocoBullets titulo="Incluído" itens={ficha.inclusions} />
         <BlocoBullets titulo="Não incluído" itens={ficha.exclusions} />
+        <GaleriaMidia midias={ficha.midias} />
       </div>
     </details>
   );
