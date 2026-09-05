@@ -222,3 +222,31 @@ export function validarElegibilidade(entrada: unknown): Resultado<ElegibilidadeN
   if (falhas.length > 0) return { ok: false, falhas };
   return { ok: true, valor: { product_id: productId, regras } };
 }
+
+// ── Remoção de regra bloqueante exige justificativa (compliance) ──────────────
+// Regra bloqueante impede a emissão da cotação (barreira de compliance). Removê-la
+// é uma ação sensível: exigimos justificativa e trilha. A detecção é por CONTEÚDO,
+// não por contagem — assim um "swap" (remove uma bloqueante e adiciona outra) ainda
+// conta como remoção da primeira.
+export const MIN_JUSTIFICATIVA_ELEG = 10;
+
+// Chave canônica de uma regra (para comparar conjuntos entre antes/depois). Inclui
+// o group_index porque ele muda a semântica (mesmo grupo = E; grupos diferentes = OU).
+// Valores de lista (in/not_in) são ordenados: a ordem não muda a semântica, então
+// reordenar não deve contar como "regra diferente" (evita falso-positivo no gate).
+function chaveRegra(r: RegraNorm): string {
+  const value = Array.isArray(r.value) ? [...r.value].map((v) => String(v)).sort() : r.value;
+  return JSON.stringify([r.group_index, r.attribute, r.operator, value]);
+}
+
+// Regras BLOQUEANTES presentes em `antes` cujo conteúdo não aparece como bloqueante
+// em `depois` — ou seja, foram removidas (ou tiveram o bloqueio desligado).
+export function bloqueantesRemovidas(antes: RegraNorm[], depois: RegraNorm[]): RegraNorm[] {
+  const bloqDepois = new Set(depois.filter((r) => r.is_blocking).map(chaveRegra));
+  return antes.filter((r) => r.is_blocking && !bloqDepois.has(chaveRegra(r)));
+}
+
+// Justificativa válida: string com pelo menos MIN caracteres (após trim).
+export function justificativaValida(s: unknown): boolean {
+  return typeof s === "string" && s.trim().length >= MIN_JUSTIFICATIVA_ELEG;
+}

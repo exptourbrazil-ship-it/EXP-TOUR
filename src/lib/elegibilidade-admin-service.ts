@@ -6,12 +6,23 @@
 // (delete + insert); sem transacao no PostgREST, guardamos um snapshot e
 // restauramos numa falha parcial.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { validarElegibilidade, type Falha, type RegraNorm } from "@/lib/elegibilidade";
+import {
+  validarElegibilidade,
+  bloqueantesRemovidas,
+  justificativaValida,
+  type Falha,
+  type RegraNorm,
+} from "@/lib/elegibilidade";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 
 export class ElegibilidadeAdminErro extends Error {
   constructor(
-    public codigo: "validacao" | "produto_nao_encontrado" | "migracao_ausente" | "falha_persistir",
+    public codigo:
+      | "validacao"
+      | "produto_nao_encontrado"
+      | "migracao_ausente"
+      | "justificativa_obrigatoria"
+      | "falha_persistir",
     public falhas?: Falha[],
   ) {
     super(codigo);
@@ -24,13 +35,20 @@ async function produtoDoTenant(supabase: SupabaseClient, tenantId: string, produ
   return !!data && (data as { tenant_id?: string }).tenant_id === tenantId;
 }
 
-// Linhas atuais (para snapshot de restauracao).
+// Linhas atuais. FALHA FECHADA: se a leitura falhar, LANÇAMOS — nunca tratamos
+// "não consegui ler o estado anterior" como "não havia nada antes" (isso abriria
+// a barreira de compliance: o gate de justificativa deixaria de disparar e uma
+// regra bloqueante poderia ser removida sem justificativa/registro).
 async function snapshotRegras(supabase: SupabaseClient, tenantId: string, productId: string): Promise<RegraNorm[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("eligibility_rule")
     .select("group_index, attribute, operator, value, is_blocking")
     .eq("tenant_id", tenantId)
     .eq("product_id", productId);
+  if (error) {
+    console.error("[elegibilidade] falha ao ler regras atuais:", error.message);
+    throw new ElegibilidadeAdminErro("falha_persistir");
+  }
   return (data ?? []).map((r: any) => ({
     group_index: r.group_index ?? 0,
     attribute: r.attribute,
@@ -46,6 +64,7 @@ export type SalvarElegibilidadeArgs = {
   ip?: string | null;
   productId: string; // vem da URL (server)
   regras: unknown; // corpo cru (array de regras)
+  justificativa?: unknown; // obrigatória quando remove regra bloqueante
 };
 
 // Substitui o conjunto de regras de elegibilidade do produto. Devolve a contagem.
@@ -65,11 +84,20 @@ export async function salvarElegibilidade(
   if (!r.ok) throw new ElegibilidadeAdminErro("validacao", r.falhas);
   const regras = r.valor.regras;
 
-  // Contagem de bloqueantes ANTES (para a trilha registrar remocao de regra de
-  // compliance). Regras bloqueantes impedem a emissao da cotacao.
+  // Estado ANTES (para detectar remocao de regra bloqueante e registrar na trilha).
+  // Regras bloqueantes impedem a emissao da cotacao — barreira de compliance.
   const antes = await snapshotRegras(supabase, tenantId, productId);
   const bloqueantesAntes = antes.filter((x) => x.is_blocking).length;
   const bloqueantesDepois = regras.filter((x) => x.is_blocking).length;
+
+  // Remover uma regra bloqueante EXIGE justificativa (registrada na trilha). A
+  // deteccao e por conteudo (bloqueantesRemovidas), entao um "swap" tambem conta.
+  // Falha fechada: se falta justificativa, RECUSAMOS antes de qualquer escrita.
+  const removidas = bloqueantesRemovidas(antes, regras);
+  const justificativa = typeof args.justificativa === "string" ? args.justificativa.trim() : "";
+  if (removidas.length > 0 && !justificativaValida(justificativa)) {
+    throw new ElegibilidadeAdminErro("justificativa_obrigatoria");
+  }
 
   // Substituicao ATOMICA (delete+insert numa transacao, sob advisory lock) via
   // funcao Postgres. Compliance-sensivel: NUNCA fazer o replace nao-transacional
@@ -106,7 +134,10 @@ export async function salvarElegibilidade(
       total,
       bloqueantes_antes: bloqueantesAntes,
       bloqueantes_depois: bloqueantesDepois,
-      removeu_bloqueante: bloqueantesDepois < bloqueantesAntes,
+      bloqueantes_removidas: removidas.length,
+      removeu_bloqueante: removidas.length > 0,
+      // Justificativa só é registrada quando houve remoção de regra bloqueante.
+      ...(removidas.length > 0 ? { justificativa } : {}),
     },
     ip: ip ?? null,
   });

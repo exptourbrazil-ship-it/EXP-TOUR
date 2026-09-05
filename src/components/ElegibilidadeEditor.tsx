@@ -76,6 +76,10 @@ function valueDe(r: RegraForm): unknown {
 export default function ElegibilidadeEditor({ productId, inicial }: { productId: string; inicial: any[] }) {
   const router = useRouter();
   const [regras, setRegras] = useState<RegraForm[]>((inicial ?? []).map(paraForm));
+  const [justificativa, setJustificativa] = useState("");
+  // Servidor é a autoridade: se ele exigir justificativa (detecção que a
+  // heurística local não previu), revelamos o campo e permitimos reenviar.
+  const [servidorExige, setServidorExige] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [ok, setOk] = useState(false);
   const [erroGeral, setErroGeral] = useState<string | null>(null);
@@ -84,7 +88,31 @@ export default function ElegibilidadeEditor({ productId, inicial }: { productId:
   const upd = (i: number, patch: Partial<RegraForm>) => setRegras((a) => a.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const falhaDe = (i: number) => falhas.find((f) => f.campo.startsWith(`regras[${i}]`))?.erro;
 
+  // Detecção (UX): a gravação removeria uma regra BLOQUEANTE? O servidor é a
+  // autoridade (compara os conjuntos normalizados); aqui usamos uma chave "solta"
+  // — coerção a string — só para pedir a justificativa proativamente.
+  const chaveLoose = (g: unknown, attr: string, op: string, value: unknown): string => {
+    const v = Array.isArray(value) ? value.map((x) => String(x).trim()).join(",") : String(value ?? "").trim();
+    return `${Number(g) || 0}|${attr}|${op}|${v}`;
+  };
+  const blocInicial = new Set(
+    (inicial ?? [])
+      .filter((r: any) => r.is_blocking)
+      .map((r: any) => chaveLoose(r.group_index, r.attribute, r.operator, r.value)),
+  );
+  const blocAtual = new Set(
+    regras
+      .filter((r) => r.is_blocking)
+      .map((r) => chaveLoose(r.group_index, r.attribute, r.attribute === "has_visa" ? "eq" : r.operator, valueDe(r))),
+  );
+  const exigeJustificativa = [...blocInicial].some((k) => !blocAtual.has(k)) || servidorExige;
+  const justificativaFalta = exigeJustificativa && justificativa.trim().length < 10;
+
   async function salvar() {
+    if (justificativaFalta) {
+      setErroGeral("Remover uma regra bloqueante exige uma justificativa (mín. 10 caracteres).");
+      return;
+    }
     setSalvando(true);
     setOk(false);
     setErroGeral(null);
@@ -97,6 +125,7 @@ export default function ElegibilidadeEditor({ productId, inicial }: { productId:
         value: valueDe(r),
         is_blocking: r.is_blocking,
       })),
+      ...(exigeJustificativa ? { justificativa: justificativa.trim() } : {}),
     };
     try {
       const resp = await fetch(`/api/admin/produtos/${productId}/elegibilidade`, {
@@ -107,9 +136,14 @@ export default function ElegibilidadeEditor({ productId, inicial }: { productId:
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok || !json.ok) {
         if (Array.isArray(json.falhas) && json.falhas.length) setFalhas(json.falhas);
+        // O servidor detectou remoção de bloqueante que a heurística local não
+        // previu: revela o campo de justificativa para o admin poder reenviar.
+        if (json?.error?.code === "justificativa_obrigatoria") setServidorExige(true);
         setErroGeral(json?.error?.message ?? "Não foi possível salvar as regras.");
       } else {
         setOk(true);
+        setJustificativa("");
+        setServidorExige(false);
         router.refresh();
       }
     } catch {
@@ -185,9 +219,31 @@ export default function ElegibilidadeEditor({ productId, inicial }: { productId:
         </div>
       )}
 
+      {exigeJustificativa ? (
+        <div className="mb-3 rounded-lg border border-brand-gold/50 bg-brand-cream/40 p-3">
+          <label className="mb-1 block text-xs font-semibold text-brand-golddark">
+            Você está removendo uma regra bloqueante. Justifique (obrigatório, mín. 10 caracteres):
+          </label>
+          <textarea
+            value={justificativa}
+            onChange={(e) => setJustificativa(e.target.value)}
+            rows={2}
+            className={`${inp} w-full`}
+            placeholder="Ex.: escola confirmou que o programa passou a aceitar esta nacionalidade."
+          />
+          <p className="mt-1 text-[11px] text-neutral-500">A justificativa fica registrada na trilha de auditoria.</p>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => setRegras((a) => [...a, novaRegra()])} className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-brand">+ Adicionar regra</button>
-        <button type="button" onClick={salvar} disabled={salvando} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-60">
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={salvando || justificativaFalta}
+          title={justificativaFalta ? "Justifique a remoção da regra bloqueante" : undefined}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-60"
+        >
           {salvando ? "Salvando…" : "Salvar elegibilidade"}
         </button>
       </div>
