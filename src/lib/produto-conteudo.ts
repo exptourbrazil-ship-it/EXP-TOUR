@@ -241,40 +241,75 @@ export function sanitizarHtml(input: unknown): string {
 // pedido (fallback pt-BR → primeiro disponível), SANITIZA a descrição e devolve
 // os bullets como texto (o React escapa ao renderizar). Retorna null quando não
 // há conteúdo utilizável no locale escolhido.
+export type FichaMidia = { url: string; kind: "image" | "video" | "document"; caption: string | null };
 export type FichaProduto = {
   locale: ContentLocale;
   descriptionHtml: string; // já sanitizado (pode ser "")
   highlights: string[];
   inclusions: string[];
   exclusions: string[];
+  midias: FichaMidia[];
   isMachineTranslated: boolean;
 };
 
-export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR"): FichaProduto | null {
-  if (!Array.isArray(content) || content.length === 0) return null;
-  const linhas = content.filter(isObj);
+// Normaliza o tipo de mídia para um conjunto fechado (default seguro = image).
+function normalizarKindMidia(raw: unknown): FichaMidia["kind"] {
+  const k = typeof raw === "string" ? raw.toLowerCase() : "";
+  if (k === "video") return "video";
+  if (k === "document" || k === "documento" || k === "doc" || k === "pdf") return "document";
+  return "image";
+}
+
+// Deriva a lista de mídias exibível do snapshot. DEFESA EM PROFUNDIDADE no ponto
+// de render: só passam URLs http/https (nunca javascript:/data:), pois vão para
+// <img src>/<a href> no portal público. Ordena por sort e corta ao teto.
+function midiasDoSnapshot(media: unknown): FichaMidia[] {
+  if (!Array.isArray(media)) return [];
+  return media
+    .filter(isObj)
+    .map((m) => ({
+      url: typeof m.url === "string" ? m.url.trim() : "",
+      kind: normalizarKindMidia(m.kind),
+      sort: optIntNaoNeg(m.sort, 0),
+      caption: optStrOuNull(m.caption),
+    }))
+    .filter((m) => ehUrlHttp(m.url))
+    .sort((a, b) => a.sort - b.sort)
+    .slice(0, MAX_MIDIAS)
+    .map(({ url, kind, caption }) => ({ url, kind, caption }));
+}
+
+// `content` = ConteudoLocale[] do snapshot; `media` = MidiaItem[] do snapshot
+// (opcional; snapshots antigos não têm). Retorna null só quando não há NADA
+// exibível (nem texto no locale escolhido, nem mídia).
+export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR", media?: unknown): FichaProduto | null {
+  const linhas = Array.isArray(content) ? content.filter(isObj) : [];
   const escolhido =
     linhas.find((c) => c.locale === locale) ??
     linhas.find((c) => c.locale === "pt-BR") ??
-    linhas[0];
-  if (!escolhido) return null;
+    linhas[0] ??
+    null;
 
-  const descriptionHtml = sanitizarHtml(escolhido.description_html);
-  const highlights = capBullets(listaStr(escolhido.highlights));
-  const inclusions = capBullets(listaStr(escolhido.inclusions));
-  const exclusions = capBullets(listaStr(escolhido.exclusions));
-  if (!descriptionHtml && highlights.length === 0 && inclusions.length === 0 && exclusions.length === 0) {
+  const descriptionHtml = escolhido ? sanitizarHtml(escolhido.description_html) : "";
+  const highlights = escolhido ? capBullets(listaStr(escolhido.highlights)) : [];
+  const inclusions = escolhido ? capBullets(listaStr(escolhido.inclusions)) : [];
+  const exclusions = escolhido ? capBullets(listaStr(escolhido.exclusions)) : [];
+  const midias = midiasDoSnapshot(media);
+
+  if (!descriptionHtml && highlights.length === 0 && inclusions.length === 0 && exclusions.length === 0 && midias.length === 0) {
     return null;
   }
-  const loc = (CONTENT_LOCALES as readonly string[]).includes(escolhido.locale as string)
-    ? (escolhido.locale as ContentLocale)
-    : locale;
+  const loc =
+    escolhido && (CONTENT_LOCALES as readonly string[]).includes(escolhido.locale as string)
+      ? (escolhido.locale as ContentLocale)
+      : locale;
   return {
     locale: loc,
     descriptionHtml,
     highlights,
     inclusions,
     exclusions,
-    isMachineTranslated: optBool(escolhido.is_machine_translated, false),
+    midias,
+    isMachineTranslated: escolhido ? optBool(escolhido.is_machine_translated, false) : false,
   };
 }
