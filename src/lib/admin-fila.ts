@@ -13,6 +13,8 @@ import {
   contarMinhas,
   SLA_ANALISE_DOCUMENTO_DIAS,
   DIAS_COBRANCA_HUMANA,
+  SLA_PROPOSTA_PARADA_DIAS,
+  SLA_CONFIRMACAO_FORNECEDOR_DIAS,
   type ItemFila,
   type CategoriaFila,
   type EstadoPrazo,
@@ -149,6 +151,67 @@ async function coletarFontesAoVivo(
       papelAlvo: papelAlvoDoTipo(e.tipo),
       alvoTipo: "excecao",
       alvoId: e.id,
+    });
+  }
+
+  // Propostas PARADAS: emitidas (issued/viewed/option_selected) e paradas há >=
+  // N dias, sem converter/expirar/cancelar. Follow-up do consultor.
+  const limiteProposta = new Date(agoraMs - SLA_PROPOSTA_PARADA_DIAS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const { data: propostas, error: errPropostas } = await supabase
+    .from("quote")
+    .select("id, reference, issue_date, status")
+    .in("status", ["issued", "viewed", "option_selected"])
+    .lte("issue_date", limiteProposta)
+    .order("issue_date", { ascending: true });
+  if (errPropostas) throw new Error("Falha ao ler propostas da fila: " + errPropostas.message);
+
+  for (const q of propostas ?? []) {
+    if (!q.issue_date) continue;
+    const idade = idadeEmDias(q.issue_date, agoraMs);
+    fontes.push({
+      categoria: "proposta",
+      titulo: "Proposta parada — sem avanço",
+      contexto: q.reference ? `Proposta ${q.reference}` : undefined,
+      href: `/admin/quotes/${q.id}`,
+      criadoEm: q.issue_date,
+      idadeDias: idade,
+      estado: estadoPrazo(idade, SLA_PROPOSTA_PARADA_DIAS),
+      chaveDedupe: `proposta:${q.id}`,
+      papelAlvo: "consultor",
+      alvoTipo: "quote",
+      alvoId: q.id,
+    });
+  }
+
+  // Confirmações de FORNECEDOR em atraso: pedidas ao fornecedor e sem resposta há
+  // >= N dias (status 'pending'). Follow-up da Operação com o fornecedor.
+  const { data: confirmacoes, error: errConfirmacoes } = await supabase
+    .from("availability_confirmation")
+    .select("id, kind, created_at, supplier:supplier(display_name)")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (errConfirmacoes) throw new Error("Falha ao ler confirmações da fila: " + errConfirmacoes.message);
+
+  for (const c of confirmacoes ?? []) {
+    const idade = idadeEmDias(c.created_at, agoraMs);
+    if (idade < SLA_CONFIRMACAO_FORNECEDOR_DIAS) continue; // ainda dentro do prazo
+    const supplierRel = (c as { supplier?: unknown }).supplier;
+    const supplierObj = Array.isArray(supplierRel) ? supplierRel[0] : supplierRel;
+    const nome = (supplierObj as { display_name?: string } | undefined)?.display_name;
+    fontes.push({
+      categoria: "fornecedor",
+      titulo: "Confirmação de fornecedor em atraso",
+      contexto: nome,
+      href: "/admin/fornecedores",
+      criadoEm: c.created_at,
+      idadeDias: idade,
+      estado: estadoPrazo(idade, SLA_CONFIRMACAO_FORNECEDOR_DIAS),
+      chaveDedupe: `confirmacao:${c.id}`,
+      papelAlvo: "operacao",
+      alvoTipo: "availability_confirmation",
+      alvoId: c.id,
     });
   }
 
