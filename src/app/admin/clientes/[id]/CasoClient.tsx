@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao, CasoRepactuacao } from "@/lib/admin-caso";
 import { CATALOGO_CONSENTIMENTOS } from "@/lib/consentimento";
 import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
+import EditorParcelasContrato from "@/components/EditorParcelasContrato";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
 import {
   TIPOS_EXCECAO,
@@ -330,7 +331,7 @@ export default function CasoClient({
 
       <section>
         {aba === "jornada" ? <AbaJornada caso={caso} /> : null}
-        {aba === "financeiro" ? <AbaFinanceiro caso={caso} /> : null}
+        {aba === "financeiro" ? <AbaFinanceiro caso={caso} podeEditarParcelas={permissoes.gerirFinanceiro} /> : null}
         {aba === "documentos" ? <AbaDocumentos caso={caso} permissoes={permissoes} /> : null}
         {aba === "comunicacao" ? <AbaComunicacao caso={caso} /> : null}
         {aba === "eventos" ? <AbaEventos caso={caso} /> : null}
@@ -467,7 +468,7 @@ function RepactuacoesPendentes({ repactuacoes }: { repactuacoes: CasoRepactuacao
   );
 }
 
-function AbaFinanceiro({ caso }: { caso: Caso }) {
+function AbaFinanceiro({ caso, podeEditarParcelas }: { caso: Caso; podeEditarParcelas: boolean }) {
   const { contratos, parcelas, pagamentos, moedaPorContrato, saldoPorMoeda, estimativaBRL } = caso;
   const saldoEntradas = Object.entries(saldoPorMoeda);
 
@@ -556,6 +557,22 @@ function AbaFinanceiro({ caso }: { caso: Caso }) {
                 </tbody>
               </table>
             </div>
+            {podeEditarParcelas ? (
+              <EditorParcelasContrato
+                contratoId={c.id}
+                moeda={moeda}
+                valorTotal={c.valor_total}
+                parcelas={doContrato.map((p) => ({
+                  id: p.id,
+                  numero: p.numero,
+                  descricao: p.descricao,
+                  valor_atual: p.valor_atual,
+                  vencimento: p.vencimento,
+                  status: p.status,
+                  qr_code_url: p.qr_code_url,
+                }))}
+              />
+            ) : null}
           </div>
         );
       })}
