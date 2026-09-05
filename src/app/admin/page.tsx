@@ -7,6 +7,7 @@ import { carregarFilaDoDia, type FilaDoDia } from "@/lib/admin-fila";
 import { ESTADO_LABEL, type EstadoPrazo, type ItemFila } from "@/lib/fila-do-dia";
 import { PAPEL_LABEL, podeAdmin } from "@/lib/admin-roles";
 import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
+import FilaAcoes from "./FilaAcoes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminHomePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ erro?: string }>;
+  searchParams?: Promise<{ erro?: string; minhas?: string }>;
 }) {
   const { usuario, papel } = await exigirAdmin("/admin");
 
@@ -27,6 +28,7 @@ export default async function AdminHomePage({
   // em silencio.
   const sp = searchParams ? await searchParams : undefined;
   const semPermissao = sp?.erro === "sem_permissao";
+  const apenasMinhas = sp?.minhas === "1";
 
   // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
   let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
@@ -49,7 +51,7 @@ export default async function AdminHomePage({
   // se falhar, a home ainda renderiza sem a fila.
   let fila = null as FilaDoDia | null;
   try {
-    fila = await carregarFilaDoDia(Date.now(), papel);
+    fila = await carregarFilaDoDia(Date.now(), papel, { usuarioAtual: usuario, apenasMinhas });
   } catch {
     fila = null;
   }
@@ -97,14 +99,25 @@ export default async function AdminHomePage({
               <span className="ml-2 font-normal text-neutral-400">· {PAPEL_LABEL[papel]}</span>
             ) : null}
           </h2>
-          {fila && fila.contadores.total > 0 ? (
-            <span className="text-xs text-neutral-500">
-              {fila.contadores.total} item(ns)
-              {fila.contadores.estourados > 0 ? (
-                <span className="text-red-700"> · {fila.contadores.estourados} com SLA estourado</span>
-              ) : null}
-            </span>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {fila && fila.contadores.total > 0 ? (
+              <span className="text-xs text-neutral-500">
+                {fila.contadores.total} item(ns)
+                {fila.contadores.estourados > 0 ? (
+                  <span className="text-red-700"> · {fila.contadores.estourados} com SLA estourado</span>
+                ) : null}
+              </span>
+            ) : null}
+            {/* Toggle "Minhas tarefas" (filtro por dono). */}
+            <Link
+              href={apenasMinhas ? "/admin" : "/admin?minhas=1"}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                apenasMinhas ? "bg-brand text-brand-cream" : "border border-neutral-300 bg-white text-brand hover:bg-neutral-50"
+              }`}
+            >
+              {apenasMinhas ? "Ver todas" : `Minhas (${fila?.contadores.minhas ?? 0})`}
+            </Link>
+          </div>
         </div>
 
         {!fila || fila.itens.length === 0 ? (
@@ -116,7 +129,7 @@ export default async function AdminHomePage({
         ) : (
           <ul className="space-y-2">
             {fila.itens.map((item, i) => (
-              <FilaLinha key={i} item={item} />
+              <FilaLinha key={i} item={item} usuarioAtual={usuario} />
             ))}
           </ul>
         )}
@@ -277,8 +290,9 @@ function ChipEstado({ estado }: { estado: EstadoPrazo }) {
   );
 }
 
-function FilaLinha({ item }: { item: ItemFila }) {
+function FilaLinha({ item, usuarioAtual }: { item: ItemFila; usuarioAtual: string }) {
   const icone = ICONE_CATEGORIA[item.categoria] ?? ICONE_CATEGORIA.outro;
+  const donoOutro = !!item.dono && item.dono !== usuarioAtual;
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-4">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-cream text-brand">
@@ -299,6 +313,11 @@ function FilaLinha({ item }: { item: ItemFila }) {
         <p className="truncate text-sm font-medium text-brand">{item.titulo}</p>
         <p className="mt-0.5 truncate text-xs text-neutral-500">
           {item.contexto ? item.contexto + " · " : ""}há {item.idadeDias} dia(s)
+          {item.dono ? (
+            <span className={donoOutro ? "text-neutral-500" : "text-brand-golddark"}>
+              {" "}· {donoOutro ? `com ${primeiroNome(item.dono)}` : "você assumiu"}
+            </span>
+          ) : null}
         </p>
       </div>
       <ChipEstado estado={item.estado} />
@@ -309,6 +328,9 @@ function FilaLinha({ item }: { item: ItemFila }) {
         >
           Abrir
         </Link>
+      ) : null}
+      {item.chaveDedupe ? (
+        <FilaAcoes chaveDedupe={item.chaveDedupe} dono={item.dono} usuarioAtual={usuarioAtual} />
       ) : null}
     </li>
   );
