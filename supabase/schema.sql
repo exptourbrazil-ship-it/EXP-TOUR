@@ -2380,3 +2380,91 @@ begin
   return v_total;
 end;
 $subelig$;
+
+-- Substituicao ATOMICA do conjunto de parcelas de um contrato (delete + update +
+-- insert numa transacao, sob advisory lock por contrato). Reforca a invariante de
+-- dinheiro SOB O LOCK: parcela TRAVADA (status 'pago' OU qr_code_url != null) e
+-- imutavel e obrigatoria — nunca e atualizada nem removida, mesmo que o corpo
+-- tente (fecha a janela de corrida com o webhook de pagamento). p_parcelas e um
+-- array jsonb {id?, numero, descricao, valor, vencimento}; itens com id sao
+-- existentes (pass-through se travados), sem id sao novos. Retorna o total apos o
+-- replace. A validacao de negocio (soma == total, regra dos 30 dias) fica no
+-- servico (parcelas-edit); aqui garantimos atomicidade + protecao das travadas.
+create or replace function substituir_parcelas(
+  p_contrato_id uuid,
+  p_parcelas jsonb
+) returns int
+language plpgsql
+as $subparc$
+declare
+  v_input_ids uuid[];
+  v_travada_faltando int;
+  v_total int;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_contrato_id::text, 0));
+
+  -- ids das parcelas existentes que o corpo mantem no plano.
+  select coalesce(array_agg((p->>'id')::uuid), '{}')
+    into v_input_ids
+    from jsonb_array_elements(coalesce(p_parcelas, '[]'::jsonb)) as p
+   where p ? 'id' and nullif(p->>'id', '') is not null;
+
+  -- TRAVADA = paga OU Pix gerado OU com ordem MP em voo (external_payment_id,
+  -- pagavel por copia-e-cola mesmo sem qr_code_url). Mesma regra de
+  -- aplicar_cronograma_parcelas — evita ordem orfa (pagamento que o webhook nao
+  -- concilia por a parcela ter sumido/mudado).
+
+  -- FALHA FECHADA: nenhuma travada pode ser removida. Se alguma travada atual
+  -- nao esta no corpo, aborta a transacao inteira.
+  select count(*) into v_travada_faltando
+    from parcelas
+   where contrato_id = p_contrato_id
+     and (status = 'pago' or qr_code_url is not null or external_payment_id is not null)
+     and not (id = any(v_input_ids));
+  if v_travada_faltando > 0 then
+    raise exception 'parcela_travada_removida' using errcode = 'P0001';
+  end if;
+
+  -- 1) Remove as NAO-travadas ausentes do corpo.
+  delete from parcelas
+   where contrato_id = p_contrato_id
+     and not (status = 'pago' or qr_code_url is not null or external_payment_id is not null)
+     and not (id = any(v_input_ids));
+
+  -- 2a) Desloca as NAO-travadas para faixa negativa temporaria antes de aplicar
+  --     os numeros finais: uma renumeracao (permuta de numero) violaria transitoria-
+  --     mente o unique(contrato_id, numero) num UPDATE multi-linha. Negativos nao
+  --     colidem com os finais (positivos) nem com as travadas (intactas).
+  update parcelas t set numero = -t.numero - 1
+   where t.contrato_id = p_contrato_id
+     and not (t.status = 'pago' or t.qr_code_url is not null or t.external_payment_id is not null);
+
+  -- 2b) Atualiza as NAO-travadas presentes. valor_original NAO e tocado; travadas
+  --     ficam de fora (pass-through) mesmo que o corpo mande valores diferentes.
+  update parcelas t
+     set numero = coalesce((p->>'numero')::int, t.numero),
+         descricao = p->>'descricao',
+         valor_atual = (p->>'valor')::numeric,
+         vencimento = (p->>'vencimento')::date
+    from jsonb_array_elements(coalesce(p_parcelas, '[]'::jsonb)) as p
+   where t.contrato_id = p_contrato_id
+     and t.id = (p->>'id')::uuid
+     and not (t.status = 'pago' or t.qr_code_url is not null or t.external_payment_id is not null);
+
+  -- 3) Insere as novas (sem id): valor_original = valor_atual = valor; pendente.
+  insert into parcelas (contrato_id, numero, descricao, valor_original, valor_atual, vencimento, status, is_entrada)
+  select p_contrato_id,
+         (p->>'numero')::int,
+         p->>'descricao',
+         (p->>'valor')::numeric,
+         (p->>'valor')::numeric,
+         (p->>'vencimento')::date,
+         'pendente',
+         false
+    from jsonb_array_elements(coalesce(p_parcelas, '[]'::jsonb)) as p
+   where not (p ? 'id') or nullif(p->>'id', '') is null;
+
+  select count(*) into v_total from parcelas where contrato_id = p_contrato_id;
+  return v_total;
+end;
+$subparc$;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { parcelaTravada } from "@/lib/parcelas-edit";
 
 // Restaura o plano de parcelas do contrato para o "plano_original"
 // guardado em contratos.plano_original (snapshot do plano inicial).
@@ -65,20 +66,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, erro: "Este contrato não tem plano original guardado." }, { status: 400 });
   }
 
-  // 2) Se houver parcela paga ou com Pix gerado, nao da para restaurar.
+  // 2) Se houver parcela TRAVADA (paga, Pix gerado OU ordem MP em voo), nao da
+  //    para restaurar — restaurar apaga tudo e recriaria o plano, o que órfãaria
+  //    uma ordem de pagamento em andamento. Usa a mesma regra do editor de parcelas.
   const { data: atuais, error: erroAtuais } = await supabase
     .from("parcelas")
-    .select("id, status, qr_code_url")
+    .select("id, status, qr_code_url, external_payment_id")
     .eq("contrato_id", contratoId);
 
   if (erroAtuais) {
     return NextResponse.json({ ok: false, erro: "Não foi possível ler as parcelas atuais." }, { status: 500 });
   }
 
-  const temBloqueio = (atuais || []).some((p) => p.status === "pago" || !!p.qr_code_url);
+  const temBloqueio = (atuais || []).some(parcelaTravada);
   if (temBloqueio) {
     return NextResponse.json(
-      { ok: false, erro: "Não é possível restaurar: já existe parcela paga ou com Pix gerado. Ajuste manualmente as parcelas pendentes." },
+      { ok: false, erro: "Não é possível restaurar: já existe parcela paga, com Pix gerado ou com cobrança em andamento. Ajuste manualmente as parcelas pendentes." },
       { status: 400 }
     );
   }

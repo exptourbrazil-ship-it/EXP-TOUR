@@ -570,6 +570,7 @@ function AbaFinanceiro({ caso, podeEditarParcelas }: { caso: Caso; podeEditarPar
                   vencimento: p.vencimento,
                   status: p.status,
                   qr_code_url: p.qr_code_url,
+                  external_payment_id: p.external_payment_id,
                 }))}
               />
             ) : null}

@@ -18,6 +18,7 @@ type ParcelaEntrada = {
   vencimento: string | null;
   status: string;
   qr_code_url: string | null;
+  external_payment_id: string | null;
 };
 
 type Linha = {
@@ -57,7 +58,7 @@ export default function EditorParcelasContrato({
         descricao: p.descricao ?? "",
         valor: p.valor_atual != null ? String(p.valor_atual) : "",
         vencimento: p.vencimento ?? "",
-        travada: p.status === "pago" || !!p.qr_code_url,
+        travada: p.status === "pago" || !!p.qr_code_url || !!p.external_payment_id,
       })),
     );
     setErro(null);
