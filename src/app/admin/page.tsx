@@ -3,11 +3,12 @@ import { exigirAdmin } from "@/lib/admin-guard";
 import { ADMIN_NAV } from "@/lib/admin-nav";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
 import { contarDocumentosPendentes } from "@/lib/admin-operacao";
-import { carregarFilaDoDia, type FilaDoDia } from "@/lib/admin-fila";
+import { carregarFilaDoDia, carregarConcluidasHoje, type FilaDoDia, type ItemConcluida } from "@/lib/admin-fila";
 import { ESTADO_LABEL, type EstadoPrazo, type ItemFila } from "@/lib/fila-do-dia";
 import { PAPEL_LABEL, podeAdmin } from "@/lib/admin-roles";
 import { fmtBRL, fmtPorMoeda } from "@/lib/formato";
 import FilaAcoes from "./FilaAcoes";
+import ReabrirBotao from "./ReabrirBotao";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminHomePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ erro?: string; minhas?: string }>;
+  searchParams?: Promise<{ erro?: string; minhas?: string; ver?: string }>;
 }) {
   const { usuario, papel } = await exigirAdmin("/admin");
 
@@ -29,6 +30,7 @@ export default async function AdminHomePage({
   const sp = searchParams ? await searchParams : undefined;
   const semPermissao = sp?.erro === "sem_permissao";
   const apenasMinhas = sp?.minhas === "1";
+  const verConcluidas = sp?.ver === "concluidas";
 
   // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
   let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
@@ -54,6 +56,16 @@ export default async function AdminHomePage({
     fila = await carregarFilaDoDia(Date.now(), papel, { usuarioAtual: usuario, apenasMinhas });
   } catch {
     fila = null;
+  }
+
+  // Aba "Concluídas hoje": só carrega quando a aba está ativa (economiza query).
+  let concluidas = null as ItemConcluida[] | null;
+  if (verConcluidas) {
+    try {
+      concluidas = await carregarConcluidasHoje(Date.now(), papel);
+    } catch {
+      concluidas = null;
+    }
   }
 
   // Secoes navegaveis (exclui a propria home), filtradas pelo papel — como o
@@ -100,7 +112,7 @@ export default async function AdminHomePage({
             ) : null}
           </h2>
           <div className="flex items-center gap-3">
-            {fila && fila.contadores.total > 0 ? (
+            {!verConcluidas && fila && fila.contadores.total > 0 ? (
               <span className="text-xs text-neutral-500">
                 {fila.contadores.total} item(ns)
                 {fila.contadores.estourados > 0 ? (
@@ -108,22 +120,62 @@ export default async function AdminHomePage({
                 ) : null}
               </span>
             ) : null}
-            {/* Toggle "Minhas tarefas" (filtro por dono). */}
-            <Link
-              href={apenasMinhas ? "/admin" : "/admin?minhas=1"}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${
-                apenasMinhas ? "bg-brand text-brand-cream" : "border border-neutral-300 bg-white text-brand hover:bg-neutral-50"
-              }`}
-            >
-              {apenasMinhas ? "Ver todas" : `Minhas (${fila?.contadores.minhas ?? 0})`}
-            </Link>
+            {/* Toggle "Minhas tarefas" (filtro por dono) — só na aba Pendentes. */}
+            {!verConcluidas ? (
+              <Link
+                href={apenasMinhas ? "/admin" : "/admin?minhas=1"}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  apenasMinhas ? "bg-brand text-brand-cream" : "border border-neutral-300 bg-white text-brand hover:bg-neutral-50"
+                }`}
+              >
+                {apenasMinhas ? "Ver todas" : `Minhas (${fila?.contadores.minhas ?? 0})`}
+              </Link>
+            ) : null}
           </div>
         </div>
 
-        {!fila || fila.itens.length === 0 ? (
+        {/* Abas: Pendentes | Concluídas hoje */}
+        <div className="mb-3 inline-flex rounded-xl border border-neutral-200 bg-neutral-50 p-0.5 text-xs font-medium">
+          <Link
+            href="/admin"
+            className={`rounded-lg px-3 py-1.5 transition ${
+              !verConcluidas ? "bg-white text-brand shadow-sm" : "text-neutral-500 hover:text-brand"
+            }`}
+          >
+            Pendentes
+          </Link>
+          <Link
+            href="/admin?ver=concluidas"
+            className={`rounded-lg px-3 py-1.5 transition ${
+              verConcluidas ? "bg-white text-brand shadow-sm" : "text-neutral-500 hover:text-brand"
+            }`}
+          >
+            Concluídas hoje
+          </Link>
+        </div>
+
+        {verConcluidas ? (
+          !concluidas || concluidas.length === 0 ? (
+            <div className="rounded-2xl border border-neutral-200 bg-white p-6 text-center">
+              <p className="text-sm text-neutral-600">
+                {concluidas ? "Nenhuma tarefa concluída hoje ainda." : "Não foi possível carregar as concluídas agora."}
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {concluidas.map((item, i) => (
+                <ConcluidaLinha key={i} item={item} />
+              ))}
+            </ul>
+          )
+        ) : !fila || fila.itens.length === 0 ? (
           <div className="rounded-2xl border border-neutral-200 bg-white p-6 text-center">
             <p className="text-sm text-neutral-600">
-              {fila ? "Nada pendente por aqui. Fila zerada. 🎉" : "Não foi possível carregar a fila agora."}
+              {fila
+                ? apenasMinhas
+                  ? "Você não tem tarefas assumidas. 🎉"
+                  : "Nada pendente por aqui. Fila zerada. 🎉"
+                : "Não foi possível carregar a fila agora."}
             </p>
           </div>
         ) : (
@@ -334,6 +386,60 @@ function FilaLinha({ item, usuarioAtual }: { item: ItemFila; usuarioAtual: strin
       ) : null}
     </li>
   );
+}
+
+function ConcluidaLinha({ item }: { item: ItemConcluida }) {
+  const icone = ICONE_CATEGORIA[item.categoria] ?? ICONE_CATEGORIA.outro;
+  return (
+    <li className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-4">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+          aria-hidden="true"
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-brand">
+          <span className="align-middle text-neutral-400" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="mr-1 inline h-3.5 w-3.5" aria-hidden="true"><path d={icone} /></svg>
+          </span>
+          {item.titulo}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-neutral-500">
+          {item.contexto ? item.contexto + " · " : ""}concluída às {horaConclusao(item.concluidoEm)}
+          {item.dono ? <span className="text-neutral-500"> · por {primeiroNome(item.dono)}</span> : null}
+        </p>
+      </div>
+      {item.href ? (
+        <Link
+          href={item.href}
+          className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-neutral-50"
+        >
+          Abrir
+        </Link>
+      ) : null}
+      {item.chaveDedupe ? <ReabrirBotao chaveDedupe={item.chaveDedupe} /> : null}
+    </li>
+  );
+}
+
+// Hora local (America/Sao_Paulo) da conclusão, no formato HH:MM.
+function horaConclusao(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(t));
 }
 
 function primeiroNome(usuario: string): string {

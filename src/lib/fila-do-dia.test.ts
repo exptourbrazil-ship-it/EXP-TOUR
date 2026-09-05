@@ -9,6 +9,7 @@ import {
   ordenarFila,
   papelVeCategoria,
   podeVerItem,
+  mesmaDataUTC,
   filtrarPorPapel,
   filtrarMinhas,
   contarMinhas,
@@ -29,6 +30,17 @@ test("diasDeAtraso: calendario UTC, positivo quando vencida", () => {
   assert.equal(diasDeAtraso("2026-08-01", "2026-08-11"), 10);
   assert.equal(diasDeAtraso("2026-08-21", "2026-08-21"), 0); // vence hoje
   assert.equal(diasDeAtraso("2026-08-25", "2026-08-21"), -4); // ainda vai vencer
+});
+
+test("mesmaDataUTC: compara o dia-calendario UTC", () => {
+  const agora = Date.parse("2026-08-21T12:00:00Z");
+  assert.equal(mesmaDataUTC("2026-08-21T00:05:00Z", agora), true);
+  assert.equal(mesmaDataUTC("2026-08-21T23:59:59Z", agora), true);
+  assert.equal(mesmaDataUTC("2026-08-20T23:59:59Z", agora), false);
+  assert.equal(mesmaDataUTC("2026-08-22T00:00:00Z", agora), false);
+  assert.equal(mesmaDataUTC(null, agora), false);
+  assert.equal(mesmaDataUTC(undefined, agora), false);
+  assert.equal(mesmaDataUTC("", agora), false);
 });
 
 test("entrouEmCobrancaHumana: a partir de D+10 (default)", () => {

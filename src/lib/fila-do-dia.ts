@@ -57,6 +57,14 @@ export function contarMinhas(itens: ItemFila[], usuario: string | undefined | nu
   return itens.reduce((n, i) => (i.dono === usuario ? n + 1 : n), 0);
 }
 
+// True se o timestamp ISO cai no MESMO dia-calendario (UTC) de agoraMs. Usado
+// pela aba "Concluidas hoje" — segue a convencao UTC do resto do modulo
+// (diasDeAtraso etc.), para nao introduzir um fuso divergente.
+export function mesmaDataUTC(iso: string | null | undefined, agoraMs: number): boolean {
+  if (!iso || iso.length < 10) return false;
+  return iso.slice(0, 10) === new Date(agoraMs).toISOString().slice(0, 10);
+}
+
 // Idade em dias inteiros de um timestamp ISO ate "agora" (nunca negativa).
 export function idadeEmDias(iso: string, agoraMs: number): number {
   const t = Date.parse(iso);

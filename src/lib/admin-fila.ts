@@ -12,6 +12,7 @@ import {
   filtrarMinhas,
   contarMinhas,
   podeVerItem,
+  mesmaDataUTC,
   SLA_ANALISE_DOCUMENTO_DIAS,
   DIAS_COBRANCA_HUMANA,
   SLA_PROPOSTA_PARADA_DIAS,
@@ -309,6 +310,61 @@ export async function carregarFilaDoDia(
   };
 }
 
+// Item da aba "Concluídas hoje": tarefa fechada no dia-calendário de hoje.
+export type ItemConcluida = {
+  chaveDedupe: string | null;
+  categoria: CategoriaFila;
+  titulo: string;
+  contexto?: string;
+  href?: string;
+  papelAlvo?: string;
+  dono?: string | null;
+  concluidoEm: string; // ISO
+};
+
+// Lista as tarefas CONCLUÍDAS hoje, filtradas pelo papel (mesmo critério da
+// fila: `podeVerItem`), mais recentes primeiro. Base da aba "Concluídas hoje"
+// (com ação de reabrir). Só tarefas com chave_dedupe podem ser reabertas pela
+// UI, mas listamos todas para dar visibilidade do que o time fechou.
+export async function carregarConcluidasHoje(
+  agoraMs: number,
+  papel: string
+): Promise<ItemConcluida[]> {
+  // Falha FECHADA: sem papel, não vê nada (evita o anti-padrão `if (papel && …)`
+  // que vazaria todas as concluídas quando o argumento faltasse).
+  if (!papel) return [];
+  const supabase = getSupabase();
+  const inicioHojeISO = new Date(agoraMs).toISOString().slice(0, 10) + "T00:00:00.000Z";
+
+  const { data } = await supabase
+    .from("tasks")
+    .select("categoria, titulo, contexto, href, papel, chave_dedupe, dono, concluido_em")
+    .eq("estado", "concluido")
+    .gte("concluido_em", inicioHojeISO)
+    .order("concluido_em", { ascending: false });
+
+  const itens: ItemConcluida[] = [];
+  for (const t of data ?? []) {
+    // Guarda-corpo extra: só o dia de hoje (UTC), coerente com o resto do módulo.
+    if (!mesmaDataUTC(t.concluido_em, agoraMs)) continue;
+    const categoria = (t.categoria ?? "outro") as CategoriaFila;
+    const papelAlvo = (t.papel ?? undefined) as string | undefined;
+    // RBAC: o admin só vê (e poderá reabrir) o que veria na fila pelo seu papel.
+    if (!podeVerItem(papel, categoria, papelAlvo)) continue;
+    itens.push({
+      chaveDedupe: t.chave_dedupe ?? null,
+      categoria,
+      titulo: t.titulo,
+      contexto: t.contexto ?? undefined,
+      href: t.href ?? undefined,
+      papelAlvo,
+      dono: t.dono ?? null,
+      concluidoEm: t.concluido_em as string,
+    });
+  }
+  return itens;
+}
+
 export type ResultadoMaterializacao = { fontes: number; criadas: number; concluidas: number };
 
 // Materializa as fontes automaticas em linhas de `tasks` (para ganharem estado,
@@ -373,7 +429,7 @@ export async function materializarTasksDaFila(
 // (concluido) ou DEVOLVE (solta o dono, volta a aberto). Itens de fonte viva
 // ainda não materializados são criados on-demand A PARTIR DA PRÓPRIA FONTE
 // (conteúdo do servidor, nunca do corpo) — o cliente só envia a chave_dedupe.
-export type AcaoTarefa = "assumir" | "concluir" | "devolver";
+export type AcaoTarefa = "assumir" | "concluir" | "devolver" | "reabrir";
 
 // Contexto de autorização de uma chave: papel/categoria (para o gate por papel),
 // a FONTE VIVA quando presente e o id da task já persistida quando existe.
@@ -468,6 +524,24 @@ export async function acaoTarefa(
     const { data } = await supabase.from("tasks").update({ dono: null, estado: "aberto" }).eq("id", ctx.taskId).select("id");
     if (!data || data.length === 0) return { ok: false };
     await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.devolver", alvo: chaveDedupe, ip: ip ?? null });
+    return { ok: true, estado: "aberto" };
+  }
+
+  if (acao === "reabrir") {
+    // Reabrir uma tarefa concluída por engano: volta a 'aberto', solta o dono e
+    // limpa concluido_em. Não materializa (a task já existe, pois está
+    // concluída) e só afeta linhas de fato concluídas. Se a fonte já resolveu,
+    // o cron pode reconcluí-la no próximo ciclo — comportamento aceito (o
+    // trabalho de fato terminou); reabrir vale para tarefa de fonte ainda viva.
+    if (!ctx.taskId) return { ok: false };
+    const { data } = await supabase
+      .from("tasks")
+      .update({ estado: "aberto", dono: null, concluido_em: null })
+      .eq("id", ctx.taskId)
+      .eq("estado", "concluido")
+      .select("id");
+    if (!data || data.length === 0) return { ok: false };
+    await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.reabrir", alvo: chaveDedupe, ip: ip ?? null });
     return { ok: true, estado: "aberto" };
   }
 
