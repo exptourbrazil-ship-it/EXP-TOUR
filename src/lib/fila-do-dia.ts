@@ -155,6 +155,9 @@ export function filtrarPorPapel(itens: ItemFila[], papel: string): ItemFila[] {
 // ele veria na fila. Gestor tudo; item com papelAlvo roteia pelo dono; sem
 // papelAlvo, pela categoria.
 export function podeVerItem(papel: string, categoria: CategoriaFila, papelAlvo?: string | null): boolean {
+  // Papel desconhecido não vê/opera nada (defesa em profundidade: evita que um
+  // papel arbitrário "bata" literalmente com um papelAlvo por coincidência).
+  if (!CATEGORIAS_POR_PAPEL[papel]) return false;
   if (papel === "gestor") return true;
   if (papelAlvo) return papelAlvo === papel;
   return papelVeCategoria(papel, categoria);

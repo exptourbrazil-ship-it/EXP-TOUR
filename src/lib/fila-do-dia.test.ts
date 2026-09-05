@@ -156,9 +156,10 @@ test("podeVerItem: mesma regra da exibicao autoriza a acao (RBAC por acao)", () 
   assert.equal(podeVerItem("operacao", "excecao", "financeiro"), false);
   assert.equal(podeVerItem("consultor", "excecao", "consultor"), true);
 
-  // Papel desconhecido nao ve/opera nada.
+  // Papel desconhecido nao ve/opera nada — nem mesmo quando o papelAlvo
+  // "bateria" literalmente (guarda de papel conhecido fecha o footgun).
   assert.equal(podeVerItem("intruso", "parcela"), false);
-  assert.equal(podeVerItem("intruso", "excecao", "intruso"), true); // papelAlvo bate literalmente
+  assert.equal(podeVerItem("intruso", "excecao", "intruso"), false);
 });
 
 test("filtrarMinhas / contarMinhas: por dono", () => {

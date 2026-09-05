@@ -12,9 +12,11 @@ const ACOES = new Set<AcaoTarefa>(["assumir", "concluir", "devolver"]);
 const CHAVE_RE = /^[a-z_]{2,30}:[A-Za-z0-9-]{1,64}$/;
 
 // POST /api/admin/tasks — o admin ASSUME, CONCLUI ou DEVOLVE uma tarefa da Fila
-// do Dia. Body: { acao, chaveDedupe }. Qualquer admin autenticado pode operar a
-// fila (ela já é filtrada por papel na exibição). A ação é auditada; o conteúdo
-// da task, quando materializada on-demand, vem da FONTE (nunca do corpo).
+// do Dia. Body: { acao, chaveDedupe }. A ação é autorizada por papel no
+// servidor (RBAC por ação): `acaoTarefa` só opera o que o papel da SESSÃO
+// veria na fila (mesma regra `podeVerItem` da exibição) — sem_permissao -> 403.
+// A ação é auditada; o conteúdo da task, quando materializada on-demand, vem da
+// FONTE (nunca do corpo).
 export async function POST(request: Request) {
   const sessao = await sessaoAdminAtual();
   if (!sessao) {

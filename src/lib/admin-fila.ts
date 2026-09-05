@@ -375,31 +375,49 @@ export async function materializarTasksDaFila(
 // (conteúdo do servidor, nunca do corpo) — o cliente só envia a chave_dedupe.
 export type AcaoTarefa = "assumir" | "concluir" | "devolver";
 
-type TaskResolvida = { id: string; papel: string | null; categoria: CategoriaFila };
+// Contexto de autorização de uma chave: papel/categoria (para o gate por papel),
+// a FONTE VIVA quando presente e o id da task já persistida quando existe.
+// A fonte viva (server-authoritative, fresca) tem PRECEDÊNCIA sobre a task
+// persistida — mesma ordem da exibição — para que autorizar e exibir nunca
+// divirjam (ex.: catálogo de papel-alvo mudou após a task materializada).
+type ContextoChave = {
+  papel: string | null;
+  categoria: CategoriaFila;
+  fonte: FonteItem | null;
+  taskId: string | null;
+};
 
-// Resolve a task da chave para {id, papel, categoria} — o papel/categoria são
-// necessários para autorizar a ação pelo mesmo critério da exibição. Se não
-// existir e `materializar`, cria-a a partir da FONTE VIVA (server-authoritative).
-async function resolverTask(
+async function resolverContexto(
   supabase: ReturnType<typeof getSupabase>,
   chaveDedupe: string,
-  agoraMs: number,
-  materializar: boolean
-): Promise<TaskResolvida | null> {
+  agoraMs: number
+): Promise<ContextoChave | null> {
+  const fontes = await coletarFontesAoVivo(supabase, agoraMs);
+  const fonte = fontes.find((x) => x.chaveDedupe === chaveDedupe) ?? null;
   const { data: existente } = await supabase
     .from("tasks")
     .select("id, papel, categoria")
     .eq("chave_dedupe", chaveDedupe)
     .maybeSingle();
-  if (existente?.id) {
-    return { id: existente.id as string, papel: (existente.papel as string) ?? null, categoria: (existente.categoria ?? "outro") as CategoriaFila };
-  }
-  if (!materializar) return null;
+  const taskId = (existente?.id as string) ?? null;
 
-  const fontes = await coletarFontesAoVivo(supabase, agoraMs);
-  const f = fontes.find((x) => x.chaveDedupe === chaveDedupe);
-  if (!f) return null; // sem task e sem fonte viva -> já resolvida/inexistente
+  if (fonte) return { papel: fonte.papelAlvo ?? null, categoria: fonte.categoria, fonte, taskId };
+  if (taskId)
+    return {
+      papel: (existente!.papel as string) ?? null,
+      categoria: (existente!.categoria ?? "outro") as CategoriaFila,
+      fonte: null,
+      taskId,
+    };
+  return null; // sem fonte viva e sem task -> já resolvida/inexistente
+}
 
+// Materializa a task a partir da FONTE VIVA (server-authoritative). Só é
+// chamada DEPOIS de autorizar — nada é inserido para um ator sem permissão.
+async function materializarDaFonte(
+  supabase: ReturnType<typeof getSupabase>,
+  f: FonteItem
+): Promise<string | null> {
   const { data: inserida } = await supabase
     .from("tasks")
     .upsert(
@@ -418,8 +436,7 @@ async function resolverTask(
     )
     .select("id")
     .maybeSingle();
-  if (!inserida?.id) return null;
-  return { id: inserida.id as string, papel: f.papelAlvo ?? null, categoria: f.categoria };
+  return (inserida?.id as string) ?? null;
 }
 
 export type ResultadoAcao = { ok: boolean; estado?: EstadoTask; erro?: "sem_permissao" };
@@ -435,24 +452,36 @@ export async function acaoTarefa(
   if (!chaveDedupe) return { ok: false };
   const supabase = getSupabase();
 
-  // devolver não materializa (não há o que devolver se a task nem existe).
-  const task = await resolverTask(supabase, chaveDedupe, agoraMs, acao !== "devolver");
-  if (!task) return { ok: false };
+  const ctx = await resolverContexto(supabase, chaveDedupe, agoraMs);
+  if (!ctx) return { ok: false };
 
-  // RBAC por AÇÃO: o admin só opera o que veria na fila (mesma regra de papel).
-  if (!podeVerItem(papelActor, task.categoria, task.papel)) {
+  // RBAC por AÇÃO — ANTES de qualquer escrita: o admin só opera o que veria na
+  // fila (mesma regra e mesma fonte de papel/categoria da exibição). Nenhuma
+  // task é materializada para um ator sem permissão.
+  if (!podeVerItem(papelActor, ctx.categoria, ctx.papel)) {
     return { ok: false, erro: "sem_permissao" };
   }
 
   if (acao === "devolver") {
-    const { data } = await supabase.from("tasks").update({ dono: null, estado: "aberto" }).eq("id", task.id).select("id");
+    // Devolver não materializa: sem task persistida, não há o que soltar.
+    if (!ctx.taskId) return { ok: false };
+    const { data } = await supabase.from("tasks").update({ dono: null, estado: "aberto" }).eq("id", ctx.taskId).select("id");
     if (!data || data.length === 0) return { ok: false };
     await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.devolver", alvo: chaveDedupe, ip: ip ?? null });
     return { ok: true, estado: "aberto" };
   }
 
+  // assumir/concluir materializam on-demand (após autorizar) se a task ainda
+  // não existe — o conteúdo vem da FONTE, nunca do corpo da requisição.
+  let taskId = ctx.taskId;
+  if (!taskId) {
+    if (!ctx.fonte) return { ok: false };
+    taskId = await materializarDaFonte(supabase, ctx.fonte);
+    if (!taskId) return { ok: false };
+  }
+
   if (acao === "assumir") {
-    await supabase.from("tasks").update({ dono: actor, estado: "em_andamento" }).eq("id", task.id);
+    await supabase.from("tasks").update({ dono: actor, estado: "em_andamento" }).eq("id", taskId);
     await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.assumir", alvo: chaveDedupe, ip: ip ?? null });
     return { ok: true, estado: "em_andamento" };
   }
@@ -461,7 +490,7 @@ export async function acaoTarefa(
   await supabase
     .from("tasks")
     .update({ estado: "concluido", concluido_em: new Date(agoraMs).toISOString() })
-    .eq("id", task.id);
+    .eq("id", taskId);
   await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.concluir", alvo: chaveDedupe, ip: ip ?? null });
   return { ok: true, estado: "concluido" };
 }
