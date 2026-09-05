@@ -35,7 +35,25 @@ export type ItemFila = {
   // (nao por categoria) — necessario para exceptions, onde o dono varia por
   // TIPO (E1->consultor, E9->financeiro) dentro da mesma categoria.
   papelAlvo?: string;
+  // Estado da TASK persistida (quando ja existe): quem assumiu e em que estado.
+  // Itens de fonte viva ainda nao materializados vem sem taskId/dono.
+  taskId?: string;
+  dono?: string | null; // usuario que assumiu (null/undefined = ninguem)
+  estadoTask?: EstadoTask;
 };
+
+export type EstadoTask = "aberto" | "em_andamento" | "concluido";
+
+// "Minhas tarefas": itens assumidos por um usuario (dono === usuario). Puro.
+export function filtrarMinhas(itens: ItemFila[], usuario: string): ItemFila[] {
+  return itens.filter((i) => !!i.dono && i.dono === usuario);
+}
+
+// Contagem de itens assumidos por um usuario (para o contador do topo).
+export function contarMinhas(itens: ItemFila[], usuario: string | undefined | null): number {
+  if (!usuario) return 0;
+  return itens.reduce((n, i) => (i.dono === usuario ? n + 1 : n), 0);
+}
 
 // Idade em dias inteiros de um timestamp ISO ate "agora" (nunca negativa).
 export function idadeEmDias(iso: string, agoraMs: number): number {

@@ -9,6 +9,8 @@ import {
   ordenarFila,
   papelVeCategoria,
   filtrarPorPapel,
+  filtrarMinhas,
+  contarMinhas,
   DIAS_COBRANCA_HUMANA,
   type ItemFila,
 } from "./fila-do-dia.ts";
@@ -130,4 +132,22 @@ test("filtrarPorPapel: item com papelAlvo roteia pelo dono, nao pela categoria",
   assert.deepEqual(filtrarPorPapel(entrada, "operacao").map((i) => i.titulo), ["E10 fraude"]);
   // ...e o gestor ve todas.
   assert.equal(filtrarPorPapel(entrada, "gestor").length, 3);
+});
+
+test("filtrarMinhas / contarMinhas: por dono", () => {
+  const base = (over: Partial<ItemFila>): ItemFila => ({
+    categoria: "documento", titulo: "x", criadoEm: "2026-08-20T00:00:00Z", idadeDias: 1, estado: "no_prazo", ...over,
+  });
+  const itens: ItemFila[] = [
+    base({ dono: "ana@x.com" }),
+    base({ dono: "bruno@x.com" }),
+    base({ dono: null }),
+    base({ dono: "ana@x.com", estadoTask: "em_andamento" }),
+  ];
+  assert.equal(contarMinhas(itens, "ana@x.com"), 2);
+  assert.equal(contarMinhas(itens, "ninguem@x.com"), 0);
+  assert.equal(contarMinhas(itens, undefined), 0);
+  assert.deepEqual(filtrarMinhas(itens, "ana@x.com").length, 2);
+  // não muta a entrada
+  assert.equal(itens.length, 4);
 });
