@@ -147,9 +147,18 @@ export function papelVeCategoria(papel: string, categoria: CategoriaFila): boole
 // financeiro, mesmo compartilhando a categoria 'excecao'. Um item SEM papelAlvo
 // cai na regra por categoria (documentos, parcelas, propostas, tarefas manuais).
 export function filtrarPorPapel(itens: ItemFila[], papel: string): ItemFila[] {
-  return itens.filter((i) => {
-    if (papel === "gestor") return true;
-    if (i.papelAlvo) return i.papelAlvo === papel;
-    return papelVeCategoria(papel, i.categoria);
-  });
+  return itens.filter((i) => podeVerItem(papel, i.categoria, i.papelAlvo));
+}
+
+// Regra única de visibilidade de um item por papel (usada tanto para EXIBIR
+// quanto para AUTORIZAR ações): o admin só pode assumir/concluir/devolver o que
+// ele veria na fila. Gestor tudo; item com papelAlvo roteia pelo dono; sem
+// papelAlvo, pela categoria.
+export function podeVerItem(papel: string, categoria: CategoriaFila, papelAlvo?: string | null): boolean {
+  // Papel desconhecido não vê/opera nada (defesa em profundidade: evita que um
+  // papel arbitrário "bata" literalmente com um papelAlvo por coincidência).
+  if (!CATEGORIAS_POR_PAPEL[papel]) return false;
+  if (papel === "gestor") return true;
+  if (papelAlvo) return papelAlvo === papel;
+  return papelVeCategoria(papel, categoria);
 }

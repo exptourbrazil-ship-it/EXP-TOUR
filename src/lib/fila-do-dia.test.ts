@@ -8,6 +8,7 @@ import {
   estadoPrazo,
   ordenarFila,
   papelVeCategoria,
+  podeVerItem,
   filtrarPorPapel,
   filtrarMinhas,
   contarMinhas,
@@ -132,6 +133,33 @@ test("filtrarPorPapel: item com papelAlvo roteia pelo dono, nao pela categoria",
   assert.deepEqual(filtrarPorPapel(entrada, "operacao").map((i) => i.titulo), ["E10 fraude"]);
   // ...e o gestor ve todas.
   assert.equal(filtrarPorPapel(entrada, "gestor").length, 3);
+});
+
+test("podeVerItem: mesma regra da exibicao autoriza a acao (RBAC por acao)", () => {
+  // Gestor opera tudo.
+  assert.equal(podeVerItem("gestor", "parcela"), true);
+  assert.equal(podeVerItem("gestor", "excecao", "consultor"), true);
+
+  // Sem papelAlvo -> roteia por categoria: financeiro so parcela.
+  assert.equal(podeVerItem("financeiro", "parcela"), true);
+  assert.equal(podeVerItem("financeiro", "documento"), false);
+  assert.equal(podeVerItem("operacao", "documento"), true);
+  assert.equal(podeVerItem("operacao", "parcela"), false);
+  assert.equal(podeVerItem("consultor", "proposta"), true);
+  assert.equal(podeVerItem("consultor", "parcela"), false);
+
+  // Com papelAlvo -> roteia pelo dono, ignorando a categoria: um E9
+  // (excecao/financeiro) so pode ser operado por financeiro (ou gestor),
+  // NUNCA por consultor/operacao, mesmo que 'excecao' caiba na categoria deles.
+  assert.equal(podeVerItem("financeiro", "excecao", "financeiro"), true);
+  assert.equal(podeVerItem("consultor", "excecao", "financeiro"), false);
+  assert.equal(podeVerItem("operacao", "excecao", "financeiro"), false);
+  assert.equal(podeVerItem("consultor", "excecao", "consultor"), true);
+
+  // Papel desconhecido nao ve/opera nada — nem mesmo quando o papelAlvo
+  // "bateria" literalmente (guarda de papel conhecido fecha o footgun).
+  assert.equal(podeVerItem("intruso", "parcela"), false);
+  assert.equal(podeVerItem("intruso", "excecao", "intruso"), false);
 });
 
 test("filtrarMinhas / contarMinhas: por dono", () => {
