@@ -9,13 +9,17 @@ import {
   estadoPrazo,
   ordenarFila,
   filtrarPorPapel,
+  filtrarMinhas,
+  contarMinhas,
   SLA_ANALISE_DOCUMENTO_DIAS,
   DIAS_COBRANCA_HUMANA,
   type ItemFila,
   type CategoriaFila,
   type EstadoPrazo,
+  type EstadoTask,
 } from "@/lib/fila-do-dia";
 import { labelTipoExcecao, papelAlvoDoTipo, slaDiasDoTipo } from "@/lib/excecao";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -25,7 +29,7 @@ function getSupabase() {
 
 export type FilaDoDia = {
   itens: ItemFila[];
-  contadores: { total: number; documentos: number; parcelas: number; excecoes: number; estourados: number };
+  contadores: { total: number; documentos: number; parcelas: number; excecoes: number; estourados: number; minhas: number };
 };
 
 // Item de uma fonte automatica ao vivo, com os campos extras que a
@@ -156,34 +160,53 @@ async function coletarFontesAoVivo(
 // filtra pelo papel (gestor ve tudo) e prioriza. `agoraMs` injetavel para teste.
 export async function carregarFilaDoDia(
   agoraMs: number = Date.now(),
-  papel?: string
+  papel?: string,
+  opts?: { usuarioAtual?: string; apenasMinhas?: boolean }
 ): Promise<FilaDoDia> {
   const supabase = getSupabase();
 
   const fontes = await coletarFontesAoVivo(supabase, agoraMs);
   const chavesLive = new Set(fontes.map((f) => f.chaveDedupe));
 
-  const itens: ItemFila[] = fontes.map((f) => ({
-    categoria: f.categoria,
-    titulo: f.titulo,
-    contexto: f.contexto,
-    href: f.href,
-    criadoEm: f.criadoEm,
-    idadeDias: f.idadeDias,
-    estado: f.estado,
-    chaveDedupe: f.chaveDedupe,
-    papelAlvo: f.papelAlvo,
-  }));
-
-  // Tarefas abertas: manuais, ou materializadas cuja fonte nao esta mais viva.
-  // `papel` roteia o item pelo dono (necessario para exceptions materializadas).
+  // Estado das tasks persistidas (todas), indexado por chave_dedupe — para
+  // anexar dono/estado aos itens da fonte viva e descartar os ja concluidos.
   const { data: tarefas } = await supabase
     .from("tasks")
-    .select("id, categoria, titulo, contexto, href, papel, prazo, criado_em, chave_dedupe")
-    .neq("estado", "concluido")
+    .select("id, categoria, titulo, contexto, href, papel, prazo, criado_em, chave_dedupe, dono, estado")
     .order("criado_em", { ascending: true });
+  const tarefasList = tarefas ?? [];
+  const porChave = new Map<string, { id: string; dono: string | null; estado: EstadoTask }>();
+  for (const t of tarefasList) {
+    if (t.chave_dedupe) porChave.set(t.chave_dedupe, { id: t.id, dono: t.dono ?? null, estado: (t.estado ?? "aberto") as EstadoTask });
+  }
 
-  for (const t of tarefas ?? []) {
+  const itens: ItemFila[] = [];
+
+  // 1) Fontes vivas — anexa dono/estado da task quando existir; descarta as ja
+  //    CONCLUIDAS (operador tratou, mesmo que a fonte demore a sumir da leitura).
+  for (const f of fontes) {
+    const task = f.chaveDedupe ? porChave.get(f.chaveDedupe) : undefined;
+    if (task?.estado === "concluido") continue;
+    itens.push({
+      categoria: f.categoria,
+      titulo: f.titulo,
+      contexto: f.contexto,
+      href: f.href,
+      criadoEm: f.criadoEm,
+      idadeDias: f.idadeDias,
+      estado: f.estado,
+      chaveDedupe: f.chaveDedupe,
+      papelAlvo: f.papelAlvo,
+      taskId: task?.id,
+      dono: task?.dono ?? null,
+      estadoTask: task?.estado ?? "aberto",
+    });
+  }
+
+  // 2) Tarefas persistidas (manuais ou materializadas) cuja fonte NAO esta mais
+  //    viva e que nao estao concluidas. `papel` roteia pelo dono-alvo.
+  for (const t of tarefasList) {
+    if ((t.estado ?? "aberto") === "concluido") continue;
     if (t.chave_dedupe && chavesLive.has(t.chave_dedupe)) continue; // ja representada pela fonte viva
     const idade = idadeEmDias(t.criado_em, agoraMs);
     const estourado = t.prazo ? Date.parse(t.prazo) < agoraMs : false;
@@ -197,20 +220,27 @@ export async function carregarFilaDoDia(
       idadeDias: idade,
       estado: (estourado ? "estourado" : "no_prazo") as EstadoPrazo,
       chaveDedupe: t.chave_dedupe ?? undefined,
+      taskId: t.id,
+      dono: t.dono ?? null,
+      estadoTask: (t.estado ?? "aberto") as EstadoTask,
     });
   }
 
   const visiveis = papel ? filtrarPorPapel(itens, papel) : itens;
   const ordenada = ordenarFila(visiveis);
+  const minhas = contarMinhas(ordenada, opts?.usuarioAtual);
+  const exibidos =
+    opts?.apenasMinhas && opts?.usuarioAtual ? filtrarMinhas(ordenada, opts.usuarioAtual) : ordenada;
 
   return {
-    itens: ordenada,
+    itens: exibidos,
     contadores: {
       total: ordenada.length,
       documentos: ordenada.filter((i) => i.categoria === "documento").length,
       parcelas: ordenada.filter((i) => i.categoria === "parcela").length,
       excecoes: ordenada.filter((i) => i.categoria === "excecao").length,
       estourados: ordenada.filter((i) => i.estado === "estourado").length,
+      minhas,
     },
   };
 }
@@ -272,4 +302,86 @@ export async function materializarTasksDaFila(
   }
 
   return { fontes: fontes.length, criadas, concluidas };
+}
+
+// ── Ações sobre uma tarefa da fila (assumir / concluir / devolver) ───────────
+// A fila é "operada": o admin ASSUME um item (vira dono, em_andamento), CONCLUI
+// (concluido) ou DEVOLVE (solta o dono, volta a aberto). Itens de fonte viva
+// ainda não materializados são criados on-demand A PARTIR DA PRÓPRIA FONTE
+// (conteúdo do servidor, nunca do corpo) — o cliente só envia a chave_dedupe.
+export type AcaoTarefa = "assumir" | "concluir" | "devolver";
+
+async function garantirTaskPorChave(
+  supabase: ReturnType<typeof getSupabase>,
+  chaveDedupe: string,
+  agoraMs: number
+): Promise<string | null> {
+  const { data: existente } = await supabase.from("tasks").select("id").eq("chave_dedupe", chaveDedupe).maybeSingle();
+  if (existente?.id) return existente.id as string;
+
+  // Materializa a partir da fonte viva correspondente (server-authoritative).
+  const fontes = await coletarFontesAoVivo(supabase, agoraMs);
+  const f = fontes.find((x) => x.chaveDedupe === chaveDedupe);
+  if (!f) return null; // sem task e sem fonte viva -> já resolvida/inexistente
+
+  const { data: inserida } = await supabase
+    .from("tasks")
+    .upsert(
+      {
+        categoria: f.categoria,
+        titulo: f.titulo,
+        contexto: f.contexto ?? null,
+        alvo_tipo: f.alvoTipo,
+        alvo_id: f.alvoId,
+        href: f.href ?? null,
+        papel: f.papelAlvo,
+        origem: "automatica",
+        chave_dedupe: f.chaveDedupe,
+      },
+      { onConflict: "chave_dedupe", ignoreDuplicates: false }
+    )
+    .select("id")
+    .maybeSingle();
+  return (inserida?.id as string) ?? null;
+}
+
+export async function acaoTarefa(
+  acao: AcaoTarefa,
+  chaveDedupe: string,
+  actor: string,
+  ip?: string | null,
+  agoraMs: number = Date.now()
+): Promise<{ ok: boolean; estado?: EstadoTask }> {
+  if (!chaveDedupe) return { ok: false };
+  const supabase = getSupabase();
+
+  if (acao === "devolver") {
+    // Só audita/retorna ok se uma linha realmente mudou (evita trilha-lixo com
+    // alvo inexistente e resposta enganosa quando a chave não casa nada).
+    const { data } = await supabase
+      .from("tasks")
+      .update({ dono: null, estado: "aberto" })
+      .eq("chave_dedupe", chaveDedupe)
+      .select("id");
+    if (!data || data.length === 0) return { ok: false };
+    await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.devolver", alvo: chaveDedupe, ip: ip ?? null });
+    return { ok: true, estado: "aberto" };
+  }
+
+  const id = await garantirTaskPorChave(supabase, chaveDedupe, agoraMs);
+  if (!id) return { ok: false }; // fonte sumiu (já resolvida)
+
+  if (acao === "assumir") {
+    await supabase.from("tasks").update({ dono: actor, estado: "em_andamento" }).eq("id", id);
+    await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.assumir", alvo: chaveDedupe, ip: ip ?? null });
+    return { ok: true, estado: "em_andamento" };
+  }
+
+  // concluir (dono pode ser nulo — operador tratou sem assumir)
+  await supabase
+    .from("tasks")
+    .update({ estado: "concluido", concluido_em: new Date(agoraMs).toISOString() })
+    .eq("id", id);
+  await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fila.tarefa.concluir", alvo: chaveDedupe, ip: ip ?? null });
+  return { ok: true, estado: "concluido" };
 }
