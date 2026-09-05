@@ -8,6 +8,8 @@
 // Ficam como DEFAULT aqui e sao passados aos helpers, nunca embutidos na logica.
 export const SLA_ANALISE_DOCUMENTO_DIAS = 2;
 export const DIAS_COBRANCA_HUMANA = 10; // parcela nao paga vira tarefa humana em D+10
+export const SLA_PROPOSTA_PARADA_DIAS = 3; // proposta emitida sem avancar por N dias -> follow-up
+export const SLA_CONFIRMACAO_FORNECEDOR_DIAS = 2; // confirmacao pedida ao fornecedor sem resposta por N dias
 
 const MS_DIA = 24 * 60 * 60 * 1000;
 
