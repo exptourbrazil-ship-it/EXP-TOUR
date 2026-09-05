@@ -28,6 +28,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ip: g.ip,
       productId: id,
       regras: (body as { regras?: unknown }).regras,
+      justificativa: (body as { justificativa?: unknown }).justificativa,
     });
     return okData(r);
   } catch (err) {
@@ -40,6 +41,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           );
         case "produto_nao_encontrado":
           return bad("Produto não encontrado.", "nao_encontrado", 404);
+        case "justificativa_obrigatoria":
+          return bad(
+            "Remover uma regra bloqueante exige uma justificativa (mín. 10 caracteres).",
+            "justificativa_obrigatoria",
+            400,
+          );
         case "migracao_ausente":
           return bad(
             "Função de banco 'substituir_elegibilidade' ainda não aplicada. Rode a migração antes de editar a elegibilidade.",

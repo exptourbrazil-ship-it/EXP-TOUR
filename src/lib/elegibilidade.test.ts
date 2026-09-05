@@ -2,7 +2,13 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarElegibilidade, type Falha } from "./elegibilidade.ts";
+import {
+  validarElegibilidade,
+  bloqueantesRemovidas,
+  justificativaValida,
+  type Falha,
+  type RegraNorm,
+} from "./elegibilidade.ts";
 
 function campos(r: ReturnType<typeof validarElegibilidade>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -91,4 +97,45 @@ test("group_index default 0; is_blocking default false", () => {
 test("corpo não-objeto falha limpo", () => {
   assert.ok(!validarElegibilidade(null).ok);
   assert.ok(!validarElegibilidade([]).ok);
+});
+
+// ── bloqueantesRemovidas + justificativaValida ───────────────────────────────
+const rBloq = (attr: string, value: unknown, g = 0): RegraNorm => ({
+  group_index: g, attribute: attr as any, operator: "eq" as any, value, is_blocking: true,
+});
+const rAviso = (attr: string, value: unknown): RegraNorm => ({
+  group_index: 0, attribute: attr as any, operator: "eq" as any, value, is_blocking: false,
+});
+
+test("bloqueantesRemovidas: nada removido quando o conjunto se mantém", () => {
+  const antes = [rBloq("nationality", "BR"), rAviso("has_visa", true)];
+  const depois = [rBloq("nationality", "BR")]; // removeu só um AVISO, não bloqueante
+  assert.equal(bloqueantesRemovidas(antes, depois).length, 0);
+});
+
+test("bloqueantesRemovidas: detecta remoção direta de bloqueante", () => {
+  const antes = [rBloq("nationality", "BR"), rBloq("residence_country", "PT")];
+  const depois = [rBloq("nationality", "BR")];
+  const rem = bloqueantesRemovidas(antes, depois);
+  assert.equal(rem.length, 1);
+  assert.equal(rem[0].attribute, "residence_country");
+});
+
+test("bloqueantesRemovidas: swap (remove uma, adiciona outra) ainda conta", () => {
+  const antes = [rBloq("nationality", "BR")];
+  const depois = [rBloq("residence_country", "PT")]; // mesma contagem, conteúdo diferente
+  assert.equal(bloqueantesRemovidas(antes, depois).length, 1);
+});
+
+test("bloqueantesRemovidas: desligar o bloqueio conta como remoção", () => {
+  const antes = [rBloq("nationality", "BR")];
+  const depois = [rAviso("nationality", "BR")]; // mesma regra, mas virou aviso
+  assert.equal(bloqueantesRemovidas(antes, depois).length, 1);
+});
+
+test("justificativaValida exige ≥10 caracteres após trim", () => {
+  assert.equal(justificativaValida("curto"), false);
+  assert.equal(justificativaValida("         "), false);
+  assert.equal(justificativaValida(null), false);
+  assert.equal(justificativaValida("escola confirmou a mudança"), true);
 });
