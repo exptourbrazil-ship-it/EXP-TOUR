@@ -22,6 +22,7 @@ type Parcela = {
   is_entrada: boolean
   payment_link: string | null
   qr_code_url: string | null
+  external_payment_id?: string | null
   paid_at: string | null
   recibo_url?: string | null
   reciboId?: string | null
@@ -121,7 +122,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
     descricao: p.descricao,
     valor: String(valorProgramaAtual(p)),
     vencimento: p.vencimento ? p.vencimento.slice(0, 10) : "",
-    bloqueada: p.status === "pago" || !!p.qr_code_url,
+    bloqueada: p.status === "pago" || !!p.qr_code_url || !!p.external_payment_id,
   }))
   const [linhas, setLinhas] = useState<LinhaEdicao[]>(iniciais)
   const [erro, setErro] = useState<string | null>(null)

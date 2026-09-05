@@ -80,6 +80,7 @@ export type CasoParcela = {
   is_entrada: boolean | null;
   status: string;
   qr_code_url: string | null; // Pix gerado -> parcela travada para edição
+  external_payment_id: string | null; // ordem MP em voo -> também travada
   em_disputa: boolean | null;
   disputa_status: string | null;
   paid_at: string | null;
@@ -259,7 +260,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     const { data: parcelasData } = await supabase
       .from("parcelas")
       .select(
-        "id, contrato_id, numero, descricao, valor_original, valor_atual, cotacao_aplicada, valor_cobrado_brl, vencimento, is_entrada, status, qr_code_url, em_disputa, disputa_status, paid_at"
+        "id, contrato_id, numero, descricao, valor_original, valor_atual, cotacao_aplicada, valor_cobrado_brl, vencimento, is_entrada, status, qr_code_url, external_payment_id, em_disputa, disputa_status, paid_at"
       )
       .in("contrato_id", contratoIds)
       .order("contrato_id", { ascending: true })

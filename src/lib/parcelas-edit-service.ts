@@ -35,7 +35,7 @@ export async function aplicarEdicaoParcelas(
 
   const { data: atuaisRaw, error: erroAtuais } = await supabase
     .from("parcelas")
-    .select("id, status, qr_code_url, valor_atual")
+    .select("id, status, qr_code_url, external_payment_id, valor_atual")
     .eq("contrato_id", contratoId);
   if (erroAtuais) {
     throw new ParcelaEditErro("falha_leitura", "Não foi possível ler as parcelas atuais.", 500);
@@ -44,6 +44,7 @@ export async function aplicarEdicaoParcelas(
     id: p.id as string,
     status: p.status as string,
     qr_code_url: (p.qr_code_url as string) ?? null,
+    external_payment_id: (p.external_payment_id as string) ?? null,
     valor_atual: Number(p.valor_atual),
   }));
 
@@ -55,53 +56,42 @@ export async function aplicarEdicaoParcelas(
   });
   if (!v.ok) throw new ParcelaEditErro(v.codigo, v.mensagem, 400);
 
-  // NOTA (follow-up): o apply abaixo é delete→update→insert SEM transação (o
-  // mesmo padrão que o self-service do cliente já roda em produção). Uma falha
-  // transitória no meio pode deixar o plano inconsistente. A correção alinhada
-  // ao projeto é uma função Postgres atômica (como substituir_elegibilidade),
-  // planejada como a próxima fatia deste recurso.
-
-  // 1) Remove as não-travadas ausentes (o validador já garantiu que nenhuma
-  //    travada está em `remover`). Filtra por contrato_id também (defense-in-depth).
-  if (v.remover.length > 0) {
-    const { error } = await supabase
-      .from("parcelas")
-      .delete()
-      .eq("contrato_id", contratoId)
-      .in("id", v.remover);
-    if (error) throw new ParcelaEditErro("falha_remover", "Falha ao remover parcelas.", 500);
-  }
-
-  // 2) Atualiza/insere. Parcelas travadas são ignoradas no update (pass-through):
-  //    o dinheiro só muda de estado por webhook; nunca por esta tela.
-  for (const p of parcelas) {
-    if (p.id) {
-      if (v.travadas.has(p.id)) continue; // travada: nunca alterada
-      const { error } = await supabase
-        .from("parcelas")
-        .update({
-          numero: p.numero,
-          descricao: p.descricao,
-          valor_atual: p.valor, // valor_original NÃO é tocado
-          vencimento: p.vencimento,
-        })
-        .eq("id", p.id)
-        .eq("contrato_id", contratoId);
-      if (error) throw new ParcelaEditErro("falha_update", "Falha ao atualizar uma parcela.", 500);
-    } else {
-      const { error } = await supabase.from("parcelas").insert({
-        contrato_id: contratoId,
-        numero: p.numero,
-        descricao: p.descricao,
-        valor_original: p.valor,
-        valor_atual: p.valor,
-        vencimento: p.vencimento,
-        status: "pendente",
-        is_entrada: false,
-      });
-      if (error) throw new ParcelaEditErro("falha_insert", "Falha ao inserir uma nova parcela.", 500);
+  // Apply ATOMICO via função Postgres (delete+update+insert numa transação, sob
+  // advisory lock). A função re-enforça, SOB O LOCK, que parcela travada nunca é
+  // alterada nem removida — fecha a janela de corrida com o webhook de pagamento.
+  // Falha fechada: se a função não foi aplicada, RECUSAMOS (nunca degradamos para
+  // o caminho não-transacional).
+  const { data, error } = await supabase.rpc("substituir_parcelas", {
+    p_contrato_id: contratoId,
+    p_parcelas: parcelas.map((p) => ({
+      ...(p.id ? { id: p.id } : {}),
+      numero: p.numero,
+      descricao: p.descricao,
+      valor: p.valor,
+      vencimento: p.vencimento,
+    })),
+  });
+  if (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "PGRST202") {
+      console.error("[parcelas] função substituir_parcelas ausente (aplicar migração)");
+      throw new ParcelaEditErro(
+        "migracao_ausente",
+        "Função de banco 'substituir_parcelas' ainda não aplicada. Rode a migração antes de editar parcelas.",
+        503,
+      );
     }
+    if (code === "P0001") {
+      // Corrida: uma parcela virou travada entre a validação e o apply.
+      throw new ParcelaEditErro("remover_travada", "Não é possível excluir uma parcela já paga ou com Pix já gerado.", 409);
+    }
+    if (code === "23505") {
+      throw new ParcelaEditErro("numero_duplicado", "Há números de parcela duplicados no plano.", 400);
+    }
+    console.error("[parcelas] rpc substituir_parcelas:", error.message);
+    throw new ParcelaEditErro("falha_persistir", "Falha ao salvar as parcelas.", 500);
   }
 
-  return { ok: true, total: parcelas.length, removidas: v.remover.length, travadas: v.travadas.size };
+  const total = typeof data === "number" ? data : parcelas.length;
+  return { ok: true, total, removidas: v.remover.length, travadas: v.travadas.size };
 }

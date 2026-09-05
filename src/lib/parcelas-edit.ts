@@ -50,6 +50,7 @@ export type ParcelaAtual = {
   id: string;
   status: string;
   qr_code_url: string | null;
+  external_payment_id: string | null; // ordem MP em voo -> travada mesmo sem qr_code_url
   valor_atual: number; // valor congelado usado na soma quando a parcela e travada
 };
 
@@ -58,9 +59,13 @@ export type EdicaoInvalida = { ok: false; codigo: string; mensagem: string };
 export type EdicaoValida = { ok: true; remover: string[]; travadas: Set<string> };
 export type ResultadoEdicao = EdicaoValida | EdicaoInvalida;
 
-// Uma parcela paga ou com Pix ja gerado esta "travada": imutavel e obrigatoria.
-export function parcelaTravada(p: { status?: string; qr_code_url?: string | null } | undefined | null): boolean {
-  return !!p && (p.status === "pago" || !!p.qr_code_url);
+// "Travada" (imutavel e obrigatoria): paga, OU com Pix gerado, OU com ordem MP em
+// voo (external_payment_id — pagavel por copia-e-cola mesmo sem qr_code_url).
+// Mexer nela arriscaria uma ordem orfa que o webhook nao concilia.
+export function parcelaTravada(
+  p: { status?: string; qr_code_url?: string | null; external_payment_id?: string | null } | undefined | null,
+): boolean {
+  return !!p && (p.status === "pago" || !!p.qr_code_url || !!p.external_payment_id);
 }
 
 export function validarEdicaoParcelas(args: {

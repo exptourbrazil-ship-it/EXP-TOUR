@@ -4,17 +4,30 @@ import assert from "node:assert/strict";
 import { validarEdicaoParcelas, parcelaTravada, type ParcelaAtual, type ParcelaEditInput } from "./parcelas-edit.ts";
 
 const atual = (id: string, valor: number, over: Partial<ParcelaAtual> = {}): ParcelaAtual => ({
-  id, status: "pendente", qr_code_url: null, valor_atual: valor, ...over,
+  id, status: "pendente", qr_code_url: null, external_payment_id: null, valor_atual: valor, ...over,
 });
 const inp = (over: Partial<ParcelaEditInput>): ParcelaEditInput => ({
   descricao: "Parcela", valor: 100, vencimento: "2026-01-15", ...over,
 });
 
-test("parcelaTravada: paga ou com Pix", () => {
+test("parcelaTravada: paga, Pix gerado OU ordem MP em voo", () => {
   assert.equal(parcelaTravada({ status: "pago" }), true);
   assert.equal(parcelaTravada({ status: "pendente", qr_code_url: "http://x" }), true);
-  assert.equal(parcelaTravada({ status: "pendente", qr_code_url: null }), false);
+  // ordem MP em voo (external_payment_id) SEM qr_code_url ainda é travada
+  assert.equal(parcelaTravada({ status: "pendente", qr_code_url: null, external_payment_id: "mp-123" }), true);
+  assert.equal(parcelaTravada({ status: "pendente", qr_code_url: null, external_payment_id: null }), false);
   assert.equal(parcelaTravada(null), false);
+});
+
+test("ordem MP em voo protege a parcela (não pode remover)", () => {
+  const r = validarEdicaoParcelas({
+    parcelas: [inp({ valor: 300 })], // omitiu a parcela com ordem em voo
+    atuais: [atual("a", 100, { external_payment_id: "mp-1" }), atual("b", 200)],
+    valorTotal: 300,
+    dataInicio: null,
+  });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.codigo, "remover_travada");
 });
 
 test("edita e adiciona parcelas em aberto (sem valor_total)", () => {
