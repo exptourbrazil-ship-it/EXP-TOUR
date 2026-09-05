@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarConteudoProduto, type Falha } from "./produto-conteudo.ts";
+import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, type Falha } from "./produto-conteudo.ts";
 
 function campos(r: ReturnType<typeof validarConteudoProduto>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -117,4 +117,64 @@ test("limites: descrição muito longa e excesso de mídia falham; bullets são 
 test("corpo não-objeto falha limpo", () => {
   assert.ok(!validarConteudoProduto(null).ok);
   assert.ok(!validarConteudoProduto([]).ok);
+});
+
+// ── sanitizarHtml (render-time) ──────────────────────────────────────────────
+test("sanitizarHtml remove <script> e mantém só o texto escapado", () => {
+  const out = sanitizarHtml('<script>alert(1)</script>Olá');
+  assert.ok(!/<script/i.test(out));
+  assert.ok(!/<\/script/i.test(out));
+  assert.ok(out.includes("alert(1)")); // texto interno preservado, inerte
+  assert.ok(out.includes("Olá"));
+});
+
+test("sanitizarHtml descarta tags não permitidas e todos os atributos", () => {
+  // img com onerror -> tag inteira descartada (nenhum atributo é copiado)
+  assert.equal(sanitizarHtml('<img src=x onerror="alert(1)">'), "");
+  // <a href=javascript:...> não está na allowlist -> descartado, texto fica
+  assert.equal(sanitizarHtml('<a href="javascript:alert(1)">link</a>'), "link");
+  // p permitido, mas onclick some (re-emitimos sem atributos)
+  assert.equal(sanitizarHtml('<p onclick="x()">oi</p>'), "<p>oi</p>");
+});
+
+test("sanitizarHtml mantém formatação segura e converte \\n em <br>", () => {
+  assert.equal(sanitizarHtml("<strong>Bold</strong> e <em>itálico</em>"), "<strong>Bold</strong> e <em>itálico</em>");
+  assert.equal(sanitizarHtml("linha1\nlinha2"), "linha1<br>linha2");
+  assert.equal(sanitizarHtml("<ul><li>a</li><li>b</li></ul>"), "<ul><li>a</li><li>b</li></ul>");
+});
+
+test("sanitizarHtml escapa < > & soltos e trata entrada não-string", () => {
+  assert.equal(sanitizarHtml("a < b & c > d"), "a &lt; b &amp; c &gt; d");
+  assert.equal(sanitizarHtml(null), "");
+  assert.equal(sanitizarHtml(123), "");
+  assert.equal(sanitizarHtml(""), "");
+});
+
+// ── fichaDoSnapshot ──────────────────────────────────────────────────────────
+const SNAP = [
+  { locale: "pt-BR", description_html: "<p>Curso</p><script>x</script>", highlights: ["15h/sem", ""], inclusions: [], exclusions: [], is_machine_translated: false },
+  { locale: "en", description_html: "Course", highlights: [], inclusions: ["Books"], exclusions: [], is_machine_translated: true },
+];
+
+test("fichaDoSnapshot escolhe o locale e sanitiza a descrição", () => {
+  const f = fichaDoSnapshot(SNAP, "pt-BR");
+  assert.ok(f);
+  assert.equal(f!.locale, "pt-BR");
+  assert.equal(f!.descriptionHtml, "<p>Curso</p>x"); // script removido; texto inerte
+  assert.deepEqual(f!.highlights, ["15h/sem"]); // vazio filtrado
+});
+
+test("fichaDoSnapshot cai para pt-BR e depois para o primeiro disponível", () => {
+  const soEn = [SNAP[1]];
+  const f = fichaDoSnapshot(soEn, "es"); // es ausente, pt-BR ausente -> primeiro (en)
+  assert.ok(f);
+  assert.equal(f!.locale, "en");
+  assert.equal(f!.isMachineTranslated, true);
+  assert.deepEqual(f!.inclusions, ["Books"]);
+});
+
+test("fichaDoSnapshot retorna null sem conteúdo utilizável", () => {
+  assert.equal(fichaDoSnapshot([], "pt-BR"), null);
+  assert.equal(fichaDoSnapshot(null, "pt-BR"), null);
+  assert.equal(fichaDoSnapshot([{ locale: "pt-BR", description_html: "", highlights: [], inclusions: [], exclusions: [] }], "pt-BR"), null);
 });

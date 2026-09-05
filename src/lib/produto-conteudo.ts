@@ -194,3 +194,87 @@ export function validarConteudoProduto(entrada: unknown): Resultado<ConteudoNorm
   if (falhas.length > 0) return { ok: false, falhas };
   return { ok: true, valor: { product_id: productId, content, media } };
 }
+
+// ── Sanitização no PONTO DE RENDERIZAÇÃO ─────────────────────────────────────
+// O portal do estudante exibe a descrição do produto (vinda do snapshot da
+// cotação). Como o autor (fornecedor/admin) é semi-confiável e o leitor é de
+// outra fronteira, a descrição NUNCA vai crua para dangerouslySetInnerHTML:
+// passa por este allowlist. Estratégia à prova de bypass — reconstruímos a saída
+// do zero: todo texto é escapado e só re-emitimos um conjunto pequeno de tags
+// SEM nenhum atributo. Assim é impossível injetar handler de evento, href
+// javascript:, script/style/iframe etc., mesmo que a barreira de gravação falhe
+// e mesmo com HTML malformado (uma tag mal fechada vira texto escapado).
+const TAGS_PERMITIDAS = new Set(["p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li"]);
+const TAGS_VAZIAS = new Set(["br"]);
+
+function escaparTexto(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function sanitizarHtml(input: unknown): string {
+  if (typeof input !== "string" || input === "") return "";
+  const tagRe = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g;
+  let saida = "";
+  let ultimo = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(input)) !== null) {
+    // Texto antes da tag: escapado; quebras de linha viram <br> (descrições de
+    // textarea costumam ser texto puro com \n).
+    saida += escaparTexto(input.slice(ultimo, m.index)).replace(/\r?\n/g, "<br>");
+    ultimo = tagRe.lastIndex;
+    const fechamento = m[1] === "/";
+    const tag = m[2].toLowerCase();
+    if (!TAGS_PERMITIDAS.has(tag)) continue; // tag não permitida: descartada (texto ao redor preservado)
+    if (TAGS_VAZIAS.has(tag)) {
+      if (!fechamento) saida += `<${tag}>`; // </br> é ignorado
+      continue;
+    }
+    saida += fechamento ? `</${tag}>` : `<${tag}>`;
+  }
+  saida += escaparTexto(input.slice(ultimo)).replace(/\r?\n/g, "<br>");
+  return saida;
+}
+
+// ── Ficha exibível a partir do snapshot ──────────────────────────────────────
+// O quote_item guarda product_snapshot com `content: ConteudoLocale[]` congelado
+// na emissão. Esta função deriva a ficha que o portal exibe: escolhe o locale
+// pedido (fallback pt-BR → primeiro disponível), SANITIZA a descrição e devolve
+// os bullets como texto (o React escapa ao renderizar). Retorna null quando não
+// há conteúdo utilizável no locale escolhido.
+export type FichaProduto = {
+  locale: ContentLocale;
+  descriptionHtml: string; // já sanitizado (pode ser "")
+  highlights: string[];
+  inclusions: string[];
+  exclusions: string[];
+  isMachineTranslated: boolean;
+};
+
+export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR"): FichaProduto | null {
+  if (!Array.isArray(content) || content.length === 0) return null;
+  const linhas = content.filter(isObj);
+  const escolhido =
+    linhas.find((c) => c.locale === locale) ??
+    linhas.find((c) => c.locale === "pt-BR") ??
+    linhas[0];
+  if (!escolhido) return null;
+
+  const descriptionHtml = sanitizarHtml(escolhido.description_html);
+  const highlights = capBullets(listaStr(escolhido.highlights));
+  const inclusions = capBullets(listaStr(escolhido.inclusions));
+  const exclusions = capBullets(listaStr(escolhido.exclusions));
+  if (!descriptionHtml && highlights.length === 0 && inclusions.length === 0 && exclusions.length === 0) {
+    return null;
+  }
+  const loc = (CONTENT_LOCALES as readonly string[]).includes(escolhido.locale as string)
+    ? (escolhido.locale as ContentLocale)
+    : locale;
+  return {
+    locale: loc,
+    descriptionHtml,
+    highlights,
+    inclusions,
+    exclusions,
+    isMachineTranslated: optBool(escolhido.is_machine_translated, false),
+  };
+}
