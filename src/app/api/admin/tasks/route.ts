@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checarAdminCookie, usuarioAdminAtual } from "@/lib/admin-guard";
+import { sessaoAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { acaoTarefa, type AcaoTarefa } from "@/lib/admin-fila";
 
@@ -16,7 +16,8 @@ const CHAVE_RE = /^[a-z_]{2,30}:[A-Za-z0-9-]{1,64}$/;
 // fila (ela já é filtrada por papel na exibição). A ação é auditada; o conteúdo
 // da task, quando materializada on-demand, vem da FONTE (nunca do corpo).
 export async function POST(request: Request) {
-  if (!(await checarAdminCookie())) {
+  const sessao = await sessaoAdminAtual();
+  if (!sessao) {
     return NextResponse.json({ ok: false, erro: "Não autorizado" }, { status: 401 });
   }
 
@@ -27,9 +28,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, erro: "Ação ou chave inválida." }, { status: 400 });
   }
 
-  const actor = (await usuarioAdminAtual()) ?? "admin";
   try {
-    const r = await acaoTarefa(acao as AcaoTarefa, chaveDedupe, actor, obterIp(request));
+    const r = await acaoTarefa(acao as AcaoTarefa, chaveDedupe, sessao.usuario, sessao.papel, obterIp(request));
+    if (r.erro === "sem_permissao") {
+      return NextResponse.json({ ok: false, erro: "Seu papel não pode operar esta tarefa." }, { status: 403 });
+    }
     if (!r.ok) {
       return NextResponse.json({ ok: false, erro: "Tarefa não encontrada ou já resolvida." }, { status: 409 });
     }
