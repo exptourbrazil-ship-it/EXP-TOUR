@@ -2,21 +2,20 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
-import { somaParcelasConfere, somaValoresParcelas } from "@/lib/parcelas";
+import { aplicarEdicaoParcelas, ParcelaEditErro } from "@/lib/parcelas-edit-service";
 
 // Ajuste de parcelas pelo proprio cliente (aba Financeiro).
 // Permite editar valores e datas, adicionar e excluir parcelas (sem valor minimo).
+// As invariantes vivem no servico compartilhado parcelas-edit-service (o mesmo
+// que o Admin usa), garantindo um so lugar de verdade.
 //
-// Regras de seguranca (aplicadas SEMPRE no servidor, nao apenas na UI):
-//  - a sessao precisa estar autenticada;
-//  - o contrato precisa pertencer ao titular da sessao;
-//  - parcelas ja pagas (status "pago") ou que ja tenham cobranca Pix gerada
-//    (qr_code_url preenchido) nao podem ser alteradas nem removidas;
-//  - se o contrato tiver data_inicio (vinda do Zoho), o ultimo pagamento
-//    precisa ser >= 30 dias corridos antes da data de inicio. Enquanto a
-//    data_inicio nao existir, a regra dos 30 dias fica inativa.
-//  - valor_original NUNCA e sobrescrito ao editar (preserva o plano original
-//    para permitir "Restaurar plano original").
+// Regras (aplicadas SEMPRE no servidor, nao apenas na UI):
+//  - a sessao precisa estar autenticada e o contrato pertencer ao titular;
+//  - parcela PAGA/Pix e imutavel: mantida como esta (pass-through), nunca
+//    editada nem removida — mas NAO trava o ajuste das demais (o cliente pode
+//    ajustar as parcelas em aberto mesmo depois de uma ou mais pagas);
+//  - regra dos 30 dias sobre as parcelas em aberto (quando ha data_inicio);
+//  - a soma do plano confere com valor_total; valor_original nunca e sobrescrito.
 
 type ParcelaInput = {
   id?: string;
@@ -69,124 +68,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, erro: "Contrato não pertence ao titular autenticado" }, { status: 403 });
   }
 
-  // 2) Carrega as parcelas atuais do contrato.
-  const { data: atuais, error: erroAtuais } = await supabase
-    .from("parcelas")
-    .select("id, status, qr_code_url")
-    .eq("contrato_id", contratoId);
-
-  if (erroAtuais) {
-    return NextResponse.json({ ok: false, erro: "Não foi possível ler as parcelas atuais." }, { status: 500 });
-  }
-
-  const atuaisPorId = new Map((atuais || []).map((p) => [p.id, p]));
-  const bloqueada = (p: any) => p && (p.status === "pago" || !!p.qr_code_url);
-
-  // 3) Valida cada parcela recebida.
-  for (const p of novas) {
-    if (!p.descricao || typeof p.valor !== "number" || p.valor <= 0 || !p.vencimento) {
-      return NextResponse.json({ ok: false, erro: "Cada parcela precisa de descrição, valor maior que zero e data de vencimento." }, { status: 400 });
+  // 2) Valida e aplica via serviço compartilhado (mesmas invariantes do Admin).
+  try {
+    await aplicarEdicaoParcelas(supabase, { contratoId, parcelas: novas });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof ParcelaEditErro) {
+      return NextResponse.json({ ok: false, erro: err.mensagem }, { status: err.status });
     }
-    if (p.id) {
-      const atual = atuaisPorId.get(p.id);
-      if (!atual) {
-        return NextResponse.json({ ok: false, erro: "Parcela informada não pertence a este contrato." }, { status: 400 });
-      }
-      if (bloqueada(atual)) {
-        return NextResponse.json({ ok: false, erro: "Uma das parcelas já foi paga ou já tem Pix gerado e não pode ser alterada." }, { status: 400 });
-      }
-    }
+    return NextResponse.json({ ok: false, erro: "Falha ao salvar as parcelas." }, { status: 500 });
   }
-
-  // 4) Impede excluir parcelas ja pagas ou com Pix gerado.
-  const idsRecebidos = new Set(novas.filter((p) => p.id).map((p) => p.id as string));
-  const removidas = (atuais || []).filter((p) => !idsRecebidos.has(p.id));
-  for (const r of removidas) {
-    if (bloqueada(r)) {
-      return NextResponse.json({ ok: false, erro: "Não é possível excluir uma parcela já paga ou com Pix já gerado." }, { status: 400 });
-    }
-  }
-
-  // 5) A soma das parcelas precisa conferir com o total do contrato
-  // (valor_total), na moeda do contrato. Regra pulada quando o contrato nao
-  // tem valor_total (contratos legados), no mesmo espirito da regra dos 30
-  // dias. Evita que o cliente salve um plano que soma menos (ou mais) que o
-  // valor contratado.
-  const valorTotal = (contrato as any).valor_total as number | null;
-  if (valorTotal != null && Number(valorTotal) > 0) {
-    const valores = novas.map((p) => p.valor);
-    if (!somaParcelasConfere(valores, Number(valorTotal))) {
-      const soma = somaValoresParcelas(valores);
-      return NextResponse.json(
-        {
-          ok: false,
-          erro: `A soma das parcelas (${soma}) precisa ser igual ao total do contrato (${Number(valorTotal)}).`,
-        },
-        { status: 400 }
-      );
-    }
-  }
-
-  // 6) Regra dos 30 dias: o ultimo vencimento precisa ser >= 30 dias
-  // corridos antes da data_inicio (quando ela existir).
-  const dataInicio = (contrato as any).data_inicio as string | null;
-  if (dataInicio) {
-    const inicio = new Date(dataInicio + "T00:00:00");
-    const limite = new Date(inicio);
-    limite.setDate(limite.getDate() - 30);
-    const ultimoVenc = novas
-      .map((p) => new Date(p.vencimento + "T00:00:00"))
-      .reduce((max, d) => (d > max ? d : max), new Date(0));
-    if (ultimoVenc > limite) {
-      const limiteISO = limite.toISOString().slice(0, 10);
-      return NextResponse.json(
-        { ok: false, erro: `O ultimo pagamento precisa ser ate ${limiteISO} (30 dias antes do inicio do programa).` },
-        { status: 400 }
-      );
-    }
-  }
-
-  // 7) Aplica as mudancas: remove, atualiza e insere.
-  const idsRemover = removidas.map((p) => p.id);
-  if (idsRemover.length > 0) {
-    const { error: erroDel } = await supabase.from("parcelas").delete().in("id", idsRemover);
-    if (erroDel) {
-      return NextResponse.json({ ok: false, erro: "Falha ao remover parcelas." }, { status: 500 });
-    }
-  }
-
-  for (const p of novas) {
-    if (p.id) {
-      // valor_original NAO e alterado: preserva o plano original.
-      const { error: erroUpd } = await supabase
-        .from("parcelas")
-        .update({
-          numero: p.numero,
-          descricao: p.descricao,
-          valor_atual: p.valor,
-          vencimento: p.vencimento,
-        })
-        .eq("id", p.id)
-        .eq("contrato_id", contratoId);
-      if (erroUpd) {
-        return NextResponse.json({ ok: false, erro: "Falha ao atualizar uma parcela." }, { status: 500 });
-      }
-    } else {
-      const { error: erroIns } = await supabase.from("parcelas").insert({
-        contrato_id: contratoId,
-        numero: p.numero,
-        descricao: p.descricao,
-        valor_original: p.valor,
-        valor_atual: p.valor,
-        vencimento: p.vencimento,
-        status: "pendente",
-        is_entrada: false,
-      });
-      if (erroIns) {
-        return NextResponse.json({ ok: false, erro: "Falha ao inserir uma nova parcela." }, { status: 500 });
-      }
-    }
-  }
-
-  return NextResponse.json({ ok: true });
 }
