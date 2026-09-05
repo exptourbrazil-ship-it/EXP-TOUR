@@ -12,6 +12,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
+import { fichaDoSnapshot, type FichaProduto, type ContentLocale } from "@/lib/produto-conteudo";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
 import {
@@ -75,6 +76,7 @@ type TotaisOpcao = {
     unit: string;
     grossAmount: number;
     currency: string;
+    ficha: FichaProduto | null; // conteúdo editorial (do snapshot), já sanitizado
   }>;
   moedas: string[]; // moedas de origem vistas nos itens (para detectar mistura)
 };
@@ -83,6 +85,7 @@ async function carregarTotaisPorOpcao(
   supabase: SupabaseClient,
   tenantId: string,
   quoteId: string,
+  locale: ContentLocale = "pt-BR",
 ): Promise<TotaisOpcao[]> {
   const { data: options } = await supabase
     .from("quote_option")
@@ -118,6 +121,7 @@ async function carregarTotaisPorOpcao(
         unit: it.unit as string,
         grossAmount: toNum(it.gross_amount),
         currency: (it.currency as string) ?? currency,
+        ficha: fichaDoSnapshot(snap.content, locale),
       });
     }
 
@@ -480,6 +484,7 @@ export type PublicQuote = {
       unit: string;
       grossAmount: number;
       currency: string;
+      ficha: FichaProduto | null;
     }>;
   }>;
 };
@@ -592,7 +597,8 @@ export async function getPublicQuote(
     if (owner) consultant = { nome: (owner.nome as string) ?? null, email: (owner.email as string) ?? null };
   }
 
-  const totais = await carregarTotaisPorOpcao(supabase, tenantId, quote.id as string);
+  const localeQuote = ((quote.locale as string) || "pt-BR") as ContentLocale;
+  const totais = await carregarTotaisPorOpcao(supabase, tenantId, quote.id as string, localeQuote);
   const fxRate = quote.fx_rate != null ? toNum(quote.fx_rate) : null;
   const sourceCurrency = (quote.source_currency as string) ?? null;
   const fxNecessario = !!sourceCurrency && sourceCurrency !== presentment;
