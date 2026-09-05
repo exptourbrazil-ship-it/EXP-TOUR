@@ -6,7 +6,7 @@ import { acaoTarefa, type AcaoTarefa } from "@/lib/admin-fila";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ACOES = new Set<AcaoTarefa>(["assumir", "concluir", "devolver"]);
+const ACOES = new Set<AcaoTarefa>(["assumir", "concluir", "devolver", "reabrir"]);
 // Chave de dedupe: prefixo curto + id (limitada em tamanho/charset). Defense-in
 // depth — evita string arbitrária/longa chegar ao filtro e à trilha de auditoria.
 const CHAVE_RE = /^[a-z_]{2,30}:[A-Za-z0-9-]{1,64}$/;
