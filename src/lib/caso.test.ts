@@ -7,6 +7,7 @@ import {
   diasAteInicio,
   saldoPorMoedaAberto,
   estimarSaldoBRL,
+  contadoresDoCaso,
 } from "./caso.ts";
 
 const UUID = "11111111-2222-3333-4444-555555555555";
@@ -71,4 +72,47 @@ test("estimarSaldoBRL converte por moeda e retorna null se faltar cotacao", () =
   assert.equal(estimarSaldoBRL({ CAD: 100, BRL: 50 }, { CAD: 4 }), 450);
   assert.equal(estimarSaldoBRL({ CAD: 100, USD: 10 }, { CAD: 4 }), null);
   assert.equal(estimarSaldoBRL({}, {}), 0);
+});
+
+test("contadoresDoCaso conta pendencias por dominio", () => {
+  const c = contadoresDoCaso({
+    documentos: [{ status: "pendente" }, { status: "aprovado" }, { status: "pendente" }, { status: null }],
+    parcelas: [
+      { status: "pendente", vencimento: "2026-08-01" }, // vencida
+      { status: "atrasado", vencimento: "2026-08-20" }, // vencida
+      { status: "pendente", vencimento: "2026-08-21" }, // vence hoje -> nao vencida
+      { status: "pendente", vencimento: "2026-09-01" }, // futura
+      { status: "pago", vencimento: "2026-01-01" }, // paga nao conta
+      { status: "pendente", vencimento: null }, // sem data nao conta
+    ],
+    excecoesAtivas: [{}, {}],
+    confirmacoes: [{ status: "pending" }, { status: "accepted" }, { status: "pending" }],
+    repactuacoesPendentes: [{}],
+    hojeISO: "2026-08-21",
+  });
+  assert.deepEqual(c, {
+    documentosPendentes: 2,
+    parcelasVencidas: 2,
+    excecoesAtivas: 2,
+    confirmacoesPendentes: 2,
+    repactuacoesPendentes: 1,
+  });
+});
+
+test("contadoresDoCaso zera tudo quando nao ha nada", () => {
+  const c = contadoresDoCaso({
+    documentos: [],
+    parcelas: [],
+    excecoesAtivas: [],
+    confirmacoes: [],
+    repactuacoesPendentes: [],
+    hojeISO: "2026-08-21",
+  });
+  assert.deepEqual(c, {
+    documentosPendentes: 0,
+    parcelasVencidas: 0,
+    excecoesAtivas: 0,
+    confirmacoesPendentes: 0,
+    repactuacoesPendentes: 0,
+  });
 });
