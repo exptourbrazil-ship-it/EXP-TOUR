@@ -31,10 +31,26 @@ export async function carregarClientes(): Promise<ClienteCarteira[]> {
     .select("contrato_id, status, valor_atual, vencimento");
   if (erroParcelas) throw new Error("Falha ao carregar parcelas.");
 
+  // Processos (excecoes) ATIVOS por titular — status nao terminais. Usado para
+  // o sinal de "processo ativo" na carteira. Best-effort: uma falha aqui NAO
+  // derruba a lista (o sinal some), diferente das leituras de base acima.
+  let excecoes: { titular_id: string }[] = [];
+  const { data: excecoesData, error: erroExcecoes } = await supabase
+    .from("case_exceptions")
+    .select("titular_id")
+    .in("status", ["aberta", "em_andamento"]);
+  if (erroExcecoes) {
+    // Best-effort: o sinal "processo ativo" some, mas a carteira segue. Loga sem
+    // PII (só a mensagem) para o defeito nao passar despercebido.
+    console.warn("[admin-clientes] falha ao ler processos ativos:", erroExcecoes.message);
+  }
+  excecoes = (excecoesData || []).filter((e) => !!e.titular_id) as { titular_id: string }[];
+
   return agruparCarteira(
     (titulares || []) as any,
     (contratos || []) as any,
     (parcelas || []) as any,
-    hojeBrasilISO()
+    hojeBrasilISO(),
+    excecoes
   );
 }

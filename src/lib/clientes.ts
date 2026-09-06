@@ -27,6 +27,13 @@ export type ParcelaInput = {
   vencimento: string; // YYYY-MM-DD
 };
 
+// Uma excecao ATIVA (nao terminal) do titular. O loader ja filtra por status
+// ativo; aqui so contamos por titular, para nao acoplar clientes.ts ao enum de
+// status (mantendo o modulo leaf/puro, testavel sem @/-alias).
+export type ExcecaoInput = {
+  titular_id: string;
+};
+
 export type ClienteCarteira = {
   id: string;
   nome: string | null;
@@ -41,10 +48,21 @@ export type ClienteCarteira = {
   parcelasPagas: number;
   emAtraso: number; // parcelas nao pagas e vencidas
   saldoPorMoeda: Record<string, number>; // em aberto (nao pago), por moeda
+  processosAtivos: number; // excecoes nao terminais abertas para o titular
 };
 
 function centavos(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+// Normaliza texto para busca: minusculas e SEM acentos (para "joao" achar
+// "Joao"/"João"). Puro; usado pela busca do indice de clientes.
+export function normalizarBusca(texto: string | null | undefined): string {
+  if (!texto) return "";
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 // Agrega a carteira: uma linha por titular (inclusive titulares sem contrato),
@@ -55,7 +73,8 @@ export function agruparCarteira(
   titulares: TitularInput[],
   contratos: ContratoInput[],
   parcelas: ParcelaInput[],
-  hojeISO: string
+  hojeISO: string,
+  excecoesAtivas: ExcecaoInput[] = []
 ): ClienteCarteira[] {
   // Base: um acumulador por titular (garante que titular sem contrato apareca).
   const porId = new Map<string, ClienteCarteira>();
@@ -74,7 +93,14 @@ export function agruparCarteira(
       parcelasPagas: 0,
       emAtraso: 0,
       saldoPorMoeda: {},
+      processosAtivos: 0,
     });
+  }
+
+  // Processos (excecoes) ativos por titular — ja vem filtrados pelo loader.
+  for (const e of excecoesAtivas) {
+    const cliente = porId.get(e.titular_id);
+    if (cliente) cliente.processosAtivos += 1;
   }
 
   // Mapa contrato -> { titularId, moeda } para ligar as parcelas ao titular.
@@ -110,4 +136,28 @@ export function agruparCarteira(
   return Array.from(porId.values()).sort((a, b) =>
     (a.nome || "").localeCompare(b.nome || "", "pt-BR")
   );
+}
+
+// Indicadores de topo da carteira (aplicados sobre a lista COMPLETA, nao a
+// filtrada): total de clientes, quantos com atraso, quantos com processo ativo
+// e saldo total em aberto por moeda. Puro; a UI so formata.
+export type ResumoCarteira = {
+  total: number;
+  comAtraso: number;
+  comProcessoAtivo: number;
+  saldoPorMoeda: Record<string, number>;
+};
+
+export function resumoCarteira(clientes: ClienteCarteira[]): ResumoCarteira {
+  const saldoPorMoeda: Record<string, number> = {};
+  let comAtraso = 0;
+  let comProcessoAtivo = 0;
+  for (const c of clientes) {
+    if (c.emAtraso > 0) comAtraso += 1;
+    if (c.processosAtivos > 0) comProcessoAtivo += 1;
+    for (const [moeda, valor] of Object.entries(c.saldoPorMoeda)) {
+      saldoPorMoeda[moeda] = centavos((saldoPorMoeda[moeda] || 0) + valor);
+    }
+  }
+  return { total: clientes.length, comAtraso, comProcessoAtivo, saldoPorMoeda };
 }

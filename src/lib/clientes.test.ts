@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agruparCarteira } from "./clientes.ts";
+import { agruparCarteira, normalizarBusca, resumoCarteira } from "./clientes.ts";
 import type { TitularInput, ContratoInput, ParcelaInput } from "./clientes.ts";
 
 const HOJE = "2026-07-29";
@@ -76,4 +76,48 @@ test("ignora parcela de contrato cujo titular nao esta na lista", () => {
   const c = agruparCarteira(titulares, contratos, parcelas, HOJE)[0];
   assert.equal(c.parcelasTotal, 0);
   assert.deepEqual(c.saldoPorMoeda, {});
+});
+
+test("conta processos ativos por titular (excecoes)", () => {
+  const ts = [titular("t1", "Ana"), titular("t2", "Bruno")];
+  const carteira = agruparCarteira(ts, [], [], HOJE, [
+    { titular_id: "t1" },
+    { titular_id: "t1" },
+    { titular_id: "t2" },
+    { titular_id: "desconhecido" }, // titular fora da lista: ignorado
+  ]);
+  const porNome = Object.fromEntries(carteira.map((c) => [c.nome, c.processosAtivos]));
+  assert.equal(porNome["Ana"], 2);
+  assert.equal(porNome["Bruno"], 1);
+});
+
+test("processosAtivos default zero sem excecoes", () => {
+  const carteira = agruparCarteira([titular("t1", "Ana")], [], [], HOJE);
+  assert.equal(carteira[0].processosAtivos, 0);
+});
+
+test("normalizarBusca remove acentos e baixa a caixa", () => {
+  assert.equal(normalizarBusca("João"), "joao");
+  assert.equal(normalizarBusca("MÜLLER"), "muller");
+  assert.equal(normalizarBusca("Conceição"), "conceicao");
+  assert.equal(normalizarBusca(null), "");
+  assert.equal(normalizarBusca(undefined), "");
+});
+
+test("resumoCarteira agrega total, atraso, processos e saldo por moeda", () => {
+  const ts = [titular("t1", "Ana"), titular("t2", "Bruno"), titular("t3", "Cida")];
+  const cs: ContratoInput[] = [
+    { id: "c1", titular_id: "t1", estudante_nome: null, pais_destino: null, moeda: "CAD" },
+    { id: "c2", titular_id: "t2", estudante_nome: null, pais_destino: null, moeda: "USD" },
+  ];
+  const ps: ParcelaInput[] = [
+    { contrato_id: "c1", status: "pendente", valor_atual: 100, vencimento: "2026-01-01" }, // vencida (atraso)
+    { contrato_id: "c2", status: "pendente", valor_atual: 200, vencimento: "2030-01-01" }, // futura
+  ];
+  const carteira = agruparCarteira(ts, cs, ps, HOJE, [{ titular_id: "t1" }]);
+  const r = resumoCarteira(carteira);
+  assert.equal(r.total, 3);
+  assert.equal(r.comAtraso, 1); // só Ana
+  assert.equal(r.comProcessoAtivo, 1); // só Ana
+  assert.deepEqual(r.saldoPorMoeda, { CAD: 100, USD: 200 });
 });
