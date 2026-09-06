@@ -14,6 +14,8 @@ import {
   diasAteInicio,
   saldoPorMoedaAberto,
   estimarSaldoBRL,
+  contadoresDoCaso,
+  type ContadoresCaso,
 } from "@/lib/caso";
 import { excecaoAtiva, type StatusExcecao } from "@/lib/excecao";
 import { carregarEstadoConsentimentos } from "@/lib/consentimento-service";
@@ -222,6 +224,7 @@ export type Caso = {
   cotacoesPorMoeda: Record<string, number>; // VET mais recente por moeda
   estimativaBRL: number | null; // saldo em aberto convertido (null se faltar cotacao)
   moedaPorContrato: Record<string, string>; // id do contrato -> moeda
+  contadores: ContadoresCaso; // sinais para as abas/cabecalho (docs pendentes, vencidas, etc.)
 };
 
 // Carrega o Caso 360 de UM titular. Retorna null se o titular nao existir.
@@ -422,6 +425,17 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   });
   const etapaAtual = indiceEtapaAtual(jornada);
 
+  // Contadores para as abas/cabecalho (documentos pendentes, parcelas vencidas,
+  // exceptions ativas, confirmacoes pendentes, repactuacoes aguardando).
+  const contadores = contadoresDoCaso({
+    documentos,
+    parcelas,
+    excecoesAtivas,
+    confirmacoes,
+    repactuacoesPendentes: repactuacoes,
+    hojeISO,
+  });
+
   return {
     titular: titular as CasoTitular,
     contratos: listaContratos,
@@ -443,5 +457,6 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     cotacoesPorMoeda,
     estimativaBRL,
     moedaPorContrato: Object.fromEntries(moedaPorContrato),
+    contadores,
   };
 }

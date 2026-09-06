@@ -66,6 +66,40 @@ export function saldoPorMoedaAberto(
   return saldo;
 }
 
+// Contadores derivados do caso, para sinalizar nas ABAS o que precisa de acao
+// (documentos a analisar, parcelas vencidas) e no cabecalho os itens pendentes.
+// Puros e testaveis; o loader (admin-caso.ts) os calcula e a UI so exibe.
+export type ContadoresCaso = {
+  documentosPendentes: number;
+  parcelasVencidas: number;
+  excecoesAtivas: number;
+  confirmacoesPendentes: number;
+  repactuacoesPendentes: number;
+};
+
+// "Vencida" = parcela nao paga cujo vencimento e ANTERIOR a hoje (vence hoje
+// ainda nao esta vencida — mesmo criterio de diasDeAtraso). Comparacao de datas
+// ISO por prefixo AAAA-MM-DD (lexicografica, correta para ISO).
+export function contadoresDoCaso(input: {
+  documentos: Array<{ status: string | null }>;
+  parcelas: Array<{ status: string; vencimento: string | null }>;
+  excecoesAtivas: Array<unknown>;
+  confirmacoes: Array<{ status: string }>;
+  repactuacoesPendentes: Array<unknown>; // o loader ja traz so as aguardando_aprovacao
+  hojeISO: string;
+}): ContadoresCaso {
+  const hoje = (input.hojeISO || "").slice(0, 10);
+  return {
+    documentosPendentes: input.documentos.filter((d) => d.status === "pendente").length,
+    parcelasVencidas: input.parcelas.filter(
+      (p) => p.status !== "pago" && !!p.vencimento && p.vencimento.slice(0, 10) < hoje
+    ).length,
+    excecoesAtivas: input.excecoesAtivas.length,
+    confirmacoesPendentes: input.confirmacoes.filter((c) => c.status === "pending").length,
+    repactuacoesPendentes: input.repactuacoesPendentes.length,
+  };
+}
+
 // Estima o saldo total em BRL somando cada moeda pela cotacao do dia. Retorna
 // null quando falta cotacao para ALGUMA moeda com saldo (estimativa parcial nao
 // deve ser passada como total). {} de saldo -> 0.

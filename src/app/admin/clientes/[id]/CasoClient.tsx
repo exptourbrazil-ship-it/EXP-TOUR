@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Caso, CasoContrato, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao, CasoRepactuacao } from "@/lib/admin-caso";
+import type { Caso, CasoContrato, CasoConfirmacao, CasoDocumento, CasoExcecao, CasoAcerto, CasoAlteracao, CasoRepactuacao } from "@/lib/admin-caso";
+import type { ContadoresCaso } from "@/lib/caso";
 import { CATALOGO_CONSENTIMENTOS } from "@/lib/consentimento";
+import { CONFIRM_KIND_LABEL, CONFIRM_STATUS_LABEL, type ConfirmKind, type ConfirmStatus } from "@/lib/confirmacao-disponibilidade";
 import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
 import EditorParcelasContrato from "@/components/EditorParcelasContrato";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
@@ -50,6 +52,30 @@ const ABAS: { id: Aba; label: string }[] = [
   { id: "eventos", label: "Eventos" },
   { id: "acoes", label: "Ações" },
 ];
+
+// Contador (badge) por aba: sinaliza o que precisa de atencao. Documentos e
+// Financeiro sao alerta (vermelho) quando ha pendencia/atraso; Acoes e atencao
+// (dourado) somando os itens que pedem decisao (confirmacoes pendentes,
+// repactuacoes aguardando, exceptions ativas). Retorna null quando nao ha o que
+// sinalizar. As demais abas nao tem contador.
+function badgeDaAba(
+  aba: Aba,
+  c: ContadoresCaso
+): { n: number; tom: "alerta" | "atencao"; rotulo: string } | null {
+  if (aba === "documentos")
+    return c.documentosPendentes > 0
+      ? { n: c.documentosPendentes, tom: "alerta", rotulo: `${c.documentosPendentes} documento(s) pendente(s)` }
+      : null;
+  if (aba === "financeiro")
+    return c.parcelasVencidas > 0
+      ? { n: c.parcelasVencidas, tom: "alerta", rotulo: `${c.parcelasVencidas} parcela(s) vencida(s)` }
+      : null;
+  if (aba === "acoes") {
+    const n = c.confirmacoesPendentes + c.repactuacoesPendentes + c.excecoesAtivas;
+    return n > 0 ? { n, tom: "atencao", rotulo: `${n} item(ns) aguardando ação` } : null;
+  }
+  return null;
+}
 
 // ---- Badges de estado (icone + cor + texto) --------------------------------
 
@@ -279,6 +305,30 @@ export default function CasoClient({
           )}
         </div>
 
+        {/* Relance financeiro: saldo em aberto por moeda + estimativa BRL, para
+            responder "quanto este cliente deve" sem abrir a aba Financeiro.
+            Reusa os derivados ja calculados no servidor. */}
+        {Object.keys(caso.saldoPorMoeda).length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
+            <span className="text-xs text-neutral-500">Saldo em aberto:</span>
+            {Object.entries(caso.saldoPorMoeda).map(([moeda, valor]) => (
+              <span key={moeda} className="text-sm font-medium text-brand">
+                {fmtMoeda(valor, moeda)}
+              </span>
+            ))}
+            {caso.estimativaBRL != null ? (
+              <span className="text-xs text-neutral-500">≈ {fmtBRL(caso.estimativaBRL)} (cotação do dia)</span>
+            ) : (
+              <span className="text-xs text-neutral-400">estimativa em BRL indisponível</span>
+            )}
+            {caso.contadores.parcelasVencidas > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                {caso.contadores.parcelasVencidas} vencida(s)
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         {/* Processo(s) de excecao ativo(s) — doc 01 §4: enquanto ha excecao
             aberta, o caso esta num processo paralelo. */}
         {caso.excecoesAtivas.length > 0 ? (
@@ -310,23 +360,41 @@ export default function CasoClient({
         ) : null}
       </header>
 
-      {/* Abas */}
+      {/* Abas — com contadores do que precisa de atenção (doc pendente,
+          parcela vencida, itens de ação), para orientar sem clicar. */}
       <nav className="mb-4 flex flex-wrap gap-1 border-b border-neutral-200">
-        {ABAS.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => setAba(a.id)}
-            className={
-              "rounded-t-lg px-3 py-2 text-sm font-medium transition " +
-              (aba === a.id
-                ? "border-b-2 border-brand text-brand"
-                : "text-neutral-500 hover:text-brand")
-            }
-          >
-            {a.label}
-          </button>
-        ))}
+        {ABAS.map((a) => {
+          const badge = badgeDaAba(a.id, caso.contadores);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setAba(a.id)}
+              className={
+                "flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium transition " +
+                (aba === a.id
+                  ? "border-b-2 border-brand text-brand"
+                  : "text-neutral-500 hover:text-brand")
+              }
+            >
+              {a.label}
+              {badge ? (
+                <span
+                  title={badge.rotulo}
+                  aria-label={badge.rotulo}
+                  className={
+                    "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold " +
+                    (badge.tom === "alerta"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-brand-gold/20 text-brand-golddark")
+                  }
+                >
+                  {badge.n}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </nav>
 
       <section>
@@ -345,34 +413,88 @@ export default function CasoClient({
 
 function AbaJornada({ caso }: { caso: Caso }) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <h2 className="mb-4 font-serif text-xl text-brand">Jornada</h2>
-      <ol className="space-y-4">
-        {caso.jornada.map((etapa, i) => (
-          <li key={etapa.nome} className="flex items-start gap-3">
-            <div
-              className={
-                "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold " +
-                (etapa.estado === "concluida"
-                  ? "bg-emerald-600 text-white"
-                  : etapa.estado === "andamento"
-                  ? "bg-brand-gold text-white"
-                  : "bg-neutral-200 text-neutral-500")
-              }
-              aria-hidden
-            >
-              {etapa.estado === "concluida" ? "✓" : etapa.estado === "andamento" ? "◐" : i + 1}
-            </div>
-            <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-brand">{etapa.nome}</p>
-                <BadgeJornada estado={etapa.estado} />
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-4 font-serif text-xl text-brand">Jornada</h2>
+        <ol className="space-y-4">
+          {caso.jornada.map((etapa, i) => (
+            <li key={etapa.nome} className="flex items-start gap-3">
+              <div
+                className={
+                  "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold " +
+                  (etapa.estado === "concluida"
+                    ? "bg-emerald-600 text-white"
+                    : etapa.estado === "andamento"
+                    ? "bg-brand-gold text-white"
+                    : "bg-neutral-200 text-neutral-500")
+                }
+                aria-hidden
+              >
+                {etapa.estado === "concluida" ? "✓" : etapa.estado === "andamento" ? "◐" : i + 1}
               </div>
-              <p className="mt-0.5 text-xs text-neutral-500">{etapa.descricao}</p>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-brand">{etapa.nome}</p>
+                  <BadgeJornada estado={etapa.estado} />
+                </div>
+                <p className="mt-0.5 text-xs text-neutral-500">{etapa.descricao}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {/* Confirmações de disponibilidade — visão de LEITURA, para quem tem só
+          casos.ver acompanhar o status pedido ao fornecedor. O envio/resposta
+          fica em Ações (gerirCaso). */}
+      {caso.confirmacoes.length > 0 ? <ConfirmacoesResumo confirmacoes={caso.confirmacoes} /> : null}
+    </div>
+  );
+}
+
+// Cor do status de confirmação (leitura). Mesma paleta do ConfirmacaoAdmin.
+const COR_STATUS_CONFIRM: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  accepted: "bg-emerald-100 text-emerald-800",
+  declined: "bg-red-100 text-red-700",
+};
+
+function ConfirmacoesResumo({ confirmacoes }: { confirmacoes: CasoConfirmacao[] }) {
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h3 className="mb-1 font-medium text-brand">Confirmações de disponibilidade</h3>
+      <p className="mb-3 text-xs text-neutral-500">
+        Pedidos de confirmação ao fornecedor (vaga, adiamento, alteração) e a resposta dele.
+      </p>
+      <ul className="divide-y divide-neutral-100">
+        {confirmacoes.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-brand">
+                  {CONFIRM_KIND_LABEL[c.kind as ConfirmKind] || c.kind}
+                </span>
+                <span
+                  className={
+                    "rounded px-2 py-0.5 text-xs " +
+                    (COR_STATUS_CONFIRM[c.status] || "bg-neutral-100 text-neutral-600")
+                  }
+                >
+                  {CONFIRM_STATUS_LABEL[c.status as ConfirmStatus] || c.status}
+                </span>
+              </div>
+              {c.status !== "pending" && c.response_note ? (
+                <p className="mt-0.5 text-xs text-neutral-600">“{c.response_note}”</p>
+              ) : null}
             </div>
+            <span className="text-xs text-neutral-500">
+              {c.status !== "pending" && c.responded_at
+                ? `respondido ${fmtDataHora(c.responded_at)}`
+                : `pedido ${fmtDataHora(c.created_at)}`}
+            </span>
           </li>
         ))}
-      </ol>
+      </ul>
     </div>
   );
 }
