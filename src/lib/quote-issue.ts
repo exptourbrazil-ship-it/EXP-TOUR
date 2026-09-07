@@ -108,6 +108,19 @@ export function cambioVencidoPorData(vetDataISO: string | null, issueISO: string
   return diffDias > limite;
 }
 
+/**
+ * Total LIQUIDO de uma opcao: `bruto - descontos + taxas`, arredondado a 2
+ * casas (dinheiro). Formula unica compartilhada entre a EMISSAO (o valor
+ * congelado na fotografia do estudante) e a exibicao no construtor — assim o
+ * numero mostrado ao consultor e exatamente o que o cliente vera. Puro.
+ */
+export function liquidoDaOpcao(p: { bruto: number; descontos: number; taxas: number }): number {
+  const bruto = Number.isFinite(p.bruto) ? p.bruto : 0;
+  const descontos = Number.isFinite(p.descontos) ? p.descontos : 0;
+  const taxas = Number.isFinite(p.taxas) ? p.taxas : 0;
+  return Math.round((bruto - descontos + taxas) * 100) / 100;
+}
+
 /** A cotacao ja foi emitida (token vivo)? Estados a partir de `issued`. */
 export function jaEmitida(status: string): boolean {
   return status === "issued" || status === "viewed" || status === "option_selected";

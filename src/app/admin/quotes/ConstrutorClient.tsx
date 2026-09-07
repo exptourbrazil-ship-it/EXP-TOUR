@@ -14,7 +14,15 @@ export type ItemView = {
   grossAmount: number;
   currency: string;
 };
-export type OptionView = { id: string; label: string; items: ItemView[] };
+export type OptionTotais = {
+  currency: string;
+  bruto: number;
+  descontos: number;
+  taxas: number;
+  liquido: number;
+  moedasMistas: boolean;
+};
+export type OptionView = { id: string; label: string; items: ItemView[]; totais?: OptionTotais | null };
 export type QuoteHeader = {
   id: string;
   reference: string;
@@ -439,15 +447,47 @@ export default function ConstrutorClient({
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
                     Total da opção
                   </p>
-                  {Object.keys(totais).length === 0 ? (
-                    <p className="font-serif text-lg text-brand">—</p>
-                  ) : (
-                    Object.entries(totais).map(([moeda, valor]) => (
-                      <p key={moeda} className="font-serif text-lg text-brand">
-                        {fmtMoeda(valor, moeda)}
-                      </p>
-                    ))
-                  )}
+                  {(() => {
+                    const t = opt.totais;
+                    // Preferimos o LÍQUIDO do servidor (bruto - descontos + taxas,
+                    // mesma fórmula da emissão) quando a opção é de moeda única.
+                    // Em moedas mistas (que barram a emissão), caímos no bruto por
+                    // moeda calculado no cliente.
+                    if (t && !t.moedasMistas && opt.items.length > 0) {
+                      const temAjuste = t.descontos > 0 || t.taxas > 0;
+                      return (
+                        <>
+                          <p className="font-serif text-lg text-brand">{fmtMoeda(t.liquido, t.currency)}</p>
+                          {temAjuste ? (
+                            <p className="mt-0.5 text-[11px] text-neutral-500">
+                              bruto {fmtMoeda(t.bruto, t.currency)}
+                              {t.descontos > 0 ? <> · −{fmtMoeda(t.descontos, t.currency)} desc.</> : null}
+                              {t.taxas > 0 ? <> · +{fmtMoeda(t.taxas, t.currency)} taxas</> : null}
+                            </p>
+                          ) : null}
+                        </>
+                      );
+                    }
+                    if (Object.keys(totais).length === 0) {
+                      return <p className="font-serif text-lg text-brand">—</p>;
+                    }
+                    return (
+                      <>
+                        {Object.entries(totais).map(([moeda, valor]) => (
+                          <p key={moeda} className="font-serif text-lg text-brand">
+                            {fmtMoeda(valor, moeda)}
+                          </p>
+                        ))}
+                        {t?.moedasMistas ? (
+                          <p className="mt-0.5 text-[11px] text-amber-700">
+                            Moedas mistas — líquido indisponível (emissão exige moeda única).
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-[11px] text-neutral-400">bruto (sem descontos/taxas)</p>
+                        )}
+                      </>
+                    );
+                  })()}
                   <p className="mt-1 text-[11px] text-neutral-400">
                     Valor em BRL é congelado na emissão (câmbio no Marco 5).
                   </p>

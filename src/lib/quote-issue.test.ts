@@ -8,10 +8,19 @@ import {
   validadeCambioQuote,
   cambioVencidoPorData,
   jaEmitida,
+  liquidoDaOpcao,
   tokenValidoFormato,
   moedaOrigemUnica,
   type PrecondicoesEmissao,
 } from "./quote-issue.ts";
+
+test("liquidoDaOpcao: bruto - descontos + taxas, 2 casas", () => {
+  assert.equal(liquidoDaOpcao({ bruto: 1000, descontos: 0, taxas: 0 }), 1000);
+  assert.equal(liquidoDaOpcao({ bruto: 1000, descontos: 150, taxas: 80 }), 930);
+  assert.equal(liquidoDaOpcao({ bruto: 100.005, descontos: 0, taxas: 0 }), 100.01); // arredonda
+  assert.equal(liquidoDaOpcao({ bruto: 500, descontos: 600, taxas: 0 }), -100); // desconto > bruto (defensivo)
+  assert.equal(liquidoDaOpcao({ bruto: NaN, descontos: 10, taxas: 5 }), -5); // NaN -> 0
+});
 
 const base: PrecondicoesEmissao = {
   numOpcoes: 1,

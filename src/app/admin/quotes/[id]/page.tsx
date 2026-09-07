@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
+import { carregarLiquidoPorOpcao } from "@/lib/quote-issue-service";
 import { materiaisParaCotacao } from "@/lib/material-service";
 import { TIPO_MATERIAL_LABEL, type TipoMaterial } from "@/lib/material-helpers";
 import ConstrutorClient, {
@@ -63,6 +64,11 @@ export default async function AdminQuoteBuilderPage({
     .eq("quote_id", id)
     .order("sort", { ascending: true });
 
+  // Totais LÍQUIDOS por opção (bruto - descontos + taxas) — mesma fórmula da
+  // emissão, para o card mostrar o número que o cliente verá.
+  const liquidos = await carregarLiquidoPorOpcao(supabase, tenantId, id);
+  const liquidoPorOpcao = new Map(liquidos.map((l) => [l.optionId, l]));
+
   const options: OptionView[] = [];
   for (const opt of optionRows ?? []) {
     const { data: itemRows } = await supabase
@@ -82,7 +88,22 @@ export default async function AdminQuoteBuilderPage({
       currency: it.currency,
     }));
 
-    options.push({ id: opt.id, label: opt.label, items });
+    const t = liquidoPorOpcao.get(opt.id);
+    options.push({
+      id: opt.id,
+      label: opt.label,
+      items,
+      totais: t
+        ? {
+            currency: t.currency,
+            bruto: t.bruto,
+            descontos: t.descontos,
+            taxas: t.taxas,
+            liquido: t.liquido,
+            moedasMistas: new Set(t.moedas).size > 1,
+          }
+        : null,
+    });
   }
 
   // Materiais da escola para anexar à proposta (brochura certa, automático).
