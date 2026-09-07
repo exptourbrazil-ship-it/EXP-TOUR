@@ -1,28 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import type { ContratoViagem } from "./page";
+import { normalizarBusca } from "@/lib/clientes";
+import { viagemPreenchida } from "@/lib/viagem";
 
-// Painel administrativo para preencher os dados da aba Viagem (viagem_info) de
-// cada contrato: escola, endereco, acomodacao, contato local e observacoes.
-// Autenticacao pelo cookie de sessao de admin (login em /admin/login).
-type ViagemInfo = {
-  escola_nome: string | null;
-  escola_endereco: string | null;
-  acomodacao_endereco: string | null;
-  contato_local_nome: string | null;
-  contato_local_telefone: string | null;
-  observacoes: string | null;
-};
-
-type ContratoAdmin = {
-  id: string;
-  nome: string | null;
-  estudante_nome: string | null;
-  pais_destino: string | null;
-  titular_nome: string | null;
-  info: ViagemInfo | null;
-};
-
+// Editor admin dos dados da aba Viagem (viagem_info) de um contrato: escola,
+// acomodacao, contato local e observacoes. Carrega no servidor; aqui o admin
+// busca o contrato, edita e salva (POST em /api/admin/viagem-info, gated por
+// casos.gerir). A UI espelha o RBAC: sem casos.gerir, so leitura.
 const VAZIO = {
   escolaNome: "",
   escolaEndereco: "",
@@ -32,39 +19,36 @@ const VAZIO = {
   observacoes: "",
 };
 
-export default function ViagemInfoClient() {
-  const [contratos, setContratos] = useState<ContratoAdmin[]>([]);
-  const [carregandoLista, setCarregandoLista] = useState(false);
+export default function ViagemInfoClient({
+  contratos,
+  resumo,
+  podeGerir,
+}: {
+  contratos: ContratoViagem[];
+  resumo: { total: number; preenchidos: number; pendentes: number };
+  podeGerir: boolean;
+}) {
+  const [lista, setLista] = useState<ContratoViagem[]>(contratos);
+  const [busca, setBusca] = useState("");
   const [contratoId, setContratoId] = useState("");
   const [form, setForm] = useState({ ...VAZIO });
   const [salvando, setSalvando] = useState(false);
-  const [resultado, setResultado] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null);
 
-  async function carregarContratos() {
-    setCarregandoLista(true);
-    setResultado(null);
-    try {
-      const res = await fetch("/api/admin/viagem-info", { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        setResultado("Erro ao carregar: " + (json.erro || "falha desconhecida"));
-        setContratos([]);
-      } else {
-        setContratos(json.contratos || []);
-        if (!json.contratos || json.contratos.length === 0) {
-          setResultado("Nenhum contrato encontrado.");
-        }
-      }
-    } catch (err: any) {
-      setResultado("Erro ao carregar: " + (err?.message || err));
-    } finally {
-      setCarregandoLista(false);
-    }
-  }
+  const filtrados = useMemo(() => {
+    const termo = normalizarBusca(busca.trim());
+    if (!termo) return lista;
+    return lista.filter((c) =>
+      normalizarBusca([c.estudante_nome, c.titular_nome, c.nome, c.pais_destino].filter(Boolean).join(" ")).includes(termo)
+    );
+  }, [lista, busca]);
+
+  const selecionado = lista.find((c) => c.id === contratoId) || null;
 
   function selecionarContrato(id: string) {
     setContratoId(id);
-    const c = contratos.find((x) => x.id === id);
+    setResultado(null);
+    const c = lista.find((x) => x.id === id);
     const info = c?.info || null;
     setForm({
       escolaNome: info?.escola_nome || "",
@@ -78,6 +62,7 @@ export default function ViagemInfoClient() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!podeGerir || !contratoId) return;
     setSalvando(true);
     setResultado(null);
     try {
@@ -88,11 +73,11 @@ export default function ViagemInfoClient() {
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        setResultado("Erro: " + (json.erro || "falha desconhecida"));
+        setResultado({ ok: false, texto: json.erro || "Falha ao salvar." });
       } else {
-        setResultado("Dados de viagem salvos com sucesso.");
-        setContratos((lista) =>
-          lista.map((c) =>
+        setResultado({ ok: true, texto: "Dados de viagem salvos." });
+        setLista((ls) =>
+          ls.map((c) =>
             c.id === contratoId
               ? {
                   ...c,
@@ -110,22 +95,159 @@ export default function ViagemInfoClient() {
         );
       }
     } catch (err: any) {
-      setResultado("Erro: " + (err?.message || err));
+      setResultado({ ok: false, texto: err?.message || "Erro de rede." });
     } finally {
       setSalvando(false);
     }
   }
 
-  const campo = (rotulo: string, chave: keyof typeof VAZIO, placeholder = "", multilinha = false) => (
-    <div style={{ marginBottom: 12 }}>
-      <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{rotulo}</label>
+  return (
+    <div className="mx-auto max-w-3xl">
+      <header className="mb-6">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Painel</p>
+        <h1 className="mt-1 font-serif text-3xl text-brand">Dados da viagem</h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          Escola, acomodação e contato local que aparecem na aba Viagem do cliente. Selecione um
+          contrato para editar.
+        </p>
+      </header>
+
+      {/* Indicadores */}
+      <div className="mb-6 grid grid-cols-3 gap-3">
+        <CardIndicador titulo="Contratos" valor={String(resumo.total)} legenda="no total" />
+        <CardIndicador titulo="Preenchidos" valor={String(resumo.preenchidos)} legenda="com dados de viagem" />
+        <CardIndicador
+          titulo="Pendentes"
+          valor={String(resumo.pendentes)}
+          legenda="sem dados"
+          tom={resumo.pendentes > 0 ? "atencao" : undefined}
+        />
+      </div>
+
+      {lista.length === 0 ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-6 text-center text-sm text-neutral-600">
+          Nenhum contrato encontrado.
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          {/* Busca + seletor de contrato */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-neutral-500">Buscar (estudante, titular, programa)</span>
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Ex.: Maria, Canadá…"
+                className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-neutral-500">Contrato ({filtrados.length})</span>
+              <select
+                value={contratoId}
+                onChange={(e) => selecionarContrato(e.target.value)}
+                className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
+              >
+                <option value="">Selecione…</option>
+                {filtrados.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.estudante_nome || c.titular_nome || "(sem nome)"}
+                    {c.pais_destino ? " — " + c.pais_destino : ""}
+                    {viagemPreenchida(c.info) ? " ✓" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {selecionado ? (
+            <form onSubmit={handleSubmit} className="mt-5 border-t border-neutral-100 pt-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm text-neutral-600">
+                  <span className="font-medium text-brand">
+                    {selecionado.estudante_nome || selecionado.titular_nome || "(sem nome)"}
+                  </span>
+                  {selecionado.nome ? <span className="text-neutral-400"> · {selecionado.nome}</span> : null}
+                </div>
+                {selecionado.titular_id ? (
+                  <Link
+                    href={`/admin/clientes/${selecionado.titular_id}`}
+                    className="text-xs font-medium text-brand-golddark hover:underline"
+                  >
+                    Abrir Caso 360 →
+                  </Link>
+                ) : null}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Campo rotulo="Nome da escola" chave="escolaNome" form={form} setForm={setForm} disabled={!podeGerir} placeholder="Ex.: ILAC Vancouver" />
+                <Campo rotulo="Endereço da escola" chave="escolaEndereco" form={form} setForm={setForm} disabled={!podeGerir} placeholder="Rua, número, cidade, país" />
+                <Campo rotulo="Endereço da acomodação" chave="acomodacaoEndereco" form={form} setForm={setForm} disabled={!podeGerir} placeholder="Rua, número, cidade, país" />
+                <Campo rotulo="Contato local (nome)" chave="contatoLocalNome" form={form} setForm={setForm} disabled={!podeGerir} placeholder="Ex.: Host family — Maria" />
+                <Campo rotulo="Contato local (telefone)" chave="contatoLocalTelefone" form={form} setForm={setForm} disabled={!podeGerir} placeholder="+1 …" />
+              </div>
+              <div className="mt-4">
+                <Campo rotulo="Observações" chave="observacoes" form={form} setForm={setForm} disabled={!podeGerir} placeholder="Informações extras úteis na viagem" multilinha />
+              </div>
+
+              {podeGerir ? (
+                <div className="mt-5 flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={salvando}
+                    className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {salvando ? "Salvando…" : "Salvar dados da viagem"}
+                  </button>
+                  {resultado ? (
+                    <span className={`text-xs ${resultado.ok ? "text-emerald-700" : "text-red-600"}`}>
+                      {resultado.texto}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-5 text-xs text-neutral-500">
+                  Seu papel não pode editar os dados de viagem (somente leitura).
+                </p>
+              )}
+            </form>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Campo({
+  rotulo,
+  chave,
+  form,
+  setForm,
+  disabled,
+  placeholder,
+  multilinha,
+}: {
+  rotulo: string;
+  chave: keyof typeof VAZIO;
+  form: typeof VAZIO;
+  setForm: React.Dispatch<React.SetStateAction<typeof VAZIO>>;
+  disabled?: boolean;
+  placeholder?: string;
+  multilinha?: boolean;
+}) {
+  const comum = "w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50 disabled:text-neutral-500";
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-neutral-500">{rotulo}</span>
       {multilinha ? (
         <textarea
           value={form[chave]}
           onChange={(e) => setForm((f) => ({ ...f, [chave]: e.target.value }))}
           placeholder={placeholder}
           rows={3}
-          style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #ccc", fontFamily: "inherit" }}
+          disabled={disabled}
+          className={comum}
         />
       ) : (
         <input
@@ -133,70 +255,32 @@ export default function ViagemInfoClient() {
           value={form[chave]}
           onChange={(e) => setForm((f) => ({ ...f, [chave]: e.target.value }))}
           placeholder={placeholder}
-          style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          disabled={disabled}
+          className={comum}
         />
       )}
-    </div>
+    </label>
   );
+}
 
+function CardIndicador({
+  titulo,
+  valor,
+  legenda,
+  tom,
+}: {
+  titulo: string;
+  valor: string;
+  legenda?: string;
+  tom?: "atencao";
+}) {
+  const corValor = tom === "atencao" ? "text-brand-golddark" : "text-brand";
+  const corBorda = tom === "atencao" ? "border-brand-gold/40" : "border-neutral-200";
   return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: "32px 20px", fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 20, margin: "0 0 8px" }}>Dados da viagem (admin)</h1>
-      <p style={{ fontSize: 14, color: "#555", marginBottom: 24 }}>
-        Preenche a escola, a acomodacao e o contato local que aparecem na aba
-        Viagem do cliente. Selecione um contrato para carregar/editar.
-      </p>
-
-      <button
-        type="button"
-        onClick={carregarContratos}
-        disabled={carregandoLista}
-        style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--p-cta)", background: "var(--p-cta)", color: "var(--p-cta-fg)", cursor: "pointer", marginBottom: 24 }}
-      >
-        {carregandoLista ? "Carregando..." : "Carregar contratos"}
-      </button>
-
-      {contratos.length > 0 ? (
-        <form onSubmit={handleSubmit}>
-          <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Contrato</label>
-          <select
-            value={contratoId}
-            onChange={(e) => selecionarContrato(e.target.value)}
-            required
-            style={{ width: "100%", padding: 10, marginBottom: 16, borderRadius: 8, border: "1px solid #ccc" }}
-          >
-            <option value="">Selecione...</option>
-            {contratos.map((c) => (
-              <option key={c.id} value={c.id}>
-                {(c.estudante_nome || c.titular_nome || "(sem nome)")}
-                {c.pais_destino ? " - " + c.pais_destino : ""}
-                {c.info ? " [preenchido]" : ""}
-              </option>
-            ))}
-          </select>
-
-          {contratoId ? (
-            <>
-              {campo("Nome da escola", "escolaNome", "Ex.: ILAC Vancouver")}
-              {campo("Endereco da escola", "escolaEndereco", "Rua, numero, cidade, pais")}
-              {campo("Endereco da acomodacao", "acomodacaoEndereco", "Rua, numero, cidade, pais")}
-              {campo("Contato local (nome)", "contatoLocalNome", "Ex.: Host family - Maria")}
-              {campo("Contato local (telefone)", "contatoLocalTelefone", "+1 ...")}
-              {campo("Observacoes", "observacoes", "Informacoes extras uteis na viagem", true)}
-
-              <button
-                type="submit"
-                disabled={salvando}
-                style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-ink)", fontWeight: 600, cursor: "pointer" }}
-              >
-                {salvando ? "Salvando..." : "Salvar dados da viagem"}
-              </button>
-            </>
-          ) : null}
-        </form>
-      ) : null}
-
-      {resultado ? <p style={{ marginTop: 16, fontSize: 14 }}>{resultado}</p> : null}
+    <div className={`rounded-2xl border bg-white p-4 ${corBorda}`}>
+      <p className="text-xs font-medium text-neutral-500">{titulo}</p>
+      <p className={`mt-2 font-serif text-xl ${corValor}`}>{valor}</p>
+      <p className="mt-1 text-xs text-neutral-400">{legenda ?? " "}</p>
     </div>
   );
 }

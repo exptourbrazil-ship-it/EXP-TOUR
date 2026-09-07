@@ -36,3 +36,38 @@ export function montarLinkSuporteWhatsApp(): string {
   const numero = WHATSAPP_EXP_TOUR.replace(/[^0-9]/g, "");
   return `https://wa.me/${numero}`;
 }
+
+// ── Editor admin de viagem_info: indicador de preenchimento ──────────────────
+// Campos que compoem os dados de viagem de um contrato (todos opcionais).
+export type ViagemInfoParcial = {
+  escola_nome: string | null;
+  escola_endereco: string | null;
+  acomodacao_endereco: string | null;
+  contato_local_nome: string | null;
+  contato_local_telefone: string | null;
+  observacoes: string | null;
+} | null;
+
+// "Preenchido" = existe registro E pelo menos um campo com conteudo util (nao
+// apenas espacos). Uma linha toda vazia conta como pendente.
+export function viagemPreenchida(info: ViagemInfoParcial): boolean {
+  if (!info) return false;
+  return [
+    info.escola_nome,
+    info.escola_endereco,
+    info.acomodacao_endereco,
+    info.contato_local_nome,
+    info.contato_local_telefone,
+    info.observacoes,
+  ].some((v) => !!(v && v.trim()));
+}
+
+// Resumo de topo do editor: total de contratos, quantos com viagem preenchida e
+// quantos pendentes. Puro; a UI so exibe.
+export function resumoViagem(
+  contratos: Array<{ info: ViagemInfoParcial }>
+): { total: number; preenchidos: number; pendentes: number } {
+  let preenchidos = 0;
+  for (const c of contratos) if (viagemPreenchida(c.info)) preenchidos += 1;
+  return { total: contratos.length, preenchidos, pendentes: contratos.length - preenchidos };
+}
