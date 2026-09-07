@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { exigirAdmin } from "@/lib/admin-guard";
+import { podeAdmin } from "@/lib/admin-roles";
 import { signTemplateConfigurado } from "@/lib/sign-template";
+import { statusMaisRecentePorContrato } from "@/lib/contratos";
 import ContratosClient from "./ContratosClient";
 
 export const runtime = "nodejs";
@@ -13,6 +15,7 @@ export type ContratoLista = {
   pais_destino: string | null;
   moeda: string | null;
   valor_total: number | string | null;
+  titular_id: string | null;
   titular_nome: string | null;
   titular_email: string | null;
   assinatura_status: string | null;
@@ -23,9 +26,15 @@ export type ContratoLista = {
 
 // Pagina de contratos: lista os contratos com o status da assinatura e permite
 // enviar para o Zoho Sign (passo 7). Carrega no servidor; o client cuida do
-// envio e do estado dos botoes.
+// envio e do estado dos botoes. As rotas de mutacao ja revalidam a capacidade;
+// aqui espelhamos a matriz RBAC para so mostrar/habilitar a acao que o papel
+// pode disparar (mesmo padrao do Caso 360).
 export default async function AdminContratosPage() {
-  await exigirAdmin("/admin/contratos");
+  const { papel } = await exigirAdmin("/admin/contratos");
+  const permissoes = {
+    enviarAssinatura: podeAdmin(papel, "propostas.gerir"),
+    cancelar: podeAdmin(papel, "cancelamento.gerir"),
+  };
 
   let contratos: ContratoLista[] = [];
   try {
@@ -51,17 +60,14 @@ export default async function AdminContratosPage() {
       for (const t of ts || []) titularPorId.set(t.id, { nome: t.nome_completo, email: t.email });
     }
 
-    // Status da assinatura mais recente por contrato.
-    const statusPorContrato = new Map<string, string>();
+    // Status da assinatura mais recente por contrato (helper puro, testado).
+    let statusPorContrato: Record<string, string> = {};
     if (contratoIds.length > 0) {
       const { data: assinaturas } = await supabase
         .from("contratos_assinatura")
         .select("contrato_id, status, criado_em")
-        .in("contrato_id", contratoIds)
-        .order("criado_em", { ascending: false });
-      for (const a of assinaturas || []) {
-        if (!statusPorContrato.has(a.contrato_id)) statusPorContrato.set(a.contrato_id, a.status);
-      }
+        .in("contrato_id", contratoIds);
+      statusPorContrato = statusMaisRecentePorContrato((assinaturas || []) as any);
     }
 
     contratos = (linhas || []).map((c: any) => {
@@ -73,9 +79,10 @@ export default async function AdminContratosPage() {
         pais_destino: c.pais_destino,
         moeda: c.moeda,
         valor_total: c.valor_total,
+        titular_id: c.titular_id ?? null,
         titular_nome: t.nome,
         titular_email: t.email,
-        assinatura_status: statusPorContrato.get(c.id) || null,
+        assinatura_status: statusPorContrato[c.id] || null,
         cancelado_em: c.cancelado_em ?? null,
         cancelado_tipo: c.cancelado_tipo ?? null,
         cancelado_motivo: c.cancelado_motivo ?? null,
@@ -85,5 +92,11 @@ export default async function AdminContratosPage() {
     contratos = [];
   }
 
-  return <ContratosClient contratos={contratos} templateConfigurado={signTemplateConfigurado()} />;
+  return (
+    <ContratosClient
+      contratos={contratos}
+      templateConfigurado={signTemplateConfigurado()}
+      permissoes={permissoes}
+    />
+  );
 }
