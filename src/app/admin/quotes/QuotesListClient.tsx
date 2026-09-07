@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fmtData, fmtMoeda } from "@/lib/formato";
+import { resumoCotacoes } from "@/lib/cotacoes";
 
 export type QuoteRow = {
   id: string;
@@ -56,6 +57,9 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
+
+  // Indicadores de topo (funil) sobre a lista COMPLETA, não a filtrada.
+  const resumo = useMemo(() => resumoCotacoes(quotes), [quotes]);
 
   // Busca por referencia/estudante + filtro por status (client-side). Escala a
   // triagem de muitas cotacoes sem depender de recarregar do servidor.
@@ -140,6 +144,30 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
           {abrindo ? "Fechar" : "Nova cotação"}
         </button>
       </header>
+
+      {/* Indicadores de topo (funil): total, rascunhos, no ar, convertidas */}
+      {quotes.length > 0 ? (
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <CardIndicador titulo="Cotações" valor={String(resumo.total)} legenda="no total" />
+          <CardIndicador titulo="Rascunhos" valor={String(resumo.rascunhos)} legenda="em construção" />
+          <CardIndicador
+            titulo="No ar"
+            valor={String(resumo.emitidas)}
+            legenda={
+              resumo.opcaoEscolhida > 0
+                ? `${resumo.opcaoEscolhida} escolheu opção`
+                : "aguardando cliente"
+            }
+            tom={resumo.opcaoEscolhida > 0 ? "atencao" : undefined}
+          />
+          <CardIndicador
+            titulo="Convertidas"
+            valor={String(resumo.convertidas)}
+            legenda="viraram contrato"
+            tom={resumo.convertidas > 0 ? "sucesso" : undefined}
+          />
+        </div>
+      ) : null}
 
       {erro ? (
         <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -265,6 +293,30 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function CardIndicador({
+  titulo,
+  valor,
+  legenda,
+  tom,
+}: {
+  titulo: string;
+  valor: string;
+  legenda?: string;
+  tom?: "atencao" | "sucesso";
+}) {
+  const corValor =
+    tom === "atencao" ? "text-brand-golddark" : tom === "sucesso" ? "text-emerald-700" : "text-brand";
+  const corBorda =
+    tom === "atencao" ? "border-brand-gold/40" : tom === "sucesso" ? "border-emerald-200" : "border-neutral-200";
+  return (
+    <div className={`rounded-2xl border bg-white p-4 ${corBorda}`}>
+      <p className="text-xs font-medium text-neutral-500">{titulo}</p>
+      <p className={`mt-2 font-serif text-xl ${corValor}`}>{valor}</p>
+      <p className="mt-1 text-xs text-neutral-400">{legenda ?? " "}</p>
     </div>
   );
 }
