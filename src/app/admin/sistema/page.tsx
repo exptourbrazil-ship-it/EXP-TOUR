@@ -1,4 +1,4 @@
-import { exigirAdmin } from "@/lib/admin-guard";
+import { exigirCapacidade } from "@/lib/admin-guard";
 import { carregarSistema, JANELAS_REGUA } from "@/lib/admin-sistema";
 import EventosProblematicos from "./EventosProblematicos";
 import ZohoStatusCard from "./ZohoStatusCard";
@@ -6,11 +6,14 @@ import ZohoStatusCard from "./ZohoStatusCard";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Pagina de saude do sistema: eventos do barramento (com reprocessamento),
-// atividade da regua de cobranca e NPS. A fila de eventos e um client
-// component (carrega e age via API); o resumo e carregado no servidor.
+// Pagina de saude do sistema (Configuracao): eventos do barramento (com
+// reprocessamento), atividade da regua de cobranca e NPS. As rotas de eventos
+// (/api/admin/events e /events/reprocessar) exigem `config.gerir` (Gestor), e o
+// resumo aqui e carregado no servidor com service role — entao a PAGINA exige a
+// MESMA capacidade, senao um admin sem config.gerir veria o resumo que as rotas
+// lhe negariam. A fila de eventos e um client component; o resumo e server-side.
 export default async function AdminSistemaPage() {
-  await exigirAdmin("/admin/sistema");
+  await exigirCapacidade("config.gerir", "/admin/sistema");
 
   let resumo = null as Awaited<ReturnType<typeof carregarSistema>> | null;
   try {

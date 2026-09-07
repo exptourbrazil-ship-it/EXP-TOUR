@@ -197,12 +197,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Termos",
     descricao: "Versões do Termo de Adesão",
     icone: ICONES.termos,
+    capacidade: "config.gerir",
   },
   {
     href: "/admin/sistema",
     label: "Sistema",
     descricao: "Webhooks, régua de cobrança e NPS",
     icone: ICONES.sistema,
+    capacidade: "config.gerir",
   },
   {
     href: "/admin/cambio",
