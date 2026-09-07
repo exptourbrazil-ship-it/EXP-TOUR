@@ -21,6 +21,7 @@ import {
   validadeCambioQuote,
   cambioVencidoPorData,
   jaEmitida,
+  liquidoDaOpcao,
   moedaOrigemUnica,
   type PrecondicoesEmissao,
 } from "@/lib/quote-issue";
@@ -149,7 +150,7 @@ async function carregarTotaisPorOpcao(
       taxas = (fees ?? []).reduce((s, f) => s + toNum(f.amount), 0);
     }
 
-    const liquido = round2(bruto - descontos + taxas);
+    const liquido = liquidoDaOpcao({ bruto, descontos, taxas });
     resultado.push({
       option,
       currency: currency || "BRL",
@@ -162,6 +163,85 @@ async function carregarTotaisPorOpcao(
     });
   }
   return resultado;
+}
+
+// ---------------------------------------------------------------------------
+// Totais LÍQUIDOS por opção — versão LEVE (só o dinheiro, sem fichas), para o
+// construtor mostrar o preço final (bruto - descontos + taxas) que o cliente
+// verá. Mesma agregação e mesma fórmula (`liquidoDaOpcao`) da emissão, então o
+// número exibido casa com o congelado na fotografia. Leitura por tenant.
+// ---------------------------------------------------------------------------
+export type LiquidoOpcao = {
+  optionId: string;
+  currency: string;
+  bruto: number;
+  descontos: number;
+  taxas: number;
+  liquido: number;
+  moedas: string[]; // moedas de origem vistas (para detectar mistura)
+};
+
+export async function carregarLiquidoPorOpcao(
+  supabase: SupabaseClient,
+  tenantId: string,
+  quoteId: string,
+): Promise<LiquidoOpcao[]> {
+  const { data: options } = await supabase
+    .from("quote_option")
+    .select("id, sort")
+    .eq("tenant_id", tenantId)
+    .eq("quote_id", quoteId)
+    .order("sort", { ascending: true });
+
+  const out: LiquidoOpcao[] = [];
+  for (const option of options ?? []) {
+    const { data: items } = await supabase
+      .from("quote_item")
+      .select("id, gross_amount, currency")
+      .eq("tenant_id", tenantId)
+      .eq("quote_option_id", option.id);
+
+    let bruto = 0;
+    let currency = "";
+    const moedas: string[] = [];
+    const itemIds: string[] = [];
+    for (const it of items ?? []) {
+      bruto += toNum(it.gross_amount);
+      if (it.currency) {
+        currency = it.currency as string;
+        moedas.push(it.currency as string);
+      }
+      itemIds.push(it.id as string);
+    }
+
+    const { data: discounts } = await supabase
+      .from("quote_discount")
+      .select("amount")
+      .eq("tenant_id", tenantId)
+      .eq("quote_option_id", option.id);
+    const descontos = (discounts ?? []).reduce((s, d) => s + toNum(d.amount), 0);
+
+    let taxas = 0;
+    if (itemIds.length > 0) {
+      const { data: fees } = await supabase
+        .from("quote_item_fee")
+        .select("amount")
+        .eq("tenant_id", tenantId)
+        .in("quote_item_id", itemIds);
+      taxas = (fees ?? []).reduce((s, f) => s + toNum(f.amount), 0);
+    }
+
+    out.push({
+      optionId: option.id as string,
+      currency: currency || "BRL",
+      bruto: round2(bruto),
+      descontos: round2(descontos),
+      taxas: round2(taxas),
+      liquido: liquidoDaOpcao({ bruto, descontos, taxas }),
+      moedas,
+    });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
