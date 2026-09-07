@@ -19,6 +19,31 @@ export const STATUSES = ["draft", "active", "inactive"] as const;
 // que quebrariam o motor de preco. Uniao das unidades de cobranca + semana/mes.
 export const UNITS = ["once", "day", "night", "week", "month", "person", "unit"] as const;
 
+// Indicadores de topo do catálogo (funil de disponibilidade comercial): total,
+// ativos (status), cotáveis (visíveis para cotação/venda) e contagem por tipo.
+// Puro; a UI só formata. "cotável" = visibility quotable OU sellable (ambos
+// entram numa cotação; hidden/internal não).
+export type ResumoProdutos = {
+  total: number;
+  ativos: number;
+  cotaveis: number;
+  porTipo: Record<string, number>;
+};
+
+export function resumoProdutos(
+  produtos: Array<{ kind: string; status: string; visibility: string }>,
+): ResumoProdutos {
+  const porTipo: Record<string, number> = {};
+  let ativos = 0;
+  let cotaveis = 0;
+  for (const p of produtos) {
+    porTipo[p.kind] = (porTipo[p.kind] || 0) + 1;
+    if (p.status === "active") ativos += 1;
+    if (p.visibility === "quotable" || p.visibility === "sellable") cotaveis += 1;
+  }
+  return { total: produtos.length, ativos, cotaveis, porTipo };
+}
+
 export const DELIVERY_METHODS = ["in_person", "online", "hybrid"] as const;
 export const ACCOMMODATION_TYPES = [
   "homestay", "residence", "shared_apartment", "studio", "hotel", "other",
