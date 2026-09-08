@@ -2,7 +2,24 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarProduto, type Falha } from "./produto.ts";
+import { validarProduto, resumoProdutos, type Falha } from "./produto.ts";
+
+test("resumoProdutos: total, ativos, cotáveis e por tipo", () => {
+  const r = resumoProdutos([
+    { kind: "program", status: "active", visibility: "quotable" },
+    { kind: "program", status: "draft", visibility: "internal" },
+    { kind: "accommodation", status: "active", visibility: "sellable" },
+    { kind: "insurance", status: "inactive", visibility: "hidden" },
+  ]);
+  assert.equal(r.total, 4);
+  assert.equal(r.ativos, 2); // os dois "active"
+  assert.equal(r.cotaveis, 2); // quotable + sellable
+  assert.deepEqual(r.porTipo, { program: 2, accommodation: 1, insurance: 1 });
+});
+
+test("resumoProdutos vazio", () => {
+  assert.deepEqual(resumoProdutos([]), { total: 0, ativos: 0, cotaveis: 0, porTipo: {} });
+});
 
 // Helper: extrai os campos que falharam de um resultado invalido.
 function camposFalha(r: ReturnType<typeof validarProduto>): string[] {
