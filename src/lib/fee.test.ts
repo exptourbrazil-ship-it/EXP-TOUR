@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarTaxa, type Falha } from "./fee.ts";
+import { validarTaxa, resumoTaxas, type Falha } from "./fee.ts";
 
 function campos(r: ReturnType<typeof validarTaxa>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -125,4 +125,21 @@ test("product_ids deduplicado", () => {
 test("corpo não-objeto falha limpo", () => {
   assert.ok(!validarTaxa(null).ok);
   assert.ok(!validarTaxa([]).ok);
+});
+
+test("resumoTaxas conta obrigatórias, opcionais e geridas", () => {
+  const r = resumoTaxas([
+    { isMandatory: true, gerida: false },
+    { isMandatory: true, gerida: true },
+    { isMandatory: false, gerida: false },
+    { isMandatory: false, gerida: true },
+  ]);
+  assert.equal(r.total, 4);
+  assert.equal(r.obrigatorias, 2);
+  assert.equal(r.opcionais, 2);
+  assert.equal(r.geridas, 2);
+});
+
+test("resumoTaxas lista vazia zera tudo", () => {
+  assert.deepEqual(resumoTaxas([]), { total: 0, obrigatorias: 0, opcionais: 0, geridas: 0 });
 });

@@ -172,3 +172,19 @@ export function validarTaxa(entrada: unknown): Resultado<TaxaNormalizada> {
 
   return { ok: true, valor: { fee, product_ids: productIds } };
 }
+
+// ── Indicadores da lista (topo) ─────────────────────────────────────────────
+// Contagem para os cards da lista de taxas. Taxa não tem status: as dimensões
+// úteis são obrigatória vs. opcional (o que o estudante precisa pagar) e a
+// origem (gerida = veio de price list da escola, só leitura). Puro.
+export type ResumoTaxas = { total: number; obrigatorias: number; opcionais: number; geridas: number };
+
+export function resumoTaxas(taxas: Array<{ isMandatory: boolean; gerida: boolean }>): ResumoTaxas {
+  let obrigatorias = 0;
+  let geridas = 0;
+  for (const t of taxas) {
+    if (t.isMandatory) obrigatorias += 1;
+    if (t.gerida) geridas += 1;
+  }
+  return { total: taxas.length, obrigatorias, opcionais: taxas.length - obrigatorias, geridas };
+}
