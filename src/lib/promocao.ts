@@ -238,3 +238,19 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
 
   return { ok: true, valor: { promotion, targets } };
 }
+
+// Indicadores de topo da lista de promoções: total + por status
+// (rascunho/ativa/expirada). Puro; a UI só formata.
+export type ResumoPromocoes = { total: number; ativas: number; rascunhos: number; expiradas: number };
+
+export function resumoPromocoes(promocoes: Array<{ status: string }>): ResumoPromocoes {
+  let ativas = 0;
+  let rascunhos = 0;
+  let expiradas = 0;
+  for (const p of promocoes) {
+    if (p.status === "active") ativas += 1;
+    else if (p.status === "draft") rascunhos += 1;
+    else if (p.status === "expired") expiradas += 1;
+  }
+  return { total: promocoes.length, ativas, rascunhos, expiradas };
+}

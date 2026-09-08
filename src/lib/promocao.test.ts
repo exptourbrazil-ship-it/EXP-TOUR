@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarPromocao, type Falha } from "./promocao.ts";
+import { validarPromocao, resumoPromocoes, type Falha } from "./promocao.ts";
 
 function campos(r: ReturnType<typeof validarPromocao>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -122,4 +122,11 @@ test("campus_id opcional (null quando ausente); is_stackable/priority respeitado
 test("corpo não-objeto falha limpo", () => {
   assert.ok(!validarPromocao(null).ok);
   assert.ok(!validarPromocao([]).ok);
+});
+
+test("resumoPromocoes agrega por status", () => {
+  const r = resumoPromocoes([
+    { status: "active" }, { status: "active" }, { status: "draft" }, { status: "expired" }, { status: "outro" },
+  ]);
+  assert.deepEqual(r, { total: 5, ativas: 2, rascunhos: 1, expiradas: 1 });
 });
