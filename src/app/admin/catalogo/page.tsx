@@ -2,7 +2,8 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
-import { contarInventario, listarCampusDoTenant } from "@/lib/produto-admin-service";
+import { listarProdutosAdmin, listarCampusDoTenant } from "@/lib/produto-admin-service";
+import { resumoProdutos } from "@/lib/produto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,19 @@ function CartaoContagem({ label, valor, href, icone }: { label: string; valor: n
         <Link href={href} className="text-sm font-medium text-brand-golddark hover:underline">Ver</Link>
       </div>
       <div className="font-serif text-3xl text-brand">{valor}</div>
+    </div>
+  );
+}
+
+// Indicador de topo (rótulo + número grande + legenda). "Saúde" do inventário.
+function CardIndicador({ titulo, valor, legenda, tom }: { titulo: string; valor: number; legenda?: string; tom?: "sucesso" }) {
+  const corValor = tom === "sucesso" && valor > 0 ? "text-emerald-700" : "text-brand";
+  const corBorda = tom === "sucesso" && valor > 0 ? "border-emerald-200" : "border-neutral-200";
+  return (
+    <div className={`rounded-2xl border bg-white p-4 ${corBorda}`}>
+      <p className="text-xs font-medium text-neutral-500">{titulo}</p>
+      <p className={`mt-2 font-serif text-2xl ${corValor}`}>{valor}</p>
+      <p className="mt-1 text-xs text-neutral-400">{legenda ?? " "}</p>
     </div>
   );
 }
@@ -64,10 +78,11 @@ export default async function CatalogoHubPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
   const tenantId = await tenantIdAtual(supabase);
-  const [contagem, campi] = await Promise.all([
-    contarInventario(supabase, tenantId),
+  const [produtos, campi] = await Promise.all([
+    listarProdutosAdmin(supabase, tenantId),
     listarCampusDoTenant(supabase, tenantId),
   ]);
+  const resumo = resumoProdutos(produtos);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -76,14 +91,22 @@ export default async function CatalogoHubPage() {
         Inventário do tenant: programas, acomodações, seguros, complementares e pacotes — com preços, taxas, promoções e disponibilidade.
       </p>
 
+      {/* Indicadores de topo (saúde do inventário) */}
+      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <CardIndicador titulo="Produtos" valor={resumo.total} legenda="no inventário" />
+        <CardIndicador titulo="Ativos" valor={resumo.ativos} legenda="publicados" tom="sucesso" />
+        <CardIndicador titulo="Cotáveis" valor={resumo.cotaveis} legenda="entram na cotação" />
+        <CardIndicador titulo="Campi" valor={campi.length} legenda="unidades" />
+      </div>
+
       {/* Contagens por tipo */}
       <h2 className="mb-3 font-serif text-lg text-brand">Seu inventário</h2>
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <CartaoContagem label="Programas" valor={contagem.program} href="/admin/produtos?kind=program" icone={IC.program} />
-        <CartaoContagem label="Acomodações" valor={contagem.accommodation} href="/admin/produtos?kind=accommodation" icone={IC.accommodation} />
-        <CartaoContagem label="Seguros" valor={contagem.insurance} href="/admin/produtos?kind=insurance" icone={IC.insurance} />
-        <CartaoContagem label="Complementares" valor={contagem.other} href="/admin/produtos?kind=other" icone={IC.other} />
-        <CartaoContagem label="Pacotes" valor={contagem.package} href="/admin/produtos?kind=package" icone={IC.package} />
+        <CartaoContagem label="Programas" valor={resumo.porTipo.program ?? 0} href="/admin/produtos?kind=program" icone={IC.program} />
+        <CartaoContagem label="Acomodações" valor={resumo.porTipo.accommodation ?? 0} href="/admin/produtos?kind=accommodation" icone={IC.accommodation} />
+        <CartaoContagem label="Seguros" valor={resumo.porTipo.insurance ?? 0} href="/admin/produtos?kind=insurance" icone={IC.insurance} />
+        <CartaoContagem label="Complementares" valor={resumo.porTipo.other ?? 0} href="/admin/produtos?kind=other" icone={IC.other} />
+        <CartaoContagem label="Pacotes" valor={resumo.porTipo.package ?? 0} href="/admin/produtos?kind=package" icone={IC.package} />
       </div>
 
       {/* Ações rápidas */}
