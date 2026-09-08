@@ -47,6 +47,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <style>{`.admin-tenant .font-serif{font-family:var(--p-heading)}`}</style>
   );
 
+  // Fundo da area de trabalho do admin: o EXP Tour usa branco puro (leitura mais
+  // limpa das listas/tabelas, a pedido); a Forio mantem o creme/mist sutil.
+  const fundoPagina = brand.theme === "exptour" ? "bg-white" : "bg-brand-cream/30";
+
   // Sem sessao valida (ex.: /admin/login) — sem moldura de navegacao, mas ainda
   // com a marca do tenant (para o login vestir a identidade certa).
   if (!sessao) {
@@ -59,7 +63,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="admin-tenant min-h-screen bg-brand-cream/30" style={brand.styleVars as CSSProperties}>
+    <div className={`admin-tenant min-h-screen ${fundoPagina}`} style={brand.styleVars as CSSProperties}>
       {fonteTitulo}
       <header className="bg-brand">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
