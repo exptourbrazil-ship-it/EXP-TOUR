@@ -220,3 +220,20 @@ export function validarTabelaPreco(entrada: unknown): Resultado<TabelaPrecoNorma
 
   return { ok: true, valor: { template, tiers, product_ids: productIds } };
 }
+
+// ── Indicadores da lista (topo) ─────────────────────────────────────────────
+// Contagem por status para os cards da lista de tabelas. Puro: recebe só o
+// status de cada tabela (draft/active/expired).
+export type ResumoTabelasPreco = { total: number; ativas: number; rascunhos: number; expiradas: number };
+
+export function resumoTabelasPreco(tabelas: Array<{ status: string }>): ResumoTabelasPreco {
+  let ativas = 0;
+  let rascunhos = 0;
+  let expiradas = 0;
+  for (const t of tabelas) {
+    if (t.status === "active") ativas += 1;
+    else if (t.status === "draft") rascunhos += 1;
+    else if (t.status === "expired") expiradas += 1;
+  }
+  return { total: tabelas.length, ativas, rascunhos, expiradas };
+}
