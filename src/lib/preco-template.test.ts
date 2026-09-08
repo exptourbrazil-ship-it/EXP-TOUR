@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarTabelaPreco, type Falha } from "./preco-template.ts";
+import { validarTabelaPreco, resumoTabelasPreco, type Falha } from "./preco-template.ts";
 
 function campos(r: ReturnType<typeof validarTabelaPreco>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -122,4 +122,23 @@ test("charge_in_tiers e market_id são preservados", () => {
 test("corpo não-objeto falha limpo", () => {
   assert.ok(!validarTabelaPreco(null).ok);
   assert.ok(!validarTabelaPreco([]).ok);
+});
+
+test("resumoTabelasPreco conta por status", () => {
+  const r = resumoTabelasPreco([
+    { status: "active" },
+    { status: "active" },
+    { status: "draft" },
+    { status: "expired" },
+    { status: "arquivado" }, // status desconhecido não entra em nenhum bucket
+  ]);
+  assert.equal(r.total, 5);
+  assert.equal(r.ativas, 2);
+  assert.equal(r.rascunhos, 1);
+  assert.equal(r.expiradas, 1);
+});
+
+test("resumoTabelasPreco lista vazia zera tudo", () => {
+  const r = resumoTabelasPreco([]);
+  assert.deepEqual(r, { total: 0, ativas: 0, rascunhos: 0, expiradas: 0 });
 });
