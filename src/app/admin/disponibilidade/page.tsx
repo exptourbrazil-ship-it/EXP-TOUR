@@ -3,6 +3,7 @@ import { exigirCapacidade } from "@/lib/admin-guard";
 import { listarProgramasComIntakes, listarAcomodacoesComPeriodos } from "@/lib/catalog-disponibilidade";
 import DisponibilidadeClient from "@/components/DisponibilidadeClient";
 import AcomodacaoClient from "@/components/AcomodacaoClient";
+import FornecedorPicker from "./FornecedorPicker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,23 +44,7 @@ export default async function AdminDisponibilidadePage({
         valem na hora — o mesmo que a escola vê no portal.
       </p>
 
-      <form method="get" className="mb-6 flex flex-wrap items-center gap-2">
-        <select
-          name="supplier"
-          defaultValue={escolhido?.id ?? ""}
-          className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-        >
-          <option value="">Selecione o fornecedor…</option>
-          {(suppliers ?? []).map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.display_name}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-brand">
-          Abrir
-        </button>
-      </form>
+      <FornecedorPicker suppliers={suppliers ?? []} value={escolhido?.id ?? null} />
 
       {escolhido ? (
         <>
