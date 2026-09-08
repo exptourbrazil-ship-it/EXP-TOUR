@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizarEntradaMaterial, linkValido, dataIsoValida, materialVencido } from "./material-helpers.ts";
+import { normalizarEntradaMaterial, linkValido, dataIsoValida, materialVencido, somarDiasISO, resumoMateriais } from "./material-helpers.ts";
 
 test("M1 entrada valida (arquivo, sem link)", () => {
   const r = normalizarEntradaMaterial(
@@ -72,4 +72,34 @@ test("M9 materialVencido", () => {
   assert.equal(materialVencido("2026-01-01", "2026-08-28"), true);
   assert.equal(materialVencido("2026-12-31", "2026-08-28"), false);
   assert.equal(materialVencido(null, "2026-08-28"), false);
+});
+
+test("M10 somarDiasISO soma em UTC e cruza mês/ano", () => {
+  assert.equal(somarDiasISO("2026-08-28", 30), "2026-09-27");
+  assert.equal(somarDiasISO("2026-12-20", 30), "2027-01-19");
+  assert.equal(somarDiasISO("2026-13-01", 30), ""); // data inválida
+});
+
+test("M11 resumoMateriais conta visibilidade e validade", () => {
+  const hoje = "2026-08-28";
+  const r = resumoMateriais(
+    [
+      { permissao: "cliente", validade: null, vencido: false },              // cliente, sem validade
+      { permissao: "interno", validade: "2026-09-10", vencido: false },      // interno, vencendo (dentro de 30d)
+      { permissao: "cliente", validade: "2026-01-01", vencido: true },       // vencido
+      { permissao: "interno", validade: "2027-05-01", vencido: false },      // longe (não vencendo)
+      { permissao: "cliente", validade: "2026-08-28", vencido: false },      // vence hoje → vencendo
+    ],
+    hoje,
+    30,
+  );
+  assert.equal(r.total, 5);
+  assert.equal(r.cliente, 3);
+  assert.equal(r.interno, 2);
+  assert.equal(r.vencidos, 1);
+  assert.equal(r.vencendo, 2);
+});
+
+test("M11 resumoMateriais lista vazia zera tudo", () => {
+  assert.deepEqual(resumoMateriais([], "2026-08-28"), { total: 0, cliente: 0, interno: 0, vencidos: 0, vencendo: 0 });
 });

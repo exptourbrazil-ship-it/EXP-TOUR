@@ -104,3 +104,44 @@ export function materialVencido(validade: string | null, hojeISO: string): boole
   if (!validade || !dataIsoValida(validade)) return false;
   return validade < hojeISO;
 }
+
+// Soma `dias` a uma data ISO (YYYY-MM-DD) em UTC. Puro. "" se a data for
+// inválida. Usado para a janela de "vencendo" nos indicadores.
+export function somarDiasISO(iso: string, dias: number): string {
+  if (!dataIsoValida(iso)) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(a, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + dias);
+  return dt.toISOString().slice(0, 10);
+}
+
+// ── Indicadores da lista (topo) ─────────────────────────────────────────────
+// Contagem para os cards da biblioteca de materiais. Dimensões: visibilidade
+// (cliente vs. interno) e validade (vencidos e "vencendo" na janela de alerta).
+// `vencido` já vem calculado pelo serviço; "vencendo" é derivado da validade
+// dentro de [hoje, hoje+diasAlerta]. Puro.
+export type ResumoMateriais = { total: number; cliente: number; interno: number; vencidos: number; vencendo: number };
+
+export function resumoMateriais(
+  materiais: Array<{ permissao: string; validade: string | null; vencido: boolean }>,
+  hojeISO: string,
+  diasAlerta = 30,
+): ResumoMateriais {
+  const limite = somarDiasISO(hojeISO, diasAlerta);
+  let cliente = 0;
+  let interno = 0;
+  let vencidos = 0;
+  let vencendo = 0;
+  for (const m of materiais) {
+    if (m.permissao === "cliente") cliente += 1;
+    else interno += 1;
+    if (m.vencido) {
+      vencidos += 1;
+      continue;
+    }
+    if (limite && m.validade && dataIsoValida(m.validade) && m.validade >= hojeISO && m.validade <= limite) {
+      vencendo += 1;
+    }
+  }
+  return { total: materiais.length, cliente, interno, vencidos, vencendo };
+}
