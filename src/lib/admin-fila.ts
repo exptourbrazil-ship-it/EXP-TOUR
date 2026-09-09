@@ -32,6 +32,44 @@ function getSupabase() {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
+// Escopo de tenant da TELA admin (multi-deploy, ver docs/deploy-multi-tenant.md):
+// resolve o tenant do deploy + os conjuntos de posse. Em caso de falha (ex.:
+// CATALOGO_TENANT_SLUG ausente), volta GLOBAL (undefined) — a tela NAO quebra,
+// degrada para o comportamento anterior (fila do banco inteiro). No deploy do
+// tenant legado (EXP Tour), o membership + os orfaos cobrem exatamente o que a
+// tela ja mostra hoje, entao escopar nao muda a fila atual; apenas o deploy do
+// Forio passa a ver so a sua.
+async function escopoDaFila(
+  supabase: ReturnType<typeof getSupabase>
+): Promise<{ membership: MembershipTenant; incluiLegado: boolean } | undefined> {
+  try {
+    const escopo = await resolverEscopoTenant(supabase);
+    const membership = await membershipDoTenant(supabase, escopo);
+    return { membership, incluiLegado: escopo.incluiLegado };
+  } catch (err) {
+    console.error(
+      "[admin-fila] tenant nao resolvido; fila em modo GLOBAL:",
+      err instanceof Error ? err.message : "erro"
+    );
+    return undefined;
+  }
+}
+
+// Dado um escopo e uma lista de tasks (com alvo), devolve o conjunto de ids que
+// PERTENCEM a este tenant (mais os orfaos, no deploy legado). Sem escopo (global),
+// devolve null (o chamador nao filtra). Reusa a atribuicao por entidade.
+async function idsDeTasksDoTenant(
+  supabase: ReturnType<typeof getSupabase>,
+  esc: { membership: MembershipTenant; incluiLegado: boolean } | undefined,
+  tasks: { id: string; alvo_tipo: string | null; alvo_id: string | null }[]
+): Promise<Set<string> | null> {
+  if (!esc) return null; // modo global
+  const { doTenant, orfaos } = await atribuirTasksAoTenant(supabase, esc.membership, tasks);
+  const permitidos = new Set<string>(doTenant);
+  if (esc.incluiLegado) for (const id of orfaos) permitidos.add(id);
+  return permitidos;
+}
+
 export type FilaDoDia = {
   itens: ItemFila[];
   contadores: { total: number; documentos: number; parcelas: number; excecoes: number; estourados: number; minhas: number };
@@ -243,14 +281,17 @@ export async function carregarFilaDoDia(
 ): Promise<FilaDoDia> {
   const supabase = getSupabase();
 
-  const fontes = await coletarFontesAoVivo(supabase, agoraMs);
+  // Multi-tenant: escopa a fila ao tenant do deploy (fallback global se falhar).
+  const esc = await escopoDaFila(supabase);
+
+  const fontes = await coletarFontesAoVivo(supabase, agoraMs, esc?.membership);
   const chavesLive = new Set(fontes.map((f) => f.chaveDedupe));
 
   // Estado das tasks persistidas (todas), indexado por chave_dedupe — para
   // anexar dono/estado aos itens da fonte viva e descartar os ja concluidos.
   const { data: tarefas } = await supabase
     .from("tasks")
-    .select("id, categoria, titulo, contexto, href, papel, prazo, criado_em, chave_dedupe, dono, estado")
+    .select("id, categoria, titulo, contexto, href, papel, prazo, criado_em, chave_dedupe, dono, estado, alvo_tipo, alvo_id")
     .order("criado_em", { ascending: true });
   const tarefasList = tarefas ?? [];
   const porChave = new Map<string, { id: string; dono: string | null; estado: EstadoTask }>();
@@ -283,9 +324,18 @@ export async function carregarFilaDoDia(
 
   // 2) Tarefas persistidas (manuais ou materializadas) cuja fonte NAO esta mais
   //    viva e que nao estao concluidas. `papel` roteia pelo dono-alvo.
-  for (const t of tarefasList) {
-    if ((t.estado ?? "aberto") === "concluido") continue;
-    if (t.chave_dedupe && chavesLive.has(t.chave_dedupe)) continue; // ja representada pela fonte viva
+  //    Multi-tenant: mantem so as deste tenant (senao o admin de um tenant veria
+  //    as tarefas persistidas do outro). Orfaos (alvo apagado) so no deploy legado.
+  const persistidasForaDaFonte = tarefasList.filter(
+    (t) => (t.estado ?? "aberto") !== "concluido" && !(t.chave_dedupe && chavesLive.has(t.chave_dedupe))
+  );
+  const idsPermitidos = await idsDeTasksDoTenant(
+    supabase,
+    esc,
+    persistidasForaDaFonte.map((t) => ({ id: t.id, alvo_tipo: t.alvo_tipo ?? null, alvo_id: t.alvo_id ?? null }))
+  );
+  for (const t of persistidasForaDaFonte) {
+    if (idsPermitidos && !idsPermitidos.has(t.id)) continue; // de outro tenant
     const idade = idadeEmDias(t.criado_em, agoraMs);
     const estourado = t.prazo ? Date.parse(t.prazo) < agoraMs : false;
     itens.push({
@@ -351,13 +401,22 @@ export async function carregarConcluidasHoje(
 
   const { data } = await supabase
     .from("tasks")
-    .select("categoria, titulo, contexto, href, papel, chave_dedupe, dono, concluido_em")
+    .select("id, categoria, titulo, contexto, href, papel, chave_dedupe, dono, concluido_em, alvo_tipo, alvo_id")
     .eq("estado", "concluido")
     .gte("concluido_em", inicioHojeISO)
     .order("concluido_em", { ascending: false });
 
+  // Multi-tenant: so as concluidas deste tenant (fallback global se nao resolver).
+  const esc = await escopoDaFila(supabase);
+  const idsPermitidos = await idsDeTasksDoTenant(
+    supabase,
+    esc,
+    (data ?? []).map((t) => ({ id: t.id, alvo_tipo: t.alvo_tipo ?? null, alvo_id: t.alvo_id ?? null }))
+  );
+
   const itens: ItemConcluida[] = [];
   for (const t of data ?? []) {
+    if (idsPermitidos && !idsPermitidos.has(t.id)) continue; // de outro tenant
     // Guarda-corpo extra: só o dia de hoje (UTC), coerente com o resto do módulo.
     if (!mesmaDataUTC(t.concluido_em, agoraMs)) continue;
     const categoria = (t.categoria ?? "outro") as CategoriaFila;
@@ -563,23 +622,34 @@ async function resolverContexto(
   chaveDedupe: string,
   agoraMs: number
 ): Promise<ContextoChave | null> {
-  const fontes = await coletarFontesAoVivo(supabase, agoraMs);
+  // Multi-tenant: a fonte viva e escopada ao tenant do deploy; uma acao sobre a
+  // chave de OUTRO tenant nao encontra fonte aqui.
+  const esc = await escopoDaFila(supabase);
+  const fontes = await coletarFontesAoVivo(supabase, agoraMs, esc?.membership);
   const fonte = fontes.find((x) => x.chaveDedupe === chaveDedupe) ?? null;
   const { data: existente } = await supabase
     .from("tasks")
-    .select("id, papel, categoria")
+    .select("id, papel, categoria, alvo_tipo, alvo_id")
     .eq("chave_dedupe", chaveDedupe)
     .maybeSingle();
   const taskId = (existente?.id as string) ?? null;
 
   if (fonte) return { papel: fonte.papelAlvo ?? null, categoria: fonte.categoria, fonte, taskId };
-  if (taskId)
+  if (taskId) {
+    // Sem fonte viva, so a task persistida. Bloqueia acao sobre task de OUTRO
+    // tenant: atribui pela entidade e recusa se nao pertence a este deploy (orfaos
+    // permitidos so no legado, coerente com a fila e a reconciliacao).
+    const permitidos = await idsDeTasksDoTenant(supabase, esc, [
+      { id: taskId, alvo_tipo: (existente!.alvo_tipo as string) ?? null, alvo_id: (existente!.alvo_id as string) ?? null },
+    ]);
+    if (permitidos && !permitidos.has(taskId)) return null; // de outro tenant -> acao recusada
     return {
       papel: (existente!.papel as string) ?? null,
       categoria: (existente!.categoria ?? "outro") as CategoriaFila,
       fonte: null,
       taskId,
     };
+  }
   return null; // sem fonte viva e sem task -> já resolvida/inexistente
 }
 
