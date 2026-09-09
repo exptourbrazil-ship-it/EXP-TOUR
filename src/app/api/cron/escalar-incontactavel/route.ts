@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { abrirIncontactavelTitular } from "@/lib/e11-service";
+import { resolverEscopoTenant, titularIdsDoTenant, emLotes } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,16 +47,42 @@ export async function GET(request: Request) {
 
   const cutoffISO = new Date(Date.now() - DIAS * 24 * 60 * 60 * 1000).toISOString();
 
-  // Documentos rejeitados ha >= DIAS e ainda rejeitados (nao reenviados).
-  const { data: docs, error } = await supabase
-    .from("documentos")
-    .select("titular_id, rejeitado_em")
-    .eq("status", "rejeitado")
-    .not("rejeitado_em", "is", null)
-    .lte("rejeitado_em", cutoffISO)
-    .limit(LIMITE_POR_EXECUCAO);
-  if (error) {
-    return NextResponse.json({ ok: false, erro: "Falha ao ler documentos: " + error.message }, { status: 500 });
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): documentos nao tem tenant_id;
+  // escopa pelos titulares do tenant do deploy (documentos.titular_id). Falha
+  // fechada se o tenant nao resolver.
+  let titularIds: string[];
+  try {
+    const escopo = await resolverEscopoTenant(supabase);
+    titularIds = await titularIdsDoTenant(supabase, escopo);
+  } catch (err) {
+    console.error("[escalar-incontactavel] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+  // Tenant sem titulares: nada a escalar.
+  if (titularIds.length === 0) {
+    return NextResponse.json({ ok: true, limiarDias: DIAS, candidatos: 0, escaladas: 0, ja_abertas: 0, erros: 0, truncado: false });
+  }
+
+  // Documentos rejeitados ha >= DIAS e ainda rejeitados (nao reenviados), dos
+  // titulares deste tenant. Loteia o filtro .in() para nao estourar a URL.
+  const docs: { titular_id?: string }[] = [];
+  let erroLeitura: string | null = null;
+  for (const lote of emLotes(titularIds, 500)) {
+    const { data, error } = await supabase
+      .from("documentos")
+      .select("titular_id, rejeitado_em")
+      .in("titular_id", lote)
+      .eq("status", "rejeitado")
+      .not("rejeitado_em", "is", null)
+      .lte("rejeitado_em", cutoffISO)
+      .limit(LIMITE_POR_EXECUCAO);
+    if (error) { erroLeitura = error.message; break; }
+    for (const d of data ?? []) docs.push(d as { titular_id?: string });
+    // Teto por EXECUCAO (nao por lote): para de lotear ao atingi-lo.
+    if (docs.length >= LIMITE_POR_EXECUCAO) break;
+  }
+  if (erroLeitura) {
+    return NextResponse.json({ ok: false, erro: "Falha ao ler documentos: " + erroLeitura }, { status: 500 });
   }
 
   const truncado = (docs?.length ?? 0) >= LIMITE_POR_EXECUCAO;

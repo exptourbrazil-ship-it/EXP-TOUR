@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { comporCotacaoVet } from "@/lib/cambio";
 
+// MULTI-TENANT (ver docs/deploy-multi-tenant.md, secao Cron): NAO escopa por
+// tenant DE PROPOSITO. `cotacoes_cambio` e uma referencia de cambio GLOBAL
+// (chave moeda+data, sem tenant_id) — a PTAX do BCB e a mesma para todos os
+// tenants. O upsert (onConflict moeda,data) e idempotente, entao rodar nos dois
+// deploys nao corrompe nada; apenas repete as chamadas publicas ao BCB. Decisao:
+// pode rodar nos dois; se quiser evitar a chamada redundante, deixe agendado em
+// um deploy so (o outro le a mesma tabela). O spread/IOF por tenant e aplicado
+// depois, na cobranca (nao aqui).
+//
 // Busca automaticamente, uma vez por dia, a cotacao comercial oficial do
 // Banco Central do Brasil (PTAX, olinda.bcb.gov.br - fonte publica e sem
 // autenticacao) para cada moeda usada nos produtos, e aplica um spread

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { dadosParaAlertasFornecedor } from "@/lib/fornecedor-dados";
 import { montarAlertas, conteudoAlerta } from "@/lib/fornecedor-alertas";
 import { enviarAlertaFornecedorEmail } from "@/lib/email";
+import { resolverEscopoTenant, supplierIdsDoTenant } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,18 @@ export async function GET(request: Request) {
 
   const base = (process.env.NEXT_PUBLIC_APP_URL || "https://exp-tour.com").trim().replace(/\/$/, "");
 
-  const dados = await dadosParaAlertasFornecedor(supabase);
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): so os fornecedores do tenant
+  // do deploy. Falha fechada se o tenant nao resolver.
+  let supplierIds: string[];
+  try {
+    const { tenantId } = await resolverEscopoTenant(supabase);
+    supplierIds = await supplierIdsDoTenant(supabase, tenantId);
+  } catch (err) {
+    console.error("[alertar-fornecedor] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+
+  const dados = await dadosParaAlertasFornecedor(supabase, supplierIds);
 
   const resultado = { fornecedores: dados.length, itens: 0, enviados: 0, ja_enviados: 0, erros: 0 };
 

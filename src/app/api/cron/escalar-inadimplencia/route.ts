@@ -5,6 +5,7 @@ import { contratoCancelado } from "@/lib/cancelamento";
 import { contratosComSuspensao } from "@/lib/excecao";
 import { INADIMPLENCIA_DIAS_PADRAO, elegivelInadimplencia } from "@/lib/inadimplencia";
 import { escalarInadimplenciaContrato } from "@/lib/inadimplencia-service";
+import { resolverEscopoTenant, contratoIdsDoTenant, emLotes } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,18 +68,45 @@ export async function GET(request: Request) {
   const hojeISO = hoje.toISOString().slice(0, 10);
   const cutoffISO = isoMenosDias(hoje, DIAS); // vencimento <= cutoff => D+DIAS ou mais
 
-  const { data: parcelas, error } = await supabase
-    .from("parcelas")
-    .select(
-      "id, contrato_id, vencimento, status, contrato:contratos(cancelado_em, titular_id, titular:titulares(nome_completo))"
-    )
-    .neq("status", "pago")
-    .is("paid_at", null)
-    .lte("vencimento", cutoffISO)
-    .order("vencimento", { ascending: true })
-    .limit(LIMITE_POR_EXECUCAO);
-  if (error) {
-    return NextResponse.json({ ok: false, erro: "Falha ao ler parcelas: " + error.message }, { status: 500 });
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): parcelas nao tem tenant_id;
+  // escopa pelos contratos do tenant do deploy (parcela -> contrato ->
+  // titular.tenant_id). Falha fechada se o tenant nao resolver.
+  let contratoIds: string[];
+  try {
+    const escopo = await resolverEscopoTenant(supabase);
+    contratoIds = await contratoIdsDoTenant(supabase, escopo);
+  } catch (err) {
+    console.error("[escalar-inadimplencia] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+  // Tenant sem contratos: nada a escalar.
+  if (contratoIds.length === 0) {
+    return NextResponse.json({ ok: true, data: hojeISO, limiarDias: DIAS, truncado: false, candidatos: 0, escaladas: 0, ja_abertas: 0, erros: 0 });
+  }
+
+  // Le as parcelas vencidas dos contratos do tenant. Loteia o filtro .in().
+  const parcelas: any[] = [];
+  let erroLeitura: string | null = null;
+  for (const lote of emLotes(contratoIds, 500)) {
+    const { data, error } = await supabase
+      .from("parcelas")
+      .select(
+        "id, contrato_id, vencimento, status, contrato:contratos(cancelado_em, titular_id, titular:titulares(nome_completo))"
+      )
+      .in("contrato_id", lote)
+      .neq("status", "pago")
+      .is("paid_at", null)
+      .lte("vencimento", cutoffISO)
+      .order("vencimento", { ascending: true })
+      .limit(LIMITE_POR_EXECUCAO);
+    if (error) { erroLeitura = error.message; break; }
+    for (const p of data ?? []) parcelas.push(p);
+    // Teto por EXECUCAO (nao por lote): para de lotear ao atingi-lo (mantem o
+    // sentido do aviso de truncamento abaixo).
+    if (parcelas.length >= LIMITE_POR_EXECUCAO) break;
+  }
+  if (erroLeitura) {
+    return NextResponse.json({ ok: false, erro: "Falha ao ler parcelas: " + erroLeitura }, { status: 500 });
   }
 
   // Teto atingido: provavel truncamento (o .limit incide sobre PARCELAS, nao

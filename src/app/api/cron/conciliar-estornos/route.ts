@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { conciliarEstornosPendentes } from "@/lib/acerto-service";
+import { resolverEscopoTenant, contratoIdsDoTenant } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,7 +28,11 @@ export async function GET(request: Request) {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   try {
-    const resumo = await conciliarEstornosPendentes(supabase);
+    // Multi-tenant (ver docs/deploy-multi-tenant.md): escopa pelos contratos do
+    // tenant do deploy (estorno -> acerto -> contrato).
+    const escopo = await resolverEscopoTenant(supabase);
+    const contratoIds = await contratoIdsDoTenant(supabase, escopo);
+    const resumo = await conciliarEstornosPendentes(supabase, contratoIds);
     return NextResponse.json({ ok: true, resumo });
   } catch (err) {
     console.error("[conciliar-estornos] falha na conciliacao");

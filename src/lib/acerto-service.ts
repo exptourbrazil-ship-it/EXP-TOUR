@@ -1018,17 +1018,42 @@ export async function executarAcerto(args: {
 // finaliza os acertos cujos estornos ficaram todos confirmados. Idempotente.
 export async function conciliarEstornosPendentes(
   supabase: SupabaseClient,
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): estornos nao tem tenant_id;
+  // escopa pelos acertos dos contratos do tenant do deploy (estorno -> acerto ->
+  // contrato -> titular.tenant_id). Lista vazia => nada a conciliar.
+  contratoIds: string[],
   limite = 200
 ): Promise<{ verificados: number; confirmados: number; finalizados: number; erros: number }> {
   const resumo = { verificados: 0, confirmados: 0, finalizados: 0, erros: 0 };
+  if (contratoIds.length === 0) return resumo;
 
-  const { data: pendentes } = await supabase
-    .from("estornos")
-    .select("id, acerto_id, pagamento_id, external_refund_id")
-    .eq("meio", "mp")
-    .eq("status", "pendente")
-    .not("external_refund_id", "is", null)
-    .limit(limite);
+  // Acertos dos contratos deste tenant (loteia o filtro .in()).
+  const acertoIds: string[] = [];
+  for (let i = 0; i < contratoIds.length; i += 500) {
+    const lote = contratoIds.slice(i, i + 500);
+    const { data } = await supabase.from("acertos").select("id").in("contrato_id", lote);
+    for (const a of data ?? []) acertoIds.push((a as { id: string }).id);
+  }
+  if (acertoIds.length === 0) return resumo;
+
+  const pendentes: {
+    id: string;
+    acerto_id: string;
+    pagamento_id: string | null;
+    external_refund_id: string | null;
+  }[] = [];
+  for (let i = 0; i < acertoIds.length; i += 500) {
+    const lote = acertoIds.slice(i, i + 500);
+    const { data } = await supabase
+      .from("estornos")
+      .select("id, acerto_id, pagamento_id, external_refund_id")
+      .in("acerto_id", lote)
+      .eq("meio", "mp")
+      .eq("status", "pendente")
+      .not("external_refund_id", "is", null)
+      .limit(limite);
+    for (const e of data ?? []) pendentes.push(e as (typeof pendentes)[number]);
+  }
 
   const acertosTocados = new Set<string>();
   for (const e of (pendentes || []) as {

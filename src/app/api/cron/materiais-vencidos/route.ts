@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { materiaisVencidos } from "@/lib/material-service";
 import { enviarAlertaFornecedorEmail } from "@/lib/email";
+import { resolverEscopoTenant } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,16 @@ export async function GET(request: Request) {
   const base = (process.env.NEXT_PUBLIC_APP_URL || "https://exp-tour.com").trim().replace(/\/$/, "");
   const hoje = new Date().toISOString().slice(0, 10);
 
-  const vencidos = await materiaisVencidos(supabase, hoje);
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): escopa por tenant do deploy.
+  let tenantId: string;
+  try {
+    ({ tenantId } = await resolverEscopoTenant(supabase));
+  } catch (err) {
+    console.error("[materiais-vencidos] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+
+  const vencidos = await materiaisVencidos(supabase, hoje, tenantId);
   const resultado = { vencidos: vencidos.length, novos: 0, enviados: 0, erros: 0, sem_destinatario: 0 };
   if (vencidos.length === 0) return NextResponse.json({ ok: true, ...resultado });
 
