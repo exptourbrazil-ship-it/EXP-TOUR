@@ -25,6 +25,10 @@ URL cada) sobre o **mesmo projeto Supabase**. O isolamento de dados é por
 
 ## Variáveis de ambiente
 
+> Exemplos prontos por tenant (placeholders): [`.env.exp-tour.example`](../.env.exp-tour.example)
+> e [`.env.forio.example`](../.env.forio.example). Cada linha marca `[DIFERE]` /
+> `[COMPARTILHADO]` / `[DECISAO]`.
+
 ### A) DEVEM diferir entre os dois projetos
 
 Sem estas corretas, o deploy serve o tenant errado ou vaza marca/links de um no
