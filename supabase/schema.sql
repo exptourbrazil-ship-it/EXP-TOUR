@@ -5,7 +5,7 @@ create table if not exists titulares (
   nome_completo text not null,
   cpf text not null unique,
   telefone text,
-  tenant_id uuid,  -- FK -> tenant(id); marca do titular (e-mails por tenant). NULL -> padrao EXP Tour. Aplicado via migration titulares_tenant_id.
+  tenant_id uuid not null,  -- FK -> tenant(id); tenant do titular (e-mails, e escopo do login por deploy). Antes NULL="padrao EXP Tour"; backfillado e tornado NOT NULL em titulares_tenant_id_backfill.sql (login multi-tenant por URL exige valor real).
   created_at timestamptz not null default now()
   );
 create index if not exists idx_titulares_tenant on titulares(tenant_id);
