@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { conferirTokenCodigo, FORNECEDOR_CODIGO_COOKIE } from "@/lib/fornecedor-codigo";
 import { criarSessaoFornecedor, FORNECEDOR_SESSION_COOKIE } from "@/lib/fornecedor-session";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
+import { tenantIdAtual } from "@/lib/catalog-service";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -97,10 +98,14 @@ export async function POST(request: Request) {
   }
 
   // Confirma que o usuario ainda esta ativo (pode ter sido desativado entre o
-  // /request e o /verify) e obtem os dados da sessao. Falha fechada.
+  // /request e o /verify) e obtem os dados da sessao. Falha fechada. Escopado
+  // por TENANT do deploy: cada URL (EXP Tour / Forio) só autentica os
+  // fornecedores do seu tenant, mesmo compartilhando o banco.
+  const tenantId = await tenantIdAtual(supabase);
   const { data: usuario } = await supabase
     .from("supplier_user")
     .select("id, supplier_id, email, role, language, active, archived_at")
+    .eq("tenant_id", tenantId)
     .eq("email", resultado.email)
     .eq("active", true)
     .is("archived_at", null)

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { criarSessao, SESSION_COOKIE } from "@/lib/session";
 import { conferirCodigoAcesso } from "@/lib/codigo-acesso";
+import { tenantIdAtual } from "@/lib/catalog-service";
 
 function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
@@ -25,9 +26,15 @@ export async function POST(request: Request) {
 
   const cpfLimpo = limparCpf(cpf);
 
+  // Escopo por TENANT do deploy: cada URL (EXP Tour / Forio) só autentica os
+  // titulares do seu tenant, mesmo compartilhando o banco. Sem isto, um CPF de
+  // um tenant logaria pela URL do outro.
+  const tenantId = await tenantIdAtual(supabase);
+
   const { data: titular } = await supabase
       .from("titulares")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("cpf", cpfLimpo)
       .maybeSingle();
 

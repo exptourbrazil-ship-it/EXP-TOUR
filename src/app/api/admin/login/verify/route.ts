@@ -5,6 +5,7 @@ import { criarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
 import { papelValido, type PapelAdmin } from "@/lib/admin-roles";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
+import { tenantIdAtual } from "@/lib/catalog-service";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -139,11 +140,15 @@ export async function POST(request: Request) {
   // nao abre sessao.
   let papel: PapelAdmin = "gestor";
   if (supabase) {
+    // Escopo por TENANT do deploy: admin preso a um tenant só entra na URL do
+    // seu tenant; admin global (tenant_id NULL) entra em qualquer uma.
+    const tenantId = await tenantIdAtual(supabase);
     const { data: admin } = await supabase
       .from("admin_users")
       .select("papel, ativo")
       .eq("email", usuario)
       .eq("ativo", true)
+      .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`)
       .maybeSingle();
 
     if (!admin) {
