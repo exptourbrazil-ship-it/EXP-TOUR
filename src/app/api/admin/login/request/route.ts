@@ -11,15 +11,31 @@ export const dynamic = "force-dynamic";
 const RL_JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
 const RL_ADMIN_IP = Number(process.env.RATE_LIMIT_ADMIN_REQUEST_IP || "5");
 
+function getSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  if (!supabaseUrl || !serviceRoleKey) return null;
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
 // Passo 1 do login do admin: o staff informa o e-mail; se ele for um admin
 // ativo (tabela admin_users), gera um código de 6 dígitos, envia PARA ESSE
 // e-mail e grava um token assinado (com o e-mail embutido) num cookie httpOnly
 // de 10 minutos. O e-mail vai no token para o /verify saber quem loga e buscar
 // o papel — o cliente nunca reinforma o e-mail depois.
 export async function POST(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const supabase = getSupabase();
+
+  // Falha FECHADO: sem Supabase nao ha como confirmar o admin ativo nem limitar
+  // as tentativas por IP. Antes, o createClient com envs ausentes lancava e virava
+  // um 500 cru; agora recusa explicitamente, no mesmo padrao do /verify.
+  if (!supabase) {
+    console.error("Supabase nao configurado: /admin/login/request recusado.");
+    return NextResponse.json(
+      { error: "Login de admin nao configurado no servidor." },
+      { status: 503 }
+    );
+  }
 
   const ip = obterIp(request);
   if (!(await checarELimitar(supabase, `admin-req-code:ip:${ip}`, RL_ADMIN_IP, RL_JANELA_SEG))) {
