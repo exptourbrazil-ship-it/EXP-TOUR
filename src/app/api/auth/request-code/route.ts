@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
 import { slugDoTenant } from "@/lib/tenant-slug";
+import { tenantIdAtual } from "@/lib/catalog-service";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 import { hashCodigoAcesso, gerarCodigoAcesso } from "@/lib/codigo-acesso";
 
@@ -60,9 +61,15 @@ export async function POST(request: Request) {
     return erro429;
   }
 
+  // Escopo por TENANT do deploy: cada URL (EXP Tour / Forio) só emite código
+  // para titulares do seu tenant, mesmo compartilhando o banco. A resposta
+  // segue genérica (não revela se o CPF existe em outro tenant).
+  const tenantId = await tenantIdAtual(supabase);
+
   const { data: titular } = await supabase
       .from("titulares")
               .select("id, nome_completo, email, tenant_id")
+      .eq("tenant_id", tenantId)
       .eq("cpf", cpfLimpo)
       .maybeSingle();
 

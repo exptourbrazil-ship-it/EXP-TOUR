@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoFornecedorEmail } from "@/lib/email";
 import { criarTokenCodigo, gerarCodigo, FORNECEDOR_CODIGO_COOKIE } from "@/lib/fornecedor-codigo";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
+import { tenantIdAtual } from "@/lib/catalog-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,9 +50,14 @@ export async function POST(request: Request) {
     return res;
   }
 
+  // Escopo por TENANT do deploy: cada URL (EXP Tour / Forio) só emite código
+  // para fornecedores do seu tenant, mesmo compartilhando o banco. Fora do
+  // tenant cai no caminho decoy (mesma resposta anti-enumeração).
+  const tenantId = await tenantIdAtual(supabase);
   const { data: usuario } = await supabase
     .from("supplier_user")
     .select("name, language")
+    .eq("tenant_id", tenantId)
     .eq("email", email)
     .eq("active", true)
     .is("archived_at", null)
