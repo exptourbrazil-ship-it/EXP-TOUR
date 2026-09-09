@@ -325,12 +325,18 @@ export type UsuarioFornecedorAlertaRow = {
 };
 
 export async function dadosParaAlertasFornecedor(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): fornecedores do tenant do
+  // deploy. O tenant destes crons e o do FORNECEDOR (supplier.tenant_id), nao o
+  // do titular. Lista vazia => nenhum fornecedor => nada a processar.
+  supplierIds: string[]
 ): Promise<DadosAlertaFornecedor[]> {
+  if (supplierIds.length === 0) return [];
   const { data: contratos } = await supabase
     .from("contratos")
     .select("id, estudante_nome, cancelado_em, created_at, titular_id, supplier_id")
-    .not("supplier_id", "is", null);
+    .not("supplier_id", "is", null)
+    .in("supplier_id", supplierIds);
   if (!contratos?.length) return [];
 
   // Contagem GLOBAL de contratos por titular (regra do doc de nivel-titular).
@@ -347,6 +353,7 @@ export async function dadosParaAlertasFornecedor(
   const { data: usuarios } = await supabase
     .from("supplier_user")
     .select("id, supplier_id, email, name, role, language, active")
+    .in("supplier_id", supplierIds)
     .eq("active", true)
     .is("archived_at", null);
 
@@ -387,15 +394,19 @@ export type DadosResumoSemanal = {
 
 export async function dadosResumoSemanal(
   supabase: SupabaseClient,
-  desdeISO: string
+  desdeISO: string,
+  // Multi-tenant: fornecedores do tenant do deploy (ver dadosParaAlertasFornecedor).
+  supplierIds: string[]
 ): Promise<DadosResumoSemanal[]> {
-  const base = await dadosParaAlertasFornecedor(supabase); // pendencias + usuarios por supplier
+  if (supplierIds.length === 0) return [];
+  const base = await dadosParaAlertasFornecedor(supabase, supplierIds); // pendencias + usuarios por supplier
 
   // Novos estudantes (contratos criados desde a data) por fornecedor.
   const { data: novosC } = await supabase
     .from("contratos")
     .select("id, supplier_id, created_at")
     .not("supplier_id", "is", null)
+    .in("supplier_id", supplierIds)
     .gte("created_at", desdeISO);
   const novosEstudantesPor = new Map<string, number>();
   const contratoSupplier = new Map<string, string>();
@@ -403,9 +414,14 @@ export async function dadosResumoSemanal(
     novosEstudantesPor.set(c.supplier_id, (novosEstudantesPor.get(c.supplier_id) ?? 0) + 1);
   }
 
-  // Mapa contrato->supplier (todos os contratos com fornecedor) para atribuir os
-  // documentos novos ao fornecedor certo.
-  const { data: todosC } = await supabase.from("contratos").select("id, supplier_id").not("supplier_id", "is", null);
+  // Mapa contrato->supplier (contratos com fornecedor do tenant) para atribuir os
+  // documentos novos ao fornecedor certo. Escopado: documentos de contratos de
+  // outros tenants ficam sem supplier no mapa e sao ignorados na contagem.
+  const { data: todosC } = await supabase
+    .from("contratos")
+    .select("id, supplier_id")
+    .not("supplier_id", "is", null)
+    .in("supplier_id", supplierIds);
   for (const c of (todosC ?? []) as { id: string; supplier_id: string }[]) contratoSupplier.set(c.id, c.supplier_id);
 
   // Novos documentos (criados desde a data) por fornecedor, via contrato.

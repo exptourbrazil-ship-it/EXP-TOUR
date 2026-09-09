@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { montarIdempotencyKey } from "@/lib/mp-events";
 import { processarPagamentoMercadoPago } from "@/lib/mp-processar-pagamento";
 import { tratarDisputaLedger } from "@/lib/disputa-service";
+import { resolverEscopoTenant, contratoIdsDoTenant, emLotes } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 
@@ -54,16 +55,43 @@ export async function GET(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  const { data: parcelas, error } = await supabase
-    .from("parcelas")
-    .select("id, external_payment_id")
-    .neq("status", "pago")
-    .not("external_payment_id", "is", null)
-    .order("vencimento", { ascending: true })
-    .limit(LIMITE_POR_EXECUCAO);
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): parcelas nao tem tenant_id;
+  // escopa pelos contratos do tenant do deploy. Os efeitos de dinheiro sao
+  // idempotentes pelo ledger `events`, mas escopar evita que os dois deploys
+  // consultem a API do MP para os pagamentos um do outro. Falha fechada.
+  let contratoIds: string[];
+  let incluiLegado = false;
+  try {
+    const escopo = await resolverEscopoTenant(supabase);
+    incluiLegado = escopo.incluiLegado;
+    contratoIds = await contratoIdsDoTenant(supabase, escopo);
+  } catch (err) {
+    console.error("[conciliar-pagamentos] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+  if (contratoIds.length === 0) {
+    return NextResponse.json({ ok: true, resumo: { verificados: 0, conciliados: 0, aindaPendentes: 0, disputas: 0, erros: 0 }, detalhes: [] });
+  }
 
-  if (error) {
-    return NextResponse.json({ ok: false, erro: error.message }, { status: 500 });
+  const parcelas: { id: string; external_payment_id: string | null }[] = [];
+  let erroLeitura: string | null = null;
+  for (const lote of emLotes(contratoIds, 500)) {
+    const { data, error } = await supabase
+      .from("parcelas")
+      .select("id, external_payment_id")
+      .in("contrato_id", lote)
+      .neq("status", "pago")
+      .not("external_payment_id", "is", null)
+      .order("vencimento", { ascending: true })
+      .limit(LIMITE_POR_EXECUCAO);
+    if (error) { erroLeitura = error.message; break; }
+    for (const p of data ?? []) parcelas.push(p as { id: string; external_payment_id: string | null });
+    // Teto e por EXECUCAO (nao por lote): para de lotear ao atingi-lo, para o aviso
+    // de truncamento abaixo continuar significando o mesmo.
+    if (parcelas.length >= LIMITE_POR_EXECUCAO) break;
+  }
+  if (erroLeitura) {
+    return NextResponse.json({ ok: false, erro: erroLeitura }, { status: 500 });
   }
 
   if ((parcelas ?? []).length >= LIMITE_POR_EXECUCAO) {
@@ -146,6 +174,23 @@ export async function GET(request: Request) {
     await registrarEvento(supabase, existente?.id, idempotencyKey, paymentId, "processado", null);
   }
 
+  // Conjunto de payment ids DESTE tenant (todas as parcelas com cobranca, pagas
+  // ou nao) — usado para escopar a 2a passada de disputas (events nao tem
+  // tenant_id; o external_id do evento e o payment id). Disputa e pos-aprovacao,
+  // entao inclui parcelas 'pago'.
+  const paymentIdsDoTenant = new Set<string>();
+  for (const lote of emLotes(contratoIds, 500)) {
+    const { data } = await supabase
+      .from("parcelas")
+      .select("external_payment_id")
+      .in("contrato_id", lote)
+      .not("external_payment_id", "is", null);
+    for (const p of data ?? []) {
+      const pid = (p as { external_payment_id: string | null }).external_payment_id;
+      if (pid) paymentIdsDoTenant.add(String(pid));
+    }
+  }
+
   // 2a passada — rede de seguranca das DISPUTAS: reprocessa eventos de disputa
   // que ficaram presos ('erro'/'pendente') porque o webhook detectou a
   // contestacao mas a abertura do E9 falhou (erro transitorio). E o caminho real
@@ -159,9 +204,41 @@ export async function GET(request: Request) {
     .in("status", ["pendente", "erro"])
     .limit(LIMITE_POR_EXECUCAO);
 
+  // Orfaos (so o deploy legado): disputa cujo payment id nao pertence a NENHUM
+  // tenant (ex.: parcela apagada apos a contestacao) seria pulada por todos os
+  // deploys, regredindo a rede de seguranca da 2a passada. O deploy legado as
+  // reprocessa. Descobre quais candidatos "de fora" nao tem parcela em tenant algum.
+  const orfaosDisputa = new Set<string>();
+  if (incluiLegado) {
+    const candidatos = [
+      ...new Set(
+        (disputasPresas ?? [])
+          .map((d) => (d.external_id ? String(d.external_id) : ""))
+          .filter((pid) => pid && !paymentIdsDoTenant.has(pid)),
+      ),
+    ];
+    const comParcela = new Set<string>();
+    for (const lote of emLotes(candidatos, 500)) {
+      const { data } = await supabase
+        .from("parcelas")
+        .select("external_payment_id")
+        .in("external_payment_id", lote);
+      for (const p of data ?? []) {
+        const pid = (p as { external_payment_id: string | null }).external_payment_id;
+        if (pid) comParcela.add(String(pid));
+      }
+    }
+    for (const pid of candidatos) if (!comParcela.has(pid)) orfaosDisputa.add(pid);
+  }
+
   for (const d of disputasPresas ?? []) {
     const pid = d.external_id ? String(d.external_id) : "";
     if (!pid) continue;
+    // Escopo do tenant: disputa cujo payment id nao e deste tenant fica para o
+    // deploy dono resolver (evita consultar a API do MP pelo pagamento de outro).
+    // Excecao: o deploy legado tambem reprocessa os ORFAOS (sem parcela em tenant
+    // algum), para nao perder a rede de seguranca.
+    if (!paymentIdsDoTenant.has(pid) && !orfaosDisputa.has(pid)) continue;
     // Reconsulta o status atual no MP (a disputa pode ter evoluido).
     const chk = await processarPagamentoMercadoPago(supabase, pid);
     if (chk.status === "erro") {

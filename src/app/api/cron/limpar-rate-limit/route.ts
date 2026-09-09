@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic";
 // antigas nao tem mais utilidade. Uma vez por dia apagamos os hits mais velhos
 // que RATE_LIMIT_RETENCAO_HORAS (padrao 24h), mantendo a tabela enxuta.
 //
+// MULTI-TENANT (ver docs/deploy-multi-tenant.md, secao Cron): NAO escopa por
+// tenant DE PROPOSITO. rate_limit_hits e codigos_acesso sao infraestrutura de
+// acesso (por IP/e-mail), sem tenant_id, e a limpeza so APAGA linhas velhas por
+// tempo — idempotente. Rodar nos dois deploys e inofensivo (o segundo apenas nao
+// acha mais nada para apagar). Pode ficar em um deploy so.
+//
 // Autenticacao: Bearer CRON_SECRET (mesmo padrao dos demais crons).
 
 export async function GET(request: Request) {

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { dadosResumoSemanal } from "@/lib/fornecedor-dados";
 import { montarResumoSemanal, conteudoResumo, semanaISO, chaveResumo } from "@/lib/resumo-semanal";
 import { enviarAlertaFornecedorEmail } from "@/lib/email";
+import { resolverEscopoTenant, supplierIdsDoTenant } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,18 @@ export async function GET(request: Request) {
   const semana = semanaISO(hojeISO);
   const desdeISO = new Date(agora.getTime() - 7 * 86_400_000).toISOString(); // últimos 7 dias
 
-  const dados = await dadosResumoSemanal(supabase, desdeISO);
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): so os fornecedores do tenant
+  // do deploy. Falha fechada se o tenant nao resolver.
+  let supplierIds: string[];
+  try {
+    const { tenantId } = await resolverEscopoTenant(supabase);
+    supplierIds = await supplierIdsDoTenant(supabase, tenantId);
+  } catch (err) {
+    console.error("[resumo-semanal-fornecedor] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+
+  const dados = await dadosResumoSemanal(supabase, desdeISO, supplierIds);
   const resultado = { fornecedores: dados.length, com_atividade: 0, enviados: 0, ja_enviados: 0, erros: 0 };
 
   for (const d of dados) {

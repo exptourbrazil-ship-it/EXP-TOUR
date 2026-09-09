@@ -24,6 +24,7 @@ import {
 } from "@/lib/fila-do-dia";
 import { labelTipoExcecao, papelAlvoDoTipo, slaDiasDoTipo } from "@/lib/excecao";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { resolverEscopoTenant, membershipDoTenant, type MembershipTenant } from "@/lib/cron-tenant";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -54,9 +55,16 @@ function nomeDe(rel: unknown): string | undefined {
 }
 
 // Fontes automaticas ao vivo da v1: documentos a analisar e parcelas em D+10.
+//
+// Multi-tenant (ver docs/deploy-multi-tenant.md): quando `membership` e passado
+// (pelo cron materializar-tasks, escopado ao tenant do deploy), cada fonte e
+// filtrada pela posse do tenant — documentos/excecoes pelo titular, parcelas pelo
+// contrato, quote pelo tenant_id, confirmacoes pelo fornecedor. Sem `membership`
+// (tela admin ao vivo, comportamento atual) a coleta e global.
 async function coletarFontesAoVivo(
   supabase: ReturnType<typeof getSupabase>,
-  agoraMs: number
+  agoraMs: number,
+  membership?: MembershipTenant
 ): Promise<FonteItem[]> {
   const hojeISO = new Date(agoraMs).toISOString().slice(0, 10);
   const limiteD10 = new Date(agoraMs - DIAS_COBRANCA_HUMANA * 24 * 60 * 60 * 1000)
@@ -69,12 +77,13 @@ async function coletarFontesAoVivo(
   // tasks cuja fonte "sumiu" da lista viva. Se uma query falhar em silencio, a
   // lista fica parcial e a reconciliacao concluiria tasks indevidamente (ate o
   // E1 "contato em 24h"). Por isso, qualquer erro de leitura ABORTA a coleta.
-  const { data: docs, error: errDocs } = await supabase
+  let qDocs = supabase
     .from("documentos")
     .select("id, created_at, titular_id, titular:titulares(nome_completo)")
     .eq("origem", "titular")
-    .eq("status", "pendente")
-    .order("created_at", { ascending: true });
+    .eq("status", "pendente");
+  if (membership) qDocs = qDocs.in("titular_id", membership.titularIds);
+  const { data: docs, error: errDocs } = await qDocs.order("created_at", { ascending: true });
   if (errDocs) throw new Error("Falha ao ler documentos da fila: " + errDocs.message);
 
   for (const d of docs ?? []) {
@@ -96,12 +105,13 @@ async function coletarFontesAoVivo(
     });
   }
 
-  const { data: parcelas, error: errParcelas } = await supabase
+  let qParcelas = supabase
     .from("parcelas")
-    .select("id, vencimento, contrato:contratos(titular_id, titular:titulares(nome_completo))")
+    .select("id, vencimento, contrato_id, contrato:contratos(titular_id, titular:titulares(nome_completo))")
     .neq("status", "pago")
-    .lte("vencimento", limiteD10)
-    .order("vencimento", { ascending: true });
+    .lte("vencimento", limiteD10);
+  if (membership) qParcelas = qParcelas.in("contrato_id", membership.contratoIds);
+  const { data: parcelas, error: errParcelas } = await qParcelas.order("vencimento", { ascending: true });
   if (errParcelas) throw new Error("Falha ao ler parcelas da fila: " + errParcelas.message);
 
   for (const p of parcelas ?? []) {
@@ -131,11 +141,12 @@ async function coletarFontesAoVivo(
   // papel-alvo e o SLA do TIPO (E1 -> consultor/24h, E9 -> financeiro, etc.). A
   // chave `excecao:<id>` coincide com a da tarefa dedicada do E1 (visto-service),
   // entao o caso nao aparece duas vezes na fila.
-  const { data: excecoes, error: errExcecoes } = await supabase
+  let qExcecoes = supabase
     .from("case_exceptions")
     .select("id, tipo, aberta_em, titular_id, titular:titulares(nome_completo)")
-    .in("status", ["aberta", "em_andamento"])
-    .order("aberta_em", { ascending: true });
+    .in("status", ["aberta", "em_andamento"]);
+  if (membership) qExcecoes = qExcecoes.in("titular_id", membership.titularIds);
+  const { data: excecoes, error: errExcecoes } = await qExcecoes.order("aberta_em", { ascending: true });
   if (errExcecoes) throw new Error("Falha ao ler excecoes da fila: " + errExcecoes.message);
 
   for (const e of excecoes ?? []) {
@@ -161,12 +172,13 @@ async function coletarFontesAoVivo(
   const limiteProposta = new Date(agoraMs - SLA_PROPOSTA_PARADA_DIAS * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
-  const { data: propostas, error: errPropostas } = await supabase
+  let qPropostas = supabase
     .from("quote")
     .select("id, reference, issue_date, status")
     .in("status", ["issued", "viewed", "option_selected"])
-    .lte("issue_date", limiteProposta)
-    .order("issue_date", { ascending: true });
+    .lte("issue_date", limiteProposta);
+  if (membership) qPropostas = qPropostas.eq("tenant_id", membership.tenantId);
+  const { data: propostas, error: errPropostas } = await qPropostas.order("issue_date", { ascending: true });
   if (errPropostas) throw new Error("Falha ao ler propostas da fila: " + errPropostas.message);
 
   for (const q of propostas ?? []) {
@@ -189,11 +201,12 @@ async function coletarFontesAoVivo(
 
   // Confirmações de FORNECEDOR em atraso: pedidas ao fornecedor e sem resposta há
   // >= N dias (status 'pending'). Follow-up da Operação com o fornecedor.
-  const { data: confirmacoes, error: errConfirmacoes } = await supabase
+  let qConfirmacoes = supabase
     .from("availability_confirmation")
     .select("id, kind, created_at, supplier:supplier(display_name)")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
+    .eq("status", "pending");
+  if (membership) qConfirmacoes = qConfirmacoes.in("supplier_id", membership.supplierIds);
+  const { data: confirmacoes, error: errConfirmacoes } = await qConfirmacoes.order("created_at", { ascending: true });
   if (errConfirmacoes) throw new Error("Falha ao ler confirmações da fila: " + errConfirmacoes.message);
 
   for (const c of confirmacoes ?? []) {
@@ -374,7 +387,14 @@ export async function materializarTasksDaFila(
   agoraMs: number = Date.now()
 ): Promise<ResultadoMaterializacao> {
   const supabase = getSupabase();
-  const fontes = await coletarFontesAoVivo(supabase, agoraMs);
+
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): escopa a fila ao tenant do
+  // deploy. `tasks` nao tem tenant_id — a coleta filtra pela posse (membership) e
+  // a reconciliacao so conclui tarefas do tenant (mais os orfaos, no deploy do
+  // tenant legado). Falha fechada: sem tenant, propaga o erro (o cron responde 500).
+  const escopo = await resolverEscopoTenant(supabase);
+  const membership = await membershipDoTenant(supabase, escopo);
+  const fontes = await coletarFontesAoVivo(supabase, agoraMs, membership);
 
   // Insere as que ainda nao existem (mantem o estado das ja existentes).
   let criadas = 0;
@@ -406,22 +426,117 @@ export async function materializarTasksDaFila(
   const chavesLive = new Set(fontes.map((f) => f.chaveDedupe));
   const { data: abertas } = await supabase
     .from("tasks")
-    .select("id, chave_dedupe")
+    .select("id, chave_dedupe, alvo_tipo, alvo_id")
     .in("origem", ["automatica", "excecao"])
     .neq("estado", "concluido");
 
+  // Candidatas a concluir: abertas cuja fonte ja nao esta viva NESTE tenant.
+  const candidatas = (abertas ?? []).filter(
+    (t) => t.chave_dedupe && !chavesLive.has(t.chave_dedupe)
+  ) as { id: string; chave_dedupe: string; alvo_tipo: string | null; alvo_id: string | null }[];
+
+  // Como `tasks` e global e a coleta foi escopada, so podemos concluir as
+  // candidatas que PERTENCEM a este tenant — senao o deploy de um tenant fecharia
+  // as tarefas do outro (cuja fonte simplesmente nao esta na sua lista viva). Os
+  // ORFAOS (alvo apagado, sem tenant atribuivel) sao concluidos apenas pelo deploy
+  // do tenant legado, preservando a limpeza que a reconciliacao global fazia.
+  const { doTenant, orfaos } = await atribuirTasksAoTenant(supabase, membership, candidatas);
+  const concluir = new Set<string>(doTenant);
+  if (escopo.incluiLegado) for (const id of orfaos) concluir.add(id);
+
   let concluidas = 0;
-  for (const t of abertas ?? []) {
-    if (t.chave_dedupe && !chavesLive.has(t.chave_dedupe)) {
-      await supabase
-        .from("tasks")
-        .update({ estado: "concluido", concluido_em: new Date(agoraMs).toISOString() })
-        .eq("id", t.id);
-      concluidas += 1;
-    }
+  for (const t of candidatas) {
+    if (!concluir.has(t.id)) continue;
+    await supabase
+      .from("tasks")
+      .update({ estado: "concluido", concluido_em: new Date(agoraMs).toISOString() })
+      .eq("id", t.id);
+    concluidas += 1;
   }
 
   return { fontes: fontes.length, criadas, concluidas };
+}
+
+// Atribui cada task candidata ao tenant pela entidade-alvo (a mesma posse usada
+// na coleta). Retorna as que pertencem a ESTE tenant e os ORFAOS (alvo inexistente
+// — entidade apagada, sem tenant atribuivel). Tarefas de OUTRO tenant ficam de
+// fora de ambos os conjuntos (o deploy dono as concluira). Tasks sem alvo tambem
+// entram em `orfaos` (nao ha como atribuir; so o deploy legado as limpa).
+async function atribuirTasksAoTenant(
+  supabase: ReturnType<typeof getSupabase>,
+  membership: MembershipTenant,
+  tasks: { id: string; alvo_tipo: string | null; alvo_id: string | null }[]
+): Promise<{ doTenant: Set<string>; orfaos: Set<string> }> {
+  const titularSet = new Set(membership.titularIds);
+  const contratoSet = new Set(membership.contratoIds);
+  const supplierSet = new Set(membership.supplierIds);
+  const doTenant = new Set<string>();
+  const orfaos = new Set<string>();
+
+  // Agrupa por tipo de alvo para resolver em lote.
+  const porTipo = new Map<string, { taskId: string; alvoId: string }[]>();
+  for (const t of tasks) {
+    if (!t.alvo_tipo || !t.alvo_id) {
+      orfaos.add(t.id); // sem alvo: nao ha como atribuir -> so o deploy legado limpa
+      continue;
+    }
+    const arr = porTipo.get(t.alvo_tipo) ?? [];
+    arr.push({ taskId: t.id, alvoId: t.alvo_id });
+    porTipo.set(t.alvo_tipo, arr);
+  }
+
+  // Resolve, por tipo, o "dono" de cada alvo e classifica em doTenant/outro/orfao.
+  // `tabela`/`coluna` e o dono; `pertence` decide se o dono e deste tenant.
+  async function classificar(
+    tipo: string,
+    tabela: string,
+    coluna: string,
+    pertence: (dono: string | null) => boolean
+  ) {
+    const itens = porTipo.get(tipo);
+    if (!itens || itens.length === 0) return;
+    const dono = new Map<string, string | null>(); // alvoId -> valor da coluna dona
+    for (let i = 0; i < itens.length; i += 500) {
+      const lote = itens.slice(i, i + 500).map((x) => x.alvoId);
+      const { data } = await supabase.from(tabela).select(`id, ${coluna}`).in("id", lote);
+      for (const r of data ?? []) {
+        dono.set((r as any).id, ((r as any)[coluna] as string | null) ?? null);
+      }
+    }
+    for (const { taskId, alvoId } of itens) {
+      if (!dono.has(alvoId)) { orfaos.add(taskId); continue; } // alvo apagado
+      if (pertence(dono.get(alvoId) ?? null)) doTenant.add(taskId);
+      // senao: alvo de outro tenant -> nao entra em nenhum conjunto
+    }
+  }
+
+  const TIPOS_CONHECIDOS = new Set([
+    "documento",
+    "parcela",
+    "excecao",
+    "quote",
+    "availability_confirmation",
+  ]);
+  await classificar("documento", "documentos", "titular_id", (d) => d != null && titularSet.has(d));
+  await classificar("parcela", "parcelas", "contrato_id", (c) => c != null && contratoSet.has(c));
+  await classificar("excecao", "case_exceptions", "titular_id", (t) => t != null && titularSet.has(t));
+  await classificar("quote", "quote", "tenant_id", (t) => t === membership.tenantId);
+  await classificar(
+    "availability_confirmation",
+    "availability_confirmation",
+    "supplier_id",
+    (s) => s != null && supplierSet.has(s)
+  );
+
+  // alvo_tipo nao mapeado (ex.: um tipo novo esquecido aqui): trata como orfao para
+  // NAO interromper silenciosamente a reconciliacao — o deploy legado o conclui,
+  // preservando a limpeza que a reconciliacao global fazia.
+  for (const [tipo, itens] of porTipo) {
+    if (TIPOS_CONHECIDOS.has(tipo)) continue;
+    for (const { taskId } of itens) orfaos.add(taskId);
+  }
+
+  return { doTenant, orfaos };
 }
 
 // ── Ações sobre uma tarefa da fila (assumir / concluir / devolver) ───────────

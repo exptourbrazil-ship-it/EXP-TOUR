@@ -8,6 +8,7 @@ import { carregarConfigTenant, type ConfigTenant } from "@/lib/tenant-config";
 import { slugDoTenant } from "@/lib/tenant-slug";
 import { removerDeContratosCancelados, contratoCancelado } from "@/lib/cancelamento";
 import { contratosComSuspensao } from "@/lib/excecao";
+import { resolverEscopoTenant, titularIdsDoTenant, contratoIdsDoTenant, emLotes } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,18 +72,61 @@ export async function GET(request: Request) {
 
   const portalUrl = process.env.NEXT_PUBLIC_APP_URL || null;
 
-  const { data: parcelas, error } = await supabase
-    .from("parcelas")
-    .select(
-      "id, contrato_id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo, tenant_id))"
-    )
-    .neq("status", "pago")
-    .is("paid_at", null)
-    .gte("vencimento", minISO)
-    .lte("vencimento", maxISO);
+  // Multi-tenant (ver docs/deploy-multi-tenant.md): a regua roda no MESMO horario
+  // nos dois deploys. Sem escopo, os dois varreriam TODAS as parcelas e, como a
+  // idempotencia (lembretes_cobranca/lembretes_quitacao) so fecha no INSERT,
+  // execucoes concorrentes poderiam enviar o MESMO lembrete duas vezes. Escopando
+  // por tenant (parcela -> contrato -> titular.tenant_id; contrato -> titular) os
+  // dois deploys processam conjuntos DISJUNTOS. Falha fechada se o tenant nao
+  // resolver.
+  let titularIds: string[];
+  let contratoIds: string[];
+  try {
+    const escopo = await resolverEscopoTenant(supabase);
+    titularIds = await titularIdsDoTenant(supabase, escopo);
+    contratoIds = await contratoIdsDoTenant(supabase, escopo, titularIds);
+  } catch (err) {
+    console.error("[regua-cobranca] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
+    return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
+  }
+  // Tenant sem titulares/contratos: nada a cobrar.
+  if (titularIds.length === 0 || contratoIds.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      data: hojeISO,
+      analisadas: 0,
+      contrato_cancelado: 0,
+      suspensa_por_excecao: 0,
+      enviados: 0,
+      fora_da_janela: 0,
+      sem_email: 0,
+      ja_enviados: 0,
+      erros: 0,
+      quitacao: { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, suspensa_por_excecao: 0, erros: 0 },
+      mora: { analisados: 0, enviados: 0, sem_email: 0, ja_enviados: 0, sem_saldo: 0, contrato_cancelado: 0, suspensa_por_excecao: 0, erros: 0 },
+    });
+  }
 
-  if (error) {
-    return NextResponse.json({ ok: false, erro: "Falha ao ler parcelas: " + error.message }, { status: 500 });
+  const parcelas: any[] = [];
+  {
+    let erroLeitura: string | null = null;
+    for (const lote of emLotes(contratoIds, 500)) {
+      const { data, error } = await supabase
+        .from("parcelas")
+        .select(
+          "id, contrato_id, descricao, valor_atual, vencimento, status, payment_link, contrato:contratos(nome, moeda, cancelado_em, titular:titulares(email, nome_completo, tenant_id))"
+        )
+        .in("contrato_id", lote)
+        .neq("status", "pago")
+        .is("paid_at", null)
+        .gte("vencimento", minISO)
+        .lte("vencimento", maxISO);
+      if (error) { erroLeitura = error.message; break; }
+      for (const p of data ?? []) parcelas.push(p);
+    }
+    if (erroLeitura) {
+      return NextResponse.json({ ok: false, erro: "Falha ao ler parcelas: " + erroLeitura }, { status: 500 });
+    }
   }
 
   // Suspensao por excecao (doc 01 §4): um processo ativo que suspende "cobranca"
@@ -200,13 +244,18 @@ export async function GET(request: Request) {
   const inicioMin = isoMaisDias(hoje, 35);
   const inicioMax = isoMaisDias(hoje, 60);
 
-  const { data: contratos } = await supabase
-    .from("contratos")
-    .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo, tenant_id)")
-    .is("cancelado_em", null)
-    .not("data_inicio", "is", null)
-    .gte("data_inicio", inicioMin)
-    .lte("data_inicio", inicioMax);
+  const contratos: any[] = [];
+  for (const lote of emLotes(titularIds, 500)) {
+    const { data } = await supabase
+      .from("contratos")
+      .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo, tenant_id)")
+      .in("titular_id", lote)
+      .is("cancelado_em", null)
+      .not("data_inicio", "is", null)
+      .gte("data_inicio", inicioMin)
+      .lte("data_inicio", inicioMax);
+    for (const c of data ?? []) contratos.push(c);
+  }
 
   for (const c of contratos || []) {
     // Cinto e suspensorio: o filtro ja roda na query, mas contrato cancelado
@@ -297,14 +346,23 @@ export async function GET(request: Request) {
   const moraInicioMin = isoMaisDias(hoje, -30);
   const moraInicioMax = isoMaisDias(hoje, 30);
 
-  const { data: contratosMora, error: erroMora } = await supabase
-    .from("contratos")
-    .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo, tenant_id)")
-    .is("cancelado_em", null)
-    .not("data_inicio", "is", null)
-    .gte("data_inicio", moraInicioMin)
-    .lte("data_inicio", moraInicioMax);
-  if (erroMora) console.error("[regua-cobranca] falha ao carregar contratos para aviso de mora");
+  const contratosMora: any[] = [];
+  {
+    let erroMora: string | null = null;
+    for (const lote of emLotes(titularIds, 500)) {
+      const { data, error } = await supabase
+        .from("contratos")
+        .select("id, moeda, data_inicio, cancelado_em, titular:titulares(email, nome_completo, tenant_id)")
+        .in("titular_id", lote)
+        .is("cancelado_em", null)
+        .not("data_inicio", "is", null)
+        .gte("data_inicio", moraInicioMin)
+        .lte("data_inicio", moraInicioMax);
+      if (error) { erroMora = error.message; break; }
+      for (const c of data ?? []) contratosMora.push(c);
+    }
+    if (erroMora) console.error("[regua-cobranca] falha ao carregar contratos para aviso de mora");
+  }
 
   for (const c of contratosMora || []) {
     if (contratoCancelado(c as any)) { mora.contrato_cancelado++; continue; }

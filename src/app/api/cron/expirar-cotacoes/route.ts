@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolverEscopoTenant } from "@/lib/cron-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,9 @@ export const dynamic = "force-dynamic";
 // cotacoes emitidas e ainda nao decididas (issued/viewed); nao mexe em
 // option_selected, cancelled nem draft. Idempotente: rodar de novo nao muda nada.
 //
-// Falha fechada: recusa sem CRON_SECRET, como os demais crons.
+// Multi-tenant (ver docs/deploy-multi-tenant.md): escopa por tenant_id do deploy
+// (quote tem tenant_id direto) para que os dois deploys nao expirem as cotacoes
+// um do outro. Falha fechada: recusa sem CRON_SECRET, como os demais crons.
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
@@ -29,9 +32,12 @@ export async function GET(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY as string,
     );
 
+    const { tenantId } = await resolverEscopoTenant(supabase);
+
     const { data, error } = await supabase
       .from("quote")
       .update({ status: "expired", updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId)
       .lt("valid_until", hoje)
       .in("status", ["issued", "viewed"])
       .select("id");

@@ -262,13 +262,22 @@ export async function materialAdminParaDownload(
 export type MaterialVencido = { id: string; supplierId: string; titulo: string; validade: string | null };
 
 // Materiais ATIVOS já vencidos (validade < hoje), para o cron avisar a escola.
-export async function materiaisVencidos(supabase: SupabaseClient, hojeISO: string): Promise<MaterialVencido[]> {
-  const { data } = await supabase
+export async function materiaisVencidos(
+  supabase: SupabaseClient,
+  hojeISO: string,
+  tenantId?: string,
+): Promise<MaterialVencido[]> {
+  // Multi-tenant: quando o cron passa o tenant do deploy, escopa por tenant_id
+  // (material tem tenant_id direto) para os dois deploys nao processarem os
+  // materiais um do outro. tenantId ausente => sem filtro (compatibilidade).
+  let q = supabase
     .from("material")
     .select("id, supplier_id, titulo, validade")
     .is("archived_at", null)
     .not("validade", "is", null)
     .lt("validade", hojeISO);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q;
   return (data ?? []).map((r: any) => ({ id: r.id, supplierId: r.supplier_id, titulo: r.titulo, validade: r.validade ?? null }));
 }
 
