@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
 import { criarTokenCodigo, gerarCodigo, ADMIN_CODIGO_COOKIE } from "@/lib/admin-codigo";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
+import { tenantIdAtual } from "@/lib/catalog-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,11 +52,16 @@ export async function POST(request: Request) {
     return res;
   }
 
+  // Escopo por TENANT do deploy: admin preso a um tenant (tenant_id preenchido)
+  // só loga na URL do seu tenant; admin global (tenant_id NULL) loga em qualquer
+  // uma. Fora disso cai no caminho decoy (mesma resposta anti-enumeração).
+  const tenantId = await tenantIdAtual(supabase);
   const { data: admin } = await supabase
     .from("admin_users")
     .select("email")
     .eq("email", email)
     .eq("ativo", true)
+    .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`)
     .maybeSingle();
 
   if (!admin) {

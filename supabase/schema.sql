@@ -443,9 +443,14 @@ create table if not exists admin_users (
   papel text not null default 'operacao'
     check (papel in ('gestor','operacao','financeiro','consultor')),
   ativo boolean not null default true,
+  -- tenant do admin (login multi-tenant por URL). NULL = admin global (Path,
+  -- acessa qualquer tenant/URL); preenchido = preso a um tenant (so loga no
+  -- deploy daquele tenant). Aplicado via migration admin_users_tenant_id.
+  tenant_id uuid references tenant(id),
   criado_por text,
   created_at timestamptz not null default now()
   );
+create index if not exists idx_admin_users_tenant on admin_users(tenant_id);
 
 -- Fila do Dia: tarefas operacionais do admin (doc 07, Secoes 3.1 e 5). Fontes
 -- automaticas (documento enviado, parcela em D+10, SLA estourado) e manuais.
