@@ -17,7 +17,10 @@
 //
 // NB: usa a service role; nunca importar em codigo client.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { tenantIdAtual } from "@/lib/catalog-service";
+// NB: `tenantIdAtual` e importado DINAMICAMENTE dentro de resolverEscopoTenant
+// (nao no topo). Assim os helpers puros (deployEhLegado/emLotes) podem ser
+// testados com `node --test` sem que o carregador tente resolver o alias de path
+// "@/lib/catalog-service" (o type-stripping do Node nao resolve paths do tsconfig).
 
 // Slug do tenant "legado": os registros da Area do Cliente anteriores ao
 // multi-tenant tem titulares.tenant_id = NULL e pertencem, por convencao, a este
@@ -74,6 +77,7 @@ export async function resolverEscopoTenant(supabase: SupabaseClient): Promise<Es
       "CATALOGO_TENANT_SLUG ausente: cron multi-tenant recusado (configure o slug do tenant do deploy).",
     );
   }
+  const { tenantIdAtual } = await import("@/lib/catalog-service");
   const tenantId = await tenantIdAtual(supabase);
   return { tenantId, slug, incluiLegado: deployEhLegado(slug) };
 }

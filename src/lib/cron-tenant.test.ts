@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deployEhLegado, emLotes } from "./cron-tenant";
+import { deployEhLegado, emLotes } from "./cron-tenant.ts";
 
 test("deployEhLegado: o deploy do slug legado e dono dos registros NULL", () => {
   assert.equal(deployEhLegado("exp-tour", "exp-tour"), true);
