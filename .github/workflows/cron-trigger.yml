@@ -1,0 +1,99 @@
+name: Cron externo (disparo dos crons dos deploys)
+
+# Ponte GRATUITA para o Vercel Cron enquanto os projetos estiverem no plano Hobby
+# (que limita cron a ~1x/dia e poucos jobs). Ver docs/deploy-multi-tenant.md.
+#
+# Chama as rotas /api/cron/* de CADA deploy (EXP Tour e Forio) com o
+# Authorization: Bearer CRON_SECRET — exatamente o que o Vercel Cron faz. As rotas
+# ja escopam por tenant (cada deploy processa so o seu), entao disparar os dois na
+# mesma passada NAO duplica efeito.
+#
+# Consolida os 14 horarios do vercel.json numa passada diaria unica (a ordem
+# importa; a granularidade fina nao — todo cron e idempotente e processa o estado
+# "do dia"). Ex.: resumo-semanal-fornecedor era so segunda no vercel.json; rodar
+# todo dia e seguro (idempotente por semana ISO via ledger `events`).
+#
+# IMPORTANTE:
+# - So roda no branch default (main), depois de mesclado.
+# - Ao migrar para o plano Pro, o Vercel Cron volta a valer: DESATIVE/APAGUE este
+#   workflow (rodar os dois juntos e inofensivo — idempotente — mas e redundante).
+# - Actions de repo PUBLICO nao consomem minutos; ainda assim a Vercel Hobby e
+#   para uso NAO-comercial: isto resolve so o problema tecnico de cron, nao os
+#   termos de uso.
+
+on:
+  schedule:
+    - cron: "0 11 * * *" # 11:00 UTC = 08:00 BRT (diario). GitHub pode atrasar alguns min.
+  workflow_dispatch: # permite disparo manual (Actions -> Run workflow)
+
+concurrency:
+  group: cron-trigger
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar crons nos deploys
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          EXP_TOUR_URL: ${{ secrets.EXP_TOUR_URL }}
+          FORIO_URL: ${{ secrets.FORIO_URL }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Secret CRON_SECRET nao configurado no repositorio (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
+          # Ordem importa: cambio primeiro (os demais leem a cotacao do dia);
+          # conciliar-pagamentos antes de conciliar-estornos.
+          CRONS=(
+            atualizar-cambio
+            materializar-tasks
+            expirar-cotacoes
+            conferir-faturas
+            regua-cobranca
+            escalar-inadimplencia
+            escalar-incontactavel
+            conciliar-pagamentos
+            conciliar-estornos
+            alertar-eventos
+            alertar-fornecedor
+            materiais-vencidos
+            resumo-semanal-fornecedor
+            limpar-rate-limit
+          )
+
+          falhas=0
+
+          disparar_deploy () {
+            nome="$1"; base="$2"
+            if [ -z "$base" ]; then
+              echo "== $nome: URL nao configurada (secret vazio) -> pulando =="
+              return
+            fi
+            base="${base%/}" # remove barra final
+            echo "==================== $nome ($base) ===================="
+            for c in "${CRONS[@]}"; do
+              code=$(curl -sS -m 90 -o /tmp/cron-body.json -w '%{http_code}' \
+                -H "Authorization: Bearer ${CRON_SECRET}" \
+                "${base}/api/cron/${c}" 2>/dev/null || echo "000")
+              if [ "$code" = "200" ] && grep -qE '"ok"[[:space:]]*:[[:space:]]*true' /tmp/cron-body.json; then
+                echo "  OK    $c (HTTP $code)"
+              else
+                echo "  FALHA $c (HTTP $code) $(head -c 300 /tmp/cron-body.json 2>/dev/null)"
+                falhas=$((falhas + 1))
+              fi
+            done
+          }
+
+          disparar_deploy "EXP Tour" "${EXP_TOUR_URL:-}"
+          disparar_deploy "Forio"    "${FORIO_URL:-}"
+
+          if [ "$falhas" -gt 0 ]; then
+            echo "::error::$falhas chamada(s) de cron falharam (ver log acima)."
+            exit 1
+          fi
+          echo "Todos os crons responderam ok."
