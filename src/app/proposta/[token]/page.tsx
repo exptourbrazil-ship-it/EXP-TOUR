@@ -1,7 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
-import Logo from "@/components/Logo";
+import BrandLogo from "@/components/BrandLogo";
+import { getTenantBrand, type TenantBrand } from "@/lib/tenant-brand";
 import { converterParaBRL } from "@/lib/cambio";
 import { estadoProposta } from "@/lib/propostas";
+
+// Marca do deploy: para exp-tour o BrandLogo devolve exatamente <Logo escuro /> e
+// --p-header-bg equivale a bg-brand, entao a pagina fica identica; para a Forio,
+// veste o logo e o cabecalho da marca.
+const brand: TenantBrand = getTenantBrand(process.env.CATALOGO_TENANT_SLUG ?? "forio");
+const brandName = brand.email.brandName;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,9 +41,9 @@ function fmtMoeda(valor: number, moeda: string): string {
 function Moldura({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-brand-cream/40">
-      <header className="bg-brand">
+      <header style={{ backgroundColor: "var(--p-header-bg)" }}>
         <div className="mx-auto max-w-3xl px-5 py-4 md:px-8">
-          <Logo escuro />
+          <BrandLogo brand={brand} />
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-5 py-8 md:px-8">{children}</main>
@@ -69,15 +76,15 @@ export default async function PropostaPublicaPage({ params }: { params: Promise<
     .maybeSingle();
 
   if (!p) {
-    return <Aviso titulo="Proposta não encontrada" texto="Verifique o link recebido ou fale com a EXP Tour." />;
+    return <Aviso titulo="Proposta não encontrada" texto={`Verifique o link recebido ou fale com a ${brandName}.`} />;
   }
 
   const estado = estadoProposta(p as any, hojeBrasilISO());
   if (estado === "expirada") {
-    return <Aviso titulo="Proposta expirada" texto={`Esta proposta era válida até ${fmtData(p.validade)}. Fale com a EXP Tour para uma nova.`} />;
+    return <Aviso titulo="Proposta expirada" texto={`Esta proposta era válida até ${fmtData(p.validade)}. Fale com a ${brandName} para uma nova.`} />;
   }
   if (estado === "cancelada" || estado === "indisponivel") {
-    return <Aviso titulo="Proposta indisponível" texto="Esta proposta não está mais disponível. Fale com a EXP Tour." />;
+    return <Aviso titulo="Proposta indisponível" texto={`Esta proposta não está mais disponível. Fale com a ${brandName}.`} />;
   }
   if (estado === "aceita") {
     return <Aviso titulo="Proposta já aceita" texto="Esta proposta já foi assinada. Acesse a sua Área do Cliente para acompanhar." />;
@@ -113,7 +120,7 @@ export default async function PropostaPublicaPage({ params }: { params: Promise<
         vaga é reservada nesta etapa.
       </div>
 
-      <h1 className="font-serif text-3xl text-brand">Proposta EXP Tour</h1>
+      <h1 className="font-serif text-3xl text-brand">Proposta {brandName}</h1>
       <p className="mt-1 text-sm text-neutral-600">
         {p.nome_completo ? `Para ${p.nome_completo}. ` : ""}Válida até {fmtData(p.validade)}.
       </p>
@@ -170,7 +177,7 @@ export default async function PropostaPublicaPage({ params }: { params: Promise<
       <div className="mt-6 rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-5 text-center">
         <p className="text-sm text-neutral-600">
           Para prosseguir, a <strong>assinatura eletrônica</strong> será habilitada nesta tela.
-          Enquanto isso, fale com a EXP Tour em caso de dúvida.
+          Enquanto isso, fale com a {brandName} em caso de dúvida.
         </p>
       </div>
     </Moldura>

@@ -2,6 +2,7 @@
 
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
+import { useTenantBrand } from "@/components/TenantBrandProvider"
 import { montarLinkMapa, montarLinkSuporteWhatsApp, SITE_PUBLICO_EXP_TOUR, WHATSAPP_EXP_TOUR, type InfoEmergencia } from "@/lib/viagem"
 
 type ViagemInfo = {
@@ -31,14 +32,13 @@ type ViagemClientProps = {
   materiais?: MaterialCliente[]
 }
 
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
-
 function primeiroNome(nome: string | null): string {
   if (!nome) return ""
   return nome.trim().split(" ")[0]
 }
 
 export default function ViagemClient(props: ViagemClientProps) {
+  const brandName = useTenantBrand().email.brandName
   const nome = primeiroNome(props.nomeExibicao)
   const info = props.info
   const temEndereco = !!(info && (info.escola_nome || info.escola_endereco || info.acomodacao_endereco || info.contato_local_nome || info.observacoes))
@@ -56,10 +56,10 @@ export default function ViagemClient(props: ViagemClientProps) {
         </p>
 
         <div className="mt-6 space-y-5 md:grid md:grid-cols-2 md:gap-5 md:space-y-0 md:items-start">
-        {/* Fale com a EXP Tour */}
+        {/* Fale com a marca (tenant) */}
         <section className="rounded-3xl bg-brand p-6 text-brand-cream shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-gold">
-            Fale com a EXP Tour
+            Fale com a {brandName}
           </p>
           <p className="mt-3 text-sm text-brand-cream/80">
             Precisa de ajuda? A gente está com você em qualquer fuso.
@@ -164,7 +164,7 @@ export default function ViagemClient(props: ViagemClientProps) {
               Prepare-se para a viagem
             </p>
             <p className="mt-2 text-sm text-neutral-500">
-              Parceiros da EXP Tour para você chegar tranquilo.
+              Parceiros da {brandName} para você chegar tranquilo.
             </p>
             <div className="mt-4 space-y-3">
               {props.afiliadoPassagemUrl ? (

@@ -5,7 +5,9 @@
 // preservar a convencao de libs puras e autocontidas do projeto -- se mudarem,
 // atualize tambem src/lib/nps.ts.
 export const SITE_PUBLICO_EXP_TOUR = "https://www.exp-tour.com";
-export const WHATSAPP_EXP_TOUR = "+1 778-682-7927";
+// WhatsApp de suporte, configuravel por tenant via env (default = numero EXP
+// Tour atual). NEXT_PUBLIC_* e inlinado no bundle do cliente em build.
+export const WHATSAPP_EXP_TOUR = process.env.NEXT_PUBLIC_SUPORTE_WHATSAPP || "+1 778-682-7927";
 
 export type InfoEmergencia = { pais: string; numeroEmergencia: string };
 

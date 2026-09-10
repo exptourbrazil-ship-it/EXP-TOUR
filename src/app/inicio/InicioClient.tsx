@@ -5,6 +5,7 @@ import Link from "next/link"
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
 import SuporteRodape from "@/components/SuporteRodape"
+import { useTenantBrand } from "@/components/TenantBrandProvider"
 import { calcularJornada, indiceEtapaAtual, totalConcluidas, type EstadoEtapa } from "@/lib/jornada"
 
 type Contrato = {
@@ -66,6 +67,7 @@ const CTA_POR_ETAPA: Record<string, { rotulo: string; href: string }> = {
 }
 
 export default function InicioClient(props: InicioClientProps) {
+  const brandName = useTenantBrand().email.brandName
   const nomeCompleto = props.nomeCompleto
   const contrato = props.contrato
   const estudanteNome = (contrato && contrato.estudante_nome) ? contrato.estudante_nome : null
@@ -77,7 +79,7 @@ export default function InicioClient(props: InicioClientProps) {
   // Subtitulo deixa explicito de QUEM e a jornada (o estudante).
   const subtitulo = estudanteNome
     ? "Jornada de " + primeiroNome(estudanteNome) + (contrato && contrato.nome ? " · " + contrato.nome : "")
-    : (contrato && contrato.nome ? contrato.nome : "Sua jornada com a EXP Tour")
+    : (contrato && contrato.nome ? contrato.nome : `Sua jornada com a ${brandName}`)
 
   const dataInicioEfetiva = (contrato && contrato.data_inicio) ? contrato.data_inicio : (props.dataInicioTitular || null)
 
@@ -147,7 +149,7 @@ export default function InicioClient(props: InicioClientProps) {
           ) : (
             <div>
               <p className="mt-3 font-serif text-3xl leading-tight">
-                {contrato && contrato.nome ? contrato.nome : "Programa EXP Tour"}
+                {contrato && contrato.nome ? contrato.nome : `Programa ${brandName}`}
               </p>
               <p className="mt-3 text-sm text-brand-cream/80">
                 A data de início será confirmada em breve.

@@ -4,6 +4,7 @@ import { useState } from "react"
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
 import SuporteRodape from "@/components/SuporteRodape"
+import { useTenantBrand } from "@/components/TenantBrandProvider"
 import { montarLinkIndicacaoWhatsApp } from "@/lib/nps"
 
 type Contrato = {
@@ -32,14 +33,13 @@ type RetornoClientProps = {
   googleReviewUrl: string | null
 }
 
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
-
 function primeiroNome(nomeCompleto: string | null): string {
   if (!nomeCompleto) return ""
   return nomeCompleto.trim().split(" ")[0]
 }
 
 export default function RetornoClient(props: RetornoClientProps) {
+  const brandName = useTenantBrand().email.brandName
   // A tela acompanha a jornada do ESTUDANTE; usa o nome dele quando existir.
   const nomeExibicao = (props.contrato && props.contrato.estudante_nome) ? props.contrato.estudante_nome : props.nomeCompleto
   const nome = primeiroNome(nomeExibicao)
@@ -142,7 +142,7 @@ export default function RetornoClient(props: RetornoClientProps) {
             </div>
           ) : (
             <div className="mt-2">
-              <h2 className="font-serif text-2xl text-brand">O quanto você recomendaria a EXP Tour?</h2>
+              <h2 className="font-serif text-2xl text-brand">O quanto você recomendaria a {brandName}?</h2>
               <p className="mt-2 text-sm text-neutral-500">De 0 (nada provável) a 10 (com certeza).</p>
               <div className="mt-4 grid grid-cols-6 gap-2">
                 {Array.from({ length: 11 }, (_, n) => (
@@ -207,7 +207,7 @@ export default function RetornoClient(props: RetornoClientProps) {
           </p>
           <h2 className="mt-2 font-serif text-2xl text-brand">Conhece alguém querendo estudar fora?</h2>
           <p className="mt-2 text-sm text-neutral-500">
-            Compartilhe a EXP Tour com quem está pensando em fazer intercâmbio.
+            Compartilhe a {brandName} com quem está pensando em fazer intercâmbio.
           </p>
           <a
             href={linkIndicacao}

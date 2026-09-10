@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Logo from "@/components/Logo"
+import BrandMark from "@/components/BrandMark"
 import AceiteBanner from "@/components/AceiteBanner"
 
 // Cabecalho compartilhado das telas do cliente: logo + menu de conta com o
@@ -29,9 +29,12 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
 
   return (
     <>
-    <header className="bg-brand">
+    {/* Fundo do cabecalho pela marca do tenant. Para exp-tour, --p-header-bg
+        equivale a bg-brand (#042f1b), entao a tela fica identica; para a Forio
+        vira o cabecalho claro do Manual da Marca. */}
+    <header style={{ backgroundColor: "var(--p-header-bg)" }}>
     <div className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-4 md:px-8">
-      <Logo escuro />
+      <BrandMark />
 
       <button
         type="button"
