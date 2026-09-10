@@ -8,7 +8,42 @@ import {
   validarEmail,
   normalizarTelefone,
   validarDataNascimento,
+  validarDadosNovoTitular,
 } from "./cadastro-service.ts";
+
+// CPF valido de teste (passa nos digitos verificadores).
+const CPF_OK = "39053344705";
+
+test("validarDadosNovoTitular: caso valido (so nome + cpf)", () => {
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "Idacir Schweikart", cpf: CPF_OK }), { ok: true });
+});
+
+test("validarDadosNovoTitular: nome obrigatorio", () => {
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "  ", cpf: CPF_OK }), { ok: false, motivo: "nome_obrigatorio" });
+});
+
+test("validarDadosNovoTitular: CPF invalido", () => {
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "X", cpf: "111" }), { ok: false, motivo: "cpf_invalido" });
+});
+
+test("validarDadosNovoTitular: email so e validado quando presente", () => {
+  assert.equal(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, email: "" }).ok, true);
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, email: "arroba" }), { ok: false, motivo: "email_invalido" });
+});
+
+test("validarDadosNovoTitular: data_inicio pode ser FUTURA (formato AAAA-MM-DD)", () => {
+  assert.equal(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, data_inicio: "2030-01-15" }).ok, true);
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, data_inicio: "15/01/2030" }), { ok: false, motivo: "data_invalida" });
+});
+
+test("validarDadosNovoTitular: data_inicio impossivel e recusada (nao vira 500)", () => {
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, data_inicio: "2030-13-45" }), { ok: false, motivo: "data_invalida" });
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, data_inicio: "2030-02-30" }), { ok: false, motivo: "data_invalida" });
+});
+
+test("validarDadosNovoTitular: telefone curto e recusado", () => {
+  assert.deepEqual(validarDadosNovoTitular({ nome_completo: "X", cpf: CPF_OK, telefone: "1199" }), { ok: false, motivo: "telefone_invalido" });
+});
 
 // ---- normalizarCpf ----------------------------------------------------------
 

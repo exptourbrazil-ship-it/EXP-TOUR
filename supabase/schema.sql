@@ -15,6 +15,23 @@ alter table if exists titulares add column if not exists anonimizado_em timestam
 alter table if exists titulares add column if not exists anonimizado_por text;
 alter table if exists titulares add column if not exists anonimizado_justificativa text;
 
+-- Data de inicio do programa do titular (usada na "regra dos 30 dias" e na regua
+-- de cobranca). Aplicada originalmente direto no SQL Editor; registrada aqui para
+-- alinhar o schema versionado com a producao.
+alter table if exists titulares add column if not exists data_inicio date;
+-- Id do contato no Zoho CRM (dedupe do webhook por CPF). Idem: aplicada no SQL
+-- Editor; registrada aqui.
+alter table if exists titulares add column if not exists zoho_contact_id text;
+
+-- Arquivamento (soft-delete REVERSIVEL) do titular: some das listas operacionais
+-- mas PRESERVA todo o historico (contratos, parcelas, ledger de pagamentos e de
+-- consentimentos). Diferente da anonimizacao (LGPD, irreversivel, redige PII):
+-- arquivar so oculta. Ver src/lib/cadastro-service.ts (arquivarTitular).
+alter table if exists titulares add column if not exists arquivado_em timestamptz;
+alter table if exists titulares add column if not exists arquivado_por text;
+alter table if exists titulares add column if not exists arquivado_motivo text;
+create index if not exists idx_titulares_arquivado on titulares(arquivado_em);
+
 -- Contratos: uma viagem/grupo contratado por um titular
 create table if not exists contratos (
   id uuid primary key default gen_random_uuid(),

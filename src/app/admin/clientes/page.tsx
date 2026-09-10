@@ -1,4 +1,5 @@
 import { exigirCapacidade } from "@/lib/admin-guard";
+import { podeAdmin } from "@/lib/admin-roles";
 import { carregarClientes } from "@/lib/admin-clientes";
 import ClientesClient from "./ClientesClient";
 
@@ -6,13 +7,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Pagina protegida da carteira de clientes. Carrega no servidor (sem waterfall)
-// e entrega para o client component, que cuida de busca e filtros.
-export default async function AdminClientesPage() {
-  await exigirCapacidade("casos.ver", "/admin/clientes");
+// e entrega para o client component, que cuida de busca e filtros. O parametro
+// ?arquivados=1 alterna para a lista de clientes arquivados (para restaurar).
+export default async function AdminClientesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ arquivados?: string }>;
+}) {
+  const sessao = await exigirCapacidade("casos.ver", "/admin/clientes");
+  const podeGerir = podeAdmin(sessao.papel, "casos.gerir");
+  const sp = (await searchParams) ?? {};
+  const modo = sp.arquivados === "1" ? "arquivados" : "ativos";
 
   let clientes;
   try {
-    clientes = await carregarClientes();
+    clientes = await carregarClientes(modo);
   } catch {
     return (
       <div className="mx-auto max-w-2xl">
@@ -24,5 +33,5 @@ export default async function AdminClientesPage() {
     );
   }
 
-  return <ClientesClient clientes={clientes} />;
+  return <ClientesClient clientes={clientes} podeGerir={podeGerir} modo={modo} />;
 }

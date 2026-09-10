@@ -13,12 +13,18 @@ function getSupabase() {
 
 // Carrega a carteira de clientes: titulares + contratos + parcelas, agregados
 // pelo helper puro agruparCarteira. Lanca em caso de falha de query.
-export async function carregarClientes(): Promise<ClienteCarteira[]> {
+// modo="ativos" (padrao) oculta os arquivados; "arquivados" lista SO os
+// arquivados (para restaurar). Anonimizados nao sao filtrados aqui.
+export async function carregarClientes(
+  modo: "ativos" | "arquivados" = "ativos",
+): Promise<ClienteCarteira[]> {
   const supabase = getSupabase();
 
-  const { data: titulares, error: erroTitulares } = await supabase
+  let q = supabase
     .from("titulares")
     .select("id, nome_completo, cpf, telefone, email, data_inicio");
+  q = modo === "arquivados" ? q.not("arquivado_em", "is", null) : q.is("arquivado_em", null);
+  const { data: titulares, error: erroTitulares } = await q;
   if (erroTitulares) throw new Error("Falha ao carregar titulares.");
 
   const { data: contratos, error: erroContratos } = await supabase

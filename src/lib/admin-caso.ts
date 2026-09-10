@@ -36,6 +36,7 @@ export type CasoTitular = {
   data_inicio: string | null;
   created_at: string | null;
   anonimizado_em: string | null;
+  arquivado_em: string | null;
 };
 
 export type CasoContrato = {
@@ -235,7 +236,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
 
   const { data: titular } = await supabase
     .from("titulares")
-    .select("id, nome_completo, cpf, telefone, email, data_inicio, created_at, anonimizado_em")
+    .select("id, nome_completo, cpf, telefone, email, data_inicio, created_at, anonimizado_em, arquivado_em")
     .eq("id", titularId)
     .maybeSingle();
 

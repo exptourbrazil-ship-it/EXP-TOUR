@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ClienteCarteira } from "@/lib/clientes";
 import { normalizarBusca, resumoCarteira } from "@/lib/clientes";
 import { fmtPorMoeda, fmtData } from "@/lib/formato";
@@ -14,7 +15,16 @@ type Dir = "asc" | "desc";
 // parcelas, saldo em aberto por moeda e atraso. Indicadores de topo, busca
 // (nome/estudante/CPF, sem acento), filtros (destino, "só com atraso") e
 // ordenação por coluna. Tudo client-side sobre a lista já carregada.
-export default function ClientesClient({ clientes }: { clientes: ClienteCarteira[] }) {
+export default function ClientesClient({
+  clientes,
+  podeGerir = false,
+  modo = "ativos",
+}: {
+  clientes: ClienteCarteira[];
+  podeGerir?: boolean;
+  modo?: "ativos" | "arquivados";
+}) {
+  const [novoAberto, setNovoAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const [destino, setDestino] = useState("todos");
   const [soAtraso, setSoAtraso] = useState(false);
@@ -69,13 +79,42 @@ export default function ClientesClient({ clientes }: { clientes: ClienteCarteira
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Painel</p>
-        <h1 className="mt-1 font-serif text-3xl text-brand">Clientes</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          Carteira de titulares e contratos, com progresso das parcelas e saldo em aberto por moeda.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Painel</p>
+          <h1 className="mt-1 font-serif text-3xl text-brand">
+            {modo === "arquivados" ? "Clientes arquivados" : "Clientes"}
+          </h1>
+          <p className="mt-2 text-sm text-neutral-600">
+            {modo === "arquivados"
+              ? "Clientes arquivados (ocultos da carteira). Abra um cliente para restaurar."
+              : "Carteira de titulares e contratos, com progresso das parcelas e saldo em aberto por moeda."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {modo === "arquivados" ? (
+            <Link href="/admin/clientes" className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-brand transition hover:bg-neutral-50">
+              ← Ver ativos
+            </Link>
+          ) : (
+            <>
+              <Link href="/admin/clientes?arquivados=1" className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600 transition hover:bg-neutral-50">
+                Arquivados
+              </Link>
+              {podeGerir ? (
+                <button
+                  onClick={() => setNovoAberto(true)}
+                  className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90"
+                >
+                  + Novo cliente
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
       </header>
+
+      {novoAberto ? <NovoClienteModal onFechar={() => setNovoAberto(false)} /> : null}
 
       {/* Indicadores de topo (carteira completa) */}
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -282,6 +321,105 @@ function CardIndicador({
       <p className="text-xs font-medium text-neutral-500">{titulo}</p>
       <p className={`mt-2 font-serif text-xl ${corValor}`}>{valor}</p>
       <p className="mt-1 text-xs text-neutral-400">{legenda ?? " "}</p>
+    </div>
+  );
+}
+
+// Modal de cadastro de um novo cliente (titular). Cria so o titular; o contrato
+// vem depois. Ao criar, navega direto para o Caso 360 do novo cliente.
+function NovoClienteModal({ onFechar }: { onFechar: () => void }) {
+  const router = useRouter();
+  const [nome, setNome] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [email, setEmail] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    setErro(null);
+    if (!nome.trim()) {
+      setErro("Informe o nome completo.");
+      return;
+    }
+    if (cpf.replace(/\D/g, "").length !== 11) {
+      setErro("Informe um CPF com 11 dígitos.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      const resp = await fetch("/api/admin/clientes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome_completo: nome,
+          cpf,
+          email: email || null,
+          telefone: telefone || null,
+          data_inicio: dataInicio || null,
+        }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok || !json.ok) {
+        setErro(json.erro || "Não foi possível criar o cliente.");
+      } else if (json.titularId) {
+        router.push(`/admin/clientes/${json.titularId}`);
+      } else {
+        onFechar();
+        router.refresh();
+      }
+    } catch {
+      setErro("Falha de conexão. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !salvando && onFechar()}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="font-serif text-lg text-brand">Novo cliente</h3>
+          <button onClick={onFechar} className="text-sm text-neutral-400 hover:text-neutral-600">Fechar</button>
+        </div>
+        <p className="mb-4 text-xs text-neutral-500">
+          Cadastro do titular (responsável). O contrato e as parcelas são adicionados depois, no cadastro do cliente.
+        </p>
+
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-xs font-medium text-neutral-600">Nome completo</span>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand" />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-600">CPF</span>
+              <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-600">Início do programa (opcional)</span>
+              <input value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} type="date" className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-xs font-medium text-neutral-600">E-mail (opcional — canal de acesso do cliente)</span>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="cliente@email.com" className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand" />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-neutral-600">Telefone (opcional)</span>
+            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} inputMode="tel" placeholder="(11) 99999-9999" className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand" />
+          </label>
+          {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+        </div>
+
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button onClick={onFechar} disabled={salvando} className="rounded-xl px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 disabled:opacity-50">Cancelar</button>
+          <button onClick={salvar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50">
+            {salvando ? "Criando..." : "Criar cliente"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

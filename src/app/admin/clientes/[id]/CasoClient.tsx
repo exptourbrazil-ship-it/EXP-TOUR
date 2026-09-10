@@ -1551,8 +1551,91 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
         </ul>
       </div>
 
+      {/* Arquivar / desarquivar cliente (soft-delete reversivel) — casos.gerir */}
+      {permissoes.gerirCaso ? <SecaoArquivar caso={caso} /> : null}
+
       {/* Anonimizacao de dados (LGPD art. 18) — so Gestor (config.gerir) */}
       {permissoes.anonimizarDados ? <SecaoAnonimizar caso={caso} /> : null}
+    </div>
+  );
+}
+
+// Arquivamento REVERSIVEL do cliente (soft-delete). Oculta o cliente das listas
+// operacionais mas preserva todo o historico. Diferente da anonimizacao (LGPD,
+// irreversivel). A rota re-checa a capacidade casos.gerir.
+function SecaoArquivar({ caso }: { caso: Caso }) {
+  const router = useRouter();
+  const [motivo, setMotivo] = useState("");
+  const [processando, setProcessando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const arquivado = !!caso.titular.arquivado_em;
+
+  async function alternar() {
+    setErro(null);
+    if (!arquivado && !window.confirm("Arquivar este cliente? Ele some das listas, mas nada é apagado — dá para desarquivar depois.")) return;
+    setProcessando(true);
+    try {
+      const resp = await fetch(`/api/admin/clientes/${caso.titular.id}/arquivar`, {
+        method: arquivado ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(arquivado ? {} : { motivo: motivo.trim() || null }),
+      });
+      const r = await resp.json().catch(() => ({}));
+      if (r.ok) {
+        router.refresh();
+      } else {
+        setErro(r.erro || "Não foi possível concluir.");
+      }
+    } catch {
+      setErro("Não foi possível concluir.");
+    } finally {
+      setProcessando(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">{arquivado ? "Cliente arquivado" : "Arquivar cliente"}</h2>
+      {arquivado ? (
+        <>
+          <p className="mb-3 text-sm text-neutral-600">
+            Arquivado em {fmtData(caso.titular.arquivado_em as string)}. Está oculto das listas operacionais; o histórico
+            foi preservado. Você pode desarquivar a qualquer momento.
+          </p>
+          {erro ? <p className="mb-2 text-sm text-red-700">{erro}</p> : null}
+          <button
+            onClick={alternar}
+            disabled={processando}
+            className="rounded-xl border border-brand px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand hover:text-brand-cream disabled:opacity-50"
+          >
+            {processando ? "Desarquivando..." : "Desarquivar cliente"}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-neutral-600">
+            Oculta o cliente das listas operacionais. <span className="font-medium">Reversível</span> — não apaga
+            contratos, parcelas nem pagamentos. Para eliminar a PII (LGPD), use a anonimização.
+          </p>
+          <label className="block text-xs text-neutral-500">
+            Motivo (opcional, registrado na auditoria)
+            <input
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 p-2 text-sm text-neutral-800"
+              placeholder="Ex.: cadastro duplicado / cliente inativo."
+            />
+          </label>
+          {erro ? <p className="mt-2 text-sm text-red-700">{erro}</p> : null}
+          <button
+            onClick={alternar}
+            disabled={processando}
+            className="mt-3 rounded-xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-red-400 hover:text-red-600 disabled:opacity-50"
+          >
+            {processando ? "Arquivando..." : "Arquivar cliente"}
+          </button>
+        </>
+      )}
     </div>
   );
 }
