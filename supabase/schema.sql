@@ -1291,14 +1291,29 @@ begin
    where pa.contrato_id = p_contrato_id and not (pa.id = any(v_ids));
   get diagnostics v_removidas = row_count;
 
-  -- Desloca as NAO bloqueadas para uma faixa negativa temporaria antes de aplicar
-  -- os numeros finais: uma renumeracao (permuta de `numero`) violaria transitoria-
-  -- mente o unique(contrato_id, numero) num UPDATE multi-linha. Negativos nao
-  -- colidem com os numeros finais (positivos) nem com as bloqueadas (intactas).
+  -- Desloca TODAS as parcelas restantes (INCLUSIVE as bloqueadas) para uma faixa
+  -- negativa temporaria antes de aplicar os numeros finais. O cliente reenvia o
+  -- cronograma inteiro renumerado (1..N na ordem de exibicao); depois de uma
+  -- parcela paga, uma NAO bloqueada pode assumir o numero que a paga ainda
+  -- carrega. Se as bloqueadas nao forem deslocadas junto, esse cruzamento viola
+  -- transitoriamente o unique(contrato_id, numero) e ABORTA a transacao (era o
+  -- que impedia repactuar depois de pagar uma parcela). Renumerar e SO ordenacao:
+  -- nao altera o valor pago, o valor_original, o vencimento nem o ledger.
+  -- Negativos nao colidem com os finais (positivos).
   update parcelas pa set numero = -pa.numero - 1
-   where pa.contrato_id = p_contrato_id
-     and not (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null);
+   where pa.contrato_id = p_contrato_id;
 
+  -- Numero final das BLOQUEADAS: SO a ordenacao muda. valor_atual, vencimento,
+  -- descricao e valor_original ficam congelados (o guarda-corpo ja provou que o
+  -- corpo os manda inalterados) — o que foi pago permanece intacto.
+  update parcelas pa set
+      numero = (e->>'numero')::int
+  from jsonb_array_elements(p_parcelas) e
+  where (e ? 'id') and nullif(e->>'id', '') is not null
+    and pa.id = (e->>'id')::uuid and pa.contrato_id = p_contrato_id
+    and (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null);
+
+  -- Numero final + redistribuicao do valor/vencimento das NAO bloqueadas.
   update parcelas pa set
       numero = (e->>'numero')::int,
       descricao = coalesce(e->>'descricao', pa.descricao),
@@ -2431,16 +2446,27 @@ begin
      and not (status = 'pago' or qr_code_url is not null or external_payment_id is not null)
      and not (id = any(v_input_ids));
 
-  -- 2a) Desloca as NAO-travadas para faixa negativa temporaria antes de aplicar
-  --     os numeros finais: uma renumeracao (permuta de numero) violaria transitoria-
-  --     mente o unique(contrato_id, numero) num UPDATE multi-linha. Negativos nao
-  --     colidem com os finais (positivos) nem com as travadas (intactas).
+  -- 2a) Desloca TODAS as parcelas mantidas (INCLUSIVE as travadas) para faixa
+  --     negativa temporaria antes de aplicar os numeros finais. O corpo renumera
+  --     o cronograma inteiro (1..N); depois de uma parcela paga, uma NAO travada
+  --     pode assumir o numero que a travada ainda carrega. Se as travadas nao
+  --     forem deslocadas junto, esse cruzamento viola transitoriamente o
+  --     unique(contrato_id, numero) e aborta a transacao. Renumerar e SO
+  --     ordenacao: nao altera o valor pago, o valor_original nem o vencimento das
+  --     travadas. Negativos nao colidem com os finais (positivos).
   update parcelas t set numero = -t.numero - 1
-   where t.contrato_id = p_contrato_id
-     and not (t.status = 'pago' or t.qr_code_url is not null or t.external_payment_id is not null);
+   where t.contrato_id = p_contrato_id;
 
-  -- 2b) Atualiza as NAO-travadas presentes. valor_original NAO e tocado; travadas
-  --     ficam de fora (pass-through) mesmo que o corpo mande valores diferentes.
+  -- 2b) Numero final das TRAVADAS: SO a ordenacao. valor/vencimento/descricao
+  --     ficam congelados (pass-through) — o que foi pago permanece intacto.
+  update parcelas t
+     set numero = coalesce((p->>'numero')::int, t.numero)
+    from jsonb_array_elements(coalesce(p_parcelas, '[]'::jsonb)) as p
+   where t.contrato_id = p_contrato_id
+     and t.id = (p->>'id')::uuid
+     and (t.status = 'pago' or t.qr_code_url is not null or t.external_payment_id is not null);
+
+  -- 2c) Atualiza as NAO-travadas presentes. valor_original NAO e tocado.
   update parcelas t
      set numero = coalesce((p->>'numero')::int, t.numero),
          descricao = p->>'descricao',

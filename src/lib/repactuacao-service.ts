@@ -186,12 +186,37 @@ async function aplicarCronogramaSequencial(
     const { error } = await supabase.from("parcelas").delete().in("id", remover).eq("contrato_id", contratoId);
     if (error) throw new RepactuacaoBloqueada("falha_aplicar", "Falha ao remover parcelas");
   }
-  // Parcelas bloqueadas (pagas / com Pix) nao sao tocadas: o motor ja garantiu
-  // que vieram inalteradas (valor/venc), e o update sobrescreveria numero/
-  // descricao/is_entrada historicos. So redistribuimos as NAO bloqueadas.
   const bloqueadas = new Set(atuais.filter((p) => p.status === "pago" || p.temCobranca).map((p) => p.id));
+
+  // Fase 1: desloca TODAS as parcelas mantidas (com id, inclusive as bloqueadas)
+  // para numeros negativos temporarios. Sem isto, reatribuir os numeros finais
+  // (1..N) pode colidir com o numero que uma parcela paga ainda carrega e violar
+  // o unique(contrato_id, numero) — era o que travava a repactuacao depois de uma
+  // parcela paga. Renumerar e so ordenacao; o valor pago nao muda.
+  const comId = novas.filter((p) => p.id);
+  for (let i = 0; i < comId.length; i++) {
+    const { error } = await supabase
+      .from("parcelas")
+      .update({ numero: -(i + 1) })
+      .eq("id", comId[i].id as string)
+      .eq("contrato_id", contratoId);
+    if (error) throw new RepactuacaoBloqueada("falha_aplicar", "Falha ao renumerar parcelas");
+  }
+
+  // Fase 2: numeros finais + redistribuicao. As bloqueadas (pagas / com Pix) so
+  // trocam de numero (ordenacao): o motor ja garantiu que vieram inalteradas em
+  // valor/vencimento, e o update completo sobrescreveria valor/descricao/
+  // is_entrada historicos. So as NAO bloqueadas tem valor/vencimento redistribuidos.
   for (const p of novas) {
-    if (p.id && bloqueadas.has(p.id)) continue;
+    if (p.id && bloqueadas.has(p.id)) {
+      const { error } = await supabase
+        .from("parcelas")
+        .update({ numero: p.numero })
+        .eq("id", p.id)
+        .eq("contrato_id", contratoId);
+      if (error) throw new RepactuacaoBloqueada("falha_aplicar", "Falha ao renumerar parcela paga");
+      continue;
+    }
     if (p.id) {
       const { error } = await supabase
         .from("parcelas")
