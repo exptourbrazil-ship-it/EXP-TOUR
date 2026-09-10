@@ -5,6 +5,9 @@
 // preservar a convencao de libs puras e autocontidas do projeto -- se mudarem,
 // atualize tambem src/lib/nps.ts.
 export const SITE_PUBLICO_EXP_TOUR = "https://www.exp-tour.com";
+// WhatsApp de suporte do EXP Tour. O numero exibido no portal vem do TENANT
+// (getTenantBrand(...).supportWhatsApp); esta constante e o default/fallback e o
+// numero canonico do EXP Tour.
 export const WHATSAPP_EXP_TOUR = "+1 778-682-7927";
 
 export type InfoEmergencia = { pais: string; numeroEmergencia: string };
@@ -32,8 +35,8 @@ export function montarLinkMapa(endereco: string | null | undefined): string | nu
 
 // Link wa.me para falar com o suporte da EXP Tour (numero comercial). Aqui o
 // numero de destino ESTA presente (diferente da indicacao, que e sem destino).
-export function montarLinkSuporteWhatsApp(): string {
-  const numero = WHATSAPP_EXP_TOUR.replace(/[^0-9]/g, "");
+export function montarLinkSuporteWhatsApp(whatsapp: string = WHATSAPP_EXP_TOUR): string {
+  const numero = whatsapp.replace(/[^0-9]/g, "");
   return `https://wa.me/${numero}`;
 }
 

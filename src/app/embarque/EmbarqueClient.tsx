@@ -23,8 +23,6 @@ type EmbarqueClientProps = {
   progresso: Progresso
 }
 
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
-
 function primeiroNome(nome: string | null): string {
   if (!nome) return ""
   return nome.trim().split(" ")[0]

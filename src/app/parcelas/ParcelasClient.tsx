@@ -7,8 +7,6 @@ import Cabecalho from "@/components/Cabecalho"
 import SuporteRodape from "@/components/SuporteRodape"
 import { somaParcelasConfere, somaValoresParcelas } from "@/lib/parcelas"
 
-const LOGO_URL = "https://exp-tour.com/wp-content/uploads/2026/04/EXP-Tour-Original-Logo.svg"
-
 type Parcela = {
   id: string
   numero: number

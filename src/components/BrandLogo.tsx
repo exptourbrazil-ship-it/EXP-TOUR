@@ -14,10 +14,15 @@ export default function BrandLogo({
   brand,
   logoUrl,
   nome,
+  escuro = false,
 }: {
   brand: TenantBrand;
   logoUrl?: string | null;
   nome?: string | null;
+  // Sobre fundo ESCURO (ex.: login): forca o wordmark Forio em branco. No
+  // cabecalho branco da Forio o wordmark e escuro (--p-header-fg). Sem efeito no
+  // EXP Tour, que ja usa a variante clara do <Logo escuro /> em qualquer fundo.
+  escuro?: boolean;
 }) {
   if (logoUrl) {
     return (
@@ -47,8 +52,8 @@ export default function BrandLogo({
           <rect x="22" y="46" width="38" height="12" rx="6" fill={FORIO_SKY} />
         </svg>
         <span
-          className="text-[26px] font-medium leading-none tracking-tight text-[color:var(--p-header-fg)]"
-          style={{ fontFamily: "var(--p-heading)" }}
+          className="text-[26px] font-medium leading-none tracking-tight"
+          style={{ fontFamily: "var(--p-heading)", color: escuro ? "#ffffff" : "var(--p-header-fg)" }}
         >
           For<span style={{ color: FORIO_SKY }}>io</span>
         </span>

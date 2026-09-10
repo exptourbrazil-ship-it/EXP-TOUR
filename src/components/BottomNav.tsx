@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTenantBrand } from "@/components/TenantBrandProvider";
 
 type ItemNav = {
   href: string;
@@ -78,6 +79,8 @@ const ITENS: ItemNav[] = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  // Wordmark da marca do tenant (EXP Tour -> "EXP TOUR"; Forio -> "Forio").
+  const wordmark = useTenantBrand().email.wordmarkTop;
 
   return (
     <>
@@ -86,7 +89,7 @@ export default function BottomNav() {
       aria-label="Navegação"
       className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-60 lg:flex-col lg:border-r lg:border-neutral-200 lg:bg-white lg:px-4 lg:py-6"
     >
-      <span className="mb-6 px-2 font-serif text-lg tracking-wide text-brand">EXP TOUR</span>
+      <span className="mb-6 px-2 font-serif text-lg tracking-wide text-brand">{wordmark}</span>
       <ul className="flex flex-col gap-1">
         {ITENS.map((item) => {
           const ativo = pathname === item.href;

@@ -57,6 +57,7 @@ export type SexoEstudante = "F" | "M" | null | undefined;
 // Cliente e restrita a clientes, entao a indicacao aponta para o SITE PUBLICO
 // e o WhatsApp comercial (nunca para o portal).
 export const SITE_PUBLICO_EXP_TOUR = "https://www.exp-tour.com";
+// WhatsApp comercial do EXP Tour (usado na mensagem de indicacao).
 export const WHATSAPP_EXP_TOUR = "+1 778-682-7927";
 
 // Abertura da mensagem, com o artigo correto por sexo. Quando o sexo nao esta

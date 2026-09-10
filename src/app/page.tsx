@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { montarLinkSuporteWhatsApp, WHATSAPP_EXP_TOUR } from "@/lib/viagem";
-import Logo from "@/components/Logo";
+import { montarLinkSuporteWhatsApp } from "@/lib/viagem";
+import BrandMark from "@/components/BrandMark";
+import { useTenantBrand } from "@/components/TenantBrandProvider";
 
 type Etapa = "cpf" | "codigo";
 // A mensagem carrega o TIPO, para o cliente distinguir sucesso de erro num
@@ -22,6 +23,7 @@ function formatarCpf(valor: string): string {
 }
 
 export default function LoginPage() {
+  const brand = useTenantBrand();
   const [etapa, setEtapa] = useState<Etapa>("cpf");
   const [cpf, setCpf] = useState("");
   const [codigo, setCodigo] = useState("");
@@ -101,7 +103,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6">
       <div className="mb-6 flex justify-center">
-        <Logo escuro />
+        <BrandMark escuro />
       </div>
 
       <div className="w-full max-w-md rounded-xl bg-brand-cream p-8 shadow-lg animate-fade-in-up">
@@ -225,12 +227,12 @@ export default function LoginPage() {
       <p className="mt-6 text-center text-sm text-brand-cream/80">
         Precisa de ajuda?{" "}
         <a
-          href={montarLinkSuporteWhatsApp()}
+          href={montarLinkSuporteWhatsApp(brand.supportWhatsApp)}
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-brand-cream underline"
         >
-          WhatsApp {WHATSAPP_EXP_TOUR}
+          WhatsApp {brand.supportWhatsApp}
         </a>
       </p>
     </main>

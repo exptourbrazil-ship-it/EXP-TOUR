@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useTenantBrand } from "@/components/TenantBrandProvider";
 import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, labelDoTipoDocumento, categoriaDoTipoDocumento } from "@/lib/documentos";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -113,6 +114,7 @@ const IconeLixeira = () => (
 const ACAO_BASE = "inline-flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border px-3.5 py-2 text-[13px] font-semibold";
 
 export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { documentos: any[]; afiliadoVistoUrl?: string | null }) {
+  const brandName = useTenantBrand().email.brandName;
   const [documentosState, setDocumentosState] = useState(documentos || []);
   const [tipoUpload, setTipoUpload] = useState({} as Record<string, string>);
   const [enviando, setEnviando] = useState(null as string | null);
@@ -294,9 +296,9 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
     const vazia = secao.grupos.length === 0;
     const subtitulo =
       secao.valor === "estudante"
-        ? "Documentos que você envia para a EXP Tour"
+        ? `Documentos que você envia para a ${brandName}`
         : secao.valor === "escola"
-        ? "Documentos emitidos pela escola ou pela EXP Tour"
+        ? `Documentos emitidos pela escola ou pela ${brandName}`
         : "Documentos financeiros do seu programa";
     return (
       <div key={secao.valor} className="mb-4 rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
@@ -306,7 +308,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
           <p className="pb-1 pt-4 text-[13px] text-neutral-500">
             {secao.valor === "estudante"
               ? "Você ainda não enviou documentos desta categoria. Use o campo abaixo para enviar."
-              : "A EXP Tour disponibilizará seus documentos aqui assim que estiverem prontos."}
+              : `A ${brandName} disponibilizará seus documentos aqui assim que estiverem prontos.`}
           </p>
         ) : (
           <div>{secao.grupos.flatMap((g: any) => g.itens.map((doc: any) => linhaDocumento(doc)))}</div>
