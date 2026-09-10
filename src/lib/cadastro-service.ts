@@ -356,3 +356,178 @@ export async function atualizarEstudanteContrato(args: {
 
   return { contratoId: args.contratoId };
 }
+
+// ---- Validador PURO do novo titular (cadastro manual pelo admin) ------------
+
+// Data AAAA-MM-DD que EXISTE de verdade (rejeita 2030-13-45), sem restringir
+// passado/futuro — o inicio do programa pode ser futuro. Diferente de
+// validarDataNascimento, que recusa datas futuras.
+function ehDataReal(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [ano, mes, dia] = s.split("-").map(Number);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return false;
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  return d.getUTCFullYear() === ano && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia;
+}
+
+// Valida os dados minimos para CRIAR um titular. Puro (testavel). Nome e CPF
+// sao obrigatorios; email/telefone sao validados so quando presentes. O
+// data_inicio (inicio do programa) PODE ser futuro — nao usa o validador de
+// nascimento; so exige o formato AAAA-MM-DD quando informado.
+export function validarDadosNovoTitular(args: {
+  nome_completo?: unknown;
+  cpf?: unknown;
+  email?: unknown;
+  telefone?: unknown;
+  data_inicio?: unknown;
+}): { ok: true } | { ok: false; motivo: string } {
+  const nome = String(args.nome_completo ?? "").trim();
+  if (!nome) return { ok: false, motivo: "nome_obrigatorio" };
+  if (!validarCpf(args.cpf)) return { ok: false, motivo: "cpf_invalido" };
+  const email = args.email == null ? "" : String(args.email).trim();
+  if (email && !validarEmail(email)) return { ok: false, motivo: "email_invalido" };
+  const tel = normalizarTelefone(args.telefone);
+  if (tel && tel.length < 10) return { ok: false, motivo: "telefone_invalido" };
+  const di = args.data_inicio == null ? "" : String(args.data_inicio).trim();
+  if (di && !ehDataReal(di)) return { ok: false, motivo: "data_invalida" };
+  return { ok: true };
+}
+
+// ---- Mutacoes de CADASTRO de titular (criar / arquivar / desarquivar) --------
+
+// Cria um titular manualmente pelo admin (cliente sem contrato — o contrato vem
+// depois). CPF ja existente NAO e sobrescrito: retorna `duplicado` (protege a
+// conta de um cliente ja cadastrado). O tenant vem do deploy atual. Auditado.
+export async function criarTitular(args: {
+  nome_completo: string;
+  cpf: string;
+  email?: string | null;
+  telefone?: string | null;
+  data_inicio?: string | null;
+  autor: string;
+  ip?: string | null;
+}): Promise<{ titularId: string }> {
+  const v = validarDadosNovoTitular(args);
+  if (!v.ok) {
+    const msg: Record<string, string> = {
+      nome_obrigatorio: "O nome completo e obrigatorio",
+      cpf_invalido: "CPF invalido",
+      email_invalido: "E-mail invalido",
+      telefone_invalido: "Telefone invalido",
+      data_invalida: "Data de inicio invalida (use AAAA-MM-DD)",
+    };
+    throw new CadastroInvalido("invalido", msg[v.motivo] ?? "Dados invalidos");
+  }
+
+  const nome = String(args.nome_completo).trim();
+  const cpf = normalizarCpf(args.cpf);
+  const email = args.email == null ? null : String(args.email).trim() || null;
+  const telefone = normalizarTelefone(args.telefone) || null;
+  const dataInicio = args.data_inicio == null ? null : String(args.data_inicio).trim() || null;
+
+  const supabase = getSupabase();
+
+  // CPF ja cadastrado -> nao sobrescreve (protege a conta existente).
+  const { data: existente } = await supabase
+    .from("titulares")
+    .select("id")
+    .eq("cpf", cpf)
+    .maybeSingle();
+  if (existente) {
+    throw new CadastroInvalido("duplicado", "Ja existe um cliente com este CPF");
+  }
+
+  // Tenant do deploy atual (import tardio: mantem os validadores puros
+  // carregaveis pelo runner de teste sem resolver o alias @/). FALHA FECHADA: se
+  // o tenant nao resolver, o erro PROPAGA (rota -> 500) em vez de gravar o
+  // titular com tenant errado. `tenantIdAtual` sempre devolve um id ou lanca.
+  const { tenantIdAtual } = await import("@/lib/catalog-service");
+  const tenantId = await tenantIdAtual(supabase);
+
+  const { data: inserido, error } = await supabase
+    .from("titulares")
+    .insert({ nome_completo: nome, cpf, email, telefone, data_inicio: dataInicio, tenant_id: tenantId })
+    .select("id")
+    .single();
+  if (error || !inserido) {
+    if ((error as { code?: string } | null)?.code === "23505") {
+      throw new CadastroInvalido("duplicado", "Ja existe um cliente com este CPF");
+    }
+    throw new Error("Falha ao criar o titular");
+  }
+
+  await registrarAuditoria(supabase, {
+    usuario: args.autor,
+    acao: "titular.criar",
+    alvo: inserido.id as string,
+    detalhe: { nome_completo: nome, cpf, email, telefone, data_inicio: dataInicio, tenant_id: tenantId },
+    ip: args.ip ?? null,
+  });
+
+  return { titularId: inserido.id as string };
+}
+
+// Arquiva um titular (soft-delete REVERSIVEL): some das listas operacionais, mas
+// preserva TODO o historico. Idempotente (arquivar de novo nao muda nada).
+export async function arquivarTitular(args: {
+  titularId: string;
+  motivo?: string | null;
+  autor: string;
+  ip?: string | null;
+}): Promise<{ titularId: string; jaEstava: boolean }> {
+  const supabase = getSupabase();
+  const { data: antes } = await supabase
+    .from("titulares")
+    .select("id, arquivado_em")
+    .eq("id", args.titularId)
+    .maybeSingle();
+  if (!antes) throw new CadastroInvalido("nao_encontrado", "Titular nao encontrado");
+  if (antes.arquivado_em) return { titularId: args.titularId, jaEstava: true };
+
+  const motivo = args.motivo ? String(args.motivo).trim().slice(0, 500) : null;
+  const { error } = await supabase
+    .from("titulares")
+    .update({ arquivado_em: new Date().toISOString(), arquivado_por: args.autor, arquivado_motivo: motivo })
+    .eq("id", args.titularId)
+    .is("arquivado_em", null);
+  if (error) throw new Error("Falha ao arquivar o titular");
+
+  await registrarAuditoria(supabase, {
+    usuario: args.autor,
+    acao: "titular.arquivar",
+    alvo: args.titularId,
+    detalhe: { motivo },
+    ip: args.ip ?? null,
+  });
+  return { titularId: args.titularId, jaEstava: false };
+}
+
+// Desarquiva um titular (reverte o arquivamento).
+export async function desarquivarTitular(args: {
+  titularId: string;
+  autor: string;
+  ip?: string | null;
+}): Promise<{ titularId: string }> {
+  const supabase = getSupabase();
+  const { data: antes } = await supabase
+    .from("titulares")
+    .select("id, arquivado_em")
+    .eq("id", args.titularId)
+    .maybeSingle();
+  if (!antes) throw new CadastroInvalido("nao_encontrado", "Titular nao encontrado");
+
+  const { error } = await supabase
+    .from("titulares")
+    .update({ arquivado_em: null, arquivado_por: null, arquivado_motivo: null })
+    .eq("id", args.titularId);
+  if (error) throw new Error("Falha ao desarquivar o titular");
+
+  await registrarAuditoria(supabase, {
+    usuario: args.autor,
+    acao: "titular.desarquivar",
+    alvo: args.titularId,
+    detalhe: null,
+    ip: args.ip ?? null,
+  });
+  return { titularId: args.titularId };
+}
