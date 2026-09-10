@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { getTenantBrand } from "@/lib/tenant-brand";
 import { carregarDocumentoIntegral } from "@/lib/documento-integral-service";
 import { montarDocumentoIntegral, type Bloco } from "@/lib/documento-integral";
 import ImprimirBotao from "./ImprimirBotao";
@@ -70,7 +71,7 @@ export default async function ContratoIntegralPage({ params }: { params: Promise
         <article className="rounded-2xl bg-white p-8 shadow-sm print:rounded-none print:p-0 print:shadow-none">
           {/* Cabecalho */}
           <header className="border-b border-neutral-200 pb-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-gold">EXP Tour</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-gold">{getTenantBrand(process.env.CATALOGO_TENANT_SLUG ?? "forio").email.brandName}</p>
             <h1 className="mt-1 font-serif text-3xl text-brand">{doc.titulo}</h1>
             <p className="mt-1 text-sm text-neutral-600">
               Referência: <span className="font-medium text-neutral-900">{doc.referencia}</span>

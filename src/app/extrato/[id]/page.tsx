@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { getTenantBrand } from "@/lib/tenant-brand";
 import { carregarExtrato } from "@/lib/extrato-service";
 import { brl, moe, ptaxFmt } from "@/lib/recibo-view";
 import ImprimirBotao from "@/app/contrato/[id]/ImprimirBotao";
@@ -55,7 +56,7 @@ export default async function ExtratoPage({ params }: { params: Promise<{ id: st
 
         <article className="rounded-2xl bg-white p-8 shadow-sm print:rounded-none print:p-0 print:shadow-none">
           <header className="border-b border-neutral-200 pb-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-gold">EXP Tour</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-gold">{getTenantBrand(process.env.CATALOGO_TENANT_SLUG ?? "forio").email.brandName}</p>
             <h1 className="mt-1 font-serif text-3xl text-brand">Extrato de Saldo Devedor</h1>
             <p className="mt-1 text-sm text-neutral-600">{programaNome}</p>
           </header>
