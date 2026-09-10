@@ -12,10 +12,14 @@
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
+  // fonts.googleapis.com: o layout carrega Bellefair+Inter do Google Fonts (marca
+  // EXP Tour/Forio). Sem liberar aqui, a folha de estilo das fontes e bloqueada e
+  // a tipografia cai no fallback do sistema.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   // data: cobre os QR Codes Pix, que chegam como data:image/png;base64.
   "img-src 'self' data: blob: https://*.supabase.co https://exp-tour.com",
-  "font-src 'self' data:",
+  // fonts.gstatic.com: arquivos .woff2 servidos pelo Google Fonts.
+  "font-src 'self' data: https://fonts.gstatic.com",
   "connect-src 'self' https://*.supabase.co",
   "frame-ancestors 'none'",
   "form-action 'self'",
