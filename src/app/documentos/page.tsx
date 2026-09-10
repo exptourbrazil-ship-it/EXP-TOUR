@@ -93,7 +93,7 @@ export default async function DocumentosPage() {
                   { className: "text-sm text-neutral-800" },
                   c.nome,
                   c.canceladoEm
-                    ? createElement("span", { className: "ml-2 text-xs text-neutral-400" }, "(cancelado)")
+                    ? createElement("span", { className: "ml-2 text-xs text-[color:var(--p-muted)]" }, "(cancelado)")
                     : null
                 ),
                 createElement(

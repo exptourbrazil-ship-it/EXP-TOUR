@@ -116,7 +116,7 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
             const badge = (
               <span
                 title={isTarefa ? "Você marca este item" : "Marcado automaticamente a partir dos seus documentos"}
-                className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500"
+                className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]"
               >
                 {isTarefa ? "você" : "auto"}
               </span>
@@ -126,17 +126,17 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
               <>
                 {circulo}
                 <div className="min-w-0 flex-1">
-                  <p className={"text-sm " + (item.concluido ? "text-neutral-500 line-through" : "text-brand")}>
+                  <p className={"text-sm " + (item.concluido ? "text-[color:var(--p-muted)] line-through" : "text-brand")}>
                     {item.label}
                   </p>
                   {!item.concluido && item.tipo === "documento" ? (
-                    <p className="mt-1 text-xs text-neutral-500">
+                    <p className="mt-1 text-xs text-[color:var(--p-muted)]">
                       {item.dica || "Será marcado quando o documento estiver no cofre."}{" "}
                       <Link href="/documentos" className="font-medium text-brand-golddark underline">Ir para Documentos</Link>
                     </p>
                   ) : null}
                   {!item.concluido && item.tipo === "tarefa" && item.dica ? (
-                    <p className="mt-1 text-xs text-neutral-500">{item.dica}</p>
+                    <p className="mt-1 text-xs text-[color:var(--p-muted)]">{item.dica}</p>
                   ) : null}
                 </div>
                 {badge}

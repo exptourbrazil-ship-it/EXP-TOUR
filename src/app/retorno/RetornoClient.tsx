@@ -130,7 +130,7 @@ export default function RetornoClient(props: RetornoClientProps) {
           {enviado ? (
             <div className="mt-2">
               <h2 className="font-serif text-2xl text-brand">Obrigado pela sua avaliação!</h2>
-              <p className="mt-2 text-sm text-neutral-500">
+              <p className="mt-2 text-sm text-[color:var(--p-muted)]">
                 Sua nota{nota !== null ? " (" + nota + "/10)" : ""} foi registrada. Se quiser mudar, é só avaliar de novo abaixo.
               </p>
               <button
@@ -143,7 +143,7 @@ export default function RetornoClient(props: RetornoClientProps) {
           ) : (
             <div className="mt-2">
               <h2 className="font-serif text-2xl text-brand">O quanto você recomendaria a {brandName}?</h2>
-              <p className="mt-2 text-sm text-neutral-500">De 0 (nada provável) a 10 (com certeza).</p>
+              <p className="mt-2 text-sm text-[color:var(--p-muted)]">De 0 (nada provável) a 10 (com certeza).</p>
               <div className="mt-4 grid grid-cols-6 gap-2">
                 {Array.from({ length: 11 }, (_, n) => (
                   <button
@@ -186,7 +186,7 @@ export default function RetornoClient(props: RetornoClientProps) {
               Avalie no Google
             </p>
             <h2 className="mt-2 font-serif text-2xl text-brand">Sua avaliação ajuda muito</h2>
-            <p className="mt-2 text-sm text-neutral-500">
+            <p className="mt-2 text-sm text-[color:var(--p-muted)]">
               Um minutinho para deixar uma estrela faz toda a diferença para quem ainda está decidindo.
             </p>
             <a
@@ -206,7 +206,7 @@ export default function RetornoClient(props: RetornoClientProps) {
             Indique um amigo
           </p>
           <h2 className="mt-2 font-serif text-2xl text-brand">Conhece alguém querendo estudar fora?</h2>
-          <p className="mt-2 text-sm text-neutral-500">
+          <p className="mt-2 text-sm text-[color:var(--p-muted)]">
             Compartilhe a {brandName} com quem está pensando em fazer intercâmbio.
           </p>
           <a

@@ -215,7 +215,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
           <IconeArquivo />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-neutral-900">{labelDoTipoDocumento(doc.tipo_documento)}</div>
-            <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-neutral-500">{doc.nome_arquivo}</div>
+            <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[color:var(--p-muted)]">{doc.nome_arquivo}</div>
           </div>
           <StatusBadge status={doc.status} />
         </div>
@@ -252,7 +252,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
             <button
               onClick={() => excluirDocumento(doc)}
               disabled={excluindo === doc.id}
-              className={ACAO_BASE + " border-neutral-300 bg-white text-neutral-500 disabled:opacity-50"}
+              className={ACAO_BASE + " border-neutral-300 bg-white text-[color:var(--p-muted)] disabled:opacity-50"}
             >
               <IconeLixeira />
               {excluindo === doc.id ? "Excluindo..." : "Excluir"}
@@ -285,8 +285,8 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
           onChange={(e) => enviarArquivo(secao.valor, secao.tipos, e)}
           className="block w-full text-[13px]"
         />
-        <p className="mt-1.5 text-[11.5px] text-neutral-500">Formatos aceitos: PDF, JPG ou PNG.</p>
-        {enviando === secao.valor ? <p className="mt-2 text-xs text-neutral-500">Enviando...</p> : null}
+        <p className="mt-1.5 text-[11.5px] text-[color:var(--p-muted)]">Formatos aceitos: PDF, JPG ou PNG.</p>
+        {enviando === secao.valor ? <p className="mt-2 text-xs text-[color:var(--p-muted)]">Enviando...</p> : null}
         {mensagem[secao.valor] ? <p className="mt-2 text-xs text-brand">{mensagem[secao.valor]}</p> : null}
       </div>
     );
@@ -303,9 +303,9 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
     return (
       <div key={secao.valor} className="mb-4 rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
         <h2 className="font-serif text-xl text-brand">{secao.label}</h2>
-        <p className="mt-1 mb-1 text-xs text-neutral-400">{subtitulo}</p>
+        <p className="mt-1 mb-1 text-xs text-[color:var(--p-muted)]">{subtitulo}</p>
         {vazia ? (
-          <p className="pb-1 pt-4 text-[13px] text-neutral-500">
+          <p className="pb-1 pt-4 text-[13px] text-[color:var(--p-muted)]">
             {secao.valor === "estudante"
               ? "Você ainda não enviou documentos desta categoria. Use o campo abaixo para enviar."
               : `A ${brandName} disponibilizará seus documentos aqui assim que estiverem prontos.`}
@@ -323,7 +323,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
     return (
       <div className="mb-4 rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
         <h2 className="font-serif text-xl text-brand">Passaporte e visto</h2>
-        <p className="mt-1 mb-3 text-xs text-neutral-400">Precisa tirar o passaporte ou solicitar o visto? A gente te orienta.</p>
+        <p className="mt-1 mb-3 text-xs text-[color:var(--p-muted)]">Precisa tirar o passaporte ou solicitar o visto? A gente te orienta.</p>
         {/* Botao: como solicitar passaporte (abre/fecha o passo a passo) */}
         <button
           onClick={() => setMostrarPassaporte((v) => !v)}

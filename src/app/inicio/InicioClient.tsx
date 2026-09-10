@@ -114,7 +114,7 @@ export default function InicioClient(props: InicioClientProps) {
   const textoPorEstado: Record<EstadoEtapa, string> = {
     concluida: "text-brand",
     andamento: "font-medium text-brand",
-    pendente: "text-neutral-500",
+    pendente: "text-[color:var(--p-muted)]",
   }
 
   return (
@@ -187,11 +187,11 @@ export default function InicioClient(props: InicioClientProps) {
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-1 flex items-center justify-between">
             <h2 className="font-serif text-xl text-brand">Sua jornada</h2>
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-[color:var(--p-muted)]">
               {concluidas} de {etapas.length}
             </span>
           </div>
-          <p className="mb-5 text-xs text-neutral-500">Seu progresso real, atualizado conforme você avança.</p>
+          <p className="mb-5 text-xs text-[color:var(--p-muted)]">Seu progresso real, atualizado conforme você avança.</p>
           <ol className="space-y-4">
             {etapas.map((etapa) => {
               const rotuloEstado =
@@ -217,7 +217,7 @@ export default function InicioClient(props: InicioClientProps) {
                       {etapa.nome}
                       {etapa.estado === "andamento" ? " (em andamento)" : ""}
                     </p>
-                    <p className="text-xs text-neutral-500">{etapa.descricao}</p>
+                    <p className="text-xs text-[color:var(--p-muted)]">{etapa.descricao}</p>
                   </div>
                 </li>
               )

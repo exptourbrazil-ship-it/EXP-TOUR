@@ -114,7 +114,7 @@ export default function ViagemClient(props: ViagemClientProps) {
               {info && (info.escola_nome || info.escola_endereco) ? (
                 <div>
                   <p className="text-sm font-medium text-brand">{info.escola_nome || "Escola"}</p>
-                  {info.escola_endereco ? <p className="mt-1 text-sm text-neutral-500">{info.escola_endereco}</p> : null}
+                  {info.escola_endereco ? <p className="mt-1 text-sm text-[color:var(--p-muted)]">{info.escola_endereco}</p> : null}
                   {mapaEscola ? (
                     <a href={mapaEscola} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-brand-golddark underline">
                       Ver no mapa
@@ -126,7 +126,7 @@ export default function ViagemClient(props: ViagemClientProps) {
               {info && info.acomodacao_endereco ? (
                 <div>
                   <p className="text-sm font-medium text-brand">Acomodação</p>
-                  <p className="mt-1 text-sm text-neutral-500">{info.acomodacao_endereco}</p>
+                  <p className="mt-1 text-sm text-[color:var(--p-muted)]">{info.acomodacao_endereco}</p>
                   {mapaAcomodacao ? (
                     <a href={mapaAcomodacao} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-brand-golddark underline">
                       Ver no mapa
@@ -138,7 +138,7 @@ export default function ViagemClient(props: ViagemClientProps) {
               {info && (info.contato_local_nome || info.contato_local_telefone) ? (
                 <div>
                   <p className="text-sm font-medium text-brand">Contato local</p>
-                  {info.contato_local_nome ? <p className="mt-1 text-sm text-neutral-500">{info.contato_local_nome}</p> : null}
+                  {info.contato_local_nome ? <p className="mt-1 text-sm text-[color:var(--p-muted)]">{info.contato_local_nome}</p> : null}
                   {info.contato_local_telefone ? (
                     <a href={"tel:" + info.contato_local_telefone} className="mt-1 inline-block text-sm font-medium text-brand-golddark underline">
                       {info.contato_local_telefone}
@@ -148,11 +148,11 @@ export default function ViagemClient(props: ViagemClientProps) {
               ) : null}
 
               {info && info.observacoes ? (
-                <p className="whitespace-pre-line border-t border-neutral-100 pt-4 text-sm text-neutral-500">{info.observacoes}</p>
+                <p className="whitespace-pre-line border-t border-neutral-100 pt-4 text-sm text-[color:var(--p-muted)]">{info.observacoes}</p>
               ) : null}
             </div>
           ) : (
-            <p className="mt-3 text-sm text-neutral-500">
+            <p className="mt-3 text-sm text-[color:var(--p-muted)]">
               Os dados da sua escola e acomodação aparecerão aqui em breve.
             </p>
           )}
@@ -164,7 +164,7 @@ export default function ViagemClient(props: ViagemClientProps) {
             <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
               Prepare-se para a viagem
             </p>
-            <p className="mt-2 text-sm text-neutral-500">
+            <p className="mt-2 text-sm text-[color:var(--p-muted)]">
               Parceiros da {brandName} para você chegar tranquilo.
             </p>
             <div className="mt-4 space-y-3">
