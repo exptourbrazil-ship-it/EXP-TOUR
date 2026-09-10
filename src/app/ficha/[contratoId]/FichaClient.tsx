@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTenantBrand } from "@/components/TenantBrandProvider";
 import { FICHA_TEXTO, type PapelSignatario } from "@/lib/ficha-matricula";
 import type { FichaEstado } from "@/lib/ficha-matricula-service";
 
@@ -41,6 +42,7 @@ const UI = {
 
 export default function FichaClient({ estado, contratoId }: { estado: FichaEstado; contratoId: string }) {
   const router = useRouter();
+  const brand = useTenantBrand();
   const [lang, setLang] = useState<Lang>("pt");
   const [papel, setPapel] = useState<PapelSignatario>(estado.papeisPendentes[0] ?? "participante");
   const [nome, setNome] = useState("");
@@ -91,7 +93,7 @@ export default function FichaClient({ estado, contratoId }: { estado: FichaEstad
 
         <article className="rounded-2xl bg-white p-8 shadow-sm">
           <header className="border-b border-neutral-200 pb-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-gold">EXP Tour</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-gold">{brand.email.brandName}</p>
             <h1 className="mt-1 font-serif text-3xl text-brand">{t(FICHA_TEXTO.titulo)}</h1>
             <p className="mt-1 text-sm text-neutral-600">
               {t(UI.programa)}: <span className="font-medium text-neutral-900">{estado.programaNome}</span>
