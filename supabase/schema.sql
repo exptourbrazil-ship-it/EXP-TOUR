@@ -1291,14 +1291,29 @@ begin
    where pa.contrato_id = p_contrato_id and not (pa.id = any(v_ids));
   get diagnostics v_removidas = row_count;
 
-  -- Desloca as NAO bloqueadas para uma faixa negativa temporaria antes de aplicar
-  -- os numeros finais: uma renumeracao (permuta de `numero`) violaria transitoria-
-  -- mente o unique(contrato_id, numero) num UPDATE multi-linha. Negativos nao
-  -- colidem com os numeros finais (positivos) nem com as bloqueadas (intactas).
+  -- Desloca TODAS as parcelas restantes (INCLUSIVE as bloqueadas) para uma faixa
+  -- negativa temporaria antes de aplicar os numeros finais. O cliente reenvia o
+  -- cronograma inteiro renumerado (1..N na ordem de exibicao); depois de uma
+  -- parcela paga, uma NAO bloqueada pode assumir o numero que a paga ainda
+  -- carrega. Se as bloqueadas nao forem deslocadas junto, esse cruzamento viola
+  -- transitoriamente o unique(contrato_id, numero) e ABORTA a transacao (era o
+  -- que impedia repactuar depois de pagar uma parcela). Renumerar e SO ordenacao:
+  -- nao altera o valor pago, o valor_original, o vencimento nem o ledger.
+  -- Negativos nao colidem com os finais (positivos).
   update parcelas pa set numero = -pa.numero - 1
-   where pa.contrato_id = p_contrato_id
-     and not (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null);
+   where pa.contrato_id = p_contrato_id;
 
+  -- Numero final das BLOQUEADAS: SO a ordenacao muda. valor_atual, vencimento,
+  -- descricao e valor_original ficam congelados (o guarda-corpo ja provou que o
+  -- corpo os manda inalterados) — o que foi pago permanece intacto.
+  update parcelas pa set
+      numero = (e->>'numero')::int
+  from jsonb_array_elements(p_parcelas) e
+  where (e ? 'id') and nullif(e->>'id', '') is not null
+    and pa.id = (e->>'id')::uuid and pa.contrato_id = p_contrato_id
+    and (pa.status = 'pago' or pa.qr_code_url is not null or pa.external_payment_id is not null);
+
+  -- Numero final + redistribuicao do valor/vencimento das NAO bloqueadas.
   update parcelas pa set
       numero = (e->>'numero')::int,
       descricao = coalesce(e->>'descricao', pa.descricao),
@@ -1320,6 +1335,132 @@ begin
   return jsonb_build_object('ok', true, 'anchor', v_anchor, 'soma', v_soma, 'removidas', v_removidas);
 end;
 $aplcron$;
+
+-- Baixa MANUAL de uma parcela (pagamento recebido "por fora" do Pix/Mercado Pago,
+-- lancado por um admin financeiro). Excecao CONTROLADA a regra "dinheiro so muda
+-- por webhook": aqui a confirmacao vem de um admin autorizado, mas com o mesmo
+-- rigor — transacao unica sob advisory lock por contrato, espelhando o efeito do
+-- webhook (marca a parcela paga + grava o lancamento imutavel em `pagamentos`).
+-- O admin informa o BRL recebido e o valor na moeda do programa; a COTACAO e
+-- calculada aqui (VET = BRL / moeda). A referencia sintetica `manual:<uuid>` (em
+-- p_external_payment_id) distingue do id do Mercado Pago e casa com a unique
+-- (parcela_id, external_payment_id) do ledger. Idempotente: parcela ja paga
+-- aborta; o insert usa on conflict do nothing.
+create or replace function registrar_pagamento_manual(
+  p_contrato_id uuid,
+  p_parcela_id uuid,
+  p_valor_brl numeric,
+  p_valor_programa numeric,
+  p_pago_em timestamptz,
+  p_external_payment_id text
+) returns jsonb
+language plpgsql
+as $pagman$
+declare
+  v_moeda text;
+  v_status text;
+  v_em_disputa boolean;
+  v_qr text;
+  v_ext text;
+  v_cotacao numeric;
+  v_saldo numeric;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_contrato_id::text, 0));
+
+  if p_valor_brl is null or not (p_valor_brl > 0) then raise exception 'valor_brl_invalido'; end if;
+  if p_valor_programa is null or not (p_valor_programa > 0) then raise exception 'valor_programa_invalido'; end if;
+  if p_external_payment_id is null or p_external_payment_id = '' then raise exception 'referencia_invalida'; end if;
+
+  select moeda into v_moeda from contratos where id = p_contrato_id;
+  if not found then raise exception 'contrato_nao_encontrado'; end if;
+
+  select status, em_disputa, qr_code_url, external_payment_id
+    into v_status, v_em_disputa, v_qr, v_ext
+    from parcelas where id = p_parcela_id and contrato_id = p_contrato_id for update;
+  if not found then raise exception 'parcela_nao_encontrada'; end if;
+  if v_status = 'pago' then raise exception 'parcela_ja_paga'; end if;
+  if coalesce(v_em_disputa, false) then raise exception 'parcela_em_disputa'; end if;
+  -- Cobranca Pix EM VOO (QR gerado ou ordem MP pendente): NAO sobrescrever o
+  -- external_payment_id do Mercado Pago. Se sobrescrevesse, o QR continuaria
+  -- pagavel e o webhook nao casaria mais a parcela -> pagamento em dobro com o
+  -- registro do MP perdido. O admin deve CANCELAR o Pix antes da baixa manual.
+  if v_qr is not null or v_ext is not null then raise exception 'parcela_com_cobranca_em_voo'; end if;
+
+  v_cotacao := round(p_valor_brl / p_valor_programa, 6);
+
+  update parcelas set
+    status = 'pago',
+    paid_at = p_pago_em,
+    external_payment_id = p_external_payment_id,
+    valor_cobrado_brl = round(p_valor_brl, 2),
+    cotacao_aplicada = v_cotacao
+  where id = p_parcela_id and contrato_id = p_contrato_id;
+
+  -- saldo remanescente (moeda do programa) CONGELADO no instante da baixa —
+  -- mesma base do recibo (soma do valor_atual das parcelas ainda nao pagas).
+  select coalesce(sum(valor_atual), 0) into v_saldo
+    from parcelas where contrato_id = p_contrato_id and status <> 'pago';
+
+  insert into pagamentos (parcela_id, contrato_id, external_payment_id, moeda,
+                          valor_programa, cotacao_aplicada, valor_brl, pago_em, saldo_apos_moeda)
+  values (p_parcela_id, p_contrato_id, p_external_payment_id, coalesce(v_moeda, 'BRL'),
+          round(p_valor_programa, 2), v_cotacao, round(p_valor_brl, 2), p_pago_em, v_saldo)
+  on conflict (parcela_id, external_payment_id) do nothing;
+
+  return jsonb_build_object('ok', true, 'cotacao', v_cotacao, 'saldo_apos_moeda', v_saldo,
+                            'external_payment_id', p_external_payment_id);
+end;
+$pagman$;
+
+-- Estorno de uma baixa MANUAL lancada errada. So reverte pagamentos manuais
+-- (external_payment_id `manual:%`) — NUNCA toca um pagamento do Mercado Pago
+-- (esse tem seu proprio fluxo de disputa/reembolso). Remove o lancamento manual
+-- do ledger e devolve a parcela para 'pendente', limpando os campos de cobranca.
+-- O estorno em si e auditado no servico (audit_log + evento).
+create or replace function estornar_pagamento_manual(
+  p_contrato_id uuid,
+  p_parcela_id uuid
+) returns jsonb
+language plpgsql
+as $estman$
+declare
+  v_status text;
+  v_ext text;
+  v_valor_brl numeric;
+  v_valor_programa numeric;
+  v_cotacao numeric;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_contrato_id::text, 0));
+
+  select status, external_payment_id into v_status, v_ext
+    from parcelas where id = p_parcela_id and contrato_id = p_contrato_id for update;
+  if not found then raise exception 'parcela_nao_encontrada'; end if;
+  if v_status <> 'pago' then raise exception 'parcela_nao_paga'; end if;
+  if v_ext is null or v_ext not like 'manual:%' then raise exception 'nao_e_pagamento_manual'; end if;
+
+  -- Snapshot do que esta sendo revertido (para a trilha de auditoria).
+  select valor_brl, valor_programa, cotacao_aplicada
+    into v_valor_brl, v_valor_programa, v_cotacao
+    from pagamentos
+   where parcela_id = p_parcela_id and contrato_id = p_contrato_id and external_payment_id = v_ext
+   limit 1;
+
+  delete from pagamentos
+   where parcela_id = p_parcela_id and contrato_id = p_contrato_id and external_payment_id = v_ext;
+
+  update parcelas set
+    status = 'pendente',
+    paid_at = null,
+    external_payment_id = null,
+    valor_cobrado_brl = null,
+    cotacao_aplicada = null
+  where id = p_parcela_id and contrato_id = p_contrato_id;
+
+  return jsonb_build_object('ok', true, 'external_payment_id', v_ext,
+                            'valor_brl', v_valor_brl, 'valor_programa', v_valor_programa,
+                            'cotacao', v_cotacao);
+end;
+$estman$;
 
 create table if not exists supplier (
   id uuid primary key default gen_random_uuid(),
@@ -2431,16 +2572,27 @@ begin
      and not (status = 'pago' or qr_code_url is not null or external_payment_id is not null)
      and not (id = any(v_input_ids));
 
-  -- 2a) Desloca as NAO-travadas para faixa negativa temporaria antes de aplicar
-  --     os numeros finais: uma renumeracao (permuta de numero) violaria transitoria-
-  --     mente o unique(contrato_id, numero) num UPDATE multi-linha. Negativos nao
-  --     colidem com os finais (positivos) nem com as travadas (intactas).
+  -- 2a) Desloca TODAS as parcelas mantidas (INCLUSIVE as travadas) para faixa
+  --     negativa temporaria antes de aplicar os numeros finais. O corpo renumera
+  --     o cronograma inteiro (1..N); depois de uma parcela paga, uma NAO travada
+  --     pode assumir o numero que a travada ainda carrega. Se as travadas nao
+  --     forem deslocadas junto, esse cruzamento viola transitoriamente o
+  --     unique(contrato_id, numero) e aborta a transacao. Renumerar e SO
+  --     ordenacao: nao altera o valor pago, o valor_original nem o vencimento das
+  --     travadas. Negativos nao colidem com os finais (positivos).
   update parcelas t set numero = -t.numero - 1
-   where t.contrato_id = p_contrato_id
-     and not (t.status = 'pago' or t.qr_code_url is not null or t.external_payment_id is not null);
+   where t.contrato_id = p_contrato_id;
 
-  -- 2b) Atualiza as NAO-travadas presentes. valor_original NAO e tocado; travadas
-  --     ficam de fora (pass-through) mesmo que o corpo mande valores diferentes.
+  -- 2b) Numero final das TRAVADAS: SO a ordenacao. valor/vencimento/descricao
+  --     ficam congelados (pass-through) — o que foi pago permanece intacto.
+  update parcelas t
+     set numero = coalesce((p->>'numero')::int, t.numero)
+    from jsonb_array_elements(coalesce(p_parcelas, '[]'::jsonb)) as p
+   where t.contrato_id = p_contrato_id
+     and t.id = (p->>'id')::uuid
+     and (t.status = 'pago' or t.qr_code_url is not null or t.external_payment_id is not null);
+
+  -- 2c) Atualiza as NAO-travadas presentes. valor_original NAO e tocado.
   update parcelas t
      set numero = coalesce((p->>'numero')::int, t.numero),
          descricao = p->>'descricao',

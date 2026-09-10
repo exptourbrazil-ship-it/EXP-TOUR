@@ -10,6 +10,7 @@ import { CONFIRM_KIND_LABEL, CONFIRM_STATUS_LABEL, type ConfirmKind, type Confir
 import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
 import EditorParcelasContrato from "@/components/EditorParcelasContrato";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
+import { cotacaoImplicita } from "@/lib/pagamento-manual";
 import {
   TIPOS_EXCECAO,
   DESFECHOS_EXCECAO,
@@ -590,6 +591,237 @@ function RepactuacoesPendentes({ repactuacoes }: { repactuacoes: CasoRepactuacao
   );
 }
 
+// Data de hoje no fuso de SP (YYYY-MM-DD) — default do campo "recebido em".
+function hojeSaoPauloISO(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+// Baixa MANUAL de uma parcela: pagamento recebido POR FORA do Pix (transferencia,
+// dinheiro, etc.). O admin financeiro informa o BRL recebido e o valor na moeda
+// do programa; a cotacao (VET) e calculada e tudo vai para o ledger. Marca a
+// parcela como paga. Estornavel enquanto for um lancamento manual.
+function PagamentoManualParcela({
+  contratoId,
+  parcela,
+  moeda,
+}: {
+  contratoId: string;
+  parcela: { id: string; numero: number | null; valor_atual: number | string | null; status: string; qr_code_url?: string | null; external_payment_id?: string | null; em_disputa?: boolean | null };
+  moeda: string;
+}) {
+  const router = useRouter();
+  const jaPaga = parcela.status === "pago";
+  const ehManual = !!parcela.external_payment_id && parcela.external_payment_id.startsWith("manual:");
+  // Cobranca Pix EM VOO: QR gerado ou ordem MP pendente (id nao-manual) numa
+  // parcela ainda nao paga. Nesse estado a baixa manual e recusada no servidor
+  // (perderia o vinculo com o MP) — o admin cancela o Pix antes.
+  const cobrancaEmVoo =
+    !jaPaga && (!!parcela.qr_code_url || (!!parcela.external_payment_id && !parcela.external_payment_id.startsWith("manual:")));
+  const valorParcela = Number(parcela.valor_atual ?? 0);
+
+  const [aberto, setAberto] = useState(false);
+  const [valorBRL, setValorBRL] = useState("");
+  const [valorPrograma, setValorPrograma] = useState(valorParcela > 0 ? String(valorParcela) : "");
+  const [pagoEm, setPagoEm] = useState(hojeSaoPauloISO());
+  const [forma, setForma] = useState("transferencia");
+  const [observacao, setObservacao] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const cotacao = cotacaoImplicita(Number(valorBRL), Number(valorPrograma));
+
+  async function registrar() {
+    setErro(null);
+    if (!(Number(valorBRL) > 0)) {
+      setErro("Informe o valor recebido em reais (BRL).");
+      return;
+    }
+    if (!(Number(valorPrograma) > 0)) {
+      setErro(`Informe o valor equivalente em ${moeda}.`);
+      return;
+    }
+    setSalvando(true);
+    try {
+      const resp = await fetch(`/api/admin/contratos/${contratoId}/parcelas/${parcela.id}/pagamento-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          valorBRL: Number(valorBRL),
+          valorPrograma: Number(valorPrograma),
+          pagoEm,
+          forma,
+          observacao,
+        }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok || !json.ok) {
+        setErro(json.erro || "Não foi possível registrar o pagamento.");
+      } else {
+        setAberto(false);
+        router.refresh();
+      }
+    } catch {
+      setErro("Falha de conexão. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function estornar() {
+    if (!window.confirm("Estornar a baixa manual desta parcela? Ela volta a ficar pendente.")) return;
+    setSalvando(true);
+    try {
+      const resp = await fetch(`/api/admin/contratos/${contratoId}/parcelas/${parcela.id}/pagamento-manual`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: "estorno manual pelo admin" }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok || !json.ok) {
+        window.alert(json.erro || "Não foi possível estornar.");
+      } else {
+        router.refresh();
+      }
+    } catch {
+      window.alert("Falha de conexão. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (jaPaga) {
+    if (!ehManual) return null; // pago pelo Pix (MP) — nada a fazer aqui
+    return (
+      <button
+        onClick={estornar}
+        disabled={salvando}
+        className="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 transition hover:border-red-400 hover:text-red-600 disabled:opacity-50"
+        title="Estornar a baixa manual"
+      >
+        Estornar baixa
+      </button>
+    );
+  }
+
+  if (parcela.em_disputa) return null;
+  if (cobrancaEmVoo) {
+    return (
+      <span className="text-[11px] text-neutral-400" title="Cancele o Pix para poder registrar pagamento manual">
+        Pix ativo
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setAberto(true)}
+        className="rounded-lg border border-brand/30 px-2 py-1 text-xs font-medium text-brand transition hover:bg-brand hover:text-brand-cream"
+      >
+        Registrar pagamento
+      </button>
+
+      {aberto ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !salvando && setAberto(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="font-serif text-lg text-brand">Registrar pagamento manual</h3>
+              <button onClick={() => setAberto(false)} className="text-sm text-neutral-400 hover:text-neutral-600">
+                Fechar
+              </button>
+            </div>
+            <p className="mb-4 text-xs text-neutral-500">
+              Parcela {parcela.numero} · recebido por fora do Pix. O valor pago fica registrado no ledger; a cotação é calculada pelo BRL informado.
+            </p>
+
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs font-medium text-neutral-600">Valor recebido (BRL)</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={valorBRL}
+                  onChange={(e) => setValorBRL(e.target.value)}
+                  placeholder="ex.: 4019.71"
+                  className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-neutral-600">Equivalente na moeda do programa ({moeda})</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={valorPrograma}
+                  onChange={(e) => setValorPrograma(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+              </label>
+
+              <div className="rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                Cotação calculada:{" "}
+                <span className="font-medium text-brand">
+                  {cotacao != null ? `R$ ${cotacao.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 })} / ${moeda}` : "—"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-neutral-600">Recebido em</span>
+                  <input
+                    type="date"
+                    value={pagoEm}
+                    max={hojeSaoPauloISO()}
+                    onChange={(e) => setPagoEm(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-neutral-600">Forma</span>
+                  <select
+                    value={forma}
+                    onChange={(e) => setForma(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                  >
+                    <option value="transferencia">Transferência</option>
+                    <option value="pix_externo">Pix (fora da plataforma)</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="cartao">Cartão</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-xs font-medium text-neutral-600">Observação / comprovante (opcional)</span>
+                <textarea
+                  value={observacao}
+                  onChange={(e) => setObservacao(e.target.value)}
+                  rows={2}
+                  placeholder="ex.: TED recebida em 21/08, comprovante no Drive"
+                  className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+              </label>
+
+              {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button onClick={() => setAberto(false)} disabled={salvando} className="rounded-xl px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={registrar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50">
+                {salvando ? "Registrando..." : "Registrar pagamento"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function AbaFinanceiro({ caso, podeEditarParcelas }: { caso: Caso; podeEditarParcelas: boolean }) {
   const { contratos, parcelas, pagamentos, moedaPorContrato, saldoPorMoeda, estimativaBRL } = caso;
   const saldoEntradas = Object.entries(saldoPorMoeda);
@@ -670,6 +902,21 @@ function AbaFinanceiro({ caso, podeEditarParcelas }: { caso: Caso; podeEditarPar
                                 <span aria-hidden>⚠</span>
                                 {labelStatusDisputaMP(p.disputa_status)}
                               </span>
+                            ) : null}
+                            {podeEditarParcelas ? (
+                              <PagamentoManualParcela
+                                contratoId={c.id}
+                                moeda={moeda}
+                                parcela={{
+                                  id: p.id,
+                                  numero: p.numero,
+                                  valor_atual: p.valor_atual,
+                                  status: p.status,
+                                  qr_code_url: p.qr_code_url,
+                                  external_payment_id: p.external_payment_id,
+                                  em_disputa: p.em_disputa,
+                                }}
+                              />
                             ) : null}
                           </div>
                         </td>
