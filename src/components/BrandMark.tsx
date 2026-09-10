@@ -8,7 +8,9 @@
 import BrandLogo from "@/components/BrandLogo";
 import { useTenantBrand } from "@/components/TenantBrandProvider";
 
-export default function BrandMark() {
+// `escuro`: quando o logo fica sobre um FUNDO ESCURO (ex.: tela de login), o
+// wordmark da Forio precisa sair em branco (no cabecalho branco ele e escuro).
+export default function BrandMark({ escuro = false }: { escuro?: boolean }) {
   const brand = useTenantBrand();
-  return <BrandLogo brand={brand} />;
+  return <BrandLogo brand={brand} escuro={escuro} />;
 }

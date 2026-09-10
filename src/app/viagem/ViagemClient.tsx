@@ -3,7 +3,7 @@
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
 import { useTenantBrand } from "@/components/TenantBrandProvider"
-import { montarLinkMapa, montarLinkSuporteWhatsApp, SITE_PUBLICO_EXP_TOUR, WHATSAPP_EXP_TOUR, type InfoEmergencia } from "@/lib/viagem"
+import { montarLinkMapa, montarLinkSuporteWhatsApp, SITE_PUBLICO_EXP_TOUR, type InfoEmergencia } from "@/lib/viagem"
 
 type ViagemInfo = {
   escola_nome: string | null
@@ -38,7 +38,8 @@ function primeiroNome(nome: string | null): string {
 }
 
 export default function ViagemClient(props: ViagemClientProps) {
-  const brandName = useTenantBrand().email.brandName
+  const brand = useTenantBrand()
+  const brandName = brand.email.brandName
   const nome = primeiroNome(props.nomeExibicao)
   const info = props.info
   const temEndereco = !!(info && (info.escola_nome || info.escola_endereco || info.acomodacao_endereco || info.contato_local_nome || info.observacoes))
@@ -65,12 +66,12 @@ export default function ViagemClient(props: ViagemClientProps) {
             Precisa de ajuda? A gente está com você em qualquer fuso.
           </p>
           <a
-            href={montarLinkSuporteWhatsApp()}
+            href={montarLinkSuporteWhatsApp(brand.supportWhatsApp)}
             target="_blank"
             rel="noreferrer"
             className="mt-4 block rounded-xl bg-brand-gold py-3 text-center text-sm font-semibold text-brand transition hover:opacity-90"
           >
-            WhatsApp {WHATSAPP_EXP_TOUR}
+            WhatsApp {brand.supportWhatsApp}
           </a>
           <a
             href={SITE_PUBLICO_EXP_TOUR}
