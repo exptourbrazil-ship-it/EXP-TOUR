@@ -3,10 +3,10 @@ name: Cron externo (disparo dos crons dos deploys)
 # Ponte GRATUITA para o Vercel Cron enquanto os projetos estiverem no plano Hobby
 # (que limita cron a ~1x/dia e poucos jobs). Ver docs/deploy-multi-tenant.md.
 #
-# Chama as rotas /api/cron/* de CADA deploy (EXP Tour e Forio) com o
-# Authorization: Bearer CRON_SECRET — exatamente o que o Vercel Cron faz. As rotas
-# ja escopam por tenant (cada deploy processa so o seu), entao disparar os dois na
-# mesma passada NAO duplica efeito.
+# Chama as rotas /api/cron/* de cada URL em DEPLOY_URLS com o
+# Authorization: Bearer CRON_SECRET — exatamente o que o Vercel Cron faz. Hoje e
+# um deploy unico (marca Forio); as rotas ja escopam por tenant, entao se um dia
+# houver dois deploys, disparar os dois na mesma passada NAO duplica efeito.
 #
 # Consolida os 14 horarios do vercel.json numa passada diaria unica (a ordem
 # importa; a granularidade fina nao — todo cron e idempotente e processa o estado
@@ -37,13 +37,19 @@ jobs:
       - name: Disparar crons nos deploys
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          EXP_TOUR_URL: ${{ secrets.EXP_TOUR_URL }}
-          FORIO_URL: ${{ secrets.FORIO_URL }}
+          # Uma ou mais URLs de deploy, separadas por espaco, virgula ou quebra de
+          # linha. Hoje e so uma (deploy unico, marca Forio); se um dia separar em
+          # dois deploys, basta acrescentar a segunda URL aqui.
+          DEPLOY_URLS: ${{ secrets.DEPLOY_URLS }}
         run: |
           set -uo pipefail
 
           if [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error::Secret CRON_SECRET nao configurado no repositorio (Settings -> Secrets and variables -> Actions)."
+            echo "::error::Secret CRON_SECRET nao configurado (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+          if [ -z "${DEPLOY_URLS:-}" ]; then
+            echo "::error::Secret DEPLOY_URLS nao configurado (a(s) URL(s) do(s) deploy(s))."
             exit 1
           fi
 
@@ -69,13 +75,9 @@ jobs:
           falhas=0
 
           disparar_deploy () {
-            nome="$1"; base="$2"
-            if [ -z "$base" ]; then
-              echo "== $nome: URL nao configurada (secret vazio) -> pulando =="
-              return
-            fi
+            base="$1"
             base="${base%/}" # remove barra final
-            echo "==================== $nome ($base) ===================="
+            echo "==================== deploy: $base ===================="
             for c in "${CRONS[@]}"; do
               code=$(curl -sS -m 90 -o /tmp/cron-body.json -w '%{http_code}' \
                 -H "Authorization: Bearer ${CRON_SECRET}" \
@@ -89,8 +91,11 @@ jobs:
             done
           }
 
-          disparar_deploy "EXP Tour" "${EXP_TOUR_URL:-}"
-          disparar_deploy "Forio"    "${FORIO_URL:-}"
+          # Normaliza separadores (virgula/quebra de linha -> espaco) e itera.
+          urls=$(printf '%s' "$DEPLOY_URLS" | tr ',\n' '  ')
+          for base in $urls; do
+            [ -n "$base" ] && disparar_deploy "$base"
+          done
 
           if [ "$falhas" -gt 0 ]; then
             echo "::error::$falhas chamada(s) de cron falharam (ver log acima)."
