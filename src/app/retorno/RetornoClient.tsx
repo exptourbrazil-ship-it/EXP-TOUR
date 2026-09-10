@@ -39,7 +39,8 @@ function primeiroNome(nomeCompleto: string | null): string {
 }
 
 export default function RetornoClient(props: RetornoClientProps) {
-  const brandName = useTenantBrand().email.brandName
+  const brand = useTenantBrand()
+  const brandName = brand.email.brandName
   // A tela acompanha a jornada do ESTUDANTE; usa o nome dele quando existir.
   const nomeExibicao = (props.contrato && props.contrato.estudante_nome) ? props.contrato.estudante_nome : props.nomeCompleto
   const nome = primeiroNome(nomeExibicao)
@@ -76,7 +77,11 @@ export default function RetornoClient(props: RetornoClientProps) {
     }
   }
 
-  const linkIndicacao = montarLinkIndicacaoWhatsApp(nomeExibicao, props.contrato ? props.contrato.estudante_sexo : null)
+  const linkIndicacao = montarLinkIndicacaoWhatsApp(nomeExibicao, props.contrato ? props.contrato.estudante_sexo : null, {
+    brandName: brand.email.brandName,
+    site: brand.publicSite,
+    whatsapp: brand.supportWhatsApp,
+  })
   const temCertificado = props.certificados.length > 0
   const sexo = props.contrato ? props.contrato.estudante_sexo : null
   const bemVindo = sexo === "F" ? "Bem-vinda" : sexo === "M" ? "Bem-vindo" : "Bem-vindo(a)"

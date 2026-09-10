@@ -3,7 +3,7 @@
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
 import { useTenantBrand } from "@/components/TenantBrandProvider"
-import { montarLinkMapa, montarLinkSuporteWhatsApp, SITE_PUBLICO_EXP_TOUR, type InfoEmergencia } from "@/lib/viagem"
+import { montarLinkMapa, montarLinkSuporteWhatsApp, type InfoEmergencia } from "@/lib/viagem"
 
 type ViagemInfo = {
   escola_nome: string | null
@@ -74,12 +74,12 @@ export default function ViagemClient(props: ViagemClientProps) {
             WhatsApp {brand.supportWhatsApp}
           </a>
           <a
-            href={SITE_PUBLICO_EXP_TOUR}
+            href={brand.publicSite}
             target="_blank"
             rel="noreferrer"
             className="mt-3 block text-center text-sm text-brand-cream/90 underline"
           >
-            {SITE_PUBLICO_EXP_TOUR.replace("https://", "")}
+            {brand.publicSite.replace("https://", "")}
           </a>
         </section>
 

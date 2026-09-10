@@ -1,6 +1,6 @@
 "use client"
 
-import { montarLinkSuporteWhatsApp, SITE_PUBLICO_EXP_TOUR } from "@/lib/viagem"
+import { montarLinkSuporteWhatsApp } from "@/lib/viagem"
 import { useTenantBrand } from "@/components/TenantBrandProvider"
 
 // Rodape de suporte compartilhado. Antes o contato so aparecia na aba Viagem;
@@ -25,12 +25,12 @@ export default function SuporteRodape({ contexto }: { contexto?: string }) {
             WhatsApp {brand.supportWhatsApp}
           </a>
           <a
-            href={SITE_PUBLICO_EXP_TOUR}
+            href={brand.publicSite}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand-cream/60"
           >
-            {SITE_PUBLICO_EXP_TOUR.replace("https://", "")}
+            {brand.publicSite.replace("https://", "")}
           </a>
         </div>
       </div>

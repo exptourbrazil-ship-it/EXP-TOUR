@@ -73,6 +73,8 @@ export type TenantBrand = {
   logo: TenantLogo;
   /** WhatsApp de suporte da marca (exibido no login/rodape/aba Viagem). */
   supportWhatsApp: string;
+  /** Site publico da marca (usado na mensagem de indicacao — nunca o portal). */
+  publicSite: string;
   /** Variaveis CSS para aplicar no `style` do wrapper do portal. */
   styleVars: CSSProperties;
   /** Tema do PDF de marca (cores de impressao). */
@@ -89,6 +91,7 @@ const EXP_TOUR: TenantBrand = {
   theme: "exptour",
   logo: "exptour",
   supportWhatsApp: "+1 778-682-7927",
+  publicSite: "https://www.exp-tour.com",
   styleVars: {
     // Marca global (tripla RGB, sem virgula — casa com rgb(var(--brand) / a)).
     "--brand": "4 47 27",
@@ -167,6 +170,7 @@ const FORIO: TenantBrand = {
   theme: "forio",
   logo: "forio",
   supportWhatsApp: "+1 236-514-9880",
+  publicSite: "https://www.forio.com.br",
   styleVars: {
     "--brand": "15 16 32",      /* Night #0F1020 */
     "--brand-gold": "232 168 56", /* Amber Gate #E8A838 */

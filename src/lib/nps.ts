@@ -73,13 +73,23 @@ export function aberturaIndicacao(primeiroNome: string, sexo: SexoEstudante): st
 // encaminhar e indicar a EXP Tour. Sem numero de destino: abre o compositor
 // para o aluno escolher com quem compartilhar. O artigo (a/o) segue o sexo do
 // estudante; sem sexo definido, cai para uma abertura neutra.
-export function montarLinkIndicacaoWhatsApp(nomeEstudante: string | null, sexo?: SexoEstudante): string {
+// Marca do tenant para a indicacao (nome, site publico e WhatsApp). Sem `marca`
+// usa os valores do EXP Tour (default/compat) — o chamador do portal passa a
+// marca do deploy via getTenantBrand/useTenantBrand.
+export function montarLinkIndicacaoWhatsApp(
+  nomeEstudante: string | null,
+  sexo?: SexoEstudante,
+  marca?: { brandName?: string; site?: string; whatsapp?: string },
+): string {
   const primeiroNome = (nomeEstudante || "").trim().split(" ")[0];
   const abertura = aberturaIndicacao(primeiroNome, sexo);
+  const nome = marca?.brandName || "EXP Tour";
+  const site = marca?.site || SITE_PUBLICO_EXP_TOUR;
+  const whatsapp = marca?.whatsapp || WHATSAPP_EXP_TOUR;
   const linhas = [
-    `${abertura} Fiz meu intercambio com a EXP Tour e recomendo demais.`,
+    `${abertura} Fiz meu intercambio com a ${nome} e recomendo demais.`,
     "Se voce esta pensando em estudar fora, fala com eles:",
-    `${SITE_PUBLICO_EXP_TOUR} ou no WhatsApp ${WHATSAPP_EXP_TOUR}`,
+    `${site} ou no WhatsApp ${whatsapp}`,
   ];
   const texto = linhas.join(" ");
   return `https://wa.me/?text=${encodeURIComponent(texto)}`;
