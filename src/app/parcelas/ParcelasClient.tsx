@@ -432,16 +432,16 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   hojeMeiaNoite.setHours(0, 0, 0, 0)
 
   return (
-    <div className="min-h-screen bg-brand-cream/40 pb-28 lg:pb-10 lg:pl-60">
+    <div className="min-h-screen bg-[color:var(--p-page)] pb-28 lg:pb-10 lg:pl-60">
       <Cabecalho nome={nomeCliente || null} subtitulo={nome} />
 
       <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8">
         <h1 className="font-serif text-4xl text-brand md:text-5xl">Financeiro</h1>
-        <p className="mt-2 text-sm text-neutral-600">
+        <p className="mt-2 text-sm text-[color:var(--p-muted)]">
           {nome ? nome + " · " : ""}Acompanhe suas parcelas, gere o Pix e veja o que já foi pago.
         </p>
         {totalPrograma && totalPrograma > 0 ? (
-          <p className="text-sm text-neutral-500">Contrato de {formatarMoeda(totalPrograma, moedaPrograma)}</p>
+          <p className="text-sm text-[color:var(--p-muted)]">Contrato de {formatarMoeda(totalPrograma, moedaPrograma)}</p>
         ) : null}
 
         {antecipacoes && antecipacoes.length > 0 ? (
