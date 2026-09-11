@@ -44,7 +44,8 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
     const o = montarOrcamento(p, opts);
     const vet = cambio[p.currency] || 0;
     const brl = converterBRL(o.totalMoeda, vet);
-    const sim = simularParcelamento({ totalMoeda: o.totalMoeda, entradaMoeda: p.appFee, vet, n, anoTrimestre: anoTri });
+    const entrada = p.entradaMoeda ?? p.appFee;
+    const sim = simularParcelamento({ totalMoeda: o.totalMoeda, entradaMoeda: entrada, vet, n, anoTrimestre: anoTri });
     return { o, vet, brl, sim };
   }
 
@@ -138,10 +139,10 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
                 )}
               </div>
 
-              {/* Entrada */}
-              {p.appFee > 0 ? (
+              {/* Entrada = taxas nao reembolsaveis */}
+              {sim.entradaMoeda > 0 ? (
                 <p style={{ fontSize: 12, color: "var(--p-muted)", lineHeight: 1.5, marginTop: 12 }}>
-                  <span style={{ fontSize: 15, fontWeight: 500, color: "var(--p-ink)" }}>Entrada de {fmtMoeda(p.appFee, o.currency)}</span>
+                  <span style={{ fontSize: 15, fontWeight: 500, color: "var(--p-ink)" }}>Entrada de {fmtMoeda(sim.entradaMoeda, o.currency)}</span>
                   {vet > 0 ? <span> · ≈ {fmtBRL(sim.entradaBRL)}</span> : null}
                   <br />o valor exato das taxas que a escola não devolve. Nada além disso fica preso.
                 </p>

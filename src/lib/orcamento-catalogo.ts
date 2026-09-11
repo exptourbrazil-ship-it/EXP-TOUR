@@ -49,18 +49,24 @@ async function tuitionPorProduto(supabase: SupabaseClient, tenantId: string): Pr
 async function taxasPorProduto(
   supabase: SupabaseClient,
   tenantId: string,
-): Promise<Map<string, { registration: number; material: number }>> {
+): Promise<Map<string, { registration: number; material: number; entrada: number }>> {
   const { data } = await supabase
     .from("fee_product")
-    .select("product_id, fee!inner(tenant_id, fee_type, amount)")
+    .select("product_id, fee!inner(tenant_id, fee_type, charge_basis, amount, is_refundable)")
     .eq("fee.tenant_id", tenantId);
-  const m = new Map<string, { registration: number; material: number }>();
+  const m = new Map<string, { registration: number; material: number; entrada: number }>();
   for (const row of (data ?? []) as any[]) {
     const f = row.fee;
     if (!f) continue;
-    const cur = m.get(row.product_id) ?? { registration: 0, material: 0 };
+    const cur = m.get(row.product_id) ?? { registration: 0, material: 0, entrada: 0 };
     if (f.fee_type === "registration") cur.registration = num(f.amount);
     else if (f.fee_type === "material") cur.material = num(f.amount);
+    // ENTRADA = taxas NAO reembolsaveis cobradas UMA VEZ (matricula, colocacao,
+    // etc.). Material (per_unit) e recorrente, nao entra. is_refundable null =
+    // tratado como nao reembolsavel.
+    if (f.charge_basis === "once_per_item" && f.is_refundable !== true) {
+      cur.entrada += num(f.amount);
+    }
     m.set(row.product_id as string, cur);
   }
   return m;
@@ -134,7 +140,7 @@ export async function carregarCatalogoOrcamento(): Promise<CatalogoOrcamento> {
     const fixedFee = min === max && max > 0;
     const unit = tuition.get(p.id as string) ?? 0;
     const wfee = fixedFee ? round2(unit * max) : unit; // pacote fixo: reconstroi o total
-    const fee = taxas.get(p.id as string) ?? { registration: 0, material: 0 };
+    const fee = taxas.get(p.id as string) ?? { registration: 0, material: 0, entrada: 0 };
     const pais = PAIS_LABEL[campus.country_code as string] || (campus.country_code as string);
     paisesSet.add(pais);
     programas.push({
@@ -152,6 +158,7 @@ export async function carregarCatalogoOrcamento(): Promise<CatalogoOrcamento> {
       fixedFee,
       wfee,
       appFee: fee.registration,
+      entradaMoeda: fee.entrada || fee.registration,
       wmatFee: fee.material,
       accom: (accom.get(p.campus_id as string) as AcomodacaoPrecos) ?? null,
       insuranceWeekly: insurance.get(p.campus_id as string) ?? 0,

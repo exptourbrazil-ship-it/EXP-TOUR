@@ -25,7 +25,8 @@ export type ProgramaOrcavel = {
   maxWeeks: number;
   fixedFee: boolean; // pacote fixo (wfee cobrado uma vez)
   wfee: number; // mensalidade semanal (ou total do pacote se fixedFee)
-  appFee: number; // matricula (uma vez)
+  appFee: number; // matricula (uma vez) — linha "matricula" do orcamento
+  entradaMoeda?: number; // ENTRADA = soma das taxas NAO reembolsaveis (uma vez). Default = appFee.
   wmatFee: number; // material POR SEMANA
   accom: AcomodacaoPrecos; // preco semanal por tipo (por campus)
   insuranceWeekly: number; // seguro semanal (por campus)
