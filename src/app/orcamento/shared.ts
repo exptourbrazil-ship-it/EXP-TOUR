@@ -1,0 +1,68 @@
+// Helpers compartilhados entre as telas do orcamento (busca e comparacao).
+// Puros/client-safe (formatacao, datas, encode/decode dos parametros da URL).
+
+export function fmtMoeda(v: number, cur: string): string {
+  try {
+    return v.toLocaleString("pt-BR", { style: "currency", currency: cur, maximumFractionDigits: 0 });
+  } catch {
+    return `${cur} ${Math.round(v).toLocaleString("pt-BR")}`;
+  }
+}
+export const fmtBRL = (v: number) => "R$ " + Math.round(v).toLocaleString("pt-BR");
+
+export function fmtData(iso: string): string {
+  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+}
+export function labelSemanas(w: number): string {
+  return w === 1 ? "1 semana" : `${w} semanas`;
+}
+
+// Segundas-feiras entre hoje e o fim de 2027; feriado fixo (1 jan, 25/26 dez) -> terca.
+export function segundasDisponiveis(): string[] {
+  const out: string[] = [];
+  const hoje = new Date();
+  const d = new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()));
+  while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() + 1);
+  const fim = new Date(Date.UTC(2027, 11, 31));
+  while (d <= fim) {
+    const mes = d.getUTCMonth() + 1, dia = d.getUTCDate();
+    const feriado = (mes === 1 && dia === 1) || (mes === 12 && (dia === 25 || dia === 26));
+    const escolhido = new Date(d);
+    if (feriado) escolhido.setUTCDate(escolhido.getUTCDate() + 1);
+    out.push(escolhido.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 7);
+  }
+  return out;
+}
+
+// Parametros do orcamento que viajam na URL (tela 1 -> tela 2/compartilhar).
+export type ParamsOrcamento = {
+  ids: string[];
+  weeks: number;
+  inicio: string; // YYYY-MM-DD
+  accom: boolean;
+  accomTipo: "residence" | "homestay";
+  seguro: boolean;
+};
+
+export function encodeParams(p: ParamsOrcamento): string {
+  const sp = new URLSearchParams();
+  sp.set("ids", p.ids.join(","));
+  sp.set("weeks", String(p.weeks));
+  sp.set("inicio", p.inicio);
+  sp.set("accom", p.accom ? (p.accomTipo === "residence" ? "res" : "casa") : "0");
+  sp.set("seguro", p.seguro ? "1" : "0");
+  return sp.toString();
+}
+
+export function decodeParams(sp: URLSearchParams): ParamsOrcamento {
+  const accomRaw = sp.get("accom") || "casa";
+  return {
+    ids: (sp.get("ids") || "").split(",").map((s) => s.trim()).filter(Boolean),
+    weeks: Math.max(1, parseInt(sp.get("weeks") || "4") || 4),
+    inicio: sp.get("inicio") || new Date().toISOString().slice(0, 10),
+    accom: accomRaw !== "0",
+    accomTipo: accomRaw === "res" ? "residence" : "homestay",
+    seguro: (sp.get("seguro") || "1") !== "0",
+  };
+}

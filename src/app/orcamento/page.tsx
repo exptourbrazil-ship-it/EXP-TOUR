@@ -37,7 +37,6 @@ export default async function OrcamentoPage() {
       <OrcamentoClient
         programas={catalogo.programas}
         cambio={catalogo.cambio}
-        dataCambio={catalogo.dataCambio}
         paises={catalogo.paises}
       />
     </div>
