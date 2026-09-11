@@ -8,6 +8,9 @@ import {
   montarOrcamento,
   converterBRL,
   planoPix,
+  calcularNTrimestre,
+  trimestresDisponiveis,
+  simularParcelamento,
   type ProgramaOrcavel,
 } from "./orcamento.ts";
 
@@ -131,4 +134,35 @@ test("planoPix: forcar 1 parcela = pagamento unico", () => {
   const plano = planoPix({ totalBRL: 12000, dataInicioISO: "2027-12-01", hojeISO: "2026-09-10", numParcelasForcado: 1 });
   assert.equal(plano.parcelas.length, 1);
   assert.equal(plano.parcelas[0].valor, 12000);
+});
+
+test("calcularNTrimestre: escada da spec (hoje ago/2026, M=2)", () => {
+  const casos: Array<[string, number]> = [
+    ["2026-12-31", 3], ["2027-03-31", 6], ["2027-06-30", 9],
+    ["2027-09-30", 12], ["2027-12-31", 15], ["2028-03-31", 18],
+  ];
+  for (const [fim, n] of casos) {
+    assert.equal(calcularNTrimestre("2026-08-01", fim, 2), n, `fim ${fim}`);
+  }
+});
+
+test("calcularNTrimestre: teto de 18 e piso de 1", () => {
+  assert.equal(calcularNTrimestre("2026-08-01", "2030-12-31", 2), 18);
+  assert.equal(calcularNTrimestre("2026-08-01", "2026-08-31", 2), 1);
+});
+
+test("trimestresDisponiveis: comeca no proximo trimestre, 6 itens", () => {
+  const t = trimestresDisponiveis("2026-09-10", 6); // Q3/26 -> comeca Q4/26
+  assert.equal(t.length, 6);
+  assert.equal(t[0].label, "4º/26");
+  assert.equal(t[0].fimISO, "2026-12-31");
+  assert.equal(t[5].label, "1º/28");
+});
+
+test("simularParcelamento: parcela = (total-entrada)/N x VET", () => {
+  // Card 1 Dublin: total 3290, entrada 160 -> financiado 3130; Q2/27 N=9; EUR 5.87
+  const s = simularParcelamento({ totalMoeda: 3290, entradaMoeda: 160, vet: 5.87, n: 9 });
+  assert.equal(s.financiadoMoeda, 3130);
+  assert.equal(s.parcelaBRL, 2041); // 3130/9 * 5.87 = 2041.46 -> 2041 (spec ~2042, so arredondamento)
+  assert.equal(s.entradaBRL, 939); // 160*5.87
 });

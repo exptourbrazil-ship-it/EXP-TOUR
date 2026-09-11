@@ -295,3 +295,69 @@ export function planoPix(args: {
   }
   return { parcelas, total, n };
 }
+
+// ── Simulador por TRIMESTRE de saida (layout "Seu orcamento", spec-simulador) ──
+// O lead escolhe QUANDO quer viajar (trimestre), nao uma data exata. O nº de
+// parcelas (N) sai da distancia ate o FIM do trimestre, menos M meses de folga.
+
+export type Trimestre = { key: string; label: string; fimISO: string };
+
+// 6 trimestres a partir do PROXIMO trimestre apos hoje (o atual e curto demais).
+export function trimestresDisponiveis(hojeISO: string, n = 6): Trimestre[] {
+  const d = new Date(hojeISO + "T00:00:00Z");
+  let y = d.getUTCFullYear();
+  let q = Math.floor(d.getUTCMonth() / 3) + 2; // proximo trimestre
+  while (q > 4) { q -= 4; y += 1; }
+  const out: Trimestre[] = [];
+  for (let i = 0; i < n; i++) {
+    const fim = new Date(Date.UTC(y, q * 3, 0)); // ultimo dia do mes final do trimestre
+    out.push({ key: `${y}-Q${q}`, label: `${q}º/${String(y).slice(2)}`, fimISO: fim.toISOString().slice(0, 10) });
+    q += 1; if (q > 4) { q = 1; y += 1; }
+  }
+  return out;
+}
+
+// N = min(18, max(1, mesesAteOFimDoTrimestre - M)). M=2 (1 mes p/ pagar a escola
+// no prazo do fornecedor + 1 mes p/ quitar antes do embarque). Base = FIM do
+// trimestre (o rotulo e "ate N parcelas").
+export function calcularNTrimestre(hojeISO: string, fimTrimestreISO: string, M = 2): number {
+  const a = new Date(hojeISO + "T00:00:00Z");
+  const b = new Date(fimTrimestreISO + "T00:00:00Z");
+  const meses = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth()) + 1;
+  return Math.min(18, Math.max(1, meses - M));
+}
+
+export type SimulacaoTrimestre = {
+  n: number;
+  entradaMoeda: number;
+  financiadoMoeda: number; // total - entrada, na moeda do curso
+  parcelaMoeda: number;
+  parcelaBRL: number;
+  entradaBRL: number;
+  curto: boolean; // prazo curto (N <= 3): a vista ou poucas parcelas
+  longo: boolean; // saida em 2028+: valor a confirmar
+};
+
+// Parcela = (total - entrada) / N, na moeda do curso, convertida pela VET.
+// Entrada = taxas nao reembolsaveis (aqui: matricula/appFee).
+export function simularParcelamento(args: {
+  totalMoeda: number;
+  entradaMoeda: number;
+  vet: number;
+  n: number;
+  anoTrimestre?: number;
+}): SimulacaoTrimestre {
+  const entradaMoeda = Math.max(0, args.entradaMoeda);
+  const financiadoMoeda = Math.max(0, args.totalMoeda - entradaMoeda);
+  const parcelaMoeda = args.n > 0 ? financiadoMoeda / args.n : financiadoMoeda;
+  return {
+    n: args.n,
+    entradaMoeda,
+    financiadoMoeda: round2(financiadoMoeda),
+    parcelaMoeda: round2(parcelaMoeda),
+    parcelaBRL: args.vet > 0 ? Math.round(parcelaMoeda * args.vet) : 0,
+    entradaBRL: args.vet > 0 ? Math.round(entradaMoeda * args.vet) : 0,
+    curto: args.n <= 3,
+    longo: (args.anoTrimestre ?? 0) >= 2028,
+  };
+}
