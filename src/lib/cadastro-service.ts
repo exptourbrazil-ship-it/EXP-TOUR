@@ -41,6 +41,7 @@ export class CadastroInvalido extends Error {
 // ---- Validadores PUROS (testaveis, sem rede/DB) -----------------------------
 
 // Mantem so os digitos (remove pontuacao de CPF/telefone).
+// NB: mesmo algoritmo em @/lib/cpf (client-safe, usado no checkout do orcamento).
 export function normalizarCpf(v: unknown): string {
   return String(v ?? "").replace(/\D/g, "");
 }

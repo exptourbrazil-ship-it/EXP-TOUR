@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTenantBrand } from "@/components/TenantBrandProvider";
 import { montarLinkSuporteWhatsApp } from "@/lib/viagem";
 import { montarOrcamento, converterBRL, type ProgramaOrcavel } from "@/lib/orcamento";
+import { validarCpf, mascararCpf } from "@/lib/cpf";
 import { fmtMoeda, fmtBRL, fmtData, labelSemanas, type ParamsOrcamento } from "../shared";
 
 type Props = {
@@ -20,6 +21,7 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
   const brand = useTenantBrand();
   const marca = brand.email.brandName;
   const [nome, setNome] = useState("");
+  const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
   const [aceite, setAceite] = useState(false);
@@ -35,13 +37,14 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
   function encaminhar() {
     setErro(null);
     if (!nome.trim()) return setErro("Informe seu nome.");
+    if (!validarCpf(cpf)) return setErro("Informe um CPF válido — é ele que cria e acessa sua conta na Área do Cliente.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErro("Informe um e-mail válido.");
     if (!aceite) return setErro("É preciso aceitar os termos e condições para continuar.");
 
     const resumo = linhas
       .map((l) => `• ${l.p.courseName} — ${l.p.school} (${l.p.city}, ${l.p.country}), ${labelSemanas(params.weeks)}: ${l.vet > 0 ? fmtBRL(l.brl) : fmtMoeda(l.o.totalMoeda, l.o.currency)}`)
       .join("\n");
-    const msg = `Quero encaminhar minha matrícula com a ${marca}.\n\nNome: ${nome}\nE-mail: ${email}${telefone ? `\nTelefone: ${telefone}` : ""}\nInício: ${fmtData(params.inicio)}\n\nPrograma(s):\n${resumo}\n\nLi e aceito os termos e condições.`;
+    const msg = `Quero encaminhar minha matrícula com a ${marca}.\n\nNome: ${nome}\nCPF: ${mascararCpf(cpf)}\nE-mail: ${email}${telefone ? `\nTelefone: ${telefone}` : ""}\nInício: ${fmtData(params.inicio)}\n\nPrograma(s):\n${resumo}\n\nLi e aceito os termos e condições.`;
     const base = montarLinkSuporteWhatsApp(brand.supportWhatsApp);
     const link = base + (base.includes("?") ? "&" : "?") + "text=" + encodeURIComponent(msg);
     window.open(link, "_blank", "noopener,noreferrer");
@@ -70,8 +73,13 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
         <label style={lbl}>Nome completo
           <input value={nome} onChange={(e) => setNome(e.target.value)} style={inp} />
         </label>
+        <label style={lbl}>CPF
+          <input value={cpf} onChange={(e) => setCpf(mascararCpf(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" style={inp} />
+          <span style={{ fontSize: 11, color: "var(--p-muted)", fontWeight: 400 }}>É o CPF que cria e acessa sua conta na Área do Cliente.</span>
+        </label>
         <label style={lbl}>E-mail
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inp} placeholder="voce@email.com" />
+          <span style={{ fontSize: 11, color: "var(--p-muted)", fontWeight: 400 }}>Você recebe o código de acesso da Área do Cliente por aqui.</span>
         </label>
         <label style={lbl}>Telefone / WhatsApp (opcional)
           <input value={telefone} onChange={(e) => setTelefone(e.target.value)} style={inp} placeholder="(11) 99999-9999" />
