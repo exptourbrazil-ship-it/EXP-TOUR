@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { avaliarTravaRemessa } from "@/lib/trava-remessa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,21 +45,20 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
 
   const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
-  const patch: Record<string, unknown> = {
-    compartilhado_fornecedor: compartilhar,
-    compartilhado_em: compartilhar ? new Date().toISOString() : null,
-    compartilhado_por: compartilhar ? usuario : null,
-  };
 
-  // Ao compartilhar, garante o vinculo por contrato (isolamento entre escolas).
+  // Resolve o contrato efetivo do documento (usado tanto para a trava D+7 quanto
+  // para o vinculo por contrato). Ao compartilhar um doc de nivel titular (sem
+  // contrato_id), vincula ao contrato do titular quando ele tem exatamente UM;
+  // com 0 ou >1, recusa (compartilhar sem contrato deixaria o doc invisivel/ambiguo).
+  let contratoId: string | null = doc.contrato_id ?? null;
   let contratoVinculado: string | null = null;
-  if (compartilhar && !doc.contrato_id) {
+  if (compartilhar && !contratoId) {
     const { data: contratos } = await supabase
       .from("contratos")
       .select("id")
       .eq("titular_id", doc.titular_id);
     if ((contratos?.length ?? 0) === 1) {
-      patch.contrato_id = contratos![0].id;
+      contratoId = contratos![0].id;
       contratoVinculado = contratos![0].id;
     } else {
       return NextResponse.json(
@@ -71,6 +71,56 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       );
     }
   }
+
+  // Trava D+7 (Cláusula 2.5.2 / CDC art. 49): compartilhar um documento com a
+  // escola É "envio ao Fornecedor" — não pode ocorrer enquanto o direito de
+  // arrependimento (7 dias do aceite) estiver correndo, salvo processamento
+  // imediato autorizado pelo cliente. Fail-closed, MESMA regra da remessa
+  // financeira (executarRepasse). Descompartilhar (remover acesso) é sempre livre.
+  if (compartilhar && contratoId) {
+    const { data: contrato, error: contratoErr } = await supabase
+      .from("contratos")
+      .select("created_at, processamento_imediato")
+      .eq("id", contratoId)
+      .maybeSingle();
+    // Fail-closed: sem conseguir LER o contrato (erro transitório) não dá para
+    // avaliar a trava — recusa, em vez de cair no ramo "sem_aceite" (que liberaria).
+    // Mantém paridade com executarRepasse, que recusa quando o caso não carrega.
+    if (contratoErr || !contrato) {
+      console.error(
+        "[documentos/compartilhar] falha ao ler contrato para a trava:",
+        contratoErr?.message ?? "contrato nao encontrado",
+      );
+      return NextResponse.json(
+        { ok: false, error: "Não foi possível verificar a trava de arrependimento agora. Tente novamente." },
+        { status: 503 }
+      );
+    }
+    const trava = avaliarTravaRemessa({
+      aceiteISO: contrato.created_at ?? null,
+      agoraISO: new Date().toISOString(),
+      processamentoImediato: !!contrato.processamento_imediato,
+    });
+    if (!trava.liberado) {
+      const ate = trava.liberaEmISO
+        ? new Date(trava.liberaEmISO).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+        : null;
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Compartilhamento travado: direito de arrependimento em curso${ate ? ` até ${ate}` : ""}. Marque "processamento imediato" (autorização do cliente) para liberar antes.`,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  const patch: Record<string, unknown> = {
+    compartilhado_fornecedor: compartilhar,
+    compartilhado_em: compartilhar ? new Date().toISOString() : null,
+    compartilhado_por: compartilhar ? usuario : null,
+  };
+  if (contratoVinculado) patch.contrato_id = contratoVinculado;
 
   const { error } = await supabase.from("documentos").update(patch).eq("id", id);
   if (error) {
