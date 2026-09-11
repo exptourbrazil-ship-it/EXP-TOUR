@@ -4,10 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTenantBrand } from "@/components/TenantBrandProvider";
 import {
-  montarOrcamento, converterBRL, calcularNTrimestre, trimestresDisponiveis, simularParcelamento,
+  montarOrcamento, converterBRL, calcularNTrimestre, simularParcelamento,
   CATEGORY_LABEL, type ProgramaOrcavel,
 } from "@/lib/orcamento";
-import { fmtMoeda, fmtBRL, labelSemanas, encodeParams, type ParamsOrcamento } from "../shared";
+import { fmtMoeda, fmtBRL, labelSemanas, encodeParams, mesesInicioDisponiveis, type ParamsOrcamento } from "../shared";
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 type Props = {
   programas: ProgramaOrcavel[];
@@ -28,15 +30,15 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
   const marca = brand.email.brandName;
   const router = useRouter();
   const hojeISO = new Date().toISOString().slice(0, 10);
-  const trimestres = useMemo(() => trimestresDisponiveis(hojeISO, 6), [hojeISO]);
+  const meses = useMemo(() => mesesInicioDisponiveis(), []);
 
-  const [triIdx, setTriIdx] = useState(2); // default ~2 trimestres a frente
+  const [mesIdx, setMesIdx] = useState(Math.min(5, meses.length - 1)); // ~6 meses a frente
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
   const [copiado, setCopiado] = useState(false);
 
-  const tri = trimestres[triIdx] ?? trimestres[0];
-  const anoTri = Number((tri?.key || "").slice(0, 4)) || 0;
-  const n = calcularNTrimestre(hojeISO, tri.fimISO);
+  const mes = meses[mesIdx] ?? meses[0];
+  const anoTri = mes?.ano ?? 0;
+  const n = calcularNTrimestre(hojeISO, mes.fimISO);
   const weeks = params.weeks;
   const opts = { weeks, accomOn: params.accom, accomType: params.accomTipo, insuranceOn: params.seguro };
 
@@ -60,8 +62,8 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
     } catch { window.prompt("Copie o link do orçamento:", window.location.href); }
   }
   function encaminhar() {
-    // O trimestre vira a data-alvo de inicio (fim do trimestre) para o checkout.
-    const qs = encodeParams({ ...params, inicio: tri.fimISO });
+    // O mes escolhido vira a data-alvo de inicio (dia 1) para o checkout.
+    const qs = encodeParams({ ...params, inicio: mes.primeiroISO });
     router.push(`/orcamento/checkout?${qs}&parcelas=${n}`);
   }
 
@@ -76,15 +78,25 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
 
       {/* Controle unico — quando viajar */}
       <section style={{ background: "#fff", border: "1px solid #EAEAF2", borderRadius: 12, padding: 20, marginTop: 20 }}>
-        <p id="quando" style={{ fontSize: 15, fontWeight: 500, color: "var(--p-ink)" }}>Quando você quer viajar?</p>
-        <div role="group" aria-labelledby="quando" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 12 }}>
-          {trimestres.map((t, i) => (
-            <button key={t.key} aria-pressed={i === triIdx} onClick={() => setTriIdx(i)}
-              style={{ height: 44, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: "pointer",
-                border: `1.5px solid ${i === triIdx ? "#3b4dc9" : "#DCDCE8"}`, background: i === triIdx ? "#EEF0FF" : "#fff", color: "var(--p-ink)" }}>
-              {t.label}
-            </button>
-          ))}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+          <p id="quando" style={{ fontSize: 15, fontWeight: 500, color: "var(--p-ink)" }}>Quando você quer viajar?</p>
+          <p style={{ fontSize: 18, fontWeight: 500, color: BLUE, letterSpacing: "-0.01em" }}>{cap(mes.label)}</p>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={meses.length - 1}
+          step={1}
+          value={mesIdx}
+          onChange={(e) => setMesIdx(parseInt(e.target.value))}
+          aria-labelledby="quando"
+          aria-valuetext={cap(mes.label)}
+          style={{ width: "100%", marginTop: 14, accentColor: "#3b4dc9", cursor: "pointer" }}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--p-muted)", marginTop: 4 }}>
+          <span>{cap(meses[0]?.label ?? "")}</span>
+          <span>arraste para escolher o mês de início</span>
+          <span>{cap(meses[meses.length - 1]?.label ?? "")}</span>
         </div>
         <p style={{ fontSize: 12.5, color: "var(--p-muted)", lineHeight: 1.6, marginTop: 12 }}>
           Sem juros, na moeda do programa. A parcela em real acompanha a cotação do dia — é por isso que não existe
@@ -171,6 +183,20 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
                   <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #eee", marginTop: 4, paddingTop: 4, fontWeight: 500, color: "var(--p-ink)" }}>
                     <span>Total ({o.currency})</span><span>{fmtMoeda(o.totalMoeda, o.currency)}</span>
                   </div>
+                </div>
+              ) : null}
+
+              {/* Links de apoio a escolha */}
+              {(p.escolaUrl || p.programaUrl) ? (
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: "auto", paddingTop: 14 }}>
+                  {p.programaUrl ? (
+                    <a href={p.programaUrl} target="_blank" rel="noopener noreferrer nofollow"
+                      style={{ fontSize: 12.5, color: BLUE, fontWeight: 500, textDecoration: "none" }}>Ver programa ↗</a>
+                  ) : null}
+                  {p.escolaUrl ? (
+                    <a href={p.escolaUrl} target="_blank" rel="noopener noreferrer nofollow"
+                      style={{ fontSize: 12.5, color: BLUE, fontWeight: 500, textDecoration: "none" }}>Site da escola ↗</a>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -30,6 +30,8 @@ export type ProgramaOrcavel = {
   wmatFee: number; // material POR SEMANA
   accom: AcomodacaoPrecos; // preco semanal por tipo (por campus)
   insuranceWeekly: number; // seguro semanal (por campus)
+  escolaUrl?: string | null; // site da escola (supplier.website), quando houver
+  programaUrl?: string | null; // pagina do programa (attributes.url), quando houver
 };
 
 export const CATEGORY_LABEL: Record<string, string> = {

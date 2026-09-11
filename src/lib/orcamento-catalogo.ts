@@ -22,6 +22,13 @@ const PAIS_FLAG: Record<string, string> = { GB: "🇬🇧", MT: "🇲🇹", US: 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const num = (v: unknown) => (v == null ? 0 : Number(v) || 0);
 
+// Normaliza uma URL de site (garante protocolo). Vazio/invalido -> null.
+function normalizarUrl(u: string | null | undefined): string | null {
+  const s = (u ?? "").trim();
+  if (!s) return null;
+  return /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, "")}`;
+}
+
 export type CatalogoOrcamento = {
   programas: ProgramaOrcavel[];
   cambio: Record<string, number>; // moeda -> VET (BRL por 1 unidade)
@@ -110,7 +117,7 @@ export async function carregarCatalogoOrcamento(): Promise<CatalogoOrcamento> {
   // Campus (id -> cidade/pais/moeda/fornecedor) e fornecedores (id -> nome).
   const { data: campusRows } = await supabase
     .from("campus")
-    .select("id, city, country_code, base_currency, supplier_id, supplier!inner(display_name)")
+    .select("id, city, country_code, base_currency, supplier_id, supplier!inner(display_name, website)")
     .eq("tenant_id", tenantId)
     .is("archived_at", null);
   const campusById = new Map<string, any>();
@@ -162,6 +169,8 @@ export async function carregarCatalogoOrcamento(): Promise<CatalogoOrcamento> {
       wmatFee: fee.material,
       accom: (accom.get(p.campus_id as string) as AcomodacaoPrecos) ?? null,
       insuranceWeekly: insurance.get(p.campus_id as string) ?? 0,
+      escolaUrl: normalizarUrl(campus.supplier?.website as string | null | undefined),
+      programaUrl: normalizarUrl((p.attributes?.url as string | null | undefined)),
     });
   }
 
