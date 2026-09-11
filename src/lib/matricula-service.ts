@@ -29,8 +29,11 @@ function getSupabase(): SupabaseClient {
 const validarEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || "").trim());
 const normTel = (t: string) => (t || "").replace(/\D/g, "");
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const corta = (s: unknown, n: number) => String(s ?? "").trim().slice(0, n);
+
 export type EntradaMatricula = {
-  // Titular (responsavel financeiro = conta da Area do Cliente).
+  // Titular (responsavel financeiro = futura conta da Area do Cliente).
   titularNome: string;
   cpf: string;
   email: string;
@@ -42,56 +45,52 @@ export type EntradaMatricula = {
   programaNome?: string | null;
   escola?: string | null;
   params?: Record<string, unknown> | null;
+  // Aceite dos Termos & Condicoes (LGPD) — obrigatorio.
+  aceite: boolean;
   ip?: string | null;
 };
 
-export type ResultadoMatricula = { ok: true; titularId: string; leadId: string; titularNovo: boolean };
+export type ResultadoMatricula = { ok: true; titularId: string | null; leadId: string };
 
-// Cria/acha o titular pelo CPF (nao sobrescreve um existente) e grava o lead.
+// Grava o LEAD do funil (com PII do titular + participante). NAO cria conta
+// login-capavel a partir desta superficie publica nao verificada — isso seria
+// tomada de conta (CPF alheio + e-mail do atacante -> codigos de acesso vao para
+// ele). Apenas VINCULA a um titular que JA exista (nao cria, nao sobrescreve). A
+// conta e criada num passo VERIFICADO depois (consultor processa o lead /
+// conversao da cotacao com token). O aceite dos T&C fica registrado no lead.
 export async function registrarMatricula(args: EntradaMatricula): Promise<ResultadoMatricula> {
-  const nome = String(args.titularNome ?? "").trim();
+  const nome = corta(args.titularNome, 120);
   const cpf = normalizarCpf(args.cpf);
-  const email = String(args.email ?? "").trim();
-  const telefone = normTel(args.telefone ?? "") || null;
-  const participante = args.participanteNome ? String(args.participanteNome).trim() : null;
+  const email = corta(args.email, 254);
+  const telefone = normTel(args.telefone ?? "").slice(0, 20) || null;
+  const participante = args.participanteNome ? corta(args.participanteNome, 120) : null;
+  const programaNome = args.programaNome ? corta(args.programaNome, 200) : null;
+  const escola = args.escola ? corta(args.escola, 200) : null;
 
   if (!nome) throw new MatriculaInvalida("nome_obrigatorio", "Informe o nome do titular.");
   if (!validarCpf(cpf)) throw new MatriculaInvalida("cpf_invalido", "CPF invalido.");
   if (!validarEmail(email)) throw new MatriculaInvalida("email_invalido", "E-mail invalido.");
-  if (!args.programaId) throw new MatriculaInvalida("programa_obrigatorio", "Programa nao informado.");
+  if (!UUID_RE.test(String(args.programaId || ""))) throw new MatriculaInvalida("programa_invalido", "Programa invalido.");
+  if (args.aceite !== true) throw new MatriculaInvalida("aceite_obrigatorio", "E preciso aceitar os termos.");
 
   const supabase = getSupabase();
   const tenantId = await tenantIdAtual(supabase); // falha fechada se nao resolver
 
-  // Titular por CPF: se ja existe (qualquer tenant), REUSA (nao sobrescreve os
-  // dados de uma conta existente). Senao, cria no tenant do deploy.
-  let titularNovo = false;
-  let titularId: string;
+  // VINCULA a um titular existente (por CPF, unico global — mesma identidade de
+  // login), sem CRIAR nem SOBRESCREVER. Se nao existe, o lead fica sem titular
+  // ate o passo verificado que criara a conta.
   const { data: existente } = await supabase.from("titulares").select("id").eq("cpf", cpf).maybeSingle();
-  if (existente) {
-    titularId = existente.id as string;
-  } else {
-    const { data: inserido, error } = await supabase
-      .from("titulares")
-      .insert({ nome_completo: nome, cpf, email, telefone, tenant_id: tenantId })
-      .select("id")
-      .single();
-    if (error || !inserido) {
-      // Corrida: outro request criou o mesmo CPF entre o select e o insert.
-      if ((error as { code?: string } | null)?.code === "23505") {
-        const { data: agora } = await supabase.from("titulares").select("id").eq("cpf", cpf).maybeSingle();
-        if (!agora) throw new MatriculaInvalida("falha_titular", "Falha ao criar o titular.");
-        titularId = agora.id as string;
-      } else {
-        throw new MatriculaInvalida("falha_titular", "Falha ao criar o titular.");
-      }
-    } else {
-      titularId = inserido.id as string;
-      titularNovo = true;
-    }
-  }
+  const titularId = (existente?.id as string) ?? null;
 
-  // Lead do funil comercial.
+  // params: limita tamanho do jsonb do cliente e injeta o consentimento server-side.
+  let paramsCliente: Record<string, unknown> = {};
+  try {
+    const bruto = args.params && typeof args.params === "object" ? args.params : {};
+    const json = JSON.stringify(bruto);
+    if (json.length <= 8000) paramsCliente = bruto as Record<string, unknown>;
+  } catch { /* ignora params malformado */ }
+  const params = { ...paramsCliente, aceite_termos: { aceito: true, em: new Date().toISOString(), ip: args.ip ?? null } };
+
   const { data: lead, error: erroLead } = await supabase
     .from("lead")
     .insert({
@@ -103,11 +102,11 @@ export async function registrarMatricula(args: EntradaMatricula): Promise<Result
       telefone,
       participante_nome: participante,
       programa_id: args.programaId,
-      programa_nome: args.programaNome ?? null,
-      escola: args.escola ?? null,
+      programa_nome: programaNome,
+      escola,
       origem: "orcamento",
       status: "novo",
-      params: args.params ?? null,
+      params,
       ip: args.ip ?? null,
     })
     .select("id")
@@ -131,10 +130,10 @@ export async function registrarMatricula(args: EntradaMatricula): Promise<Result
       usuario: "lead",
       acao: "orcamento.matricula.solicitada",
       alvo: leadId,
-      detalhe: { titular_id: titularId, titular_novo: titularNovo, programa_id: args.programaId, participante_nome: participante },
+      detalhe: { titular_id: titularId, titular_vinculado: !!titularId, programa_id: args.programaId, participante_nome: participante },
       ip: args.ip ?? null,
     });
   } catch { /* best-effort */ }
 
-  return { ok: true, titularId, leadId, titularNovo };
+  return { ok: true, titularId, leadId };
 }

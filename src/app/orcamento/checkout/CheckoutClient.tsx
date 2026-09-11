@@ -60,6 +60,7 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
           email,
           telefone,
           participanteNome: titularDiferente ? participanteNome.trim() : null,
+          aceite: true,
           programaId: principal?.id,
           programaNome: principal?.courseName,
           escola: principal ? `${principal.school} — ${principal.city}, ${principal.country}` : null,
@@ -88,10 +89,10 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
       <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 24px" }}>
         <div style={{ background: "#fff", border: "1px solid #EAEAF2", borderRadius: 16, padding: 32, textAlign: "center" }}>
           <div style={{ fontSize: 40 }}>✓</div>
-          <h1 style={{ fontSize: 24, fontWeight: 500, color: "var(--p-ink)", marginTop: 8 }}>Matrícula encaminhada!</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 500, color: "var(--p-ink)", marginTop: 8 }}>Pedido de matrícula recebido!</h1>
           <p style={{ fontSize: 14, color: "var(--p-muted)", lineHeight: 1.6, marginTop: 10 }}>
-            Sua conta na Área do Cliente da {marca} foi criada com o CPF informado. Em instantes a equipe entra em
-            contato para dar sequência à inscrição, e você recebe o acesso no e-mail <b>{email}</b>.
+            A equipe da {marca} vai confirmar sua inscrição e criar o seu acesso à Área do Cliente — o código chega no
+            e-mail <b>{email}</b>. Por segurança, a conta é ativada só depois dessa confirmação.
           </p>
           <a href={wa} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 20, background: BLUE, color: "#fff", borderRadius: 8, padding: "12px 20px", fontSize: 14, fontWeight: 500, textDecoration: "none" }}>
             Falar com a {marca} agora
