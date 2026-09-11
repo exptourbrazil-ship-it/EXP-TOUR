@@ -91,6 +91,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "documentos.analisar",
   },
   {
+    href: "/admin/leads",
+    label: "Leads",
+    descricao: "Pedidos de matrícula vindos do orçamento",
+    icone: ICONES.propostas,
+    capacidade: "propostas.gerir",
+  },
+  {
     href: "/admin/propostas",
     label: "Propostas",
     descricao: "Criar e acompanhar propostas (checkout)",
@@ -250,6 +257,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/fornecedores": "Inventário",
   "/admin/materiais": "Inventário",
   "/admin/anexo-iii": "Inventário",
+  "/admin/leads": "Comercial",
   "/admin/propostas": "Comercial",
   "/admin/quotes": "Comercial",
   "/admin/clientes": "Clientes",
