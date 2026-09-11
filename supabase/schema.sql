@@ -345,6 +345,35 @@ create index if not exists idx_events_status on events(status);
 create index if not exists idx_events_source on events(source);
 create index if not exists idx_events_external on events(source, external_id);
 
+-- Lead: pedido de matricula vindo do orcamento lead-facing (/orcamento). Guarda
+-- o TITULAR (responsavel financeiro, ja provisionado em titulares pelo CPF) e o
+-- PARTICIPANTE (aluno) quando for outra pessoa, mais o programa escolhido e os
+-- parametros do orcamento (semanas, inicio, acomodacao, parcelas, total). Origem
+-- do funil comercial; um admin da sequencia (contato -> cotacao -> contrato).
+create table if not exists lead (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  titular_id uuid references titulares(id) on delete set null,
+  nome text not null,              -- nome do titular/contato
+  cpf text,
+  email text,
+  telefone text,
+  participante_nome text,          -- aluno, quando != titular
+  programa_id uuid,                -- product escolhido (sem FK: catalogo pode mudar)
+  programa_nome text,
+  escola text,
+  origem text not null default 'orcamento',
+  status text not null default 'novo'
+    check (status in ('novo','em_contato','cotacao','convertido','descartado')),
+  params jsonb,                    -- weeks, inicio, accom, seguro, parcelas, total, moeda...
+  ip text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+create index if not exists idx_lead_tenant_status on lead(tenant_id, status, created_at desc);
+create index if not exists idx_lead_titular on lead(titular_id);
+alter table if exists lead enable row level security;
+
 -- Lembretes de cobranca (regua): registra cada lembrete ja enviado por
 -- (parcela, janela), garantindo idempotencia do cron da regua de cobranca
 -- (ver src/app/api/cron/regua-cobranca). A constraint unique impede reenvio

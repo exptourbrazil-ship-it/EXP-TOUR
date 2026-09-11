@@ -20,12 +20,17 @@ const MIST = "var(--p-page)";
 export default function CheckoutClient({ programas, cambio, params }: Props) {
   const brand = useTenantBrand();
   const marca = brand.email.brandName;
-  const [nome, setNome] = useState("");
+
+  const [participanteNome, setParticipanteNome] = useState("");
+  const [titularDiferente, setTitularDiferente] = useState(false);
+  const [titularNome, setTitularNome] = useState("");
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
   const [aceite, setAceite] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
 
   const opts = { weeks: params.weeks, accomOn: params.accom, accomType: params.accomTipo, insuranceOn: params.seguro };
   const linhas = programas.map((p) => {
@@ -33,32 +38,79 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
     const vet = cambio[p.currency] || 0;
     return { p, o, brl: converterBRL(o.totalMoeda, vet), vet };
   });
+  const principal = programas[0];
 
-  function encaminhar() {
+  async function encaminhar() {
     setErro(null);
-    if (!nome.trim()) return setErro("Informe seu nome.");
-    if (!validarCpf(cpf)) return setErro("Informe um CPF válido — é ele que cria e acessa sua conta na Área do Cliente.");
+    if (!participanteNome.trim()) return setErro("Informe o nome do participante (quem vai viajar).");
+    if (titularDiferente && !titularNome.trim()) return setErro("Informe o nome do titular (responsável financeiro).");
+    if (!validarCpf(cpf)) return setErro("Informe um CPF válido — é ele que cria e acessa a conta na Área do Cliente.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErro("Informe um e-mail válido.");
     if (!aceite) return setErro("É preciso aceitar os termos e condições para continuar.");
 
-    const resumo = linhas
-      .map((l) => `• ${l.p.courseName} — ${l.p.school} (${l.p.city}, ${l.p.country}), ${labelSemanas(params.weeks)}: ${l.vet > 0 ? fmtBRL(l.brl) : fmtMoeda(l.o.totalMoeda, l.o.currency)}`)
-      .join("\n");
-    const msg = `Quero encaminhar minha matrícula com a ${marca}.\n\nNome: ${nome}\nCPF: ${mascararCpf(cpf)}\nE-mail: ${email}${telefone ? `\nTelefone: ${telefone}` : ""}\nInício: ${fmtData(params.inicio)}\n\nPrograma(s):\n${resumo}\n\nLi e aceito os termos e condições.`;
-    const base = montarLinkSuporteWhatsApp(brand.supportWhatsApp);
-    const link = base + (base.includes("?") ? "&" : "?") + "text=" + encodeURIComponent(msg);
-    window.open(link, "_blank", "noopener,noreferrer");
+    const titularNomeEfetivo = titularDiferente ? titularNome.trim() : participanteNome.trim();
+    setEnviando(true);
+    try {
+      const resp = await fetch("/api/orcamento/matricula", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titularNome: titularNomeEfetivo,
+          cpf,
+          email,
+          telefone,
+          participanteNome: titularDiferente ? participanteNome.trim() : null,
+          programaId: principal?.id,
+          programaNome: principal?.courseName,
+          escola: principal ? `${principal.school} — ${principal.city}, ${principal.country}` : null,
+          params: {
+            weeks: params.weeks, inicio: params.inicio, accom: params.accom, accomTipo: params.accomTipo, seguro: params.seguro,
+            programas: linhas.map((l) => ({ id: l.p.id, curso: l.p.courseName, escola: l.p.school, moeda: l.o.currency, totalMoeda: l.o.totalMoeda, totalBRL: l.brl })),
+          },
+        }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok || !json.ok) {
+        setErro(json.erro || "Não foi possível encaminhar a matrícula.");
+      } else {
+        setEnviado(true);
+      }
+    } catch {
+      setErro("Falha de conexão. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (enviado) {
+    const wa = montarLinkSuporteWhatsApp(brand.supportWhatsApp);
+    return (
+      <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 24px" }}>
+        <div style={{ background: "#fff", border: "1px solid #EAEAF2", borderRadius: 16, padding: 32, textAlign: "center" }}>
+          <div style={{ fontSize: 40 }}>✓</div>
+          <h1 style={{ fontSize: 24, fontWeight: 500, color: "var(--p-ink)", marginTop: 8 }}>Matrícula encaminhada!</h1>
+          <p style={{ fontSize: 14, color: "var(--p-muted)", lineHeight: 1.6, marginTop: 10 }}>
+            Sua conta na Área do Cliente da {marca} foi criada com o CPF informado. Em instantes a equipe entra em
+            contato para dar sequência à inscrição, e você recebe o acesso no e-mail <b>{email}</b>.
+          </p>
+          <a href={wa} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 20, background: BLUE, color: "#fff", borderRadius: 8, padding: "12px 20px", fontSize: 14, fontWeight: 500, textDecoration: "none" }}>
+            Falar com a {marca} agora
+          </a>
+          <p style={{ marginTop: 16 }}><a href="/orcamento" style={{ fontSize: 13, color: BLUE }}>Voltar ao orçamento</a></p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px", paddingBottom: 64 }}>
-      <a href="javascript:history.back()" style={{ fontSize: 13, color: "var(--p-cta)", textDecoration: "none" }}>← Voltar ao orçamento</a>
+      <a href="/orcamento" style={{ fontSize: 13, color: BLUE, textDecoration: "none" }}>← Voltar ao orçamento</a>
       <h1 style={{ fontSize: 24, fontWeight: 500, color: "var(--p-ink)", marginTop: 6 }}>Encaminhar matrícula</h1>
-      <p style={{ fontSize: 13, color: "var(--p-muted)" }}>Revise, preencha seus dados e aceite os termos. A equipe da {marca} dá sequência na sua inscrição.</p>
+      <p style={{ fontSize: 13, color: "var(--p-muted)" }}>Revise, preencha os dados e aceite os termos. A equipe da {marca} dá sequência na inscrição.</p>
 
       {/* Resumo */}
       <div style={{ background: "#fff", border: "1px solid #EAEAF2", borderRadius: 12, padding: 18, marginTop: 16 }}>
-        <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--p-muted)", fontWeight: 500, marginBottom: 8 }}>Programa(s) escolhido(s)</p>
+        <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--p-muted)", fontWeight: 500, marginBottom: 8 }}>Programa</p>
         {linhas.map((l) => (
           <div key={l.p.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid #F0F0EE" }}>
             <span style={{ fontSize: 13.5, color: "var(--p-ink)" }}>{l.p.courseName} <span style={{ color: "var(--p-muted)" }}>· {l.p.school}, {l.p.city}</span></span>
@@ -70,20 +122,39 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
 
       {/* Dados */}
       <div style={{ background: "#fff", border: "1px solid #EAEAF2", borderRadius: 12, padding: 18, marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <label style={lbl}>Nome completo
-          <input value={nome} onChange={(e) => setNome(e.target.value)} style={inp} />
+        <label style={lbl}>Nome do participante (quem vai viajar)
+          <input value={participanteNome} onChange={(e) => setParticipanteNome(e.target.value)} style={inp} />
         </label>
-        <label style={lbl}>CPF
-          <input value={cpf} onChange={(e) => setCpf(mascararCpf(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" style={inp} />
-          <span style={{ fontSize: 11, color: "var(--p-muted)", fontWeight: 400 }}>É o CPF que cria e acessa sua conta na Área do Cliente.</span>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--p-ink)", cursor: "pointer" }}>
+          <input type="checkbox" checked={titularDiferente} onChange={(e) => setTitularDiferente(e.target.checked)} style={{ accentColor: "#3b4dc9" }} />
+          O titular (responsável financeiro/conta) é outra pessoa
         </label>
-        <label style={lbl}>E-mail
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inp} placeholder="voce@email.com" />
-          <span style={{ fontSize: 11, color: "var(--p-muted)", fontWeight: 400 }}>Você recebe o código de acesso da Área do Cliente por aqui.</span>
-        </label>
-        <label style={lbl}>Telefone / WhatsApp (opcional)
-          <input value={telefone} onChange={(e) => setTelefone(e.target.value)} style={inp} placeholder="(11) 99999-9999" />
-        </label>
+
+        {titularDiferente ? (
+          <label style={lbl}>Nome do titular (responsável financeiro)
+            <input value={titularNome} onChange={(e) => setTitularNome(e.target.value)} style={inp} />
+          </label>
+        ) : null}
+
+        <div style={{ borderTop: "1px solid #F0F0EE", paddingTop: 12, marginTop: 2 }}>
+          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--p-muted)", fontWeight: 500, marginBottom: 8 }}>
+            Dados do titular {titularDiferente ? "(responsável)" : "(quem vai viajar)"}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <label style={lbl}>CPF do titular
+              <input value={cpf} onChange={(e) => setCpf(mascararCpf(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" style={inp} />
+              <span style={{ fontSize: 11, color: "var(--p-muted)", fontWeight: 400 }}>É o CPF que cria e acessa a conta na Área do Cliente.</span>
+            </label>
+            <label style={lbl}>E-mail do titular
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inp} placeholder="voce@email.com" />
+              <span style={{ fontSize: 11, color: "var(--p-muted)", fontWeight: 400 }}>O código de acesso da Área do Cliente vai para este e-mail.</span>
+            </label>
+            <label style={lbl}>Telefone / WhatsApp (opcional)
+              <input value={telefone} onChange={(e) => setTelefone(e.target.value)} style={inp} placeholder="(11) 99999-9999" />
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Termos e condicoes */}
@@ -94,7 +165,7 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
           <p style={{ marginTop: 8 }}>2. A dívida do programa é registrada na moeda estrangeira do curso; o câmbio é aplicado a cada pagamento.</p>
           <p style={{ marginTop: 8 }}>3. Vagas, datas e preços das escolas estão sujeitos à confirmação e disponibilidade no momento da inscrição.</p>
           <p style={{ marginTop: 8 }}>4. As parcelas seguem a regra de vencimento: entrada no mês corrente e a última até 30 dias antes do início do programa.</p>
-          <p style={{ marginTop: 8 }}>5. Ao encaminhar, você autoriza a {marca} a entrar em contato e a tratar seus dados para fins da inscrição, conforme a LGPD.</p>
+          <p style={{ marginTop: 8 }}>5. Ao encaminhar, o titular autoriza a {marca} a criar sua conta, entrar em contato e tratar os dados informados para fins da inscrição, conforme a LGPD.</p>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "var(--p-ink)", cursor: "pointer" }}>
           <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} style={{ accentColor: "#3b4dc9" }} />
@@ -104,8 +175,8 @@ export default function CheckoutClient({ programas, cambio, params }: Props) {
 
       {erro ? <p style={{ color: "#B8860B", fontSize: 13, marginTop: 12 }}>{erro}</p> : null}
 
-      <button onClick={encaminhar} style={{ width: "100%", background: BLUE, color: "#fff", border: "none", borderRadius: 8, padding: "14px 18px", fontSize: 15, fontWeight: 500, cursor: "pointer", marginTop: 16 }}>
-        Confirmar e encaminhar matrícula
+      <button onClick={encaminhar} disabled={enviando} style={{ width: "100%", background: BLUE, color: "#fff", border: "none", borderRadius: 8, padding: "14px 18px", fontSize: 15, fontWeight: 500, cursor: enviando ? "wait" : "pointer", marginTop: 16, opacity: enviando ? 0.7 : 1 }}>
+        {enviando ? "Enviando..." : "Confirmar e encaminhar matrícula"}
       </button>
     </div>
   );
