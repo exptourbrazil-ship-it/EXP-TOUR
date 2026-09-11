@@ -35,6 +35,9 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
   const [mesIdx, setMesIdx] = useState(Math.min(5, meses.length - 1)); // ~6 meses a frente
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
   const [copiado, setCopiado] = useState(false);
+  // Programa escolhido para a matricula. Com 1 opcao, ja vem escolhido; com
+  // varias, o lead PRECISA escolher antes de encaminhar.
+  const [escolhido, setEscolhido] = useState<string | null>(programas.length === 1 ? programas[0].id : null);
 
   const mes = meses[mesIdx] ?? meses[0];
   const anoTri = mes?.ano ?? 0;
@@ -62,8 +65,9 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
     } catch { window.prompt("Copie o link do orçamento:", window.location.href); }
   }
   function encaminhar() {
-    // O mes escolhido vira a data-alvo de inicio (dia 1) para o checkout.
-    const qs = encodeParams({ ...params, inicio: mes.primeiroISO });
+    if (!escolhido) return; // so avanca com um programa escolhido
+    // Leva SO o programa escolhido; o mes vira a data-alvo de inicio (dia 1).
+    const qs = encodeParams({ ...params, ids: [escolhido], inicio: mes.primeiroISO });
     router.push(`/orcamento/checkout?${qs}&parcelas=${n}`);
   }
 
@@ -116,7 +120,7 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
           const { o, vet, brl, sim } = dados(p);
           const exp = !!aberto[p.id];
           return (
-            <div key={p.id} style={{ flex: "1 0 300px", maxWidth: 360, background: "#fff", border: "1px solid #EAEAF2", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(15,16,32,0.06)", display: "flex", flexDirection: "column" }}>
+            <div key={p.id} style={{ flex: "1 0 300px", maxWidth: 360, background: "#fff", border: `1.5px solid ${escolhido === p.id ? "#3b4dc9" : "#EAEAF2"}`, borderRadius: 12, padding: 20, boxShadow: escolhido === p.id ? "0 2px 10px rgba(59,77,201,0.15)" : "0 1px 4px rgba(15,16,32,0.06)", display: "flex", flexDirection: "column" }}>
               <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--p-muted)" }}>{p.city}, {p.country} {p.flag}</p>
               <p style={{ fontSize: 15, fontWeight: 500, color: "var(--p-ink)", marginTop: 2 }}>{p.courseName}</p>
               <p style={{ fontSize: 12, color: "var(--p-muted)" }}>{p.school} · {CATEGORY_LABEL[p.courseType] || p.courseType}</p>
@@ -186,19 +190,25 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
                 </div>
               ) : null}
 
-              {/* Links de apoio a escolha */}
-              {(p.escolaUrl || p.programaUrl) ? (
-                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: "auto", paddingTop: 14 }}>
-                  {p.programaUrl ? (
-                    <a href={p.programaUrl} target="_blank" rel="noopener noreferrer nofollow"
-                      style={{ fontSize: 12.5, color: BLUE, fontWeight: 500, textDecoration: "none" }}>Ver programa ↗</a>
-                  ) : null}
-                  {p.escolaUrl ? (
-                    <a href={p.escolaUrl} target="_blank" rel="noopener noreferrer nofollow"
-                      style={{ fontSize: 12.5, color: BLUE, fontWeight: 500, textDecoration: "none" }}>Site da escola ↗</a>
-                  ) : null}
-                </div>
-              ) : null}
+              {/* Rodape do card: links de apoio + ESCOLHER */}
+              <div style={{ marginTop: "auto", paddingTop: 14 }}>
+                {(p.escolaUrl || p.programaUrl) ? (
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 12 }}>
+                    {p.programaUrl ? (
+                      <a href={p.programaUrl} target="_blank" rel="noopener noreferrer nofollow"
+                        style={{ fontSize: 12.5, color: BLUE, fontWeight: 500, textDecoration: "none" }}>Ver programa ↗</a>
+                    ) : null}
+                    {p.escolaUrl ? (
+                      <a href={p.escolaUrl} target="_blank" rel="noopener noreferrer nofollow"
+                        style={{ fontSize: 12.5, color: BLUE, fontWeight: 500, textDecoration: "none" }}>Site da escola ↗</a>
+                    ) : null}
+                  </div>
+                ) : null}
+                <button onClick={() => setEscolhido(escolhido === p.id ? null : p.id)}
+                  style={escolhido === p.id ? btnEscolhidoOn : btnEscolhidoOff}>
+                  {escolhido === p.id ? "✓ Programa escolhido" : "Escolher este programa"}
+                </button>
+              </div>
             </div>
           );
         })}
@@ -217,17 +227,23 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
           ))}
         </ul>
         <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
-          <button onClick={encaminhar} style={{ flex: 1, minWidth: 220, background: BLUE, color: "#fff", border: "none", borderRadius: 8, padding: "13px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+          <button onClick={encaminhar} disabled={!escolhido} aria-disabled={!escolhido}
+            style={{ flex: 1, minWidth: 220, background: escolhido ? BLUE : "rgba(255,255,255,0.14)", color: "#fff", border: "none", borderRadius: 8, padding: "13px 18px", fontSize: 14, fontWeight: 500, cursor: escolhido ? "pointer" : "not-allowed", opacity: escolhido ? 1 : 0.75 }}>
             Encaminhar matrícula →
           </button>
           <button onClick={compartilhar} style={{ flex: 1, minWidth: 200, background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8, padding: "13px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             {copiado ? "✓ Link copiado" : "Quero meu orçamento por escrito"}
           </button>
         </div>
-        <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.45)", marginTop: 10 }}>
-          Leva 2 minutos. Sem cadastro e sem documento nesta etapa. O link do orçamento atualiza a cotação para o câmbio do dia em que for aberto.
+        <p style={{ fontSize: 11.5, color: escolhido ? "rgba(255,255,255,0.45)" : "var(--brand-gold, #E8A838)", marginTop: 10 }}>
+          {escolhido
+            ? "Leva 2 minutos. Sem cadastro e sem documento nesta etapa. O link do orçamento atualiza a cotação para o câmbio do dia em que for aberto."
+            : "Escolha um programa acima (“Escolher este programa”) para encaminhar a matrícula. Você continua podendo comparar e compartilhar o orçamento."}
         </p>
       </section>
     </div>
   );
 }
+
+const btnEscolhidoOff: React.CSSProperties = { width: "100%", background: "#fff", color: "var(--p-ink)", border: "1.5px solid #DCDCE8", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 500, cursor: "pointer" };
+const btnEscolhidoOn: React.CSSProperties = { width: "100%", background: BLUE, color: "#fff", border: "1.5px solid #3b4dc9", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 500, cursor: "pointer" };
