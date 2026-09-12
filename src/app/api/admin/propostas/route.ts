@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { escopoTenantAdmin, barrarPropostaForaDoEscopo } from "@/lib/admin-tenant";
+import { tenantIdAtual } from "@/lib/catalog-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +32,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  const escopo = await escopoTenantAdmin(supabase);
+  let q = supabase
     .from("propostas")
     .select(CAMPOS)
     .order("created_at", { ascending: false });
+  // Listagem escopada: admin nao-global ve apenas propostas do seu tenant.
+  if (!escopo.global) q = q.eq("tenant_id", escopo.tenantId);
+  const { data, error } = await q;
   if (error) {
     return NextResponse.json({ ok: false, erro: "Falha ao listar propostas." }, { status: 500 });
   }
@@ -64,9 +70,12 @@ export async function POST(request: Request) {
   const plano = Array.isArray(b?.plano) ? b.plano : null;
 
   const supabase = getSupabase();
+  // Nova proposta pertence ao tenant do DEPLOY (mesma regra de escopo do admin).
+  const tenantId = await tenantIdAtual(supabase);
   const { data: nova, error } = await supabase
     .from("propostas")
     .insert({
+      tenant_id: tenantId,
       status: "enviada",
       nome_completo: nome,
       cpf,
@@ -110,6 +119,8 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, erro: "Informe id e status valido (cancelada/enviada)." }, { status: 400 });
   }
   const supabase = getSupabase();
+  const barrado = await barrarPropostaForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const { error } = await supabase
     .from("propostas")
     .update({ status, atualizado_em: new Date().toISOString() })

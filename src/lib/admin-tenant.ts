@@ -302,18 +302,32 @@ export async function barrarDocumentoForaDoEscopo(
   return barrar(supabase, existe, tenantId);
 }
 
+// Resolve {existe, tenantId} de uma entidade com coluna tenant_id DIRETA.
+async function tenantDireto(
+  supabase: SupabaseClient,
+  tabela: string,
+  id: string,
+): Promise<{ existe: boolean; tenantId: string | null }> {
+  const { data, error } = await supabase.from(tabela).select("tenant_id").eq("id", id).maybeSingle();
+  if (error) throw new Error(`Falha ao resolver o tenant de ${tabela}: ${error.message}`);
+  if (!data) return { existe: false, tenantId: null };
+  return { existe: true, tenantId: (data as { tenant_id?: string | null }).tenant_id ?? null };
+}
+
 /** Barra se o LEAD (lead.tenant_id direto) nao esta no escopo. */
 export async function barrarLeadForaDoEscopo(
   supabase: SupabaseClient,
   leadId: string,
 ): Promise<NextResponse | null> {
-  const { data, error } = await supabase
-    .from("lead")
-    .select("tenant_id")
-    .eq("id", leadId)
-    .maybeSingle();
-  if (error) throw new Error(`Falha ao resolver o tenant do lead: ${error.message}`);
-  const existe = !!data;
-  const tenantId = existe ? ((data as { tenant_id?: string | null }).tenant_id ?? null) : null;
+  const { existe, tenantId } = await tenantDireto(supabase, "lead", leadId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se a PROPOSTA (propostas.tenant_id direto) nao esta no escopo. */
+export async function barrarPropostaForaDoEscopo(
+  supabase: SupabaseClient,
+  propostaId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "propostas", propostaId);
   return barrar(supabase, existe, tenantId);
 }

@@ -4,6 +4,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { enviarAvisoDocumentoEmail } from "@/lib/email";
+import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
 import { slugDoTenant } from "@/lib/tenant-slug";
 import { labelDoTipoDocumento } from "@/lib/documentos";
 
@@ -40,6 +41,10 @@ export async function PATCH(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Isolamento por tenant: documento de outro tenant -> 404 (via titular do doc).
+  const barrado = await barrarDocumentoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   // Carrega o documento (e o titular) ANTES de atualizar: precisamos do tipo e
   // do e-mail para o aviso, e confirma que o documento existe.

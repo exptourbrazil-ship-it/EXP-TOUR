@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,10 @@ const { data: titular, error: titularError } = await supabase.from("titulares").
   if (titularError || !titular) {
     return NextResponse.json({ ok: false, error: "Titular nao encontrado para este CPF" }, { status: 404 });
   }
+
+// Isolamento por tenant: titular de outro tenant -> 404 (mesma resposta de inexistente).
+const barrado = await barrarTitularForaDoEscopo(supabase, titular.id);
+if (barrado) return barrado;
 
 const { data: documentos, error } = await supabase.from("documentos").select("*").eq("titular_id", titular.id).order("created_at", { ascending: false });
   if (error) {
