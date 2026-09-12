@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, detalhesDoSnapshot, validarProgramDetail, type Falha } from "./produto-conteudo.ts";
+import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, detalhesDoSnapshot, validarProgramDetail, validarAccommodationDetail, type Falha } from "./produto-conteudo.ts";
 
 function campos(r: ReturnType<typeof validarConteudoProduto>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -326,4 +326,31 @@ test("validarProgramDetail: enum e números inválidos falham", () => {
   assert.ok(!bad2.ok && bad2.falhas.some((f: Falha) => f.campo === "lessons_per_week"));
   const bad3 = validarProgramDetail({ hours_per_week: "abc" });
   assert.ok(!bad3.ok && bad3.falhas.some((f: Falha) => f.campo === "hours_per_week"));
+});
+
+// ── validarAccommodationDetail (Fase B3) ─────────────────────────────────────
+test("validarAccommodationDetail: enums e ints válidos normalizam", () => {
+  const r = validarAccommodationDetail({
+    accommodation_type: "homestay", room_type: "private", bathroom_type: "shared",
+    meal_plan: "full_board", distance_to_campus_minutes: "30", check_in_weekday: 6, check_out_weekday: 0,
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.equal(r.valor.accommodation_type, "homestay");
+  assert.equal(r.valor.room_type, "private");
+  assert.equal(r.valor.meal_plan, "full_board");
+  assert.equal(r.valor.distance_to_campus_minutes, 30);
+  assert.equal(r.valor.check_in_weekday, 6);
+  assert.equal(r.valor.check_out_weekday, 0);
+});
+
+test("validarAccommodationDetail: vazio é válido; enum/weekday inválidos falham", () => {
+  const ok = validarAccommodationDetail({});
+  assert.ok(ok.ok && ok.valor.accommodation_type === null && ok.valor.check_in_weekday === null);
+  const e1 = validarAccommodationDetail({ room_type: "king_size" });
+  assert.ok(!e1.ok && e1.falhas.some((f: Falha) => f.campo === "room_type"));
+  const e2 = validarAccommodationDetail({ check_in_weekday: 9 });
+  assert.ok(!e2.ok && e2.falhas.some((f: Falha) => f.campo === "check_in_weekday"));
+  const e3 = validarAccommodationDetail({ distance_to_campus_minutes: -5 });
+  assert.ok(!e3.ok && e3.falhas.some((f: Falha) => f.campo === "distance_to_campus_minutes"));
 });

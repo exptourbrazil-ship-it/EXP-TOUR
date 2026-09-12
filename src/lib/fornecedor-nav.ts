@@ -25,6 +25,7 @@ const IC = {
   materiais: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h6",
   conteudo: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2zM9 7h7M9 11h7",
   escola: "M3 21V8l9-5 9 5v13M9 21v-6h6v6M3 21h18",
+  acomodacao: "M3 21h18M4 21V7l8-4 8 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4",
   financeiro: "M12 3v18M8 7h6a3 3 0 0 1 0 6H8m0 0h8",
 } as const;
 
@@ -36,6 +37,7 @@ export const FORNECEDOR_NAV: FornecedorNavItem[] = [
   { href: "/fornecedor/precos", label: "Preços", grupo: "Inventário", icone: IC.precos, descricao: "Envie e revise suas tabelas de preço." },
   { href: "/fornecedor/conteudo", label: "Conteúdo", grupo: "Inventário", icone: IC.conteudo, descricao: "Descreva seus cursos (o que o estudante vê na cotação)." },
   { href: "/fornecedor/escolas", label: "Escolas", grupo: "Inventário", icone: IC.escola, descricao: "Sobre a escola, fotos, estrutura e acreditações." },
+  { href: "/fornecedor/acomodacoes", label: "Acomodações", grupo: "Inventário", icone: IC.acomodacao, descricao: "Descrição, políticas e ficha das acomodações." },
   { href: "/fornecedor/materiais", label: "Materiais", grupo: "Inventário", icone: IC.materiais, descricao: "Documentos e materiais para os estudantes." },
   { href: "/fornecedor/financeiro", label: "Financeiro", grupo: "Financeiro", icone: IC.financeiro, descricao: "Seu extrato de repasses e comprovantes." },
 ];

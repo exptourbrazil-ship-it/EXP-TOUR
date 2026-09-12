@@ -159,6 +159,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/conteudo-acomodacoes",
+    label: "Conteúdo das acomodações",
+    descricao: "Aprovar o conteúdo das acomodações enviado pelas escolas (cotação)",
+    icone: ICONES.produtos,
+    capacidade: "fornecedores.gerir",
+  },
+  {
     href: "/admin/precos",
     label: "Preços",
     descricao: "Aprovar e publicar price lists das escolas",
@@ -265,6 +272,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/produtos": "Inventário",
   "/admin/conteudo": "Inventário",
   "/admin/conteudo-escolas": "Inventário",
+  "/admin/conteudo-acomodacoes": "Inventário",
   "/admin/precos": "Inventário",
   "/admin/precos/tabelas": "Inventário",
   "/admin/precos/taxas": "Inventário",

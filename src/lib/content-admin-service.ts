@@ -1,17 +1,21 @@
-// Aprovação/rejeição pelo ADMIN do conteúdo de programa proposto pelo fornecedor
-// (Fase B1). SERVER-ONLY (service role). A aprovação MATERIALIZA o payload em
-// product_content / product_media (via salvarConteudoProduto) + program_detail
-// (upsert). Espelha price-admin-service. Posse por tenant.
+// Aprovação/rejeição pelo ADMIN do conteúdo de PRODUTO proposto pelo fornecedor
+// (Fase B1 curso + B3 acomodação). SERVER-ONLY (service role). A aprovação
+// MATERIALIZA o payload em product_content / product_media (via
+// salvarConteudoProduto) + program_detail OU accommodation_detail (upsert),
+// conforme o kind. Espelha price-admin-service. Posse por tenant.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { salvarConteudoProduto } from "@/lib/produto-conteudo-admin-service";
-import { validarProgramDetail, type ProgramDetailNormalizado } from "@/lib/produto-conteudo";
+import { validarProgramDetail, validarAccommodationDetail, type ProgramDetailNormalizado, type AccommodationDetailNormalizado } from "@/lib/produto-conteudo";
+
+export type ContentKind = "program" | "accommodation";
 
 export type ContentAdminResumo = {
   id: string;
   productId: string;
   productName: string | null;
   supplierName: string | null;
+  kind: ContentKind;
   status: string;
   submittedBy: string | null;
   updatedAt: string | null;
@@ -25,21 +29,24 @@ function mapResumo(r: any): ContentAdminResumo {
     productId: r.product_id,
     productName: prod?.name ?? null,
     supplierName: sup?.display_name ?? sup?.name ?? null,
+    kind: (r.kind === "accommodation" ? "accommodation" : "program"),
     status: r.status,
     submittedBy: r.submitted_by ?? null,
     updatedAt: r.updated_at ?? null,
   };
 }
 
-// Fila de conteúdo pendente de aprovação (pending_admin), do tenant.
+// Fila de conteúdo pendente de aprovação (pending_admin), do tenant, por kind.
 export async function listarConteudoPendentesAdmin(
   supabase: SupabaseClient,
   tenantId: string,
+  kind: ContentKind = "program",
 ): Promise<ContentAdminResumo[]> {
   const { data } = await supabase
     .from("content_submission")
-    .select("id, product_id, status, submitted_by, updated_at, product:product_id(name), supplier:supplier_id(display_name)")
+    .select("id, product_id, kind, status, submitted_by, updated_at, product:product_id(name), supplier:supplier_id(display_name)")
     .eq("tenant_id", tenantId)
+    .eq("kind", kind)
     .eq("status", "pending_admin")
     .order("updated_at", { ascending: true });
   return (data ?? []).map(mapResumo);
@@ -51,14 +58,17 @@ export async function obterConteudoDetalheAdmin(
   supabase: SupabaseClient,
   tenantId: string,
   id: string,
+  kind?: ContentKind, // quando informado, exige que a submission seja desse kind
 ): Promise<ContentAdminDetalhe | null> {
   const { data } = await supabase
     .from("content_submission")
-    .select("id, tenant_id, product_id, payload, status, submitted_by, updated_at, product:product_id(name), supplier:supplier_id(display_name)")
+    .select("id, tenant_id, product_id, kind, payload, status, submitted_by, updated_at, product:product_id(name), supplier:supplier_id(display_name)")
     .eq("id", id)
     .maybeSingle();
   if (!data || (data as any).tenant_id !== tenantId) return null;
-  return { ...mapResumo(data), payload: (data as any).payload };
+  const r = mapResumo(data);
+  if (kind && r.kind !== kind) return null;
+  return { ...r, payload: (data as any).payload };
 }
 
 function linhaProgramDetail(productId: string, pd: ProgramDetailNormalizado) {
@@ -79,6 +89,19 @@ function linhaProgramDetail(productId: string, pd: ProgramDetailNormalizado) {
   };
 }
 
+function linhaAccommodationDetail(productId: string, ad: AccommodationDetailNormalizado) {
+  return {
+    product_id: productId,
+    accommodation_type: ad.accommodation_type,
+    room_type: ad.room_type,
+    bathroom_type: ad.bathroom_type,
+    meal_plan: ad.meal_plan,
+    distance_to_campus_minutes: ad.distance_to_campus_minutes,
+    check_in_weekday: ad.check_in_weekday,
+    check_out_weekday: ad.check_out_weekday,
+  };
+}
+
 // Aprova e MATERIALIZA: product_content + product_media (salvarConteudoProduto)
 // e program_detail (upsert). Depois marca a submission como approved. Idempotente
 // (a materialização substitui). Posse por tenant.
@@ -95,10 +118,12 @@ export async function aprovarConteudoPeloAdmin(
 
   const payload = (det.payload && typeof det.payload === "object" ? det.payload : {}) as Record<string, unknown>;
 
-  // Revalida a ficha ANTES de materializar — evita materializar só metade
-  // (content/media) e pular program_detail silenciosamente.
-  const pdv = validarProgramDetail(payload.programDetail);
-  if (!pdv.ok) return { ok: false, erro: "A ficha do curso está inválida. Peça um novo envio à escola." };
+  // Revalida a ficha (pelo kind) ANTES de materializar — evita materializar só
+  // metade (content/media) e pular o detail silenciosamente.
+  const pdv = det.kind === "program" ? validarProgramDetail(payload.programDetail) : null;
+  const adv = det.kind === "accommodation" ? validarAccommodationDetail(payload.accommodationDetail) : null;
+  if (pdv && !pdv.ok) return { ok: false, erro: "A ficha do curso está inválida. Peça um novo envio à escola." };
+  if (adv && !adv.ok) return { ok: false, erro: "A ficha da acomodação está inválida. Peça um novo envio à escola." };
 
   // Materializa conteúdo + mídia (valida posse por tenant lá dentro + auditoria própria).
   try {
@@ -115,13 +140,19 @@ export async function aprovarConteudoPeloAdmin(
     return { ok: false, erro: "Falha ao materializar o conteúdo." };
   }
 
-  // Materializa program_detail (upsert).
-  const { error: ePd } = await supabase
-    .from("program_detail")
-    .upsert(linhaProgramDetail(det.productId, pdv.valor), { onConflict: "product_id" });
-  if (ePd) {
-    console.error("[content-admin] upsert program_detail falhou:", ePd.message);
-    return { ok: false, erro: "Falha ao materializar a ficha do curso." };
+  // Materializa a ficha (program_detail OU accommodation_detail) por upsert.
+  if (pdv && pdv.ok) {
+    const { error } = await supabase.from("program_detail").upsert(linhaProgramDetail(det.productId, pdv.valor), { onConflict: "product_id" });
+    if (error) {
+      console.error("[content-admin] upsert program_detail falhou:", error.message);
+      return { ok: false, erro: "Falha ao materializar a ficha do curso." };
+    }
+  } else if (adv && adv.ok) {
+    const { error } = await supabase.from("accommodation_detail").upsert(linhaAccommodationDetail(det.productId, adv.valor), { onConflict: "product_id" });
+    if (error) {
+      console.error("[content-admin] upsert accommodation_detail falhou:", error.message);
+      return { ok: false, erro: "Falha ao materializar a ficha da acomodação." };
+    }
   }
 
   // Marca approved guardado por status (anti-corrida): 0 linhas = já processado.
@@ -139,7 +170,7 @@ export async function aprovarConteudoPeloAdmin(
     usuario: adminUser,
     acao: "fornecedores.conteudo.aprovar",
     alvo: det.productId,
-    detalhe: { submissionId: id },
+    detalhe: { submissionId: id, kind: det.kind },
     ip: ip ?? null,
   });
   return { ok: true };

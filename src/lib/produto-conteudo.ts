@@ -575,3 +575,63 @@ export function validarProgramDetail(raw: unknown): Resultado<ProgramDetailNorma
   if (falhas.length) return { ok: false, falhas };
   return { ok: true, valor };
 }
+
+// ── Validação do accommodation_detail (Fase B3) ──────────────────────────────
+// Ficha estruturada da acomodação proposta pelo fornecedor. Tudo opcional; só
+// falha em enum/número inválido. Retorna as colunas de accommodation_detail.
+export const ACCOMMODATION_TYPES = ["homestay", "residence", "shared_apartment", "studio", "hotel", "other"] as const;
+export const ROOM_TYPES = ["private", "shared_2", "shared_3plus"] as const;
+export const BATHROOM_TYPES = ["private", "shared"] as const;
+export const MEAL_PLANS = ["none", "breakfast", "half_board", "full_board", "self_catering"] as const;
+
+export type AccommodationDetailNormalizado = {
+  accommodation_type: (typeof ACCOMMODATION_TYPES)[number] | null;
+  room_type: (typeof ROOM_TYPES)[number] | null;
+  bathroom_type: (typeof BATHROOM_TYPES)[number] | null;
+  meal_plan: (typeof MEAL_PLANS)[number] | null;
+  distance_to_campus_minutes: number | null;
+  check_in_weekday: number | null;
+  check_out_weekday: number | null;
+};
+
+function optEnum<T extends string>(raw: unknown, permitidos: readonly T[], campo: string, falhas: Falha[]): T | null {
+  const s = optStrOuNull(raw);
+  if (!s) return null;
+  if ((permitidos as readonly string[]).includes(s)) return s as T;
+  falhas.push({ campo, erro: "valor inválido" });
+  return null;
+}
+
+function optWeekday(raw: unknown, campo: string, falhas: Falha[]): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 6) {
+    falhas.push({ campo, erro: "dia da semana inválido (0-6)" });
+    return null;
+  }
+  return n;
+}
+
+export function validarAccommodationDetail(raw: unknown): Resultado<AccommodationDetailNormalizado> {
+  const falhas: Falha[] = [];
+  const o = isObj(raw) ? raw : {};
+  const distRaw = o.distance_to_campus_minutes;
+  let distancia: number | null = null;
+  if (distRaw !== undefined && distRaw !== null && distRaw !== "") {
+    const n = typeof distRaw === "number" ? distRaw : Number(distRaw);
+    if (!Number.isFinite(n) || n < 0) falhas.push({ campo: "distance_to_campus_minutes", erro: "deve ser ≥ 0" });
+    else if (n > 600) falhas.push({ campo: "distance_to_campus_minutes", erro: "máximo 600 minutos" });
+    else distancia = Math.round(n);
+  }
+  const valor: AccommodationDetailNormalizado = {
+    accommodation_type: optEnum(o.accommodation_type, ACCOMMODATION_TYPES, "accommodation_type", falhas),
+    room_type: optEnum(o.room_type, ROOM_TYPES, "room_type", falhas),
+    bathroom_type: optEnum(o.bathroom_type, BATHROOM_TYPES, "bathroom_type", falhas),
+    meal_plan: optEnum(o.meal_plan, MEAL_PLANS, "meal_plan", falhas),
+    distance_to_campus_minutes: distancia,
+    check_in_weekday: optWeekday(o.check_in_weekday, "check_in_weekday", falhas),
+    check_out_weekday: optWeekday(o.check_out_weekday, "check_out_weekday", falhas),
+  };
+  if (falhas.length) return { ok: false, falhas };
+  return { ok: true, valor };
+}

@@ -26,13 +26,15 @@ export async function POST(request: Request) {
 
   if (acao === "iniciar") {
     const productId = String(body?.productId || "");
-    if (!productId) return NextResponse.json({ ok: false, erro: "Programa ausente." }, { status: 400 });
+    if (!productId) return NextResponse.json({ ok: false, erro: "Produto ausente." }, { status: 400 });
+    const kind = body?.kind === "accommodation" ? "accommodation" : "program";
     const tenantId = await tenantIdAtual(supabase);
     const r = await obterOuCriarRascunho(supabase, {
       tenantId,
       supplierId: sessao.supplierId,
       productId,
       createdBy: sessao.email,
+      kind,
     });
     return r.ok
       ? NextResponse.json({ ok: true, detalhe: r.detalhe })
