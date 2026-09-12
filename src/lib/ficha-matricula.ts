@@ -67,12 +67,16 @@ export const FICHA_TEXTO = {
   },
   processamentoImediato: {
     rotulo: {
-      pt: "Autorizo o processamento imediato (remessa da Entrada ao fornecedor antes do fim do prazo de arrependimento).",
-      en: "I authorize immediate processing (remittance of the deposit to the supplier before the end of the withdrawal period).",
+      pt: "Solicito o processamento imediato da minha matrícula, antes do fim do meu prazo de 7 dias de arrependimento.",
+      en: "I request the immediate processing of my enrollment, before the end of my 7-day withdrawal period.",
     },
+    // Consequência informada (Cláusula 8.4 / CDC art. 49): a última oração — "sem
+    // esta solicitação a restituição seria integral" — é o que torna a escolha
+    // informada e sustenta a dedução se houver questionamento. Não pré-marcado; a
+    // recusa não impede prosseguir.
     ajuda: {
-      pt: "Opcional e não pré-marcado. Sem esta autorização, a remessa aguarda o fim do prazo de arrependimento (7 dias).",
-      en: "Optional and not pre-checked. Without this authorization, remittance waits until the withdrawal period ends (7 days).",
+      pt: "Opcional e não pré-marcado. Estou ciente de que, se eu desistir dentro do prazo de 7 dias, os valores que a escola comprovadamente retiver poderão ser descontados da minha restituição — e que, sem esta solicitação, a restituição seria integral.",
+      en: "Optional and not pre-checked. I understand that, if I withdraw within the 7-day period, the amounts the school demonstrably retains may be deducted from my refund — and that, without this request, the refund would be full.",
     },
   },
   papel: {

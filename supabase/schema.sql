@@ -84,6 +84,10 @@ alter table if exists contratos add column if not exists etapa_anexo_i text;
 -- fornecedor, SALVO se o cliente marcou "processamento imediato". Default false =
 -- protegido. Ver src/lib/trava-remessa.ts e executarRepasse. Aplicar no SQL Editor.
 alter table if exists contratos add column if not exists processamento_imediato boolean not null default false;
+-- Espelho operacional de quando a autorizacao de processamento imediato passou a
+-- valer (ficha completa+autorizada, ou marcacao pelo admin). Aplicado via
+-- migration processamento_imediato_marcado_em.
+alter table if exists contratos add column if not exists processamento_imediato_marcado_em timestamptz;
 
 -- ============================================================================
 -- Ficha de Matricula bilingue (Clausulas 2.5e / 8.4). Assinada DEPOIS da Entrada
@@ -99,6 +103,7 @@ create table if not exists fichas_matricula (
   versao text not null,
   status text not null default 'pendente' check (status in ('pendente','assinada')),
   processamento_imediato boolean not null default false,  -- o que foi marcado na ficha
+  processamento_imediato_marcado_em timestamptz,          -- quando o cliente marcou (base da deducao, Clausula 8.4). Aplicado via migration processamento_imediato_marcado_em.
   hash_conteudo text,                                     -- impressao digital do texto+dados
   criada_em timestamptz not null default now(),
   atualizada_em timestamptz,

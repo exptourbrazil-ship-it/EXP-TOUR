@@ -166,13 +166,21 @@ export async function assinarFicha(
   // Autorizacao de processamento imediato: opt-in MONOTONICO (o que este signatario
   // marcou OU o que a ficha ja registrava; nunca regride).
   const piIntent = entrada.processamentoImediato || !!fichaExistente?.processamento_imediato;
+  const jaMarcado = !!fichaExistente?.processamento_imediato;
+  const agoraISO = new Date().toISOString();
   const patchFicha: Record<string, unknown> = {
-    atualizada_em: new Date().toISOString(),
+    atualizada_em: agoraISO,
     processamento_imediato: piIntent,
   };
+  // Carimba QUANDO o cliente marcou o processamento imediato (base da dedução,
+  // Cláusula 8.4). Só na primeira vez que passa a valer — nunca reescreve o
+  // instante original.
+  if (piIntent && !jaMarcado) {
+    patchFicha.processamento_imediato_marcado_em = agoraISO;
+  }
   if (completa) {
     patchFicha.status = "assinada";
-    patchFicha.assinada_em = new Date().toISOString();
+    patchFicha.assinada_em = agoraISO;
   }
   await supabase.from("fichas_matricula").update(patchFicha).eq("id", fichaId);
 
@@ -181,6 +189,14 @@ export async function assinarFicha(
   // caso de menor) E houve autorizacao de processamento imediato. Impede liberar
   // dinheiro com a marcacao de um unico signatario de uma ficha ainda pendente.
   if (completa && piIntent) {
+    await supabase
+      .from("contratos")
+      .update({ processamento_imediato: true, processamento_imediato_marcado_em: agoraISO })
+      .eq("id", contratoId)
+      .eq("titular_id", titularId)
+      // Só carimba o instante na primeira vez (não reescreve em re-assinatura).
+      .is("processamento_imediato_marcado_em", null);
+    // Garante o flag mesmo se o carimbo já existia (idempotente).
     await supabase.from("contratos").update({ processamento_imediato: true }).eq("id", contratoId).eq("titular_id", titularId);
   }
 
