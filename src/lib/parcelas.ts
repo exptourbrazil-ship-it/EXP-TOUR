@@ -23,6 +23,23 @@ export function dataLimiteQuitacao(dataInicioISO: string | null | undefined): st
   return d.toISOString().slice(0, 10);
 }
 
+// Data-limite de quitacao COMPROMETIDA na proposta: o MENOR entre a regra dos 30
+// dias (inicio-30) e o prazo exigido pelo FORNECEDOR (quando houver um prazo
+// estruturado). O fornecedor pode exigir quitacao antes de D-30; nesse caso o
+// prazo do cliente encurta. Sem prazo estruturado do fornecedor (situacao atual:
+// o Anexo III guarda o prazo como texto), cai na regra dos 30 dias.
+// Recebe/retorna YYYY-MM-DD; comparacao lexicografica (datas ISO ordenam por texto).
+export function dataLimiteQuitacaoProposta(
+  dataInicioISO: string | null | undefined,
+  prazoFornecedorISO?: string | null,
+): string | null {
+  const d30 = dataLimiteQuitacao(dataInicioISO);
+  const forn = prazoFornecedorISO && prazoFornecedorISO.length >= 10 ? prazoFornecedorISO.slice(0, 10) : null;
+  if (!d30) return forn;
+  if (!forn) return d30;
+  return forn < d30 ? forn : d30; // menor entre os dois
+}
+
 // ---------------------------------------------------------------------------
 // PLANO DE PARCELAMENTO
 // ---------------------------------------------------------------------------

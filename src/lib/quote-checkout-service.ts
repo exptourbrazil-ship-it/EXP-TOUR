@@ -11,7 +11,8 @@
 //   5. dispara o codigo de acesso por e-mail (boas-vindas), best-effort.
 import { createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { montarPlanoConversao } from "@/lib/parcelas";
+import { montarPlanoConversao, dataLimiteQuitacaoProposta } from "@/lib/parcelas";
+import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 import { montarAnexoIIISeed } from "@/lib/anexo-iii-seed";
 import { montarQuadroResumo, serializarQuadroResumo } from "@/lib/quadro-resumo";
 import { dadosConversaoCotacao } from "@/lib/quote-issue-service";
@@ -114,6 +115,16 @@ export async function acceptQuote(
   // completo vive em `titulares`, ligavel por titular_id). O fornecedor do
   // programa sai da linha de programa da opcao.
   const progFornecedor = (dados.itens.find((i) => i.grupo === "program") ?? dados.itens[0])?.fornecedor ?? null;
+
+  // Prazos COMPROMETIDOS na proposta (congelados no aceite, dentro do Quadro
+  // Resumo + hash). geradoEm é o instante do aceite; o fim do arrependimento
+  // ancora nele. quitacao = min(início-30, prazo do fornecedor) — hoje sem prazo
+  // estruturado do fornecedor (Anexo III é texto), então cai em início-30.
+  const geradoEm = new Date().toISOString();
+  const entradaVencimento = plano.parcelas.find((p) => p.is_entrada)?.vencimento ?? hoje;
+  const quitacaoDataLimite = dataLimiteQuitacaoProposta(dados.dataInicio, null);
+  const fimArrependimento = prazoArrependimentoRemessaISO(geradoEm);
+
   const quadro = montarQuadroResumo({
     contratante: { nome, cpf, email, telefone },
     participante: { nome: estudanteNome, paisDestino: dados.paisDestino },
@@ -128,7 +139,8 @@ export async function acceptQuote(
     parcelas: plano.parcelas,
     itens: dados.itens,
     termo: { versao: termo.versao, hash: termo.hash },
-    geradoEm: new Date().toISOString(),
+    geradoEm,
+    datas: { quitacaoDataLimite, entradaVencimento, fimArrependimento },
   });
   const hashQuadro = createHash("sha256").update(serializarQuadroResumo(quadro)).digest("hex");
 

@@ -8,6 +8,7 @@ import {
   valorProgramaAtual,
   TOLERANCIA_SOMA_PARCELAS,
   dataLimiteQuitacao,
+  dataLimiteQuitacaoProposta,
   saldoDevedorMoeda,
 } from "./parcelas.ts";
 
@@ -64,6 +65,18 @@ test("dataLimiteQuitacao: 30 dias antes do inicio", () => {
   assert.equal(dataLimiteQuitacao("2026-03-02"), "2026-01-31"); // atravessa fevereiro (2026 nao bissexto)
   assert.equal(dataLimiteQuitacao(null), null);
   assert.equal(dataLimiteQuitacao(""), null);
+});
+
+test("dataLimiteQuitacaoProposta: menor entre inicio-30 e prazo do fornecedor", () => {
+  // Sem prazo do fornecedor -> cai na regra dos 30 dias.
+  assert.equal(dataLimiteQuitacaoProposta("2026-08-31", null), "2026-08-01");
+  // Fornecedor exige ANTES de D-30 -> encurta para o prazo do fornecedor.
+  assert.equal(dataLimiteQuitacaoProposta("2026-08-31", "2026-07-20"), "2026-07-20");
+  // Fornecedor exige DEPOIS de D-30 -> mantém D-30 (o menor).
+  assert.equal(dataLimiteQuitacaoProposta("2026-08-31", "2026-08-15"), "2026-08-01");
+  // Sem data de início -> usa o prazo do fornecedor quando houver.
+  assert.equal(dataLimiteQuitacaoProposta(null, "2026-07-20"), "2026-07-20");
+  assert.equal(dataLimiteQuitacaoProposta(null, null), null);
 });
 
 test("saldoDevedorMoeda: soma valor_atual das nao pagas", () => {
