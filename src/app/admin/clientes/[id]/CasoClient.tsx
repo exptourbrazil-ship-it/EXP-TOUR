@@ -1580,6 +1580,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
       {/* Acerto de cancelamento (rascunho) — motor de acerto */}
       <SecaoAcerto caso={caso} podeGerir={permissoes.gerirFinanceiro} />
 
+      {/* Reembolso unificado (PRÉVIA read-only) — estado + fornecedor + câmbio */}
+      {permissoes.gerirCancelamento ? <SecaoReembolsoUnificado caso={caso} /> : null}
+
       {/* Processos de excecao (doc 01 §4) */}
       <SecaoExcecoes caso={caso} podeGerir={permissoes.gerirCaso} />
 
@@ -3977,6 +3980,121 @@ function AcertoCard({
         podeExecutar={podePropor}
       />
     </div>
+  );
+}
+
+// ---- Reembolso unificado (PRÉVIA read-only) ---------------------------------
+// Consome GET /api/admin/contratos/[id]/reembolso-unificado. Combina retenção
+// EXP Tour (Anexo I) + fornecedor (escada por campus) + câmbio numa memória
+// única. NÃO grava nem move dinheiro — é apoio à decisão do acerto.
+function SecaoReembolsoUnificado({ caso }: { caso: Caso }) {
+  const ativos = caso.contratos.filter((c) => !c.cancelado_em);
+  const lista = ativos.length > 0 ? ativos : caso.contratos;
+  const [contratoId, setContratoId] = useState(lista[0]?.id || "");
+  const [naoRecuperaveis, setNaoRecuperaveis] = useState("");
+  const [remuneracao, setRemuneracao] = useState("");
+  const [data, setData] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [dados, setDados] = useState<any>(null);
+
+  async function calcular() {
+    if (!contratoId) return;
+    setCarregando(true);
+    setErro(null);
+    try {
+      const qs = new URLSearchParams();
+      if (naoRecuperaveis) qs.set("naoRecuperaveis", naoRecuperaveis);
+      if (remuneracao) qs.set("remuneracaoServicos", remuneracao);
+      if (data) qs.set("data", data);
+      const res = await fetch(`/api/admin/contratos/${contratoId}/reembolso-unificado?${qs.toString()}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) setErro(json.error || "Falha ao calcular.");
+      else setDados(json.dados);
+    } catch (e: any) {
+      setErro(e?.message || "Erro de rede.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  const inputCls = "mt-1 block w-full rounded-lg border border-neutral-300 px-2.5 py-1.5 text-sm";
+
+  return (
+    <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h3 className="font-serif text-lg text-brand">Reembolso unificado (prévia)</h3>
+      <p className="mt-1 text-xs text-neutral-500">
+        Retenção EXP Tour (Anexo I) + retenção do fornecedor (escada por campus) + câmbio, numa
+        memória única. Prévia de apoio — não grava nem devolve dinheiro; a execução é pelo acerto.
+      </p>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="text-sm font-medium text-brand sm:col-span-2">
+          Contrato
+          <select value={contratoId} onChange={(e) => { setContratoId(e.target.value); setDados(null); }} className={inputCls}>
+            {lista.map((c) => (
+              <option key={c.id} value={c.id}>{c.nome || "Contrato"}{c.cancelado_em ? " (cancelado)" : ""}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm font-medium text-brand">
+          Valores não recuperáveis (moeda do programa)
+          <input type="number" step="0.01" value={naoRecuperaveis} onChange={(e) => setNaoRecuperaveis(e.target.value)} className={inputCls} placeholder="0" />
+        </label>
+        <label className="text-sm font-medium text-brand">
+          Remuneração por serviços (moeda do programa)
+          <input type="number" step="0.01" value={remuneracao} onChange={(e) => setRemuneracao(e.target.value)} className={inputCls} placeholder="0" />
+        </label>
+        <label className="text-sm font-medium text-brand">
+          Data do cancelamento (opcional)
+          <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={inputCls} />
+        </label>
+      </div>
+
+      <button
+        type="button"
+        onClick={calcular}
+        disabled={carregando || !contratoId}
+        className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60"
+      >
+        {carregando ? "Calculando…" : "Calcular prévia"}
+      </button>
+
+      {erro ? <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</p> : null}
+
+      {dados ? (
+        <div className="mt-4 rounded-xl border border-neutral-200 bg-brand-cream/30 p-4">
+          {!dados.fornecedor?.resolvido ? (
+            <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Retenção do fornecedor não incluída: {dados.fornecedor?.motivo || "sem política de campus."}
+            </p>
+          ) : null}
+          {!dados.cambio?.resolvido ? (
+            <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Câmbio do dia não encontrado para a moeda — total em BRL aproximado (VET = 1).
+            </p>
+          ) : null}
+          <dl className="space-y-1.5">
+            {(dados.resultado?.memoria || []).map((l: any, i: number) => (
+              <div key={i} className="flex items-baseline justify-between gap-3 text-sm">
+                <dt className="text-neutral-600">{l.rotulo}</dt>
+                <dd className="font-medium text-brand">
+                  {l.tipo === "pct"
+                    ? `${Math.round(l.valor * 1000) / 10}%`
+                    : l.tipo === "moeda_brl"
+                    ? fmtBRL(Number(l.valor) || 0)
+                    : l.tipo === "moeda"
+                    ? fmtMoeda(Number(l.valor) || 0, dados.moedaPrograma || "BRL")
+                    : l.tipo === "num"
+                    ? String(l.valor)
+                    : ""}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
