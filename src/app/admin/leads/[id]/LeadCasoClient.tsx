@@ -24,6 +24,7 @@ export default function LeadCasoClient({ lead }: { lead: LeadDetalhe }) {
   const router = useRouter();
   const [salvando, setSalvando] = useState<StatusLead | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [convertendo, setConvertendo] = useState(false);
 
   const statusAtual: StatusLead = statusLeadValido(lead.status) ? lead.status : "novo";
   const proximos = proximosStatusLead(statusAtual);
@@ -36,6 +37,29 @@ export default function LeadCasoClient({ lead }: { lead: LeadDetalhe }) {
   const seguro = params.seguro === true;
   const programas = Array.isArray(params.programas) ? (params.programas as LinhaPrograma[]) : [];
   const aceite = (params.aceite_termos ?? null) as { aceito?: boolean; em?: string; ip?: string } | null;
+
+  async function converter() {
+    setErro(null);
+    // Se já há cotação, só abre.
+    if (lead.quoteId) {
+      router.push(`/admin/quotes/${lead.quoteId}`);
+      return;
+    }
+    setConvertendo(true);
+    try {
+      const resp = await fetch(`/api/admin/leads/${lead.id}/converter`, { method: "POST" });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok || !json.ok) {
+        setErro(json.erro || "Não foi possível gerar a cotação.");
+      } else {
+        router.push(`/admin/quotes/${json.quoteId}`);
+      }
+    } catch {
+      setErro("Falha de conexão. Tente novamente.");
+    } finally {
+      setConvertendo(false);
+    }
+  }
 
   async function mudarStatus(novo: StatusLead) {
     setErro(null);
@@ -170,17 +194,16 @@ export default function LeadCasoClient({ lead }: { lead: LeadDetalhe }) {
         <div className="space-y-4">
           <Secao titulo="Próxima ação">
             <p className="text-xs text-neutral-500">
-              Feche o negócio criando a conta do cliente (titular verificado) e a cotação — o acesso à Área do Cliente
-              é enviado nessa etapa.
+              Gere a cotação a partir deste lead e refine no construtor. Ao emitir e o cliente aceitar o link,
+              a conta (titular verificado) + contrato são criados e o acesso é enviado por e-mail.
             </p>
             <button
               type="button"
-              disabled
-              title="Próxima etapa da entrega"
-              className="mt-3 flex w-full cursor-default items-center justify-center gap-2 rounded-xl bg-brand/40 px-4 py-2.5 text-sm font-medium text-white"
+              onClick={converter}
+              disabled={convertendo}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
             >
-              Converter em cliente + cotação
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">em breve</span>
+              {convertendo ? "Gerando cotação…" : lead.quoteId ? "Abrir cotação" : "Converter em cotação"}
             </button>
           </Secao>
 

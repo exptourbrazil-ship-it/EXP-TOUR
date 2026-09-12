@@ -34,6 +34,7 @@ export type LeadLista = {
 export type LeadDetalhe = LeadLista & {
   titularId: string | null;
   programaId: string | null;
+  quoteId: string | null;
   params: Record<string, unknown> | null;
   updatedAt: string | null;
 };
@@ -72,7 +73,7 @@ export async function carregarLead(id: string): Promise<LeadDetalhe | null> {
   const tenantId = await tenantIdAtual(supabase); // escopo do tenant (evita leitura cross-tenant por id)
   const { data, error } = await supabase
     .from("lead")
-    .select("id, nome, cpf, email, telefone, participante_nome, programa_id, programa_nome, escola, origem, status, titular_id, params, created_at, updated_at")
+    .select("id, nome, cpf, email, telefone, participante_nome, programa_id, programa_nome, escola, origem, status, titular_id, quote_id, params, created_at, updated_at")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -91,6 +92,7 @@ export async function carregarLead(id: string): Promise<LeadDetalhe | null> {
     origem: (data.origem as string) ?? "orcamento",
     status: (data.status as string) ?? "novo",
     titularId: (data.titular_id as string) ?? null,
+    quoteId: (data.quote_id as string) ?? null,
     temTitular: !!data.titular_id,
     params: (data.params as Record<string, unknown>) ?? null,
     createdAt: data.created_at as string,

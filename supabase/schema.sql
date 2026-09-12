@@ -411,6 +411,8 @@ create table if not exists lead (
     check (status in ('novo','em_contato','cotacao','convertido','descartado')),
   params jsonb,                    -- weeks, inicio, accom, seguro, parcelas, total, moeda...
   ip text,
+  -- quote_id (cotacao criada na conversao, Fatia 2) adicionado por ALTER apos a
+  -- tabela `quote` (definida mais abaixo) para nao depender da ordem de criacao.
   created_at timestamptz not null default now(),
   updated_at timestamptz
 );
@@ -2511,6 +2513,11 @@ create index if not exists idx_campus_content_sub_campus on campus_content_submi
 create unique index if not exists uq_campus_content_sub_aberta
   on campus_content_submission(campus_id) where status in ('draft','pending_admin');
 alter table if exists campus_content_submission enable row level security;
+
+-- Fatia 2 da matricula: liga o lead a cotacao criada na conversao (ALTER aqui
+-- porque `lead` e definida antes de `quote`). Ver migracao-lead-quote.sql.
+alter table if exists lead add column if not exists quote_id uuid references quote(id) on delete set null;
+create index if not exists idx_lead_quote on lead(quote_id);
 
 -- ============================================================================
 -- Extrato financeiro do fornecedor — repasses / pagamento as escolas (D-30)
