@@ -7,6 +7,7 @@ import {
   estornarPagamentoManual,
   PagamentoManualBloqueado,
 } from "@/lib/pagamento-manual-service";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,9 +92,13 @@ export async function POST(
     return NextResponse.json({ ok: false, erro: mensagemMotivo("data_no_futuro") }, { status: 400 });
   }
 
+  const supabase = supa();
+  const barrado = await barrarContratoForaDoEscopo(supabase, contratoId);
+  if (barrado) return barrado;
+
   try {
     const r = await registrarPagamentoManual({
-      supabase: supa(),
+      supabase,
       contratoId,
       parcelaId,
       valorBRL,
@@ -132,9 +137,13 @@ export async function DELETE(
   const body = (await request.json().catch(() => null)) as { motivo?: unknown } | null;
   const motivo = body && typeof body.motivo === "string" ? body.motivo.slice(0, 500) : null;
 
+  const supabase = supa();
+  const barrado = await barrarContratoForaDoEscopo(supabase, contratoId);
+  if (barrado) return barrado;
+
   try {
     const r = await estornarPagamentoManual({
-      supabase: supa(),
+      supabase,
       contratoId,
       parcelaId,
       motivo,

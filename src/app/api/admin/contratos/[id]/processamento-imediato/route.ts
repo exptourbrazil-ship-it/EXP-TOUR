@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 import { definirProcessamentoImediato } from "@/lib/payout-admin-service";
 
 export const runtime = "nodejs";
@@ -26,6 +27,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   // Guard e sessao-only (sem bearer): o usuario da sessao SEMPRE existe aqui.
   // Levantar a trava e ato juridicamente sensivel -> exige autoria conhecida.
   const usuario = await usuarioAdminAtual();
