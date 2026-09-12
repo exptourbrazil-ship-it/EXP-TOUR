@@ -8,7 +8,10 @@
 // (node --test, type-stripping) sem resolver modulos. Mantido puro e deterministico
 // para o hash de integridade ser estavel e reproduzivel.
 
-export const QUADRO_RESUMO_SCHEMA_VERSAO = 1;
+// v2: acrescenta o bloco `datas` (prazos COMPROMETIDOS na proposta) ao snapshot.
+// Snapshots v1 (sem `datas`) permanecem válidos e com o hash original — os
+// leitores toleram a ausência do bloco.
+export const QUADRO_RESUMO_SCHEMA_VERSAO = 2;
 
 export type ParcelaEntrada = {
   numero: number;
@@ -42,6 +45,13 @@ export type QuadroResumoInput = {
   itens: ItemEntrada[];
   termo: { versao: string; hash: string };
   geradoEm: string; // ISO timestamp do ato do aceite
+  // Prazos COMPROMETIDOS na proposta (congelados no aceite). Opcional para compat
+  // com chamadores/snapshots antigos; ausência -> bloco com nulls.
+  datas?: {
+    quitacaoDataLimite: string | null; // data-limite de quitação do saldo (D-30 / min c/ fornecedor)
+    entradaVencimento: string | null; // vencimento da entrada
+    fimArrependimento: string | null; // fim da janela de arrependimento (aceite + 7d)
+  };
 };
 
 export type QuadroResumo = {
@@ -63,6 +73,11 @@ export type QuadroResumo = {
   };
   itens: Array<{ grupo: string; nome: string | null; valor: number; moeda: string; data_inicio: string | null; fornecedor: string | null }>;
   termo: { versao: string; hash: string };
+  datas: {
+    quitacao_data_limite: string | null;
+    entrada_vencimento: string | null;
+    fim_arrependimento: string | null;
+  };
   gerado_em: string;
 };
 
@@ -139,6 +154,11 @@ export function montarQuadroResumo(input: QuadroResumoInput): QuadroResumo {
     },
     itens,
     termo: { versao: String(input.termo.versao || ""), hash: String(input.termo.hash || "") },
+    datas: {
+      quitacao_data_limite: input.datas?.quitacaoDataLimite ?? null,
+      entrada_vencimento: input.datas?.entradaVencimento ?? null,
+      fim_arrependimento: input.datas?.fimArrependimento ?? null,
+    },
     gerado_em: input.geradoEm,
   };
 }

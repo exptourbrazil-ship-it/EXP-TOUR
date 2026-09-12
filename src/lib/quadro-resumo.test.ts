@@ -101,3 +101,16 @@ test("Q8 mascaras com entrada invalida", () => {
   assert.equal(mascararTelefone("12"), null);
   assert.equal(mascararTelefone(null), null);
 });
+
+// Q9 — bloco `datas` (prazos comprometidos na proposta) preservado; ausência -> nulls.
+test("Q9 datas comprometidas na proposta", () => {
+  const i = base();
+  i.datas = { quitacaoDataLimite: "2026-09-01", entradaVencimento: "2026-08-30", fimArrependimento: "2026-09-06T12:00:00.000Z" };
+  const q = montarQuadroResumo(i);
+  assert.equal(q.datas.quitacao_data_limite, "2026-09-01");
+  assert.equal(q.datas.entrada_vencimento, "2026-08-30");
+  assert.equal(q.datas.fim_arrependimento, "2026-09-06T12:00:00.000Z");
+  // Sem o bloco -> nulls (compat com chamadores antigos).
+  const semDatas = montarQuadroResumo(base());
+  assert.deepEqual(semDatas.datas, { quitacao_data_limite: null, entrada_vencimento: null, fim_arrependimento: null });
+});
