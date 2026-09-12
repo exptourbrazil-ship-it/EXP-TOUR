@@ -33,6 +33,9 @@ type CobrancaPixParams = {
     descricao: string;
     externalReference: string;
     payerEmail?: string;
+    // Validade da cobranca (Clausula 6.5): ISO 8601 com offset (ex.: fim do dia
+    // em SP). Quando presente, o Pix expira nesse instante.
+    dateOfExpiration?: string;
 };
 
 // Gera uma cobranca Pix dinamica via API do Mercado Pago (QR Code, sem taxa
@@ -57,7 +60,13 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
   // caia como assinatura-invalida). Sem bumpar a versao, regerar a cobranca de
   // uma parcela no mesmo valor faria o MP devolver o pagamento ANTIGO (no
   // formato anterior) em vez de um novo. Ao mudar o formato de novo, incrementar.
-  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}:v3`;
+  // O dia da validade entra na chave: mesma parcela+valor no MESMO dia continua
+  // idempotente (protege duplo-clique e reaproveita a cobranca do dia), mas num
+  // NOVO dia a validade muda e uma cobranca nova e criada — evita o MP devolver
+  // uma cobranca expirada de ontem no mesmo valor. Bump para v4 (o formato passou
+  // a enviar date_of_expiration).
+  const diaValidade = params.dateOfExpiration ? params.dateOfExpiration.slice(0, 10) : "";
+  const idempotencyKey = `${params.externalReference}:${params.valor.toFixed(2)}:${diaValidade}:v4`;
 
   const response = await fetch(`${MP_API_URL}/v1/payments`, {
         method: "POST",
@@ -71,6 +80,7 @@ export async function criarCobrancaPix(params: CobrancaPixParams) {
                 description: params.descricao,
                 payment_method_id: "pix",
                 external_reference: params.externalReference,
+                ...(params.dateOfExpiration ? { date_of_expiration: params.dateOfExpiration } : {}),
                 payer: {
                           email: params.payerEmail || "cliente@exp-tour.com",
                 },

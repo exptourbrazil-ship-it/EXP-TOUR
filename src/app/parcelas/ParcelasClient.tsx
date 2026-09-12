@@ -348,23 +348,58 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState<string | null>(null)
+  const [preparando, setPreparando] = useState<string | null>(null)
   const [editando, setEditando] = useState(false)
   const [restaurando, setRestaurando] = useState(false)
   const [cancelando, setCancelando] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+
+  // Prévia da cobrança (Cláusula 6.5): o cliente vê o breakdown (cotação/R$/
+  // validade) ANTES de confirmar. Só ao confirmar a cobrança é criada.
+  type PreviaCobranca = { parcelaId: string; moeda: string; valorMoeda: number; valorCobrancaBRL: number; cotacaoAplicada: number | null; validadeAte: string }
+  const [previa, setPrevia] = useState<PreviaCobranca | null>(null)
 
   function mostrarAviso(mensagem: string) {
     setAviso(mensagem)
     setTimeout(() => setAviso(null), 3500)
   }
 
+  // Passo 1: calcula o breakdown sem criar a cobrança.
+  async function iniciarCobranca(parcelaId: string) {
+    setPreparando(parcelaId)
+    setErro(null)
+    try {
+      const r = await fetch("/api/parcelas/" + parcelaId + "/gerar-cobranca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preview: true }),
+      })
+      const j = await r.json()
+      if (j.ok) {
+        setPrevia({ parcelaId, moeda: j.moeda, valorMoeda: j.valorMoeda, valorCobrancaBRL: j.valorCobrancaBRL, cotacaoAplicada: j.cotacaoAplicada, validadeAte: j.validadeAte })
+      } else {
+        setErro(j.erro || "Não foi possível calcular a cobrança.")
+      }
+    } catch {
+      setErro("Não foi possível calcular a cobrança.")
+    } finally {
+      setPreparando(null)
+    }
+  }
+
+  // Passo 2: confirma e cria a cobrança de fato.
   async function gerarCobranca(parcelaId: string) {
     setGerando(parcelaId)
     setErro(null)
     try {
-      const response = await fetch("/api/parcelas/" + parcelaId + "/gerar-cobranca", { method: "POST" })
+      const response = await fetch("/api/parcelas/" + parcelaId + "/gerar-cobranca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
       const resultado = await response.json()
       if (resultado.ok) {
+        setPrevia(null)
         mostrarAviso("Pix gerado. Escaneie o QR Code abaixo.")
         router.refresh()
       } else {
@@ -587,13 +622,15 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                           )
                         ) : parcela.qr_code_url ? (
                           <span className="text-xs font-medium text-brand">QR Code abaixo</span>
+                        ) : previa?.parcelaId === parcela.id ? (
+                          <span className="text-xs font-medium text-brand-golddark">Revise abaixo</span>
                         ) : (
                           <button
-                            onClick={() => gerarCobranca(parcela.id)}
-                            disabled={gerando === parcela.id}
+                            onClick={() => iniciarCobranca(parcela.id)}
+                            disabled={preparando === parcela.id}
                             className={ehProxima ? "rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50" : "rounded-full border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50 disabled:opacity-50"}
                           >
-                            {gerando === parcela.id ? "Gerando..." : ehProxima ? "Gerar Pix" : "Pagar antecipadamente"}
+                            {preparando === parcela.id ? "Calculando..." : ehProxima ? "Gerar Pix" : "Pagar antecipadamente"}
                           </button>
                         )}
                       </div>
@@ -611,6 +648,39 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                       >
                         {cancelando === parcela.id ? "Cancelando..." : "Cancelar cobrança e voltar para em aberto"}
                       </button>
+                    </div>
+                  ) : null}
+                  {previa?.parcelaId === parcela.id ? (
+                    <div className="mt-4 rounded-2xl border border-brand-gold/50 bg-brand-cream/40 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">Revise antes de gerar</p>
+                      <dl className="mt-2 space-y-1 text-sm">
+                        {previa.moeda !== "BRL" ? (
+                          <>
+                            <div className="flex justify-between"><dt className="text-neutral-500">Valor na moeda</dt><dd className="font-medium text-brand">{formatarMoeda(previa.valorMoeda, previa.moeda)}</dd></div>
+                            <div className="flex justify-between"><dt className="text-neutral-500">Cotação de hoje (VET)</dt><dd className="text-brand">{previa.cotacaoAplicada != null ? previa.cotacaoAplicada.toFixed(4) : "—"}</dd></div>
+                          </>
+                        ) : null}
+                        <div className="flex justify-between border-t border-brand-gold/30 pt-1"><dt className="text-neutral-600">Você paga hoje</dt><dd className="font-serif text-lg text-brand">{formatarMoeda(previa.valorCobrancaBRL, "BRL")}</dd></div>
+                      </dl>
+                      <p className="mt-2 text-[11px] text-neutral-500">
+                        Cobrança válida até hoje, {formatarDataBR(previa.validadeAte.slice(0, 10))} às 23h59. A cotação em reais é fixada agora, ao gerar o Pix.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => gerarCobranca(parcela.id)}
+                          disabled={gerando === parcela.id}
+                          className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50"
+                        >
+                          {gerando === parcela.id ? "Gerando..." : "Confirmar e gerar Pix"}
+                        </button>
+                        <button
+                          onClick={() => setPrevia(null)}
+                          disabled={gerando === parcela.id}
+                          className="rounded-full px-4 py-2.5 text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </div>

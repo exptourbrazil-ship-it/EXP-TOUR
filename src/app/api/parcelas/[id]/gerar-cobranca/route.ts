@@ -6,6 +6,7 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { converterParaBRL, recomporVetTenant } from "@/lib/cambio";
 import { valorProgramaAtual } from "@/lib/parcelas";
 import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
+import { fimDoDiaSaoPauloISO } from "@/lib/cobranca-validade";
 
 // Gera (ou reaproveita) uma cobranca Pix para uma parcela especifica e grava
 // o QR code / codigo copia-e-cola de volta na tabela parcelas.
@@ -31,6 +32,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!sessao) {
         return NextResponse.json({ ok: false, erro: "Sessão não autenticada" }, { status: 401 });
   }
+
+  // Prévia (Cláusula 6.5): quando o corpo pede preview, calcula e devolve o
+  // breakdown SEM criar a cobrança nem gravar. Corpo vazio -> geração real.
+  const body = await request.json().catch(() => ({} as Record<string, unknown>));
+  const preview = (body as { preview?: unknown })?.preview === true;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -137,11 +143,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         valorCobranca = converterParaBRL(valorProgramaAtual(parcela as any), cotacaoAplicada);
   }
 
+  // Validade da cobrança: até as 23h59 de hoje (fuso de SP). A cotação do dia
+  // só se confirma na geração e não vale indefinidamente.
+  const validadeAte = fimDoDiaSaoPauloISO(new Date().toISOString());
+
+  if (preview) {
+        return NextResponse.json({
+                ok: true,
+                preview: true,
+                moeda,
+                valorMoeda: valorProgramaAtual(parcela as any),
+                valorCobrancaBRL: valorCobranca,
+                cotacaoAplicada,
+                spreadAplicado,
+                iofAplicado,
+                validadeAte,
+        });
+  }
+
   try {
         const cobranca = await criarCobrancaPix({
                 valor: valorCobranca,
                 descricao: parcela.descricao,
                 externalReference: parcela.id,
+                dateOfExpiration: validadeAte,
         });
 
       const qrCodeUrl = cobranca.qrCodeBase64
