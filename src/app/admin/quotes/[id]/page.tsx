@@ -34,7 +34,7 @@ export default async function AdminQuoteBuilderPage({
   const { data: quote } = await supabase
     .from("quote")
     .select(
-      "id, reference, status, source_currency, presentment_currency, public_token, token_revoked_at, valid_until, student:student_id(first_name, last_name)",
+      "id, reference, status, source_currency, presentment_currency, public_token, token_revoked_at, valid_until, notes_html, student:student_id(first_name, last_name)",
     )
     .eq("tenant_id", tenantId)
     .eq("id", id)
@@ -55,6 +55,7 @@ export default async function AdminQuoteBuilderPage({
     publicToken: (quote as any).public_token ?? null,
     tokenRevoked: !!(quote as any).token_revoked_at,
     validUntil: (quote as any).valid_until ?? null,
+    notesHtml: (quote as any).notes_html ?? null,
   };
 
   const { data: optionRows } = await supabase

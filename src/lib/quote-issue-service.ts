@@ -12,7 +12,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
-import { fichaDoSnapshot, type FichaProduto, type ContentLocale } from "@/lib/produto-conteudo";
+import { fichaDoSnapshot, sanitizarHtml, type FichaProduto, type ContentLocale } from "@/lib/produto-conteudo";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
 import {
@@ -61,6 +61,29 @@ type OptionRow = {
   deposit_currency: string | null;
 };
 
+type TaxaLinha = {
+  nome: string;
+  amount: number;
+  currency: string;
+  isRefundable: boolean | null;
+};
+
+type ParcelaPlano = {
+  sequence: number;
+  dueDate: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+};
+
+type PlanoPagamento = {
+  installmentsCount: number;
+  firstDueDate: string | null;
+  method: string | null;
+  notes: string | null;
+  parcelas: ParcelaPlano[];
+} | null;
+
 type TotaisOpcao = {
   option: OptionRow;
   currency: string;
@@ -79,6 +102,8 @@ type TotaisOpcao = {
     currency: string;
     ficha: FichaProduto | null; // conteúdo editorial (do snapshot), já sanitizado
   }>;
+  taxasDetalhadas: TaxaLinha[]; // taxas linha a linha (nome + reembolsável) para o "Price"
+  planoPagamento: PlanoPagamento; // parcelas congeladas da opção, quando houver
   moedas: string[]; // moedas de origem vistas nos itens (para detectar mistura)
 };
 
@@ -141,13 +166,52 @@ async function carregarTotaisPorOpcao(
       .eq("quote_option_id", option.id);
     const itemIds = (itemIdsRows ?? []).map((r) => r.id as string);
     let taxas = 0;
+    const taxasDetalhadas: TaxaLinha[] = [];
     if (itemIds.length > 0) {
       const { data: fees } = await supabase
         .from("quote_item_fee")
-        .select("amount")
+        .select("name, amount, currency, is_refundable")
         .eq("tenant_id", tenantId)
         .in("quote_item_id", itemIds);
-      taxas = (fees ?? []).reduce((s, f) => s + toNum(f.amount), 0);
+      for (const f of fees ?? []) {
+        const amount = toNum(f.amount);
+        taxas += amount;
+        taxasDetalhadas.push({
+          nome: (f.name as string) ?? "Taxa",
+          amount: round2(amount),
+          currency: (f.currency as string) || currency || "BRL",
+          isRefundable: f.is_refundable == null ? null : !!f.is_refundable,
+        });
+      }
+    }
+
+    // Plano de pagamento congelado da opcao (parcelas), quando houver.
+    let planoPagamento: PlanoPagamento = null;
+    const { data: plano } = await supabase
+      .from("quote_payment_plan")
+      .select("id, installments_count, first_due_date, method, notes")
+      .eq("tenant_id", tenantId)
+      .eq("quote_option_id", option.id)
+      .maybeSingle();
+    if (plano) {
+      const { data: parcelasRows } = await supabase
+        .from("quote_payment_installment")
+        .select("sequence, due_date, amount, currency, description")
+        .eq("plan_id", plano.id as string)
+        .order("sequence", { ascending: true });
+      planoPagamento = {
+        installmentsCount: Number(plano.installments_count) || (parcelasRows?.length ?? 0),
+        firstDueDate: (plano.first_due_date as string) ?? null,
+        method: (plano.method as string) ?? null,
+        notes: (plano.notes as string) ?? null,
+        parcelas: (parcelasRows ?? []).map((p) => ({
+          sequence: Number(p.sequence) || 0,
+          dueDate: p.due_date as string,
+          amount: round2(toNum(p.amount)),
+          currency: (p.currency as string) || currency || "BRL",
+          description: (p.description as string) ?? null,
+        })),
+      };
     }
 
     const liquido = liquidoDaOpcao({ bruto, descontos, taxas });
@@ -159,6 +223,8 @@ async function carregarTotaisPorOpcao(
       taxas: round2(taxas),
       liquido,
       itens,
+      taxasDetalhadas,
+      planoPagamento,
       moedas,
     });
   }
@@ -531,9 +597,20 @@ export type PublicQuote = {
   brandSlug: string | null;
   logoUrl: string | null;
   consultant: { nome: string | null; email: string | null } | null;
+  issuedOn: string | null; // data de emissao (header "Issued On")
   validUntil: string | null;
   status: string;
   selectedIndex: number | null;
+  // Aba "About Us": institucional da agencia (HTML sanitizado) + contato do tenant.
+  aboutUs: {
+    html: string | null;
+    website: string | null;
+    address: string | null;
+    email: string | null;
+    phone: string | null;
+  };
+  // Aba "Notes": observacoes do consultor por cotacao (HTML sanitizado). null = sem notas.
+  notesHtml: string | null;
   fx: {
     necessario: boolean;
     rate: number | null;
@@ -566,6 +643,14 @@ export type PublicQuote = {
       currency: string;
       ficha: FichaProduto | null;
     }>;
+    taxasDetalhadas: Array<{ nome: string; amount: number; currency: string; isRefundable: boolean | null }>;
+    planoPagamento: {
+      installmentsCount: number;
+      firstDueDate: string | null;
+      method: string | null;
+      notes: string | null;
+      parcelas: Array<{ sequence: number; dueDate: string; amount: number; currency: string; description: string | null }>;
+    } | null;
   }>;
 };
 
@@ -574,7 +659,7 @@ async function carregarQuotePorToken(supabase: SupabaseClient, token: string) {
   const { data } = await supabase
     .from("quote")
     .select(
-      "id, tenant_id, reference, locale, status, presentment_currency, source_currency, fx_rate, fx_rate_at, fx_source, valid_until, token_revoked_at, selected_option_id, student_id, owner_user_id",
+      "id, tenant_id, reference, locale, status, presentment_currency, source_currency, fx_rate, fx_rate_at, fx_source, issue_date, valid_until, token_revoked_at, selected_option_id, student_id, owner_user_id, notes_html",
     )
     .eq("public_token", token)
     .maybeSingle();
@@ -657,7 +742,7 @@ export async function getPublicQuote(
   // os tokens visuais da instancia no portal (ver src/lib/tenant-brand.ts).
   const { data: tenant } = await supabase
     .from("tenant")
-    .select("name, slug, logo_url")
+    .select("name, slug, logo_url, website, address, contact_email, contact_phone, about_us_html")
     .eq("id", tenantId)
     .maybeSingle();
   const { data: policy } = await supabase
@@ -703,8 +788,17 @@ export async function getPublicQuote(
       depositAmount: t.option.deposit_amount != null ? toNum(t.option.deposit_amount) : null,
       depositCurrency: t.option.deposit_currency ?? null,
       itens: t.itens,
+      taxasDetalhadas: t.taxasDetalhadas,
+      planoPagamento: t.planoPagamento,
     };
   });
+
+  // Notas do consultor (aba "Notes") — HTML sanitizado; null quando vazio.
+  const notesBruto = (quote.notes_html as string) ?? "";
+  const notesHtml = notesBruto.trim() ? sanitizarHtml(notesBruto) || null : null;
+  // Institucional (aba "About Us") — HTML sanitizado.
+  const aboutHtmlBruto = (tenant?.about_us_html as string) ?? "";
+  const aboutHtml = aboutHtmlBruto.trim() ? sanitizarHtml(aboutHtmlBruto) || null : null;
 
   return {
     reference: quote.reference as string,
@@ -714,9 +808,18 @@ export async function getPublicQuote(
     brandSlug: (tenant?.slug as string) ?? null,
     logoUrl: (tenant?.logo_url as string) ?? null,
     consultant,
+    issuedOn: (quote.issue_date as string) ?? null,
     validUntil: (quote.valid_until as string) ?? null,
     status: quote.status as string,
     selectedIndex,
+    aboutUs: {
+      html: aboutHtml,
+      website: (tenant?.website as string) ?? null,
+      address: (tenant?.address as string) ?? null,
+      email: (tenant?.contact_email as string) ?? null,
+      phone: (tenant?.contact_phone as string) ?? null,
+    },
+    notesHtml,
     fx: {
       necessario: fxNecessario,
       rate: fxRate,

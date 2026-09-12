@@ -32,6 +32,7 @@ export type QuoteHeader = {
   publicToken: string | null;
   tokenRevoked: boolean;
   validUntil: string | null;
+  notesHtml: string | null;
 };
 
 type SearchResult = {
@@ -383,6 +384,8 @@ export default function ConstrutorClient({
         </p>
       ) : null}
 
+      <NotesEditor quoteId={header.id} initialHtml={header.notesHtml} onErro={setErro} />
+
       {options.length === 0 ? (
         <p className="text-sm text-neutral-500">
           Nenhuma opção ainda. Use “Adicionar opção” para começar.
@@ -689,6 +692,94 @@ export default function ConstrutorClient({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// Converte o HTML simples das notas (só <p>/<br> permitidos) em texto para o
+// textarea, e vice-versa. O servidor sanitiza de novo na escrita e na leitura.
+function htmlParaTexto(html: string | null): string {
+  if (!html) return "";
+  return html
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/\s*p\s*>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+function textoParaHtml(texto: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return texto
+    .split(/\n{2,}/)
+    .map((par) => `<p>${esc(par).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+// Editor de OBSERVAÇÕES do consultor (aba "Notes" do portal). Texto simples com
+// quebras de linha; salvo como HTML mínimo (<p>/<br>) e sanitizado no servidor.
+function NotesEditor({
+  quoteId,
+  initialHtml,
+  onErro,
+}: {
+  quoteId: string;
+  initialHtml: string | null;
+  onErro: (msg: string | null) => void;
+}) {
+  const router = useRouter();
+  const [texto, setTexto] = useState(() => htmlParaTexto(initialHtml));
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const originalRef = htmlParaTexto(initialHtml);
+  const alterado = texto !== originalRef;
+
+  async function salvar() {
+    setSalvando(true);
+    setSalvo(false);
+    onErro(null);
+    try {
+      const notesHtml = texto.trim() ? textoParaHtml(texto.trim()) : "";
+      await postJson(`/api/admin/quotes/${quoteId}/notes`, { notesHtml });
+      setSalvo(true);
+      router.refresh();
+    } catch (e: any) {
+      onErro(e?.message || "Não foi possível salvar as observações.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="font-serif text-lg text-brand">Observações (aba “Notes” do orçamento)</h2>
+          <p className="text-xs text-neutral-500">
+            Texto livre exibido ao lead na aba Observações do link. Ex.: serviços extras, próximos passos.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={salvando || !alterado}
+          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          {salvando ? "Salvando…" : salvo && !alterado ? "Salvo ✓" : "Salvar observações"}
+        </button>
+      </div>
+      <textarea
+        value={texto}
+        onChange={(e) => {
+          setTexto(e.target.value);
+          setSalvo(false);
+        }}
+        rows={4}
+        placeholder="Ex.: Outros serviços — eTA (Canadá) CAD 7; passagem aérea a definir."
+        className="mt-3 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm text-brand outline-none focus:border-brand"
+      />
     </div>
   );
 }

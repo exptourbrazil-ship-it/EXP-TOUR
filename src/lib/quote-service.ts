@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { priceProductFromDb } from "@/lib/catalog-service";
+import { sanitizarHtml } from "@/lib/produto-conteudo";
 
 /** Autor da acao (para a trilha de auditoria). */
 export type ServiceActor = { usuario: string; ip?: string | null };
@@ -877,6 +878,49 @@ export async function setPaymentPlan(
   });
 
   return { planId };
+}
+
+// ---------------------------------------------------------------------------
+// setQuoteNotes — observacoes do consultor por cotacao (aba "Notes" do portal).
+// Nao e financeiro: pode ser editado mesmo apos a emissao (nao exige reemissao).
+// Sanitiza na ESCRITA (defesa em profundidade; o portal tambem sanitiza na
+// leitura). String vazia limpa a nota. Escopado por tenant.
+// ---------------------------------------------------------------------------
+export type SetQuoteNotesArgs = { tenantId: string; quoteId: string; notesHtml: string };
+
+export async function setQuoteNotes(
+  supabase: SupabaseClient,
+  args: SetQuoteNotesArgs,
+  actor: ServiceActor,
+): Promise<{ ok: true }> {
+  const limpo = (args.notesHtml || "").trim();
+  const sanitized = limpo ? sanitizarHtml(limpo) : null;
+
+  const { data: quote, error: qErr } = await supabase
+    .from("quote")
+    .select("id")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.quoteId)
+    .maybeSingle();
+  if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
+  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+
+  const { error: updErr } = await supabase
+    .from("quote")
+    .update({ notes_html: sanitized, updated_at: new Date().toISOString() })
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.quoteId);
+  if (updErr) throw new Error(`Falha ao gravar observacoes: ${updErr.message}`);
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: actor.usuario,
+    acao: "quote.notes.set",
+    alvo: args.quoteId,
+    detalhe: { vazio: !sanitized, tamanho: sanitized?.length ?? 0 },
+    ip: actor.ip ?? null,
+  });
+
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
