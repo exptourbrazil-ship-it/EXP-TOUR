@@ -7,15 +7,13 @@ function base(over: Partial<ReembolsoUnificadoInput> = {}): ReembolsoUnificadoIn
     moedaPrograma: "CAD",
     retencaoExpTour: 100,
     retencaoFornecedor: 200,
-    cotacaoPtax: 4,
-    iof: 0,
-    spread: 0,
+    vet: 4,
     totalPagoBRL: 2000,
     ...over,
   };
 }
 
-test("U1 soma componentes e converte para BRL (VET sem IOF/spread)", () => {
+test("U1 soma componentes e converte para BRL pela VET", () => {
   const r = calcularReembolsoUnificado(base());
   assert.equal(r.totalRetidoMoeda, 300); // 100 + 200
   assert.equal(r.vet, 4);
@@ -24,11 +22,12 @@ test("U1 soma componentes e converte para BRL (VET sem IOF/spread)", () => {
   assert.equal(r.aindaDevidoBRL, 0);
 });
 
-test("U2 VET aplica IOF e spread", () => {
-  const r = calcularReembolsoUnificado(base({ iof: 0.035, spread: 0.05 }));
-  // 4 * 1.035 * 1.05 = 4.347
-  assert.equal(r.vet, 4.35); // round2
-  assert.equal(r.totalRetidoBRL, round2(300 * 4.35));
+test("U2 usa a VET passada como está (composição não é refeita aqui)", () => {
+  const r = calcularReembolsoUnificado(base({ vet: 4.34, ptax: 4, iof: 0.035, spread: 0.05 }));
+  assert.equal(r.vet, 4.34);
+  assert.equal(r.totalRetidoBRL, round2(300 * 4.34));
+  // ptax/iof/spread só aparecem na memória.
+  assert.ok(r.memoria.some((l) => l.rotulo.includes("PTAX 4")));
 });
 
 test("U3 não-recuperáveis e remuneração por serviços somam", () => {
