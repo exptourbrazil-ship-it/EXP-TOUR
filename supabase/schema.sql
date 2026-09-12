@@ -1710,6 +1710,29 @@ create unique index if not exists uq_feriado_tenant on feriado(tenant_id, pais, 
 create index if not exists idx_feriado_pais_data on feriado(pais, data);
 alter table if exists feriado enable row level security;
 
+-- Política de retenção do FORNECEDOR em escada, por CAMPUS e ÂNCORA (spec 2).
+-- Consumida pelo motor puro src/lib/politica-retencao.ts. Duas âncoras possíveis
+-- por campus (início do curso e chegada da acomodação) — uma linha por âncora.
+-- Aplicado via migration politica_retencao_por_campus.
+create table if not exists politica_retencao (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  campus_id uuid not null references campus(id) on delete cascade,
+  ancora text not null check (ancora in ('inicio_curso','chegada_acomodacao')),
+  unidade text not null check (unidade in ('dias_corridos','dias_uteis','semanas','percent_horas')),
+  degraus jsonb not null default '[]'::jsonb, -- [{ ate, retencaoPercentual|retencaoValor, rotulo }]
+  moeda char(3),                 -- null => base_currency do campus
+  teto numeric(12,2),            -- cap do valor retido
+  minimo numeric(12,2),          -- piso do valor retido
+  ativo boolean not null default true,
+  fonte text,                    -- proveniência (invoice/site + data)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+create unique index if not exists uq_politica_retencao_ativa on politica_retencao(campus_id, ancora) where ativo;
+create index if not exists idx_politica_retencao_campus on politica_retencao(campus_id);
+alter table if exists politica_retencao enable row level security;
+
 create table if not exists market (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
