@@ -270,6 +270,30 @@ alter table if exists contratos add column if not exists hash_anexo_iii text;
 alter table if exists contratos add column if not exists anexo_iii_emitido_em timestamptz;
 alter table if exists contratos add column if not exists anexo_iii_emitido_por text;
 alter table if exists contratos add column if not exists session_id text;
+-- Máquina de estados do contrato (P1, docs/03 §2.1). NULL => derivar em leitura a
+-- partir dos fatos (deriveEstadoContrato em src/lib/contrato-estados.ts) — sem
+-- backfill big-bang. Preenchido quando uma transição é registrada. Aplicado via
+-- migration contrato_estado_maquina.
+alter table if exists contratos add column if not exists estado text;
+
+-- Ledger IMUTÁVEL de transições da máquina de estados do contrato (histórico com
+-- causa + timestamp). Um registro por transição; nunca se apaga/edita.
+create table if not exists contrato_transicoes (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  de text,                                   -- estado anterior (null na 1a transição)
+  para text not null,                        -- novo estado
+  origem text not null default 'sistema'
+    check (origem in ('sistema','admin','webhook')),
+  autor text,                                -- admin (e-mail) ou identificador do sistema
+  motivo text,                               -- justificativa (override) ou causa (evento)
+  override boolean not null default false,   -- true = transição fora da tabela de válidas
+  event_id uuid references events(id),       -- opcional: liga ao ledger de eventos
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_contrato_transicoes_contrato
+  on contrato_transicoes(contrato_id, created_at);
+alter table if exists contrato_transicoes enable row level security;
 
 -- Parcelas: cronograma de pagamento de cada contrato
 create table if not exists parcelas (
