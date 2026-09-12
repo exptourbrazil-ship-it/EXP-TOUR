@@ -145,6 +145,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/conteudo",
+    label: "Conteúdo dos cursos",
+    descricao: "Aprovar o conteúdo dos cursos enviado pelas escolas (cotação)",
+    icone: ICONES.documentos,
+    capacidade: "fornecedores.gerir",
+  },
+  {
     href: "/admin/precos",
     label: "Preços",
     descricao: "Aprovar e publicar price lists das escolas",
@@ -249,6 +256,7 @@ export type GrupoNav = (typeof GRUPOS_NAV)[number];
 const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/catalogo": "Inventário",
   "/admin/produtos": "Inventário",
+  "/admin/conteudo": "Inventário",
   "/admin/precos": "Inventário",
   "/admin/precos/tabelas": "Inventário",
   "/admin/precos/taxas": "Inventário",

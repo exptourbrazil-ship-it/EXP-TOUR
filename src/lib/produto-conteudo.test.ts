@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, detalhesDoSnapshot, type Falha } from "./produto-conteudo.ts";
+import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, detalhesDoSnapshot, validarProgramDetail, type Falha } from "./produto-conteudo.ts";
 
 function campos(r: ReturnType<typeof validarConteudoProduto>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -282,4 +282,48 @@ test("detalhesDoSnapshot: escola sanitiza descrição e filtra mídia http", () 
   assert.deepEqual(d.escola!.highlights, ["Turmas pequenas"]);
   assert.equal(d.escola!.midias.length, 1); // javascript: descartada
   assert.equal(d.escola!.midias[0].kind, "image"); // 'photo' -> image
+});
+
+// ── validarProgramDetail (Fase B1) ───────────────────────────────────────────
+test("validarProgramDetail: campos válidos normalizam (int/num/bool/grades/enum)", () => {
+  const r = validarProgramDetail({
+    education_type: "General English",
+    delivery_method: "in_person",
+    lessons_per_week: "25",
+    hours_per_week: "20.8",
+    grades: "1\n2\n3",
+    is_pathway: "false",
+    includes_activities: true,
+    timetable: { Segunda: ["08:30-10:10"] },
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.equal(r.valor.education_type, "General English");
+  assert.equal(r.valor.delivery_method, "in_person");
+  assert.equal(r.valor.lessons_per_week, 25);
+  assert.equal(r.valor.hours_per_week, 20.8);
+  assert.deepEqual(r.valor.grades, ["1", "2", "3"]);
+  assert.equal(r.valor.is_pathway, false);
+  assert.equal(r.valor.includes_activities, true);
+  assert.ok(Array.isArray(r.valor.timetable) && r.valor.timetable!.length === 1);
+});
+
+test("validarProgramDetail: vazio é válido (tudo opcional)", () => {
+  const r = validarProgramDetail({});
+  assert.ok(r.ok);
+  if (r.ok) {
+    assert.equal(r.valor.delivery_method, null);
+    assert.equal(r.valor.lessons_per_week, null);
+    assert.equal(r.valor.timetable, null);
+    assert.deepEqual(r.valor.grades, []);
+  }
+});
+
+test("validarProgramDetail: enum e números inválidos falham", () => {
+  const bad1 = validarProgramDetail({ delivery_method: "telepatia" });
+  assert.ok(!bad1.ok && bad1.falhas.some((f: Falha) => f.campo === "delivery_method"));
+  const bad2 = validarProgramDetail({ lessons_per_week: -5 });
+  assert.ok(!bad2.ok && bad2.falhas.some((f: Falha) => f.campo === "lessons_per_week"));
+  const bad3 = validarProgramDetail({ hours_per_week: "abc" });
+  assert.ok(!bad3.ok && bad3.falhas.some((f: Falha) => f.campo === "hours_per_week"));
 });

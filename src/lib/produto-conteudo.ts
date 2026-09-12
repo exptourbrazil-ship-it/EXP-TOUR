@@ -473,3 +473,85 @@ export function detalhesDoSnapshot(snap: unknown, locale: ContentLocale = "pt-BR
     escola: detalhesEscola(s.campus, locale),
   };
 }
+
+// ── Validação do program_detail (Fase B1) ────────────────────────────────────
+// Ficha estruturada do curso proposta pelo fornecedor. Tudo opcional; só falha
+// em enum/número inválido. Retorna as colunas de program_detail normalizadas.
+export const DELIVERY_METHODS = ["in_person", "online", "hybrid"] as const;
+export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
+
+export type ProgramDetailNormalizado = {
+  education_type: string | null;
+  subject: string | null;
+  language: string | null;
+  delivery_method: DeliveryMethod | null;
+  format: string | null;
+  institution_type: string | null;
+  grades: string[];
+  lessons_per_week: number | null;
+  hours_per_week: number | null;
+  is_pathway: boolean;
+  includes_activities: boolean;
+  timetable: BlocoTimetable[] | null;
+};
+
+const MAX_TEXTO_CURTO = 200;
+
+function optTextoCurto(raw: unknown, campo: string, falhas: Falha[]): string | null {
+  const s = optStrOuNull(raw);
+  if (s && s.length > MAX_TEXTO_CURTO) {
+    falhas.push({ campo, erro: `máximo ${MAX_TEXTO_CURTO} caracteres` });
+    return s.slice(0, MAX_TEXTO_CURTO);
+  }
+  return s;
+}
+
+function optNumNaoNeg(raw: unknown, campo: string, max: number, falhas: Falha[]): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    falhas.push({ campo, erro: "deve ser um número ≥ 0" });
+    return null;
+  }
+  if (n > max) {
+    falhas.push({ campo, erro: `máximo ${max}` });
+    return max;
+  }
+  return n;
+}
+
+export function validarProgramDetail(raw: unknown): Resultado<ProgramDetailNormalizado> {
+  const falhas: Falha[] = [];
+  const o = isObj(raw) ? raw : {};
+
+  let delivery: DeliveryMethod | null = null;
+  const dm = optStrOuNull(o.delivery_method);
+  if (dm) {
+    if ((DELIVERY_METHODS as readonly string[]).includes(dm)) delivery = dm as DeliveryMethod;
+    else falhas.push({ campo: "delivery_method", erro: "modalidade inválida" });
+  }
+
+  const valor: ProgramDetailNormalizado = {
+    education_type: optTextoCurto(o.education_type, "education_type", falhas),
+    subject: optTextoCurto(o.subject, "subject", falhas),
+    language: optTextoCurto(o.language, "language", falhas),
+    delivery_method: delivery,
+    format: optTextoCurto(o.format, "format", falhas),
+    institution_type: optTextoCurto(o.institution_type, "institution_type", falhas),
+    grades: capBullets(listaStr(o.grades)),
+    lessons_per_week: (() => {
+      const n = optNumNaoNeg(o.lessons_per_week, "lessons_per_week", 100, falhas);
+      return n == null ? null : Math.round(n);
+    })(),
+    hours_per_week: optNumNaoNeg(o.hours_per_week, "hours_per_week", 200, falhas),
+    is_pathway: optBool(o.is_pathway, false),
+    includes_activities: optBool(o.includes_activities, false),
+    timetable: (() => {
+      const tt = parseTimetable(o.timetable);
+      return tt.length ? tt : null;
+    })(),
+  };
+
+  if (falhas.length) return { ok: false, falhas };
+  return { ok: true, valor };
+}
