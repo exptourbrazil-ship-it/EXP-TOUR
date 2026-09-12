@@ -585,6 +585,42 @@ function EscolaBloco({ escola }: { escola: EscolaItem }) {
         />
       ) : null}
       <BlocoBullets titulo="Destaques" itens={escola.highlights} />
+
+      {escola.amenities.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Estrutura</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {escola.amenities.map((a, i) => (
+              <span key={i} className="rounded-full border border-[color:var(--p-line)] px-2.5 py-0.5 text-xs text-[color:var(--p-ink)]">{a}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {escola.accreditations.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Acreditações</p>
+          <p className="mt-1 text-sm text-[color:var(--p-ink)]">{escola.accreditations.join(" · ")}</p>
+        </div>
+      ) : null}
+
+      {escola.nationalityMix.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Mix de nacionalidades</p>
+          <ul className="mt-1 space-y-1">
+            {escola.nationalityMix.map((n, i) => (
+              <li key={i} className="flex items-center gap-2 text-sm">
+                <span className="w-28 shrink-0 text-[color:var(--p-ink)]">{n.pais}</span>
+                <span className="h-2 flex-1 overflow-hidden rounded-full bg-[color:var(--p-line)]">
+                  <span className="block h-full rounded-full bg-[color:var(--p-cta)]" style={{ width: `${Math.min(100, Math.max(0, n.percentual))}%` }} />
+                </span>
+                <span className="w-10 shrink-0 text-right text-xs text-[color:var(--p-muted)]">{Math.round(n.percentual)}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <GaleriaMidia midias={escola.midias} />
     </div>
   );

@@ -489,7 +489,7 @@ export async function addQuoteItem(
   if (product.campus_id) {
     const { data: campus } = await supabase
       .from("campus")
-      .select("id, name, city, region, country_code, website, logo_url, cover_image_url")
+      .select("id, name, city, region, country_code, website, logo_url, cover_image_url, amenities, accreditations, nationality_mix")
       .eq("tenant_id", args.tenantId)
       .eq("id", product.campus_id as string)
       .maybeSingle();

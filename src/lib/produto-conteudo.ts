@@ -91,7 +91,7 @@ const MAX_MIDIAS = 40;
 // no PONTO DE RENDERIZACAO (o portal DEVE sanitizar antes de exibir; nao usar
 // dangerouslySetInnerHTML cru): e uma barreira extra na gravacao, ja que o autor
 // (fornecedor) e semi-confiavel e o leitor (estudante) e de outra fronteira.
-function htmlPerigoso(s: string): boolean {
+export function htmlPerigoso(s: string): boolean {
   return (
     /<\s*script/i.test(s) ||
     /<\s*iframe/i.test(s) ||
@@ -326,12 +326,16 @@ export type QuickInfoLinha = { rotulo: string; valor: string };
 export type BlocoTimetable = { dia: string; blocos: string[] };
 export type DetalhesPrograma = { quickInfo: QuickInfoLinha[]; timetable: BlocoTimetable[] };
 export type DetalhesAcomodacao = { linhas: QuickInfoLinha[] };
+export type NacionalidadeLinha = { pais: string; percentual: number };
 export type DetalhesEscola = {
   campusId: string | null;
   nome: string | null;
   local: string | null;
   descriptionHtml: string;
   highlights: string[];
+  amenities: string[];
+  accreditations: string[];
+  nationalityMix: NacionalidadeLinha[];
   midias: FichaMidia[];
 };
 export type DetalhesSnapshot = {
@@ -459,8 +463,24 @@ function detalhesEscola(campus: unknown, locale: ContentLocale): DetalhesEscola 
   const cidade = optStrOuNull(campus.city);
   const regiao = optStrOuNull(campus.region);
   const local = [cidade, regiao].filter(Boolean).join(", ") || null;
-  if (!descriptionHtml && highlights.length === 0 && midias.length === 0 && !nome) return null;
-  return { campusId: optStrOuNull(campus.id), nome, local, descriptionHtml, highlights, midias };
+  const amenities = capBullets(listaStr(campus.amenities));
+  const accreditations = capBullets(listaStr(campus.accreditations));
+  const nationalityMix = parseNationalityMix(campus.nationality_mix);
+  if (!descriptionHtml && highlights.length === 0 && midias.length === 0 && !nome && amenities.length === 0 && accreditations.length === 0 && nationalityMix.length === 0) return null;
+  return { campusId: optStrOuNull(campus.id), nome, local, descriptionHtml, highlights, amenities, accreditations, nationalityMix, midias };
+}
+
+// Lê o nationality_mix (jsonb: array de { pais, percentual }) do snapshot.
+function parseNationalityMix(raw: unknown): NacionalidadeLinha[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NacionalidadeLinha[] = [];
+  for (const item of raw.slice(0, 30)) {
+    if (!isObj(item)) continue;
+    const pais = optStrOuNull(item.pais ?? item.country);
+    const p = typeof item.percentual === "number" ? item.percentual : Number(item.percentual ?? item.percent);
+    if (pais && Number.isFinite(p) && p >= 0 && p <= 100) out.push({ pais, percentual: p });
+  }
+  return out;
 }
 
 // Deriva os detalhes exibíveis do snapshot completo do item. Retorna sempre um
