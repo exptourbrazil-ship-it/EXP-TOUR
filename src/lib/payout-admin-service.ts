@@ -312,7 +312,11 @@ export async function definirProcessamentoImediato(
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from("contratos")
-    .update({ processamento_imediato: !!imediato })
+    .update({
+      processamento_imediato: !!imediato,
+      // Carimba quando a autorização passou a valer; limpa ao desmarcar.
+      processamento_imediato_marcado_em: imediato ? new Date().toISOString() : null,
+    })
     .eq("id", contratoId)
     .select("id");
   if (error) return false;

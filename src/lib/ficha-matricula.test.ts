@@ -5,6 +5,7 @@ import {
   signatariosNecessarios,
   fichaCompleta,
   papeisPendentes,
+  FICHA_TEXTO,
 } from "./ficha-matricula.ts";
 
 // F1 — idade em anos completos (antes/depois do aniversario).
@@ -43,6 +44,15 @@ test("F5 maioridade configuravel", () => {
   assert.equal(s.menor, false);
   const s2 = signatariosNecessarios({ nascimentoISO: "2007-01-01", hojeISO: "2026-09-01", maioridade: 21 }); // 19 anos -> menor se maioridade 21
   assert.equal(s2.menor, true);
+});
+
+// F7 — o texto do processamento imediato traz a consequencia (Clausula 8.4):
+// "sem esta solicitacao a restituicao seria integral", nas duas linguas.
+test("F7 consequencia do processamento imediato", () => {
+  assert.match(FICHA_TEXTO.processamentoImediato.ajuda.pt, /sem esta solicitação, a restituição seria integral/i);
+  assert.match(FICHA_TEXTO.processamentoImediato.ajuda.en, /without this request, the refund would be full/i);
+  // Nao pre-marcado: o rotulo e uma SOLICITACAO do cliente, nao uma pre-autorizacao.
+  assert.match(FICHA_TEXTO.processamentoImediato.rotulo.pt, /solicito/i);
 });
 
 // F6 — completude e pendencias.
