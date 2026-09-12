@@ -3,6 +3,7 @@ import { exigirAdmin } from "@/lib/admin-guard";
 import { podeAdmin } from "@/lib/admin-roles";
 import { signTemplateConfigurado } from "@/lib/sign-template";
 import { statusMaisRecentePorContrato } from "@/lib/contratos";
+import { deriveEstadoContrato, estadoValido, rotuloEstado, type EstadoContrato } from "@/lib/contrato-estados";
 import ContratosClient from "./ContratosClient";
 
 export const runtime = "nodejs";
@@ -22,6 +23,8 @@ export type ContratoLista = {
   cancelado_em: string | null;
   cancelado_tipo: string | null;
   cancelado_motivo: string | null;
+  estado: string | null;
+  estado_rotulo: string | null;
 };
 
 // Pagina de contratos: lista os contratos com o status da assinatura e permite
@@ -45,11 +48,55 @@ export default async function AdminContratosPage() {
 
     const { data: linhas } = await supabase
       .from("contratos")
-      .select("id, nome, estudante_nome, pais_destino, moeda, valor_total, titular_id, cancelado_em, cancelado_tipo, cancelado_motivo")
+      .select("id, nome, estudante_nome, pais_destino, moeda, valor_total, titular_id, cancelado_em, cancelado_tipo, cancelado_motivo, estado, visto_status, data_inicio")
       .order("created_at", { ascending: false });
 
     const titularIds = Array.from(new Set((linhas || []).map((c: any) => c.titular_id).filter(Boolean)));
     const contratoIds = (linhas || []).map((c: any) => c.id);
+
+    // Estado da máquina (P1): usa o PERSISTIDO quando existe; senão DERIVA dos
+    // fatos. Para a lista inteira, carrega os fatos em LOTE (uma consulta de
+    // parcelas + uma de aceites), não por linha.
+    const entradaPagaPorContrato = new Map<string, boolean>();
+    if (contratoIds.length > 0) {
+      const { data: parcelas } = await supabase
+        .from("parcelas")
+        .select("contrato_id, status")
+        .in("contrato_id", contratoIds)
+        .eq("status", "pago");
+      for (const p of parcelas || []) entradaPagaPorContrato.set(p.contrato_id, true);
+    }
+    const aceitePorTitular = new Map<string, string>();
+    if (titularIds.length > 0) {
+      const { data: aceites } = await supabase
+        .from("aceites")
+        .select("titular_id, data_hora")
+        .in("titular_id", titularIds)
+        .order("data_hora", { ascending: true });
+      for (const a of aceites || []) {
+        if (a.titular_id && !aceitePorTitular.has(a.titular_id)) aceitePorTitular.set(a.titular_id, a.data_hora);
+      }
+    }
+    const agoraISO = new Date().toISOString();
+    const estadoPorContrato = new Map<string, EstadoContrato>();
+    for (const c of linhas || []) {
+      const persistido = typeof c.estado === "string" && estadoValido(c.estado) ? (c.estado as EstadoContrato) : null;
+      estadoPorContrato.set(
+        c.id,
+        persistido ??
+          deriveEstadoContrato({
+            agoraISO,
+            canceladoEm: c.cancelado_em ?? null,
+            entradaPaga: entradaPagaPorContrato.get(c.id) === true,
+            aceiteTermoEm: c.titular_id ? aceitePorTitular.get(c.titular_id) ?? null : null,
+            vistoStatus:
+              c.visto_status === "em_analise" || c.visto_status === "aprovado" || c.visto_status === "negado"
+                ? c.visto_status
+                : null,
+            dataInicioISO: c.data_inicio ?? null,
+          }),
+      );
+    }
 
     const titularPorId = new Map<string, { nome: string | null; email: string | null }>();
     if (titularIds.length > 0) {
@@ -86,6 +133,11 @@ export default async function AdminContratosPage() {
         cancelado_em: c.cancelado_em ?? null,
         cancelado_tipo: c.cancelado_tipo ?? null,
         cancelado_motivo: c.cancelado_motivo ?? null,
+        estado: estadoPorContrato.get(c.id) ?? null,
+        estado_rotulo: (() => {
+          const e = estadoPorContrato.get(c.id);
+          return e ? rotuloEstado(e) : null;
+        })(),
       };
     });
   } catch {

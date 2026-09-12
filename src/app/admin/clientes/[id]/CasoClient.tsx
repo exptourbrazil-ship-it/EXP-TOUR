@@ -445,12 +445,76 @@ function AbaJornada({ caso }: { caso: Caso }) {
         </ol>
       </div>
 
+      {/* Estado do contrato (máquina de estados, P1): estado atual + histórico
+          de transições, por contrato. Leitura. */}
+      {caso.estadoPorContrato.length > 0 ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <h3 className="mb-1 font-medium text-brand">Estado do contrato</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            Estado atual da máquina de estados e o histórico de transições registradas.
+          </p>
+          <div className="space-y-4">
+            {caso.estadoPorContrato.map((e) => {
+              const contrato = caso.contratos.find((c) => c.id === e.contrato_id);
+              const historico = caso.transicoesPorContrato[e.contrato_id] ?? [];
+              return (
+                <div key={e.contrato_id} className="rounded-xl border border-neutral-200 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-brand">{contrato?.nome || "Contrato"}</span>
+                    <BadgeEstadoContrato estado={e.estado} rotulo={e.rotulo} />
+                  </div>
+                  {historico.length > 0 ? (
+                    <ol className="mt-3 space-y-1.5 border-l border-neutral-200 pl-3">
+                      {historico.map((t, i) => (
+                        <li key={i} className="text-xs text-neutral-600">
+                          <span className="text-neutral-400">{fmtDataHora(t.created_at)}</span>{" "}
+                          <span className="font-medium text-brand">
+                            {t.de ? `${t.de} → ${t.para}` : t.para}
+                          </span>
+                          {t.override ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800">override</span> : null}
+                          <span className="text-neutral-400"> · {t.origem}{t.autor ? ` (${t.autor})` : ""}</span>
+                          {t.motivo ? <span className="text-neutral-500"> — {t.motivo}</span> : null}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="mt-2 text-xs text-neutral-400">Sem transições registradas (estado derivado dos fatos).</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {/* Confirmações de disponibilidade — visão de LEITURA, para quem tem só
           casos.ver acompanhar o status pedido ao fornecedor. O envio/resposta
           fica em Ações (gerirCaso). */}
       {caso.confirmacoes.length > 0 ? <ConfirmacoesResumo confirmacoes={caso.confirmacoes} /> : null}
     </div>
   );
+}
+
+// Selo do estado do contrato. Paleta neutra + dourado para "próxima ação"; nunca
+// vermelho fora de cancelado (marca: vermelho só no admin, e aqui como alerta).
+const COR_ESTADO_CONTRATO: Record<string, string> = {
+  proposta_enviada: "bg-neutral-100 text-neutral-700",
+  entrada_paga: "bg-sky-100 text-sky-800",
+  aguardando_contrato: "bg-brand-gold/20 text-brand-golddark",
+  matricula: "bg-sky-100 text-sky-800",
+  documentacao: "bg-sky-100 text-sky-800",
+  visto: "bg-brand-gold/20 text-brand-golddark",
+  pre_embarque: "bg-brand-gold/20 text-brand-golddark",
+  em_programa: "bg-emerald-100 text-emerald-800",
+  retorno: "bg-emerald-100 text-emerald-800",
+  concluido: "bg-emerald-600 text-white",
+  proposta_expirada: "bg-neutral-200 text-neutral-600",
+  cancelado: "bg-red-100 text-red-700",
+};
+
+function BadgeEstadoContrato({ estado, rotulo }: { estado: string; rotulo: string }) {
+  const cor = COR_ESTADO_CONTRATO[estado] ?? "bg-neutral-100 text-neutral-700";
+  return <span className={"rounded-full px-2 py-0.5 text-[11px] font-medium " + cor}>{rotulo}</span>;
 }
 
 // Cor do status de confirmação (leitura). Mesma paleta do ConfirmacaoAdmin.

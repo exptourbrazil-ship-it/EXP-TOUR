@@ -17,6 +17,23 @@ const STATUS_BADGE: Record<string, string> = {
   expirado: "bg-red-100 text-red-700",
 };
 
+// Cores do estado da máquina (P1). Neutro/azul = em andamento; dourado = próxima
+// ação; verde = operação/concluído; vermelho só para cancelado.
+const ESTADO_BADGE: Record<string, string> = {
+  proposta_enviada: "bg-neutral-100 text-neutral-700",
+  entrada_paga: "bg-sky-100 text-sky-800",
+  aguardando_contrato: "bg-brand-gold/20 text-brand-golddark",
+  matricula: "bg-sky-100 text-sky-800",
+  documentacao: "bg-sky-100 text-sky-800",
+  visto: "bg-brand-gold/20 text-brand-golddark",
+  pre_embarque: "bg-brand-gold/20 text-brand-golddark",
+  em_programa: "bg-emerald-100 text-emerald-800",
+  retorno: "bg-emerald-100 text-emerald-800",
+  concluido: "bg-emerald-600 text-white",
+  proposta_expirada: "bg-neutral-200 text-neutral-600",
+  cancelado: "bg-red-100 text-red-700",
+};
+
 type Situacao = "todos" | "ativos" | "cancelados";
 type Ordem = "padrao" | "cliente" | "valor";
 type Dir = "asc" | "desc";
@@ -275,11 +292,12 @@ export default function ContratosClient({
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[820px] text-left text-sm">
           <thead>
             <tr className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
               <ThOrdenavel rotulo="Cliente / Estudante" col="cliente" ordem={ordem} dir={dir} onClick={ordenarPor} />
               <th className="px-4 py-3 font-medium">Programa</th>
+              <th className="px-4 py-3 font-medium">Estado</th>
               <ThOrdenavel rotulo="Valor" col="valor" ordem={ordem} dir={dir} onClick={ordenarPor} alinhar="right" />
               <th className="px-4 py-3 font-medium">Assinatura</th>
               <th className="px-4 py-3 font-medium">Ação</th>
@@ -309,6 +327,15 @@ export default function ContratosClient({
                   <td className="px-4 py-3 text-neutral-600">
                     <div>{c.nome || "—"}</div>
                     <div className="text-xs text-neutral-400">{c.pais_destino || "—"}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {c.estado ? (
+                      <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_BADGE[c.estado] || "bg-neutral-100 text-neutral-600"}`}>
+                        {c.estado_rotulo || c.estado}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-neutral-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-brand">
                     {c.valor_total != null ? fmtMoeda(Number(c.valor_total) || 0, c.moeda || "?") : "—"}
@@ -440,7 +467,7 @@ export default function ContratosClient({
             })}
             {filtradas.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-neutral-500">
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-neutral-500">
                   Nenhum contrato para os filtros selecionados.
                 </td>
               </tr>
