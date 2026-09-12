@@ -20,6 +20,8 @@ import {
 import { excecaoAtiva, type StatusExcecao } from "@/lib/excecao";
 import { carregarEstadoConsentimentos } from "@/lib/consentimento-service";
 import type { EstadoConsentimento } from "@/lib/consentimento";
+import { estadoDoContrato } from "@/lib/contrato-estado-service";
+import { rotuloEstado, type EstadoContrato } from "@/lib/contrato-estados";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -203,6 +205,23 @@ export type CasoEvento = {
   criado_em: string | null;
 };
 
+export type CasoTransicao = {
+  contrato_id: string;
+  de: string | null;
+  para: string;
+  origem: string;
+  autor: string | null;
+  motivo: string | null;
+  override: boolean;
+  created_at: string;
+};
+
+export type CasoEstadoContrato = {
+  contrato_id: string;
+  estado: EstadoContrato;
+  rotulo: string;
+};
+
 export type Caso = {
   titular: CasoTitular;
   contratos: CasoContrato[];
@@ -226,6 +245,10 @@ export type Caso = {
   estimativaBRL: number | null; // saldo em aberto convertido (null se faltar cotacao)
   moedaPorContrato: Record<string, string>; // id do contrato -> moeda
   contadores: ContadoresCaso; // sinais para as abas/cabecalho (docs pendentes, vencidas, etc.)
+  // Máquina de estados (P1): estado atual (persistido ou derivado) + histórico de
+  // transições, por contrato.
+  estadoPorContrato: CasoEstadoContrato[];
+  transicoesPorContrato: Record<string, CasoTransicao[]>;
 };
 
 // Carrega o Caso 360 de UM titular. Retorna null se o titular nao existir.
@@ -437,6 +460,29 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     hojeISO,
   });
 
+  // Máquina de estados (P1): estado atual (persistido ou derivado) por contrato +
+  // histórico de transições. Deploy-safe: falha não derruba o Caso 360.
+  const estadoPorContrato: CasoEstadoContrato[] = [];
+  const transicoesPorContrato: Record<string, CasoTransicao[]> = {};
+  try {
+    for (const c of listaContratos) {
+      const estado = await estadoDoContrato(supabase, c.id);
+      if (estado) estadoPorContrato.push({ contrato_id: c.id, estado, rotulo: rotuloEstado(estado) });
+    }
+    if (contratoIds.length > 0) {
+      const { data: transicoes } = await supabase
+        .from("contrato_transicoes")
+        .select("contrato_id, de, para, origem, autor, motivo, override, created_at")
+        .in("contrato_id", contratoIds)
+        .order("created_at", { ascending: false });
+      for (const t of (transicoes ?? []) as CasoTransicao[]) {
+        (transicoesPorContrato[t.contrato_id] ??= []).push(t);
+      }
+    }
+  } catch {
+    // silencioso: a seção de estado apenas não aparece.
+  }
+
   return {
     titular: titular as CasoTitular,
     contratos: listaContratos,
@@ -459,5 +505,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     estimativaBRL,
     moedaPorContrato: Object.fromEntries(moedaPorContrato),
     contadores,
+    estadoPorContrato,
+    transicoesPorContrato,
   };
 }
