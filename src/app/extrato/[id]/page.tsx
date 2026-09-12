@@ -83,7 +83,7 @@ export default async function ExtratoPage({ params }: { params: Promise<{ id: st
               <p className="mt-1 text-xl font-bold text-neutral-900">{fmtData(r.dataLimite)}</p>
               {!r.quitado && r.diasRestantes != null && (
                 <p className="mt-0.5 text-xs text-neutral-400">
-                  {r.diasRestantes >= 0 ? `${r.diasRestantes} dias restantes` : `${-r.diasRestantes} dias em atraso`}
+                  {r.diasRestantes >= 0 ? `${r.diasRestantes} dias restantes` : `${-r.diasRestantes} dias após a data-limite`}
                 </p>
               )}
             </div>

@@ -60,7 +60,7 @@ function formatarData(dataInicio: string | null): string {
 const CTA_POR_ETAPA: Record<string, { rotulo: string; href: string }> = {
   Contrato: { rotulo: "Ver Financeiro", href: "/parcelas" },
   Documentos: { rotulo: "Enviar documentos", href: "/documentos" },
-  Pagamentos: { rotulo: "Ver parcelas", href: "/parcelas" },
+  Pagamentos: { rotulo: "Ver pagamentos", href: "/parcelas" },
   "Pré-embarque": { rotulo: "Ver checklist", href: "/embarque" },
   "Durante a viagem": { rotulo: "Abrir Viagem", href: "/viagem" },
   Retorno: { rotulo: "Abrir Retorno", href: "/retorno" },
