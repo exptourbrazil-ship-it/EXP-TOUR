@@ -228,6 +228,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "config.gerir",
   },
   {
+    href: "/admin/sobre-nos",
+    label: "Sobre nós",
+    descricao: "Texto institucional e contato na aba Sobre nós da cotação",
+    icone: ICONES.termos,
+    capacidade: "config.gerir",
+  },
+  {
     href: "/admin/sistema",
     label: "Sistema",
     descricao: "Webhooks, régua de cobrança e NPS",
@@ -294,6 +301,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/cambio": "Financeiro",
   "/admin/documentos": "Operação",
   "/admin/termos": "Configuração",
+  "/admin/sobre-nos": "Configuração",
   "/admin/sistema": "Configuração",
   "/admin/forca-maior": "Configuração",
 };
