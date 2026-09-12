@@ -14,8 +14,10 @@
 //    não max(estado, data): a escola retém o dela, a EXP Tour retém o dela.
 //  - "<30 dias → 5%": PISO de proximidade da retenção EXP Tour — cancelou faltando
 //    menos de N dias para o início, a retenção EXP Tour é no mínimo piso% do tuition.
-//  - CÂMBIO: PTAX do dia do cálculo, com IOF + spread (VET), IGUAL ao resto do
-//    sistema. O reembolso ao cliente é em BRL (foi o que ele pagou).
+//  - CÂMBIO: usa a VET (cotação já composta) do dia do cálculo — a MESMA fonte do
+//    resto do sistema (cotacoes_cambio.cotacao_vet, modelo ADITIVO PTAX·(1+spread+
+//    iof)). Recebe a VET pronta para não reimplementar a composição aqui. O
+//    reembolso ao cliente é em BRL (foi o que ele pagou).
 //
 // SEM imports (roda no runner nativo do Node). Puro/determinístico. Recebe os
 // componentes JÁ CALCULADOS (na moeda do programa) — o serviço compõe os motores
@@ -35,10 +37,14 @@ export type ReembolsoUnificadoInput = {
   diasAteInicio?: number | null; // proximidade do início
   pisoProximidadePercentual?: number; // default 0.05
   pisoProximidadeDias?: number; // default 30
-  // Câmbio moeda do programa -> BRL (VET = PTAX·(1+IOF)·(1+spread)).
-  cotacaoPtax: number;
-  iof?: number; // fração (ex.: 0.035)
-  spread?: number; // fração (ex.: 0.05)
+  // Câmbio moeda do programa -> BRL: a VET pronta (cotacoes_cambio.cotacao_vet),
+  // que já embute PTAX + spread + IOF (modelo aditivo do sistema). Passar a VET
+  // evita reimplementar a composição. ptax/iof/spread são OPCIONAIS, só para a
+  // linha de memória (transparência); não entram no cálculo do total em BRL.
+  vet: number;
+  ptax?: number; // PTAX comercial embutido na VET (só memória)
+  iof?: number; // fração (só memória)
+  spread?: number; // fração (só memória)
   // Já pago pelo cliente, em BRL.
   totalPagoBRL: number;
   // Data em que a retenção AUMENTA (próximo degrau) — só para a memória.
@@ -91,10 +97,7 @@ export function calcularReembolsoUnificado(input: ReembolsoUnificadoInput): Reem
 
   const totalRetidoMoeda = round2(retencaoExpTour + retencaoFornecedor + naoRecuperaveis + remuneracaoServicos);
 
-  const iof = input.iof != null ? input.iof : 0;
-  const spread = input.spread != null ? input.spread : 0;
-  const ptax = naoNeg(num(input.cotacaoPtax));
-  const vet = round2(ptax * (1 + iof) * (1 + spread));
+  const vet = naoNeg(num(input.vet));
   const totalRetidoBRL = round2(totalRetidoMoeda * vet);
 
   const totalPagoBRL = naoNeg(round2(num(input.totalPagoBRL)));
@@ -114,7 +117,11 @@ export function calcularReembolsoUnificado(input: ReembolsoUnificadoInput): Reem
   if (naoRecuperaveis > 0) memoria.push({ rotulo: "Valores não recuperáveis", valor: naoRecuperaveis, tipo: "moeda" });
   if (remuneracaoServicos > 0) memoria.push({ rotulo: "Remuneração por serviços", valor: remuneracaoServicos, tipo: "moeda" });
   memoria.push({ rotulo: `Total retido (${moedaPrograma})`, valor: totalRetidoMoeda, tipo: "moeda" });
-  memoria.push({ rotulo: `Câmbio aplicado (VET = PTAX ${ptax} · IOF ${Math.round(iof * 1000) / 10}% · spread ${Math.round(spread * 1000) / 10}%)`, valor: vet, tipo: "num" });
+  const detalheCambio =
+    input.ptax != null
+      ? ` (PTAX ${input.ptax} · IOF ${Math.round((input.iof ?? 0) * 1000) / 10}% · spread ${Math.round((input.spread ?? 0) * 1000) / 10}%)`
+      : "";
+  memoria.push({ rotulo: `Câmbio aplicado — VET${detalheCambio}`, valor: vet, tipo: "num" });
   memoria.push({ rotulo: "Total retido (BRL)", valor: totalRetidoBRL, tipo: "moeda_brl" });
   memoria.push({ rotulo: "Total pago pelo cliente (BRL)", valor: totalPagoBRL, tipo: "moeda_brl" });
   if (aindaDevidoBRL > 0) {
