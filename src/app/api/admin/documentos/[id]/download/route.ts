@@ -4,6 +4,7 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { usuarioAdminAtual } from "@/lib/admin-guard";
 import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
 import { getZohoAttachmentContent } from "@/lib/zoho";
 
 export const runtime = "nodejs";
@@ -34,6 +35,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  const barrado = await barrarDocumentoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   const { data: documento, error } = await supabase.from("documentos").select("*").eq("id", id).single();
   if (error || !documento) {

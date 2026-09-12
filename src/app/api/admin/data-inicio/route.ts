@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarTitularForaDoEscopo, escopoTenantAdmin } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
@@ -29,10 +30,14 @@ export async function GET(request: Request) {
   }
 
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  const escopo = await escopoTenantAdmin(supabase);
+  let q = supabase
     .from("titulares")
     .select("id, nome_completo, email, data_inicio")
     .order("nome_completo", { ascending: true });
+  // Listagem escopada: admin nao-global ve apenas os titulares do seu tenant.
+  if (!escopo.global) q = q.eq("tenant_id", escopo.tenantId);
+  const { data, error } = await q;
 
   if (error) {
     return NextResponse.json({ ok: false, erro: "Nao foi possivel listar os titulares." }, { status: 500 });
@@ -69,6 +74,8 @@ export async function POST(request: Request) {
   }
 
   const supabase = getSupabase();
+  const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
+  if (barrado) return barrado;
   const { error } = await supabase
     .from("titulares")
     .update({ data_inicio: dataInicio })

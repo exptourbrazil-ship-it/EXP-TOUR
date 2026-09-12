@@ -275,6 +275,15 @@ export async function barrarRepactuacaoForaDoEscopo(
   return barrar(supabase, existe, tenantId);
 }
 
+/** Barra se a ANTECIPACAO (via contrato) nao esta no escopo. */
+export async function barrarAntecipacaoForaDoEscopo(
+  supabase: SupabaseClient,
+  antecipacaoId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantViaContrato(supabase, "antecipacoes", antecipacaoId);
+  return barrar(supabase, existe, tenantId);
+}
+
 /** Barra se a EXCECAO (via titular) nao esta no escopo. */
 export async function barrarExcecaoForaDoEscopo(
   supabase: SupabaseClient,

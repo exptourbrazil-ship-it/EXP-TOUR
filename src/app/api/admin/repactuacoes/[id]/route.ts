@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { aprovarRepactuacao, recusarRepactuacao, RepactuacaoBloqueada } from "@/lib/repactuacao-service";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarRepactuacaoForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+  const barrado = await barrarRepactuacaoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const ip = obterIp(request);
 
   try {

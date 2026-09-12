@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarExcecaoForaDoEscopo } from "@/lib/admin-tenant";
 import { mudarStatusExcecao, ExcecaoBloqueada } from "@/lib/excecao-service";
 import { STATUS_EXCECAO, type StatusExcecao } from "@/lib/excecao";
 
@@ -15,6 +17,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+
+  // Isolamento por tenant: excecao de contrato/titular de outro tenant -> 404.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const barrado = await barrarExcecaoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
+
   const body = await request.json().catch(() => null);
   const para = String(body?.para || "");
   if (!(STATUS_EXCECAO as readonly string[]).includes(para)) {

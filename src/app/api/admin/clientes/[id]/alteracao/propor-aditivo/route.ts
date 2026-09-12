@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { proporAditivo, AlteracaoBloqueada } from "@/lib/alteracao-service";
+import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
@@ -15,6 +17,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id: titularId } = await params;
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
+  if (barrado) return barrado;
+
   const body = await request.json().catch(() => null);
   const alteracaoId = String(body?.alteracaoId || "");
   if (!alteracaoId) {

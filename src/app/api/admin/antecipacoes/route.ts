@@ -3,6 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import {
+  barrarContratoForaDoEscopo,
+  barrarAntecipacaoForaDoEscopo,
+  escopoTenantAdmin,
+  contratoIdsDoEscopo,
+} from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +31,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  const escopo = await escopoTenantAdmin(supabase);
+  // Listagem escopada: admin nao-global ve apenas antecipacoes dos seus contratos.
+  const contratoIds = await contratoIdsDoEscopo(supabase, escopo);
+  if (contratoIds !== null && contratoIds.length === 0) {
+    return NextResponse.json({ ok: true, antecipacoes: [] });
+  }
+  let q = supabase
     .from("antecipacoes")
     .select("id, contrato_id, documento, justificativa, valor, moeda, data_limite, comprovante_url, status, created_at, contrato:contratos(nome, estudante_nome, titular:titulares(nome_completo))")
     .order("created_at", { ascending: false });
+  if (contratoIds !== null) q = q.in("contrato_id", contratoIds);
+  const { data, error } = await q;
   if (error) {
     return NextResponse.json({ ok: false, erro: "Falha ao listar antecipacoes." }, { status: 500 });
   }
@@ -59,6 +73,8 @@ export async function POST(request: Request) {
   }
 
   const supabase = getSupabase();
+  const barrado = await barrarContratoForaDoEscopo(supabase, contratoId);
+  if (barrado) return barrado;
   const { data: nova, error } = await supabase
     .from("antecipacoes")
     .insert({
@@ -99,6 +115,8 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, erro: "Informe id e status valido." }, { status: 400 });
   }
   const supabase = getSupabase();
+  const barrado = await barrarAntecipacaoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const { error } = await supabase
     .from("antecipacoes")
     .update({ status, atualizado_em: new Date().toISOString() })

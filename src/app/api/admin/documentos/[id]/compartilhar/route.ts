@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
 import { avaliarTravaRemessa } from "@/lib/trava-remessa";
 
 export const runtime = "nodejs";
@@ -34,6 +35,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  const barrado = await barrarDocumentoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   const { data: doc } = await supabase
     .from("documentos")
