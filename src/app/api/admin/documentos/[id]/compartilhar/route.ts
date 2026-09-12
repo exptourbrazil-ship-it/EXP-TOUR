@@ -80,7 +80,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   if (compartilhar && contratoId) {
     const { data: contrato, error: contratoErr } = await supabase
       .from("contratos")
-      .select("created_at, processamento_imediato")
+      .select("created_at, data_fim_arrependimento, processamento_imediato")
       .eq("id", contratoId)
       .maybeSingle();
     // Fail-closed: sem conseguir LER o contrato (erro transitório) não dá para
@@ -98,6 +98,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
     const trava = avaliarTravaRemessa({
       aceiteISO: contrato.created_at ?? null,
+      fimArrependimentoISO: contrato.data_fim_arrependimento ?? null,
       agoraISO: new Date().toISOString(),
       processamentoImediato: !!contrato.processamento_imediato,
     });

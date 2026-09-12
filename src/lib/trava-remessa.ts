@@ -38,20 +38,34 @@ export function avaliarTravaRemessa(args: {
   aceiteISO: string | null; // ancora do arrependimento (created_at do contrato = aceite no checkout)
   agoraISO: string;
   processamentoImediato: boolean;
+  // Carimbo GRAVADO 1x no aceite (contratos.data_fim_arrependimento). Quando
+  // presente, e a FONTE DA VERDADE do fim da janela — congelada no aceite, nao
+  // recomputada a cada leitura (CDC art. 49: prazo provavel e imutavel). Nos
+  // contratos de checkout esse carimbo = created_at (== instante do aceite) + 7d;
+  // o ganho e a IMUTABILIDADE/prova, nao uma ancora diferente do created_at.
+  fimArrependimentoISO?: string | null;
 }): TravaRemessa {
   // Excecao expressa do contrato: o cliente marcou processamento imediato.
   if (args.processamentoImediato) {
     return { liberado: true, motivo: "processamento_imediato", liberaEmISO: null };
   }
-  // Sem ancora nao ha janela a computar -> nao trava (created_at do contrato
-  // sempre existe; este ramo e defensivo e nao deve congelar a operacao).
-  const base = args.aceiteISO ? new Date(args.aceiteISO).getTime() : NaN;
-  if (!Number.isFinite(base)) {
+  // Fim da janela: prefere o carimbo gravado; so entao deriva do aceite (+7 dias).
+  const carimbo = args.fimArrependimentoISO ? new Date(args.fimArrependimentoISO).getTime() : NaN;
+  const liberaEmISO = Number.isFinite(carimbo)
+    ? (args.fimArrependimentoISO as string)
+    : args.aceiteISO && Number.isFinite(new Date(args.aceiteISO).getTime())
+    ? prazoArrependimentoRemessaISO(args.aceiteISO)
+    : null;
+  // Sem carimbo nem ancora nao ha janela a computar -> nao trava (defensivo; nao
+  // deve congelar a operacao).
+  if (!liberaEmISO) {
     return { liberado: true, motivo: "sem_aceite", liberaEmISO: null };
   }
-  const liberaEmISO = prazoArrependimentoRemessaISO(args.aceiteISO as string);
+  // Fail-closed: um `agoraISO` improcessavel nao pode LIBERAR remessa (nao da para
+  // afirmar que a janela passou). Sem carimbo/ancora ja caiu em "sem_aceite" acima;
+  // com janela conhecida, so libera quando comprovadamente decorrida.
   const agora = new Date(args.agoraISO).getTime();
-  if (Number.isFinite(agora) && agora <= new Date(liberaEmISO).getTime()) {
+  if (!Number.isFinite(agora) || agora <= new Date(liberaEmISO).getTime()) {
     return { liberado: false, motivo: "arrependimento", liberaEmISO };
   }
   return { liberado: true, motivo: "prazo_decorrido", liberaEmISO };

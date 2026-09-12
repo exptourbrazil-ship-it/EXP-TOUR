@@ -57,3 +57,52 @@ test("V5 sem aceite nao bloqueia", () => {
 test("V6 prazo", () => {
   assert.equal(prazoArrependimentoRemessaISO("2026-08-01T00:00:00.000Z"), "2026-08-08T00:00:00.000Z");
 });
+
+// V7 — carimbo gravado (data_fim_arrependimento) é a fonte da verdade, mesmo com
+// ancora (aceiteISO) divergente (contrato provisionado cedo demais pelo CRM).
+test("V7 carimbo gravado tem precedencia sobre a ancora", () => {
+  const t = avaliarTravaRemessa({
+    aceiteISO: "2026-07-01T12:00:00.000Z", // created_at cedo demais -> +7 já teria passado
+    agoraISO: "2026-08-05T12:00:00.000Z",
+    processamentoImediato: false,
+    fimArrependimentoISO: "2026-08-08T12:00:00.000Z", // carimbo real do aceite
+  });
+  assert.equal(t.liberado, false);
+  assert.equal(t.motivo, "arrependimento");
+  assert.equal(t.liberaEmISO, "2026-08-08T12:00:00.000Z");
+});
+
+// V8 — carimbo já decorrido libera, ignorando a ancora.
+test("V8 carimbo decorrido libera", () => {
+  const t = avaliarTravaRemessa({
+    aceiteISO: "2026-08-20T12:00:00.000Z", // ancora no futuro seria irrelevante
+    agoraISO: "2026-08-15T12:00:00.000Z",
+    processamentoImediato: false,
+    fimArrependimentoISO: "2026-08-08T12:00:00.000Z",
+  });
+  assert.equal(t.liberado, true);
+  assert.equal(t.motivo, "prazo_decorrido");
+});
+
+// V10 — agoraISO improcessável NÃO libera (fail-closed) quando há janela.
+test("V10 agora inválido bloqueia (fail-closed)", () => {
+  const t = avaliarTravaRemessa({
+    aceiteISO: "2026-08-01T12:00:00.000Z",
+    agoraISO: "data-invalida",
+    processamentoImediato: false,
+  });
+  assert.equal(t.liberado, false);
+  assert.equal(t.motivo, "arrependimento");
+});
+
+// V9 — processamento imediato vence até o carimbo.
+test("V9 processamento imediato vence o carimbo", () => {
+  const t = avaliarTravaRemessa({
+    aceiteISO: null,
+    agoraISO: "2026-08-05T12:00:00.000Z",
+    processamentoImediato: true,
+    fimArrependimentoISO: "2026-08-08T12:00:00.000Z",
+  });
+  assert.equal(t.liberado, true);
+  assert.equal(t.motivo, "processamento_imediato");
+});

@@ -167,6 +167,33 @@ export async function acceptQuote(
   const contratoId = (rpc?.contrato_id as string) ?? "";
   const jaConvertida = !!rpc?.ja_convertida;
 
+  // Direito de arrependimento (CDC art. 49): CONGELA 1x o fim da janela de 7 dias
+  // no contrato = created_at (instante do aceite; converter_cotacao insere o
+  // contrato na mesma transação do aceite) + 7 dias. Passa a ser o prazo provável
+  // e imutável (não recomputado a cada leitura). É um UPDATE separado, best-effort
+  // (fora da transação da RPC): idempotente (só quando null) e NUNCA derruba o
+  // aceite, que já está gravado; se falhar, a trava cai no fallback created_at+7.
+  if (contratoId) {
+    try {
+      const { data: ct } = await supabase
+        .from("contratos")
+        .select("created_at")
+        .eq("id", contratoId)
+        .maybeSingle();
+      const base = ct?.created_at ? new Date(ct.created_at as string).getTime() : NaN;
+      if (Number.isFinite(base)) {
+        const fim = new Date(base + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await supabase
+          .from("contratos")
+          .update({ data_fim_arrependimento: fim })
+          .eq("id", contratoId)
+          .is("data_fim_arrependimento", null);
+      }
+    } catch {
+      console.error("[checkout] falha ao gravar data_fim_arrependimento (usará fallback)");
+    }
+  }
+
   // Boas-vindas: codigo de acesso para a Area do Cliente. Best-effort — NUNCA
   // derruba o aceite (o contrato ja esta gravado). O codigo SEMPRE vai para o
   // e-mail JA cadastrado do titular (nao o digitado): um titular pre-existente
