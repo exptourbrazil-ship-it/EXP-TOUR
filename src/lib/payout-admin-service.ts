@@ -42,6 +42,7 @@ type ContratoRow = {
   data_inicio: string | null;
   cancelado_em: string | null;
   created_at: string | null;
+  data_fim_arrependimento: string | null;
   processamento_imediato: boolean | null;
   titular_id: string | null;
   supplier_id: string;
@@ -92,7 +93,7 @@ export async function listarContasAPagar(
   const { data: contratos } = await supabase
     .from("contratos")
     .select(
-      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, created_at, processamento_imediato, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
+      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, created_at, data_fim_arrependimento, processamento_imediato, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
     )
     .not("supplier_id", "is", null)
     .is("cancelado_em", null);
@@ -161,6 +162,7 @@ export async function listarContasAPagar(
       diasAteVencimento: prev.diasAteVencimento,
       trava: avaliarTravaRemessa({
         aceiteISO: c.created_at ?? null,
+        fimArrependimentoISO: c.data_fim_arrependimento ?? null,
         agoraISO: new Date().toISOString(),
         processamentoImediato: !!c.processamento_imediato,
       }),
@@ -187,7 +189,7 @@ export async function obterCasoParaRepasse(
   const { data } = await supabase
     .from("contratos")
     .select(
-      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, created_at, processamento_imediato, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
+      "id, estudante_nome, nome, valor_total, moeda, data_inicio, cancelado_em, created_at, data_fim_arrependimento, processamento_imediato, titular_id, supplier_id, supplier:supplier(id, display_name, tenant_id, prazo_pagamento_dias)"
     )
     .eq("id", contratoId)
     .maybeSingle();
@@ -245,6 +247,7 @@ export async function obterCasoParaRepasse(
     diasAteVencimento: prev.diasAteVencimento,
     trava: avaliarTravaRemessa({
       aceiteISO: c.created_at ?? null,
+      fimArrependimentoISO: c.data_fim_arrependimento ?? null,
       agoraISO: new Date().toISOString(),
       processamentoImediato: !!c.processamento_imediato,
     }),

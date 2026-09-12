@@ -275,6 +275,13 @@ alter table if exists contratos add column if not exists session_id text;
 -- backfill big-bang. Preenchido quando uma transição é registrada. Aplicado via
 -- migration contrato_estado_maquina.
 alter table if exists contratos add column if not exists estado text;
+-- Direito de arrependimento (CDC art. 49): fim da janela de 7 dias GRAVADO 1x no
+-- aceite, por contrato (não recomputar a cada leitura). É a fonte da verdade da
+-- trava de remessa (avaliarTravaRemessa aceita fimArrependimentoISO). Preenchido
+-- pelo wrapper acceptQuote logo após converter_cotacao (UPDATE best-effort =
+-- created_at+7d) e backfillado (created_at+7d). Aplicado via migration
+-- contrato_data_fim_arrependimento.
+alter table if exists contratos add column if not exists data_fim_arrependimento timestamptz;
 
 -- Ledger IMUTÁVEL de transições da máquina de estados do contrato (histórico com
 -- causa + timestamp). Um registro por transição; nunca se apaga/edita.
