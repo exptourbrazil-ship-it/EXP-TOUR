@@ -35,7 +35,24 @@ export async function GET(request: Request) {
   if (error) {
     return NextResponse.json({ ok: false, erro: "Falha ao listar itens." }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, itens: data || [] });
+
+  // Estado de emissão (imutabilidade) do contrato selecionado: o client usa para
+  // exibir o selo "emitido" e travar os controles de edição.
+  let emissao: { emitido: boolean; emitidoEm: string | null; hash: string | null } | null = null;
+  if (contratoId) {
+    const { data: c } = await supabase
+      .from("contratos")
+      .select("anexo_iii_snapshot, anexo_iii_emitido_em, hash_anexo_iii")
+      .eq("id", contratoId)
+      .maybeSingle();
+    emissao = {
+      emitido: c?.anexo_iii_snapshot != null,
+      emitidoEm: c?.anexo_iii_emitido_em ?? null,
+      hash: c?.hash_anexo_iii ?? null,
+    };
+  }
+
+  return NextResponse.json({ ok: true, itens: data || [], emissao });
 }
 
 export async function POST(request: Request) {
@@ -51,6 +68,13 @@ export async function POST(request: Request) {
   const valorNum = b?.valor !== undefined && b?.valor !== "" ? Number(b.valor) : null;
 
   const supabase = getSupabase();
+
+  // Imutabilidade (Cláusula 18.2): depois de EMITIDO, o Anexo III não pode mudar.
+  const { data: c } = await supabase.from("contratos").select("anexo_iii_snapshot").eq("id", contratoId).maybeSingle();
+  if (c?.anexo_iii_snapshot != null) {
+    return NextResponse.json({ ok: false, erro: "Anexo III já emitido — é imutável; não é possível adicionar itens." }, { status: 409 });
+  }
+
   const { data: nova, error } = await supabase
     .from("anexo_iii_itens")
     .insert({
@@ -92,6 +116,25 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, erro: "Informe id." }, { status: 400 });
   }
   const supabase = getSupabase();
+
+  // Imutabilidade (Cláusula 18.2): descobre o contrato do item e, se já EMITIDO,
+  // recusa a remoção — o Anexo III emitido não pode mudar.
+  const { data: item } = await supabase
+    .from("anexo_iii_itens")
+    .select("contrato_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (item?.contrato_id) {
+    const { data: c } = await supabase
+      .from("contratos")
+      .select("anexo_iii_snapshot")
+      .eq("id", item.contrato_id)
+      .maybeSingle();
+    if (c?.anexo_iii_snapshot != null) {
+      return NextResponse.json({ ok: false, erro: "Anexo III já emitido — é imutável; não é possível remover itens." }, { status: 409 });
+    }
+  }
+
   const { error } = await supabase.from("anexo_iii_itens").delete().eq("id", id);
   if (error) {
     return NextResponse.json({ ok: false, erro: "Falha ao remover o item." }, { status: 500 });
