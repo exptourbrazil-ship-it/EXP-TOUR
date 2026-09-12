@@ -19,7 +19,7 @@ export async function carregarDocumentoIntegral(
   // POSSE: o contrato precisa ser DESTE titular. Sem isso, 404.
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("id, nome, valor_total, moeda, estudante_nome, pais_destino, data_inicio, created_at, cancelado_em, quadro_resumo, hash_quadro, session_id")
+    .select("id, nome, valor_total, moeda, estudante_nome, pais_destino, data_inicio, created_at, cancelado_em, quadro_resumo, hash_quadro, anexo_iii_snapshot, session_id")
     .eq("id", contratoId)
     .eq("titular_id", titularId)
     .maybeSingle();
@@ -89,24 +89,46 @@ export async function carregarDocumentoIntegral(
   }
 
   // Anexo III (Politica de Pagamento dos Fornecedores) deste contrato.
-  const { data: anexoRows } = await supabase
-    .from("anexo_iii_itens")
-    .select("fornecedor, natureza, valor, moeda, prazo, evento, documento_viabiliza, consequencia_atraso, politica_cancelamento, fonte, ordem")
-    .eq("contrato_id", contratoId)
-    .order("ordem", { ascending: true });
-  const anexoIII: DocIntegralAnexoIIIItem[] = (anexoRows ?? []).map((r) => ({
-    fornecedor: (r.fornecedor as string) ?? null,
-    natureza: (r.natureza as string) ?? null,
-    valor: r.valor != null ? num(r.valor) : null,
-    moeda: (r.moeda as string) ?? null,
-    prazo: (r.prazo as string) ?? null,
-    evento: (r.evento as string) ?? null,
-    documento_viabiliza: (r.documento_viabiliza as string) ?? null,
-    consequencia_atraso: (r.consequencia_atraso as string) ?? null,
-    politica_cancelamento: (r.politica_cancelamento as string) ?? null,
-    fonte: (r.fonte as string) ?? null,
-    ordem: num(r.ordem),
-  }));
+  // FONTE DE VERDADE: se o Anexo III foi EMITIDO (Clausula 18.2), o cliente ve o
+  // SNAPSHOT congelado, nao a tabela viva — e a prova de integridade que sustenta
+  // a defesa quando a escola altera a politica depois. Sem snapshot (ainda nao
+  // emitido), cai na tabela viva anexo_iii_itens.
+  const snapAnexo = (contrato.anexo_iii_snapshot ?? null) as { itens?: unknown[] } | null;
+  let anexoIII: DocIntegralAnexoIIIItem[];
+  if (snapAnexo && Array.isArray(snapAnexo.itens)) {
+    anexoIII = (snapAnexo.itens as Array<Record<string, unknown>>).map((r) => ({
+      fornecedor: (r.fornecedor as string) ?? null,
+      natureza: (r.natureza as string) ?? null,
+      valor: r.valor != null ? num(r.valor) : null,
+      moeda: (r.moeda as string) ?? null,
+      prazo: (r.prazo as string) ?? null,
+      evento: (r.evento as string) ?? null,
+      documento_viabiliza: (r.documento_viabiliza as string) ?? null,
+      consequencia_atraso: (r.consequencia_atraso as string) ?? null,
+      politica_cancelamento: (r.politica_cancelamento as string) ?? null,
+      fonte: (r.fonte as string) ?? null,
+      ordem: num(r.ordem),
+    }));
+  } else {
+    const { data: anexoRows } = await supabase
+      .from("anexo_iii_itens")
+      .select("fornecedor, natureza, valor, moeda, prazo, evento, documento_viabiliza, consequencia_atraso, politica_cancelamento, fonte, ordem")
+      .eq("contrato_id", contratoId)
+      .order("ordem", { ascending: true });
+    anexoIII = (anexoRows ?? []).map((r) => ({
+      fornecedor: (r.fornecedor as string) ?? null,
+      natureza: (r.natureza as string) ?? null,
+      valor: r.valor != null ? num(r.valor) : null,
+      moeda: (r.moeda as string) ?? null,
+      prazo: (r.prazo as string) ?? null,
+      evento: (r.evento as string) ?? null,
+      documento_viabiliza: (r.documento_viabiliza as string) ?? null,
+      consequencia_atraso: (r.consequencia_atraso as string) ?? null,
+      politica_cancelamento: (r.politica_cancelamento as string) ?? null,
+      fonte: (r.fonte as string) ?? null,
+      ordem: num(r.ordem),
+    }));
+  }
 
   return {
     contrato: {

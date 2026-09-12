@@ -261,6 +261,14 @@ $anon$;
 --                   nao controle de seguranca: pode ser forjado/repetido.
 alter table if exists contratos add column if not exists quadro_resumo jsonb;
 alter table if exists contratos add column if not exists hash_quadro text;
+-- Snapshot IMUTÁVEL do Anexo III emitido (Cláusula 18.2). Congelado na emissão
+-- (emitirAnexoIII); depois disso os itens vivos (anexo_iii_itens) ficam travados,
+-- então o que o cliente vê == o que foi emitido. hash = sha256 da forma canônica.
+-- Aplicado via migration anexo_iii_snapshot.
+alter table if exists contratos add column if not exists anexo_iii_snapshot jsonb;
+alter table if exists contratos add column if not exists hash_anexo_iii text;
+alter table if exists contratos add column if not exists anexo_iii_emitido_em timestamptz;
+alter table if exists contratos add column if not exists anexo_iii_emitido_por text;
 alter table if exists contratos add column if not exists session_id text;
 
 -- Parcelas: cronograma de pagamento de cada contrato

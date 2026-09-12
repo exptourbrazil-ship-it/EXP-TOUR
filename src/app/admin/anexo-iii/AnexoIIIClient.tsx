@@ -31,18 +31,25 @@ const VAZIO = {
   fonte: "",
 };
 
+type Emissao = { emitido: boolean; emitidoEm: string | null; hash: string | null };
+
 export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao[] }) {
   const [contratoId, setContratoId] = useState("");
   const [itens, setItens] = useState<Item[]>([]);
+  const [emissao, setEmissao] = useState<Emissao | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [removendoId, setRemovendoId] = useState<string | null>(null);
+  const [emitindo, setEmitindo] = useState(false);
   const [form, setForm] = useState({ ...VAZIO });
+
+  const emitido = emissao?.emitido === true;
 
   async function carregar(id: string) {
     if (!id) {
       setItens([]);
+      setEmissao(null);
       return;
     }
     setCarregando(true);
@@ -51,11 +58,35 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
       const res = await fetch(`/api/admin/anexo-iii?contratoId=${encodeURIComponent(id)}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok || !json.ok) setErro(json.erro || "Falha ao carregar.");
-      else setItens(json.itens || []);
+      else {
+        setItens(json.itens || []);
+        setEmissao(json.emissao || null);
+      }
     } catch (e: any) {
       setErro(e?.message || "Erro de rede.");
     } finally {
       setCarregando(false);
+    }
+  }
+
+  async function emitir() {
+    if (!contratoId) return;
+    if (!confirm("Emitir congela o Anexo III: depois disto não é possível adicionar nem remover itens. Confirmar?")) return;
+    setEmitindo(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/admin/anexo-iii/emitir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contratoId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) setErro(json.erro || "Falha ao emitir.");
+      else await carregar(contratoId);
+    } catch (e: any) {
+      setErro(e?.message || "Erro de rede.");
+    } finally {
+      setEmitindo(false);
     }
   }
 
@@ -134,8 +165,20 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
 
       {erro ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</p> : null}
 
+      {contratoId && emitido ? (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          <div className="font-semibold">Anexo III emitido — imutável</div>
+          <div className="mt-0.5 text-xs text-emerald-700">
+            {emissao?.emitidoEm ? `Emitido em ${new Date(emissao.emitidoEm).toLocaleString("pt-BR")}. ` : ""}
+            Este anexo foi congelado e não pode mais ser alterado. É o que vale para o cliente.
+          </div>
+          {emissao?.hash ? <div className="mt-1 break-all font-mono text-[10px] text-emerald-600">hash: {emissao.hash}</div> : null}
+        </div>
+      ) : null}
+
       {contratoId ? (
         <>
+          {!emitido ? (
           <form onSubmit={adicionar} className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4">
             <h2 className="mb-3 text-sm font-semibold text-brand">Novo item</h2>
             <label className="block text-sm font-medium text-brand">
@@ -175,6 +218,7 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
               {salvando ? "Salvando…" : "Adicionar item"}
             </button>
           </form>
+          ) : null}
 
           <h2 className="mb-3 mt-8 text-sm font-semibold text-brand">Itens do contrato</h2>
           {carregando ? (
@@ -196,14 +240,29 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
                       </div>
                       {it.documento_viabiliza ? <div className="text-xs text-neutral-400">Viabiliza: {it.documento_viabiliza}</div> : null}
                     </div>
-                    <button type="button" onClick={() => remover(it.id)} disabled={removendoId === it.id} className="flex-shrink-0 rounded-lg border border-red-300 px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60">
-                      Remover
-                    </button>
+                    {!emitido ? (
+                      <button type="button" onClick={() => remover(it.id)} disabled={removendoId === it.id} className="flex-shrink-0 rounded-lg border border-red-300 px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60">
+                        Remover
+                      </button>
+                    ) : null}
                   </div>
                 </li>
               ))}
             </ul>
           )}
+
+          {!emitido && itens.length > 0 ? (
+            <div className="mt-6 rounded-2xl border border-brand-gold/40 bg-brand-cream/40 p-4">
+              <h3 className="text-sm font-semibold text-brand">Emitir Anexo III</h3>
+              <p className="mt-1 text-xs text-neutral-600">
+                Ao emitir, o anexo é congelado com um hash de integridade e passa a ser o que vale
+                para o cliente. Depois disto não é possível adicionar nem remover itens.
+              </p>
+              <button type="button" onClick={emitir} disabled={emitindo} className="mt-3 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+                {emitindo ? "Emitindo…" : "Emitir e congelar"}
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>
