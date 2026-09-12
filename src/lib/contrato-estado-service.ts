@@ -12,6 +12,7 @@ import {
   deriveEstadoContrato,
   podeTransicionar,
   estadoValido,
+  rankEstado,
   type EstadoContrato,
   type FatosContrato,
 } from "@/lib/contrato-estados";
@@ -180,6 +181,19 @@ export async function sincronizarEstadoContrato(
 
   if (persistido === derivado) return { ok: true, semMudanca: true };
 
+  // FORWARD-ONLY. O motor não conhece hoje os fatos de "matrícula concluída" /
+  // "documentos aprovados", então o derivado tem teto baixo. Sem esta trava, uma
+  // parcela paga meses depois faria o webhook REGREDIR um estado que o admin já
+  // avançou à mão (ex.: documentacao → matricula) e poluiria o ledger imutável.
+  // Sincronização só AVANÇA; regressão só por ação manual (rota admin).
+  const ehTerminalDerivado = derivado === "cancelado" || derivado === "proposta_expirada";
+  const permitir =
+    persistido === null || // inicialização
+    persistido === "cancelado" || // reativação: fatos deixaram de ser cancelado
+    ehTerminalDerivado || // fato terminal (ex.: cancelado_em setado) sempre reflete
+    avanca(persistido, derivado);
+  if (!permitir) return { ok: true, semMudanca: true };
+
   return registrarTransicao(supabase, {
     contratoId,
     de: persistido,
@@ -192,4 +206,11 @@ export async function sincronizarEstadoContrato(
     // permite gravar sem falhar; o ledger marca override quando saiu da linha.
     override: true,
   });
+}
+
+// derivado avança em relação ao persistido na linha principal (ambos com rank).
+function avanca(persistido: EstadoContrato, derivado: EstadoContrato): boolean {
+  const rp = rankEstado(persistido);
+  const rd = rankEstado(derivado);
+  return rp != null && rd != null && rd > rp;
 }

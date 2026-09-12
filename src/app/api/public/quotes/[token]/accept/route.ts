@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { guardPortal, portalErro, portalOk } from "@/lib/portal-route";
 import { acceptQuote } from "@/lib/quote-checkout-service";
+import { sincronizarEstadoContrato } from "@/lib/contrato-estado-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,5 +53,17 @@ export async function POST(
   );
 
   if (!res.ok) return portalErro(res.erro, "aceite_falhou", res.status);
+
+  // Máquina de estados (P1): inicializa/sincroniza o estado do contrato recém
+  // criado (proposta_enviada; avança conforme os fatos). Best-effort: nunca
+  // derruba o aceite, que já foi gravado atomicamente.
+  if (res.contratoId) {
+    try {
+      await sincronizarEstadoContrato(g.supabase, res.contratoId, { origem: "sistema", autor: "checkout" });
+    } catch (err) {
+      console.error("Falha ao sincronizar estado do contrato após aceite:", err);
+    }
+  }
+
   return portalOk({ contratoId: res.contratoId, jaConvertida: res.jaConvertida });
 }
