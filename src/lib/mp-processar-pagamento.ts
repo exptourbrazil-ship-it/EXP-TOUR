@@ -11,6 +11,7 @@ import { itemizarRecibo, SPREAD_LEGADO, IOF_LEGADO } from "@/lib/cambio";
 import { enviarReciboPagamentoEmail } from "@/lib/email";
 import { slugDoTenant } from "@/lib/tenant-slug";
 import { ehStatusDisputaMP } from "@/lib/mp-disputa";
+import { sincronizarEstadoContrato } from "@/lib/contrato-estado-service";
 
 export type ResultadoProcessamento =
   | { status: "processado"; paymentStatus: string; parcelasAtualizadas: number }
@@ -177,6 +178,25 @@ export async function processarPagamentoMercadoPago(
     }
   } catch (err) {
     console.error("Falha ao enviar recibo de pagamento por e-mail:", err);
+  }
+
+  // Máquina de estados (P1): o pagamento da entrada é o gatilho-mestre. Sincroniza
+  // o estado dos contratos cujas parcelas foram marcadas pagas AGORA (evita
+  // re-registrar em reprocessamento). Best-effort: NUNCA derruba o processamento
+  // financeiro — o dinheiro já foi registrado acima.
+  try {
+    const idsNovos = new Set((data ?? []).map((p: { id: string }) => p.id));
+    const contratosAfetados = new Set(
+      (parcelasPagamento ?? [])
+        .filter((p: any) => idsNovos.has(p.id))
+        .map((p: any) => p.contrato_id as string)
+        .filter(Boolean),
+    );
+    for (const contratoId of contratosAfetados) {
+      await sincronizarEstadoContrato(supabase, contratoId, { origem: "webhook", autor: "mercadopago" });
+    }
+  } catch (err) {
+    console.error("Falha ao sincronizar estado do contrato após pagamento:", err);
   }
 
   return { status: "processado", paymentStatus, parcelasAtualizadas: data?.length ?? 0 };

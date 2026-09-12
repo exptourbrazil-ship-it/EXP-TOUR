@@ -7,6 +7,7 @@ import {
   estadoTerminal,
   estadoValido,
   rotuloEstado,
+  rankEstado,
   ESTADOS_CONTRATO,
   type FatosContrato,
   type EstadoContrato,
@@ -143,6 +144,15 @@ test("proposta expirada pode ser retrabalhada", () => {
 // ---------------------------------------------------------------------------
 // Utilitários
 // ---------------------------------------------------------------------------
+
+test("rankEstado ordena a linha principal e zera terminais fora da linha", () => {
+  assert.equal(rankEstado("proposta_enviada"), 0);
+  assert.ok((rankEstado("matricula") as number) < (rankEstado("documentacao") as number));
+  assert.ok((rankEstado("em_programa") as number) > (rankEstado("visto") as number));
+  assert.equal(rankEstado("concluido"), 9);
+  assert.equal(rankEstado("cancelado"), null);
+  assert.equal(rankEstado("proposta_expirada"), null);
+});
 
 test("estadoValido reconhece só estados conhecidos", () => {
   assert.equal(estadoValido("visto"), true);

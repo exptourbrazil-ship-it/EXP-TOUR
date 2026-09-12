@@ -4,6 +4,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { TIPOS_CANCELAMENTO, type TipoCancelamento } from "@/lib/cancelamento";
+import { registrarTransicao, sincronizarEstadoContrato } from "@/lib/contrato-estado-service";
 
 export const runtime = "nodejs";
 
@@ -108,6 +109,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     ip: obterIp(request),
   });
 
+  // Máquina de estados (P1): registra a transição para 'cancelado'. override
+  // porque o cancelamento pode ocorrer de qualquer estado. Best-effort: não
+  // derruba o cancelamento (que já está gravado).
+  try {
+    await registrarTransicao(supabase, {
+      contratoId: id,
+      para: "cancelado",
+      origem: "admin",
+      autor: usuario,
+      motivo: `${tipo}: ${motivo}`,
+      override: true,
+    });
+  } catch (err) {
+    console.error("[cancelar-contrato] falha ao registrar transição de estado:", err);
+  }
+
   return NextResponse.json({ ok: true, canceladoEm: efetivaISO });
 }
 
@@ -139,6 +156,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     detalhe: {},
     ip: obterIp(request),
   });
+
+  // Máquina de estados (P1): com cancelado_em limpo, re-deriva o estado a partir
+  // dos fatos e registra a transição de saída de 'cancelado'. Best-effort.
+  try {
+    await sincronizarEstadoContrato(supabase, id, { origem: "sistema", autor: usuario });
+  } catch (err) {
+    console.error("[cancelar-contrato] falha ao ressincronizar estado:", err);
+  }
 
   return NextResponse.json({ ok: true });
 }

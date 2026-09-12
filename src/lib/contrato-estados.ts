@@ -103,6 +103,29 @@ export function podeTransicionar(de: EstadoContrato, para: EstadoContrato): bool
   return (TRANSICOES[de] ?? []).includes(para);
 }
 
+// Rank de progresso na LINHA PRINCIPAL (0–9, concluido = 9). Terminais fora da
+// linha (proposta_expirada, cancelado) => null. Usado para comparar avanço: a
+// sincronização automática só pode AVANÇAR, nunca regredir um estado que foi
+// levado adiante à mão (o motor não conhece "matrícula concluída"/"docs ok" hoje).
+const RANK_LINHA: Record<EstadoContrato, number | null> = {
+  proposta_enviada: 0,
+  entrada_paga: 1,
+  aguardando_contrato: 2,
+  matricula: 3,
+  documentacao: 4,
+  visto: 5,
+  pre_embarque: 6,
+  em_programa: 7,
+  retorno: 8,
+  concluido: 9,
+  proposta_expirada: null,
+  cancelado: null,
+};
+
+export function rankEstado(e: EstadoContrato): number | null {
+  return RANK_LINHA[e];
+}
+
 // Rank da linha principal (0–8) para a derivação: pega o estado mais avançado que
 // os fatos JUSTIFICAM. Terminais ficam fora do rank (tratados à parte).
 const RANK: Partial<Record<EstadoContrato, number>> = {
