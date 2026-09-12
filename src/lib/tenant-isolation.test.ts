@@ -75,7 +75,13 @@ test("schema: tabelas tenant-scoped sao detectadas corretamente", () => {
     assert.ok(TENANT_TABLES.has(t), `${t} deveria ser tenant-scoped`);
   }
   // Globais / junction / filhas (sem coluna tenant_id) NAO devem ser exigidas.
-  for (const t of ["fx_rate", "admin_users", "tenant", "price_template_product", "price_tier", "package_item"]) {
+  // NB: admin_users e contratos TEM tenant_id (adicionado por ALTER, fora do bloco
+  // CREATE — ver schema.sql e supabase/migracao-anexo-iii-tenant.sql), entao ficam
+  // FORA desta varredura de proposito: sao acessados por chave unica (e-mail / id /
+  // via titular) e o escopo por tenant e feito explicitamente em codigo
+  // (src/lib/admin-tenant.ts). Atencao: uma LISTAGEM nova de contratos NAO sera
+  // pega por este guardrail — filtre por tenant explicitamente nela.
+  for (const t of ["fx_rate", "admin_users", "tenant", "contratos", "price_template_product", "price_tier", "package_item"]) {
     assert.ok(!TENANT_TABLES.has(t), `${t} NAO deveria ser tenant-scoped (query sem tenant_id e legitima)`);
   }
 });

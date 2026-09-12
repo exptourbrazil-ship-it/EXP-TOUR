@@ -5,6 +5,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { montarAnexoIIISnapshot, serializarAnexoIIISnapshot } from "@/lib/anexo-iii-snapshot";
+import { escopoTenantAdmin, escopoPermiteContrato, tenantDoContrato } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,17 @@ export async function POST(request: Request) {
   if (errC || !contrato) {
     return NextResponse.json({ ok: false, erro: "Contrato não encontrado." }, { status: 404 });
   }
+
+  // Isolamento por tenant: emitir o Anexo III de contrato de outro tenant -> 404
+  // (mesma resposta de inexistente; nao vaza existencia). Global passa direto.
+  const escopo = await escopoTenantAdmin(supabase);
+  if (!escopo.global) {
+    const { tenantId } = await tenantDoContrato(supabase, contratoId);
+    if (!escopoPermiteContrato(escopo, tenantId)) {
+      return NextResponse.json({ ok: false, erro: "Contrato não encontrado." }, { status: 404 });
+    }
+  }
+
   if (contrato.anexo_iii_snapshot != null) {
     return NextResponse.json({ ok: false, erro: "Anexo III já emitido — é imutável." }, { status: 409 });
   }

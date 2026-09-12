@@ -3,6 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import {
+  escopoTenantAdmin,
+  escopoPermiteContrato,
+  tenantDoContrato,
+  contratoIdsDoEscopo,
+} from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +35,29 @@ export async function GET(request: Request) {
   }
   const contratoId = new URL(request.url).searchParams.get("contratoId");
   const supabase = getSupabase();
+  const escopo = await escopoTenantAdmin(supabase);
+
+  // Isolamento por tenant: contrato de outro tenant (ou inexistente) -> 404,
+  // sem vazar a existencia do recurso. Admin global passa direto.
+  if (contratoId && !escopo.global) {
+    const { existe, tenantId } = await tenantDoContrato(supabase, contratoId);
+    if (!existe || !escopoPermiteContrato(escopo, tenantId)) {
+      return NextResponse.json({ ok: false, erro: "Contrato nao encontrado." }, { status: 404 });
+    }
+  }
+
   let q = supabase.from("anexo_iii_itens").select(CAMPOS).order("ordem", { ascending: true }).order("created_at", { ascending: true });
-  if (contratoId) q = q.eq("contrato_id", contratoId);
+  if (contratoId) {
+    q = q.eq("contrato_id", contratoId);
+  } else {
+    // Listagem sem contrato: o admin escopado ve apenas os itens dos SEUS
+    // contratos; o global (ids === null) ve todos.
+    const ids = await contratoIdsDoEscopo(supabase, escopo);
+    if (ids !== null) {
+      if (ids.length === 0) return NextResponse.json({ ok: true, itens: [], emissao: null });
+      q = q.in("contrato_id", ids);
+    }
+  }
   const { data, error } = await q;
   if (error) {
     return NextResponse.json({ ok: false, erro: "Falha ao listar itens." }, { status: 500 });
@@ -68,6 +95,16 @@ export async function POST(request: Request) {
   const valorNum = b?.valor !== undefined && b?.valor !== "" ? Number(b.valor) : null;
 
   const supabase = getSupabase();
+
+  // Isolamento por tenant ANTES de qualquer efeito: contrato de outro tenant (ou
+  // inexistente) -> 404 (nao vaza existencia). Admin global passa direto.
+  const escopo = await escopoTenantAdmin(supabase);
+  if (!escopo.global) {
+    const { existe, tenantId } = await tenantDoContrato(supabase, contratoId);
+    if (!existe || !escopoPermiteContrato(escopo, tenantId)) {
+      return NextResponse.json({ ok: false, erro: "Contrato nao encontrado." }, { status: 404 });
+    }
+  }
 
   // Imutabilidade (Cláusula 18.2): depois de EMITIDO, o Anexo III não pode mudar.
   const { data: c } = await supabase.from("contratos").select("anexo_iii_snapshot").eq("id", contratoId).maybeSingle();
@@ -116,14 +153,28 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, erro: "Informe id." }, { status: 400 });
   }
   const supabase = getSupabase();
+  const escopo = await escopoTenantAdmin(supabase);
 
-  // Imutabilidade (Cláusula 18.2): descobre o contrato do item e, se já EMITIDO,
-  // recusa a remoção — o Anexo III emitido não pode mudar.
+  // Descobre o contrato do item (usado pela imutabilidade e pelo escopo por tenant).
   const { data: item } = await supabase
     .from("anexo_iii_itens")
     .select("contrato_id")
     .eq("id", id)
     .maybeSingle();
+
+  // Isolamento por tenant ANTES de qualquer efeito: item inexistente ou de
+  // contrato de outro tenant -> 404 (nao vaza existencia). Global passa direto.
+  if (!escopo.global) {
+    const tenantId = item?.contrato_id
+      ? (await tenantDoContrato(supabase, item.contrato_id)).tenantId
+      : null;
+    if (!item?.contrato_id || !escopoPermiteContrato(escopo, tenantId)) {
+      return NextResponse.json({ ok: false, erro: "Item nao encontrado." }, { status: 404 });
+    }
+  }
+
+  // Imutabilidade (Cláusula 18.2): se o contrato já foi EMITIDO, recusa a remoção
+  // — o Anexo III emitido não pode mudar.
   if (item?.contrato_id) {
     const { data: c } = await supabase
       .from("contratos")

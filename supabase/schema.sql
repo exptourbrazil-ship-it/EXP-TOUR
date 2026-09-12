@@ -2753,3 +2753,18 @@ begin
   return v_total;
 end;
 $subparc$;
+
+-- Isolamento por tenant nas rotas admin (ver supabase/migracao-anexo-iii-tenant.sql).
+-- Estas colunas ficam AQUI (fora dos blocos CREATE) de proposito: o guardrail em
+-- src/lib/tenant-isolation.test.ts deriva as tabelas "tenant-scoped" dos blocos
+-- CREATE que contem `tenant_id` e passa a EXIGIR filtro por tenant em toda query
+-- delas. admin_users (consulta por e-mail unico) e contratos (consulta por id /
+-- via titular) NAO devem entrar nessa varredura, entao o `tenant_id` e adicionado
+-- por ALTER e nao dentro do CREATE.
+-- admin_users.tenant_id: NULL = admin GLOBAL (ve todos os tenants).
+alter table if exists admin_users add column if not exists tenant_id uuid references tenant(id);
+create index if not exists idx_admin_users_tenant on admin_users(tenant_id);
+-- contratos.tenant_id: coluna direta (antes derivada de titulares.tenant_id).
+-- NULL = tenant legado (EXP Tour). Backfill fica na migracao (nao no schema).
+alter table if exists contratos add column if not exists tenant_id uuid references tenant(id);
+create index if not exists idx_contratos_tenant on contratos(tenant_id);
