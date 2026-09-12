@@ -327,7 +327,10 @@ export async function POST(request: Request) {
     parcelas.push({
       contrato_id: contrato.id,
       numero: i + 2,
-      descricao: `Parcela ${i + 1}/${vencimentos.length}`,
+      // Vocabulário travado (Cláusula 7.13.x): "Pagamento N de M", nunca "Parcela".
+      // Para contratos antigos gravados como "Parcela N/M", a UI normaliza na exibição
+      // (descricaoPagamento em @/lib/vocabulario-financeiro).
+      descricao: `Pagamento ${i + 1} de ${vencimentos.length}`,
       valor_original: valoresParcelas[i],
       valor_atual: valoresParcelas[i],
       vencimento,

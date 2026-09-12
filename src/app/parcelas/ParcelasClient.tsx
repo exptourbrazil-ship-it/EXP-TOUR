@@ -6,6 +6,7 @@ import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
 import SuporteRodape from "@/components/SuporteRodape"
 import { somaParcelasConfere, somaValoresParcelas } from "@/lib/parcelas"
+import { descricaoPagamento } from "@/lib/vocabulario-financeiro"
 
 type Parcela = {
   id: string
@@ -240,7 +241,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
           {linhas.map((l, index) => (
             <div key={l.id || "nova-" + index} className="rounded-2xl border border-neutral-200 p-3">
               {l.bloqueada ? (
-                <p className="mb-2 text-xs font-medium text-neutral-500">Parcela já paga ou com Pix gerado — não pode ser alterada</p>
+                <p className="mb-2 text-xs font-medium text-neutral-500">Pagamento já feito ou com Pix gerado — não pode ser alterado</p>
               ) : null}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label className="flex-1 text-xs text-neutral-500">
@@ -264,7 +265,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
                   />
                 </label>
                 <label className="text-xs text-neutral-500 sm:w-40">
-                  Vencimento
+                  Data sugerida
                   <input
                     type="date"
                     value={l.vencimento}
@@ -280,7 +281,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
             </div>
           ))}
         </div>
-        <button onClick={adicionar} className="mt-3 rounded-xl border border-neutral-300 px-4 py-2 text-sm text-brand">+ Adicionar parcela</button>
+        <button onClick={adicionar} className="mt-3 rounded-xl border border-neutral-300 px-4 py-2 text-sm text-brand">+ Adicionar pagamento</button>
         </>
         ) : (
         <div className="mt-4 space-y-3">
@@ -289,7 +290,7 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
             <ul className="mt-2 space-y-1 text-sm text-neutral-800">
               {linhas.map((l, i) => (
                 <li key={l.id || "nova-" + i} className="flex justify-between">
-                  <span>{l.descricao || "Parcela " + (i + 1)} · {l.vencimento || "—"}</span>
+                  <span>{descricaoPagamento(l.descricao) || "Pagamento " + (i + 1)} · {l.vencimento || "—"}</span>
                   <span className="font-medium">{formatarMoeda(Number(l.valor) || 0, moeda)}</span>
                 </li>
               ))}
@@ -428,8 +429,6 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
   const proximaParcela = parcelas.find((p) => p.status !== "pago") || null
   const nome = programaNome || null
   const temMoedaEstrangeira = parcelas.some((p) => (p.moeda || "BRL") !== "BRL")
-  const hojeMeiaNoite = new Date()
-  hojeMeiaNoite.setHours(0, 0, 0, 0)
 
   return (
     <div className="min-h-screen bg-[color:var(--p-page)] pb-28 lg:pb-10 lg:pl-60">
@@ -438,7 +437,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
       <main className="mx-auto w-full max-w-md px-5 py-2 md:max-w-2xl md:px-8">
         <h1 className="font-serif text-4xl text-brand md:text-5xl">Financeiro</h1>
         <p className="mt-2 text-sm text-[color:var(--p-muted)]">
-          {nome ? nome + " · " : ""}Acompanhe suas parcelas, gere o Pix e veja o que já foi pago.
+          {nome ? nome + " · " : ""}Acompanhe seus pagamentos, gere o Pix e veja o que já foi pago.
         </p>
         {totalPrograma && totalPrograma > 0 ? (
           <p className="text-sm text-[color:var(--p-muted)]">Contrato de {formatarMoeda(totalPrograma, moedaPrograma)}</p>
@@ -498,7 +497,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
             ) : null}
             {quitarAte ? (
               <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3 text-sm">
-                <span className="text-neutral-500">Quitar até</span>
+                <span className="text-neutral-500">Data obrigatória (quitação)</span>
                 <span className="font-medium text-brand">{formatarDataBR(quitarAte)}</span>
               </div>
             ) : null}
@@ -518,15 +517,19 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
         {erro ? <p className="mt-4 text-sm text-amber-700">{erro}</p> : null}
 
         <div className="mt-6 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-serif text-2xl text-brand">Parcelas</h2>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-serif text-2xl text-brand">Pagamentos</h2>
             {contratoId ? (
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setEditando(true)} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Repactuar parcelas</button>
+                <button onClick={() => setEditando(true)} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Repactuar pagamentos</button>
                 <button onClick={restaurarPlano} disabled={restaurando} className="rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-50">{restaurando ? "Restaurando..." : "Restaurar plano original"}</button>
               </div>
             ) : null}
           </div>
+          <p className="mb-4 text-xs text-neutral-400">
+            As datas abaixo são uma <strong>sugestão</strong> para você se organizar. Só a data de
+            quitação é obrigatória — pague quando e quanto quiser até ela.
+          </p>
 
           <div className="space-y-3">
             {parcelas.map((parcela) => {
@@ -535,29 +538,18 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
               const cobrancaJaGerada = !!parcela.qr_code_url
               const paga = parcela.status === "pago"
               const ehProxima = !paga && proximaParcela?.id === parcela.id
-              const venc = new Date(parcela.vencimento + "T00:00:00")
-              const atrasada = !paga && !cobrancaJaGerada && !isNaN(venc.getTime()) && venc < hojeMeiaNoite
 
-              const containerClasse = atrasada
-                ? "rounded-2xl border border-amber-300 bg-amber-50 p-4 card-interativo"
-                : ehProxima
+              // As linhas são SUGESTÕES (Cláusula 7.13.x): não rotular como
+              // "vencida/atrasada" — só a data de quitação é obrigatória.
+              const containerClasse = ehProxima
                 ? "rounded-2xl border border-brand-gold/50 bg-brand-cream/50 p-4 card-interativo"
                 : "rounded-2xl border border-neutral-100 bg-white p-4 card-interativo"
 
               return (
                 <div key={parcela.id} className={containerClasse}>
-                  {atrasada ? (
-                    <p className="mb-2 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-amber-700">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5" aria-hidden="true">
-                        <path d="M12 9v4" strokeLinecap="round" />
-                        <path d="M12 17h.01" strokeLinecap="round" />
-                        <path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z" strokeLinejoin="round" />
-                      </svg>
-                      Atrasada &middot; venceu {formatarDataBR(parcela.vencimento)}
-                    </p>
-                  ) : ehProxima ? (
+                  {ehProxima ? (
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
-                      Próxima &middot; {formatarDataBR(parcela.vencimento)}
+                      Próxima sugestão &middot; {formatarDataBR(parcela.vencimento)}
                     </p>
                   ) : null}
                   <div className="flex items-start justify-between gap-3">
@@ -566,9 +558,9 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                         {paga ? "✓" : ""}
                       </span>
                       <div>
-                        <div className="font-medium text-brand">{parcela.descricao}</div>
-                        <div className={"text-xs " + (atrasada ? "text-amber-700" : "text-neutral-500")}>
-                          {paga ? "Paga em " + formatarDataBR(parcela.paid_at || parcela.vencimento) : "Vencimento " + formatarDataBR(parcela.vencimento)}
+                        <div className="font-medium text-brand">{descricaoPagamento(parcela.descricao)}</div>
+                        <div className="text-xs text-neutral-500">
+                          {paga ? "Paga em " + formatarDataBR(parcela.paid_at || parcela.vencimento) : "Data sugerida " + formatarDataBR(parcela.vencimento)}
                         </div>
                       </div>
                     </div>
