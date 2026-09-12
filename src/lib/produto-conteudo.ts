@@ -256,8 +256,8 @@ export type FichaProduto = {
 function normalizarKindMidia(raw: unknown): FichaMidia["kind"] {
   const k = typeof raw === "string" ? raw.toLowerCase() : "";
   if (k === "video") return "video";
-  if (k === "document" || k === "documento" || k === "doc" || k === "pdf") return "document";
-  return "image";
+  if (k === "document" || k === "documento" || k === "doc" || k === "pdf" || k === "brochure") return "document";
+  return "image"; // inclui 'photo'
 }
 
 // Deriva a lista de mídias exibível do snapshot. DEFESA EM PROFUNDIDADE no ponto
@@ -311,5 +311,165 @@ export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR
     exclusions,
     midias,
     isMachineTranslated: escolhido ? optBool(escolhido.is_machine_translated, false) : false,
+  };
+}
+
+// ── Detalhes estruturados do snapshot (Fase A2) ──────────────────────────────
+// Deriva do product_snapshot enriquecido (programDetail / accommodationDetail /
+// campus{content,media}) os blocos exibidos no detalhe da opção no portal:
+// Quick Info + timetable do curso, atributos da acomodação e "Sobre a escola".
+// Tudo defensivo: campos ausentes (snapshots antigos, catálogo sem conteúdo)
+// simplesmente não geram linha. Nada aqui é HTML injetável — a descrição da
+// escola é sanitizada; o resto é texto (o React escapa no render).
+
+export type QuickInfoLinha = { rotulo: string; valor: string };
+export type BlocoTimetable = { dia: string; blocos: string[] };
+export type DetalhesPrograma = { quickInfo: QuickInfoLinha[]; timetable: BlocoTimetable[] };
+export type DetalhesAcomodacao = { linhas: QuickInfoLinha[] };
+export type DetalhesEscola = {
+  campusId: string | null;
+  nome: string | null;
+  local: string | null;
+  descriptionHtml: string;
+  highlights: string[];
+  midias: FichaMidia[];
+};
+export type DetalhesSnapshot = {
+  programa: DetalhesPrograma | null;
+  acomodacao: DetalhesAcomodacao | null;
+  escola: DetalhesEscola | null;
+};
+
+const DELIVERY_LABEL: Record<string, string> = { in_person: "Presencial", online: "Online", hybrid: "Híbrido" };
+const ACCOM_TYPE_LABEL: Record<string, string> = {
+  homestay: "Casa de família",
+  residence: "Residência estudantil",
+  shared_apartment: "Apartamento compartilhado",
+  studio: "Estúdio",
+  hotel: "Hotel",
+  other: "Outro",
+};
+const ROOM_LABEL: Record<string, string> = { private: "Individual", shared_2: "Duplo", shared_3plus: "Compartilhado (3+)" };
+const BATH_LABEL: Record<string, string> = { private: "Privativo", shared: "Compartilhado" };
+const MEAL_LABEL: Record<string, string> = {
+  none: "Sem refeições",
+  breakfast: "Café da manhã",
+  half_board: "Meia pensão",
+  full_board: "Pensão completa",
+  self_catering: "Cozinha própria",
+};
+const WEEKDAY_LABEL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+function labelDiaSemana(raw: unknown): string | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 6 ? WEEKDAY_LABEL[n] : null;
+}
+
+function pushLinha(linhas: QuickInfoLinha[], rotulo: string, valor: unknown) {
+  const v = typeof valor === "number" ? String(valor) : optStrOuNull(valor);
+  if (v) linhas.push({ rotulo, valor: v });
+}
+
+// Parser tolerante do timetable jsonb (shape não fixado ainda): aceita um objeto
+// { "Segunda": ["08:30-10:10", ...], ... } ou um array [{ dia, blocos:[...] }].
+function parseTimetable(raw: unknown): BlocoTimetable[] {
+  const out: BlocoTimetable[] = [];
+  const asBlocos = (v: unknown): string[] =>
+    Array.isArray(v) ? v.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean).slice(0, 20) : [];
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!isObj(item)) continue;
+      const dia = optStrOuNull(item.dia ?? item.day);
+      const blocos = asBlocos(item.blocos ?? item.slots ?? item.horarios);
+      if (dia && blocos.length) out.push({ dia, blocos });
+    }
+  } else if (isObj(raw)) {
+    for (const [dia, v] of Object.entries(raw)) {
+      const blocos = asBlocos(v);
+      if (dia && blocos.length) out.push({ dia, blocos });
+    }
+  }
+  return out.slice(0, 7);
+}
+
+function detalhesPrograma(pd: unknown): DetalhesPrograma | null {
+  if (!isObj(pd)) return null;
+  const linhas: QuickInfoLinha[] = [];
+  pushLinha(linhas, "Tipo", pd.education_type);
+  pushLinha(linhas, "Área", pd.subject);
+  pushLinha(linhas, "Idioma", pd.language);
+  if (typeof pd.delivery_method === "string" && DELIVERY_LABEL[pd.delivery_method]) {
+    linhas.push({ rotulo: "Modalidade", valor: DELIVERY_LABEL[pd.delivery_method] });
+  }
+  pushLinha(linhas, "Formato", pd.format);
+  if (pd.lessons_per_week != null && Number(pd.lessons_per_week) > 0) {
+    linhas.push({ rotulo: "Aulas por semana", valor: String(pd.lessons_per_week) });
+  }
+  if (pd.hours_per_week != null && Number(pd.hours_per_week) > 0) {
+    linhas.push({ rotulo: "Carga horária", valor: `${pd.hours_per_week} h/semana` });
+  }
+  const grades = listaStr(pd.grades);
+  if (grades.length) linhas.push({ rotulo: "Níveis", valor: grades.join(", ") });
+  if (optBool(pd.is_pathway, false)) linhas.push({ rotulo: "Pathway", valor: "Sim" });
+  if (optBool(pd.includes_activities, false)) linhas.push({ rotulo: "Atividades incluídas", valor: "Sim" });
+  const timetable = parseTimetable(pd.timetable);
+  if (linhas.length === 0 && timetable.length === 0) return null;
+  return { quickInfo: linhas, timetable };
+}
+
+function detalhesAcomodacao(ad: unknown): DetalhesAcomodacao | null {
+  if (!isObj(ad)) return null;
+  const linhas: QuickInfoLinha[] = [];
+  if (typeof ad.accommodation_type === "string" && ACCOM_TYPE_LABEL[ad.accommodation_type]) {
+    linhas.push({ rotulo: "Tipo", valor: ACCOM_TYPE_LABEL[ad.accommodation_type] });
+  }
+  if (typeof ad.room_type === "string" && ROOM_LABEL[ad.room_type]) {
+    linhas.push({ rotulo: "Quarto", valor: ROOM_LABEL[ad.room_type] });
+  }
+  if (typeof ad.bathroom_type === "string" && BATH_LABEL[ad.bathroom_type]) {
+    linhas.push({ rotulo: "Banheiro", valor: BATH_LABEL[ad.bathroom_type] });
+  }
+  if (typeof ad.meal_plan === "string" && MEAL_LABEL[ad.meal_plan]) {
+    linhas.push({ rotulo: "Refeições", valor: MEAL_LABEL[ad.meal_plan] });
+  }
+  if (ad.distance_to_campus_minutes != null && Number(ad.distance_to_campus_minutes) > 0) {
+    linhas.push({ rotulo: "Distância até a escola", valor: `${ad.distance_to_campus_minutes} min` });
+  }
+  const ci = labelDiaSemana(ad.check_in_weekday);
+  const co = labelDiaSemana(ad.check_out_weekday);
+  if (ci) linhas.push({ rotulo: "Check-in", valor: ci });
+  if (co) linhas.push({ rotulo: "Check-out", valor: co });
+  if (linhas.length === 0) return null;
+  return { linhas };
+}
+
+function detalhesEscola(campus: unknown, locale: ContentLocale): DetalhesEscola | null {
+  if (!isObj(campus)) return null;
+  const linhasContent = Array.isArray(campus.content) ? campus.content.filter(isObj) : [];
+  const escolhido =
+    linhasContent.find((c) => c.locale === locale) ??
+    linhasContent.find((c) => c.locale === "pt-BR") ??
+    linhasContent[0] ??
+    null;
+  const descriptionHtml = escolhido ? sanitizarHtml(escolhido.description_html) : "";
+  const highlights = escolhido ? capBullets(listaStr(escolhido.highlights)) : [];
+  const midias = midiasDoSnapshot(campus.media);
+  const nome = optStrOuNull(campus.name);
+  const cidade = optStrOuNull(campus.city);
+  const regiao = optStrOuNull(campus.region);
+  const local = [cidade, regiao].filter(Boolean).join(", ") || null;
+  if (!descriptionHtml && highlights.length === 0 && midias.length === 0 && !nome) return null;
+  return { campusId: optStrOuNull(campus.id), nome, local, descriptionHtml, highlights, midias };
+}
+
+// Deriva os detalhes exibíveis do snapshot completo do item. Retorna sempre um
+// objeto (com null nos blocos ausentes) para simplificar o consumo.
+export function detalhesDoSnapshot(snap: unknown, locale: ContentLocale = "pt-BR"): DetalhesSnapshot {
+  const s = isObj(snap) ? snap : {};
+  return {
+    programa: detalhesPrograma(s.programDetail),
+    acomodacao: detalhesAcomodacao(s.accommodationDetail),
+    escola: detalhesEscola(s.campus, locale),
   };
 }

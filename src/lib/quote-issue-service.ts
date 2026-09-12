@@ -12,7 +12,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
-import { fichaDoSnapshot, sanitizarHtml, type FichaProduto, type ContentLocale } from "@/lib/produto-conteudo";
+import { fichaDoSnapshot, detalhesDoSnapshot, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
 import {
@@ -101,6 +101,7 @@ type TotaisOpcao = {
     grossAmount: number;
     currency: string;
     ficha: FichaProduto | null; // conteúdo editorial (do snapshot), já sanitizado
+    detalhes: DetalhesSnapshot; // quick info / acomodação / escola (Fase A2)
   }>;
   taxasDetalhadas: TaxaLinha[]; // taxas linha a linha (nome + reembolsável) para o "Price"
   planoPagamento: PlanoPagamento; // parcelas congeladas da opção, quando houver
@@ -148,6 +149,7 @@ async function carregarTotaisPorOpcao(
         grossAmount: toNum(it.gross_amount),
         currency: (it.currency as string) ?? currency,
         ficha: fichaDoSnapshot(snap.content, locale, snap.media),
+        detalhes: detalhesDoSnapshot(snap, locale),
       });
     }
 
@@ -642,6 +644,7 @@ export type PublicQuote = {
       grossAmount: number;
       currency: string;
       ficha: FichaProduto | null;
+      detalhes: DetalhesSnapshot;
     }>;
     taxasDetalhadas: Array<{ nome: string; amount: number; currency: string; isRefundable: boolean | null }>;
     planoPagamento: {

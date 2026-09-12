@@ -521,6 +521,75 @@ function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
   );
 }
 
+type DetalhesItem = OpcaoData["itens"][number]["detalhes"];
+type EscolaItem = NonNullable<DetalhesItem["escola"]>;
+
+// Grade de Quick Info (rótulo/valor) — curso ou acomodação.
+function QuickInfoGrid({ linhas }: { linhas: { rotulo: string; valor: string }[] }) {
+  if (linhas.length === 0) return null;
+  return (
+    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+      {linhas.map((l, i) => (
+        <div key={i}>
+          <dt className="text-[10px] uppercase tracking-wide text-[color:var(--p-muted)]">{l.rotulo}</dt>
+          <dd className="text-[color:var(--p-ink)]">{l.valor}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// Detalhes por item: Quick Info do curso (+ timetable) ou atributos da acomodação.
+function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
+  const prog = d.programa;
+  const acom = d.acomodacao;
+  if (!prog && !acom) return null;
+  return (
+    <div className="mt-2">
+      {prog ? (
+        <>
+          <QuickInfoGrid linhas={prog.quickInfo} />
+          {prog.timetable.length > 0 ? (
+            <div className="mt-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Grade de horários</p>
+              <ul className="mt-1 space-y-0.5 text-sm text-[color:var(--p-ink)]">
+                {prog.timetable.map((t, i) => (
+                  <li key={i}>
+                    <span className="text-[color:var(--p-muted)]">{t.dia}: </span>
+                    {t.blocos.join(" · ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {acom ? <QuickInfoGrid linhas={acom.linhas} /> : null}
+    </div>
+  );
+}
+
+// "Sobre a escola" — descrição (sanitizada), destaques, fotos/vídeo do campus.
+function EscolaBloco({ escola }: { escola: EscolaItem }) {
+  return (
+    <div className="mt-5 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Sobre a escola</h3>
+      <p className="mt-1 text-[color:var(--p-ink)]">
+        {escola.nome ?? "Escola"}
+        {escola.local ? <span className="text-[color:var(--p-muted)]"> · {escola.local}</span> : null}
+      </p>
+      {escola.descriptionHtml ? (
+        <div
+          className="mt-2 space-y-2 text-sm leading-relaxed text-[color:var(--p-ink)] [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ul]:list-disc"
+          dangerouslySetInnerHTML={{ __html: escola.descriptionHtml }}
+        />
+      ) : null}
+      <BlocoBullets titulo="Destaques" itens={escola.highlights} />
+      <GaleriaMidia midias={escola.midias} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Aba OPTION N — detalhe completo: itens agrupados (Courses/Accommodations/
 // Services) + Preco (subtotal, taxas linha a linha, descontos, total, entrada)
@@ -610,12 +679,29 @@ function DetalheOpcao({
                   </span>
                   <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(it.grossAmount, it.currency)}</span>
                 </div>
+                <DetalhesItemBloco d={it.detalhes} />
                 {it.ficha ? <FichaDetalhes ficha={it.ficha} /> : null}
               </li>
             ))}
           </ul>
         </div>
       ))}
+
+      {/* Sobre a escola — uma vez por campus da opção (deduplicado). */}
+      {(() => {
+        const vistos = new Set<string>();
+        const escolas: EscolaItem[] = [];
+        op.itens.forEach((it, idx) => {
+          const e = it.detalhes.escola;
+          if (!e) return;
+          // Dedup por campus; escola anônima (sem id/nome) usa o índice para não colidir.
+          const chave = e.campusId ?? e.nome ?? `__idx_${idx}`;
+          if (vistos.has(chave)) return;
+          vistos.add(chave);
+          escolas.push(e);
+        });
+        return escolas.map((e, i) => <EscolaBloco key={i} escola={e} />);
+      })()}
 
       {/* Preco */}
       <div className="mt-6 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">

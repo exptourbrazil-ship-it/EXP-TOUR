@@ -470,7 +470,52 @@ export async function addQuoteItem(
     .eq("product_id", args.productId)
     .order("sort", { ascending: true });
 
-  const productSnapshot = { ...product, content: content ?? [], media: media ?? [] };
+  // Detalhes estruturados por vertical (Fase A2): congelados no snapshot para o
+  // portal exibir Quick Info / atributos de acomodação / "Sobre a escola". Cada
+  // um é opcional (produto sem detalhe cadastrado apenas não gera bloco).
+  const { data: programDetail } = await supabase
+    .from("program_detail")
+    .select("education_type, subject, language, delivery_method, format, institution_type, grades, lessons_per_week, hours_per_week, is_pathway, includes_activities, timetable")
+    .eq("product_id", args.productId)
+    .maybeSingle();
+  const { data: accommodationDetail } = await supabase
+    .from("accommodation_detail")
+    .select("accommodation_type, room_type, bathroom_type, meal_plan, distance_to_campus_minutes, check_in_weekday, check_out_weekday")
+    .eq("product_id", args.productId)
+    .maybeSingle();
+
+  // Escola (campus) do produto: base + conteúdo multilíngue + mídia, congelados.
+  let campusSnapshot: Record<string, unknown> | null = null;
+  if (product.campus_id) {
+    const { data: campus } = await supabase
+      .from("campus")
+      .select("id, name, city, region, country_code, website, logo_url, cover_image_url")
+      .eq("tenant_id", args.tenantId)
+      .eq("id", product.campus_id as string)
+      .maybeSingle();
+    if (campus) {
+      const { data: campusContent } = await supabase
+        .from("campus_content")
+        .select("locale, highlights, highlights_footer, description_html, is_machine_translated")
+        .eq("campus_id", product.campus_id as string);
+      const { data: campusMedia } = await supabase
+        .from("campus_media")
+        .select("url, kind, sort, caption")
+        .eq("tenant_id", args.tenantId)
+        .eq("campus_id", product.campus_id as string)
+        .order("sort", { ascending: true });
+      campusSnapshot = { ...campus, content: campusContent ?? [], media: campusMedia ?? [] };
+    }
+  }
+
+  const productSnapshot = {
+    ...product,
+    content: content ?? [],
+    media: media ?? [],
+    programDetail: programDetail ?? null,
+    accommodationDetail: accommodationDetail ?? null,
+    campus: campusSnapshot,
+  };
 
   // Ordem do item na opcao.
   const { count } = await supabase

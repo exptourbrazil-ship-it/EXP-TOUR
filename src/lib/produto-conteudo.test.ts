@@ -2,7 +2,7 @@
 // Roda com o runner nativo do Node: `npm test` (node --test), sem dependencias.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, type Falha } from "./produto-conteudo.ts";
+import { validarConteudoProduto, sanitizarHtml, fichaDoSnapshot, detalhesDoSnapshot, type Falha } from "./produto-conteudo.ts";
 
 function campos(r: ReturnType<typeof validarConteudoProduto>): string[] {
   return r.ok ? [] : r.falhas.map((f: Falha) => f.campo);
@@ -201,4 +201,85 @@ test("fichaDoSnapshot: só mídia (sem texto) ainda rende ficha; kind default = 
   assert.equal(soMidia!.midias[0].kind, "image"); // kind desconhecido -> image
   // sem texto e sem mídia utilizável -> null
   assert.equal(fichaDoSnapshot([], "pt-BR", [{ url: "javascript:x", kind: "image", sort: 0 }]), null);
+});
+
+// ── detalhesDoSnapshot (Fase A2) ─────────────────────────────────────────────
+test("detalhesDoSnapshot: snapshot vazio devolve blocos nulos", () => {
+  const d = detalhesDoSnapshot({});
+  assert.equal(d.programa, null);
+  assert.equal(d.acomodacao, null);
+  assert.equal(d.escola, null);
+});
+
+test("detalhesDoSnapshot: programa gera Quick Info e timetable, com labels pt-BR", () => {
+  const d = detalhesDoSnapshot({
+    programDetail: {
+      education_type: "General English",
+      delivery_method: "in_person",
+      lessons_per_week: 25,
+      hours_per_week: 20.8,
+      grades: ["1", "2", "3"],
+      is_pathway: false,
+      includes_activities: true,
+      timetable: { Segunda: ["08:30-10:10", "10:20-12:00"] },
+    },
+  });
+  assert.ok(d.programa);
+  const rot = d.programa!.quickInfo.map((l) => `${l.rotulo}=${l.valor}`);
+  assert.ok(rot.includes("Modalidade=Presencial"));
+  assert.ok(rot.includes("Aulas por semana=25"));
+  assert.ok(rot.includes("Carga horária=20.8 h/semana"));
+  assert.ok(rot.includes("Níveis=1, 2, 3"));
+  assert.ok(rot.includes("Atividades incluídas=Sim"));
+  assert.ok(!rot.some((r) => r.startsWith("Pathway"))); // false não vira linha
+  assert.equal(d.programa!.timetable.length, 1);
+  assert.equal(d.programa!.timetable[0].dia, "Segunda");
+  assert.equal(d.programa!.timetable[0].blocos.length, 2);
+});
+
+test("detalhesDoSnapshot: acomodação mapeia enums para pt-BR e dias da semana", () => {
+  const d = detalhesDoSnapshot({
+    accommodationDetail: {
+      accommodation_type: "homestay",
+      room_type: "private",
+      bathroom_type: "shared",
+      meal_plan: "full_board",
+      distance_to_campus_minutes: 30,
+      check_in_weekday: 6,
+      check_out_weekday: 0,
+    },
+  });
+  assert.ok(d.acomodacao);
+  const rot = d.acomodacao!.linhas.map((l) => `${l.rotulo}=${l.valor}`);
+  assert.ok(rot.includes("Tipo=Casa de família"));
+  assert.ok(rot.includes("Quarto=Individual"));
+  assert.ok(rot.includes("Banheiro=Compartilhado"));
+  assert.ok(rot.includes("Refeições=Pensão completa"));
+  assert.ok(rot.includes("Distância até a escola=30 min"));
+  assert.ok(rot.includes("Check-in=Sábado"));
+  assert.ok(rot.includes("Check-out=Domingo"));
+});
+
+test("detalhesDoSnapshot: escola sanitiza descrição e filtra mídia http", () => {
+  const d = detalhesDoSnapshot({
+    campus: {
+      id: "c1",
+      name: "VanWest College",
+      city: "Vancouver",
+      region: "BC",
+      content: [{ locale: "pt-BR", description_html: "<p>Ótima escola</p><script>alert(1)</script>", highlights: ["Turmas pequenas"] }],
+      media: [
+        { url: "https://ex.com/foto.jpg", kind: "photo", sort: 1, caption: "Fachada" },
+        { url: "javascript:alert(1)", kind: "photo", sort: 2 },
+      ],
+    },
+  });
+  assert.ok(d.escola);
+  assert.equal(d.escola!.nome, "VanWest College");
+  assert.equal(d.escola!.local, "Vancouver, BC");
+  assert.ok(d.escola!.descriptionHtml.includes("Ótima escola"));
+  assert.ok(!d.escola!.descriptionHtml.toLowerCase().includes("<script"));
+  assert.deepEqual(d.escola!.highlights, ["Turmas pequenas"]);
+  assert.equal(d.escola!.midias.length, 1); // javascript: descartada
+  assert.equal(d.escola!.midias[0].kind, "image"); // 'photo' -> image
 });
