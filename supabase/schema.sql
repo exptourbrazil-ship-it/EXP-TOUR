@@ -1693,6 +1693,23 @@ create table if not exists campus_calendar_entry (
 );
 create index if not exists idx_campus_calendar on campus_calendar_entry(campus_id, kind, date);
 
+-- Calendário de feriados por PAÍS (base do motor de dias úteis, src/lib/dias-uteis.ts).
+-- Feriado nacional: tenant_id NULL = vale para todos; um tenant pode adicionar/
+-- sobrepor os seus. pais = slug do destino (contratos.pais_destino). Aplicado via
+-- migration feriado_calendario_dias_uteis.
+create table if not exists feriado (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references tenant(id),
+  pais text not null,
+  data date not null,
+  nome text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists uq_feriado_nacional on feriado(pais, data) where tenant_id is null;
+create unique index if not exists uq_feriado_tenant on feriado(tenant_id, pais, data) where tenant_id is not null;
+create index if not exists idx_feriado_pais_data on feriado(pais, data);
+alter table if exists feriado enable row level security;
+
 create table if not exists market (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
