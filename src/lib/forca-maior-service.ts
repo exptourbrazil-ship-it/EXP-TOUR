@@ -28,7 +28,14 @@ function getSupabase(): SupabaseClient {
 // drena o restante (idempotente: E8 ja aberta e pulada, e-mail nao re-spamma).
 export const LIMITE_FORCA_MAIOR = 100;
 
-type FiltroCoorte = { destino: string; inicioDe?: string | null; inicioAte?: string | null };
+// `contratoIds` escopa o coorte por tenant (null/undefined = global; array =
+// apenas esses contratos; [] = nenhum). Ver src/lib/admin-tenant.ts.
+type FiltroCoorte = {
+  destino: string;
+  inicioDe?: string | null;
+  inicioAte?: string | null;
+  contratoIds?: string[] | null;
+};
 type ContratoCoorte = {
   id: string;
   titular_id: string;
@@ -53,6 +60,8 @@ function aplicarFiltro(
     .is("cancelado_em", null);
   if (filtro.inicioDe) q = q.gte("data_inicio", filtro.inicioDe);
   if (filtro.inicioAte) q = q.lte("data_inicio", filtro.inicioAte);
+  // Escopo por tenant: coorte restrito aos contratos do admin (quando escopado).
+  if (filtro.contratoIds != null) q = q.in("id", filtro.contratoIds);
   return q;
 }
 
@@ -99,12 +108,18 @@ export async function aplicarForcaMaior(args: {
   destino: string;
   inicioDe?: string | null;
   inicioAte?: string | null;
+  contratoIds?: string[] | null;
   motivo: string;
   autor: string;
   ip?: string | null;
 }): Promise<ResultadoForcaMaior> {
   const supabase = getSupabase();
-  const filtro = { destino: args.destino, inicioDe: args.inicioDe, inicioAte: args.inicioAte };
+  const filtro = {
+    destino: args.destino,
+    inicioDe: args.inicioDe,
+    inicioAte: args.inicioAte,
+    contratoIds: args.contratoIds,
+  };
 
   const { data, error } = await aplicarFiltro(
     supabase,
