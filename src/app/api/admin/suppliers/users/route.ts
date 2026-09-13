@@ -5,6 +5,7 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { validarConvite } from "@/lib/supplier-user-admin";
 import { enviarConviteFornecedorEmail } from "@/lib/email";
+import { barrarSupplierForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,10 @@ export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Isolamento por tenant: nao criar usuario para fornecedor de outro tenant.
+  const barrado = await barrarSupplierForaDoEscopo(supabase, supplierId);
+  if (barrado) return barrado;
 
   // A escola precisa existir; usamos o tenant_id dela (nao confiamos num tenant
   // vindo do cliente) e o nome para a auditoria.

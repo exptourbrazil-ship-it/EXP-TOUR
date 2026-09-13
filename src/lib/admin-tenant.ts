@@ -148,6 +148,18 @@ export async function contratoIdsDoEscopo(
 }
 
 /**
+ * Conveniencia: resolve o escopo do admin atual e devolve os ids de contrato
+ * visiveis (null = global; array = escopado, possivelmente vazio). Para paineis
+ * agregados (financeiro) que filtram por contrato.
+ */
+export async function contratoIdsDoEscopoAtual(
+  supabase: SupabaseClient,
+): Promise<string[] | null> {
+  const escopo = await escopoTenantAdmin(supabase);
+  return contratoIdsDoEscopo(supabase, escopo);
+}
+
+/**
  * Ids dos titulares visiveis a um escopo, para as LISTAGENS. Global => null (nao
  * filtra). Escopado => titulares do tenant. Pode ser [] (tenant sem titulares).
  */
@@ -329,5 +341,23 @@ export async function barrarPropostaForaDoEscopo(
   propostaId: string,
 ): Promise<NextResponse | null> {
   const { existe, tenantId } = await tenantDireto(supabase, "propostas", propostaId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se o FORNECEDOR (supplier.tenant_id direto) nao esta no escopo. */
+export async function barrarSupplierForaDoEscopo(
+  supabase: SupabaseClient,
+  supplierId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "supplier", supplierId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se o USUARIO DE FORNECEDOR (supplier_user.tenant_id direto) nao esta no escopo. */
+export async function barrarSupplierUserForaDoEscopo(
+  supabase: SupabaseClient,
+  supplierUserId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "supplier_user", supplierUserId);
   return barrar(supabase, existe, tenantId);
 }

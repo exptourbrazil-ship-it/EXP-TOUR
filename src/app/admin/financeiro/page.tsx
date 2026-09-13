@@ -1,5 +1,7 @@
+import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
+import { contratoIdsDoEscopoAtual } from "@/lib/admin-tenant";
 import FinanceiroClient from "./FinanceiroClient";
 
 export const runtime = "nodejs";
@@ -13,7 +15,11 @@ export default async function AdminFinanceiroPage() {
 
   let dados;
   try {
-    dados = await carregarFinanceiro();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+    );
+    dados = await carregarFinanceiro(await contratoIdsDoEscopoAtual(supabase));
   } catch {
     return (
       <div className="mx-auto max-w-2xl">
