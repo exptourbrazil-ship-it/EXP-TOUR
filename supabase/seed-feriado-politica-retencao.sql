@@ -8,6 +8,18 @@
 -- COMO USAR: revise e rode no SQL Editor do Supabase. É idempotente
 -- (ON CONFLICT / WHERE NOT EXISTS) — pode rodar mais de uma vez.
 --
+-- ⚠️ MANUTENÇÃO ANUAL (feriados NÃO são recorrentes!)
+--  A tabela `feriado` guarda DATAS específicas (uma linha por feriado por ano),
+--  porque muitos são móveis (Páscoa, n-ésima segunda, "observed"/mondayised).
+--  Portanto o calendário precisa ser RECARREGADO a cada ano.
+--  REGRA: manter sempre pelo menos o ANO CORRENTE + 2 (Y+2) já carregados.
+--  Aplicado até aqui: 2026, 2027 e 2028 (canada, australia, eua, nova_zelandia,
+--  reino_unido, irlanda). Antes de 2028 acabar, gere e rode 2029+.
+--  COMO GERAR os próximos anos (datas móveis já calculadas): use os scripts Node
+--  do PR que criou este arquivo (Meeus para a Páscoa + n-ésima segunda + regras
+--  de observância) — ver o histórico do commit. Ou calcule manualmente e adicione
+--  linhas no MESMO formato abaixo, com o `on conflict` para não duplicar.
+--
 -- ATENÇÃO:
 --  * Os FERIADOS abaixo são NACIONAIS factuais de 2026 (tenant NULL = valem para
 --    todos os tenants). `pais` segue a convenção de contratos.pais_destino
@@ -46,14 +58,133 @@ insert into feriado (tenant_id, pais, data, nome) values
   (null, 'australia', '2026-12-28', 'Boxing Day (substitute)')
 on conflict (pais, data) where tenant_id is null do nothing;
 
--- MODELO para outros destinos (descomente e ajuste as datas/slug conforme o
--- slug real usado em contratos.pais_destino do seu catálogo):
+-- EUA (federais 2026). pais = 'eua'. Jul 4 no sábado -> observado sex 03/07.
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'eua','2026-01-01','New Year''s Day'),
+  (null,'eua','2026-01-19','Martin Luther King Jr. Day'),
+  (null,'eua','2026-02-16','Presidents'' Day'),
+  (null,'eua','2026-05-25','Memorial Day'),
+  (null,'eua','2026-06-19','Juneteenth'),
+  (null,'eua','2026-07-03','Independence Day (observed)'),
+  (null,'eua','2026-09-07','Labor Day'),
+  (null,'eua','2026-10-12','Columbus Day'),
+  (null,'eua','2026-11-11','Veterans Day'),
+  (null,'eua','2026-11-26','Thanksgiving'),
+  (null,'eua','2026-12-25','Christmas Day')
+on conflict (pais, data) where tenant_id is null do nothing;
+
+-- Nova Zelândia (nacionais 2026). Anzac 25/04 sáb -> Mondayised 27/04.
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'nova_zelandia','2026-01-01','New Year''s Day'),
+  (null,'nova_zelandia','2026-01-02','Day after New Year''s Day'),
+  (null,'nova_zelandia','2026-02-06','Waitangi Day'),
+  (null,'nova_zelandia','2026-04-03','Good Friday'),
+  (null,'nova_zelandia','2026-04-06','Easter Monday'),
+  (null,'nova_zelandia','2026-04-27','Anzac Day (observed)'),
+  (null,'nova_zelandia','2026-06-01','King''s Birthday'),
+  (null,'nova_zelandia','2026-10-26','Labour Day'),
+  (null,'nova_zelandia','2026-12-25','Christmas Day'),
+  (null,'nova_zelandia','2026-12-28','Boxing Day (observed)')
+on conflict (pais, data) where tenant_id is null do nothing;
+
+-- Reino Unido (Inglaterra/Gales, 2026). ⚠️ confirme o slug de pais_destino.
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'reino_unido','2026-01-01','New Year''s Day'),
+  (null,'reino_unido','2026-04-03','Good Friday'),
+  (null,'reino_unido','2026-04-06','Easter Monday'),
+  (null,'reino_unido','2026-05-04','Early May Bank Holiday'),
+  (null,'reino_unido','2026-05-25','Spring Bank Holiday'),
+  (null,'reino_unido','2026-08-31','Summer Bank Holiday'),
+  (null,'reino_unido','2026-12-25','Christmas Day'),
+  (null,'reino_unido','2026-12-28','Boxing Day (substitute)')
+on conflict (pais, data) where tenant_id is null do nothing;
+
+-- Irlanda (2026). ⚠️ confirme o slug de pais_destino.
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'irlanda','2026-01-01','New Year''s Day'),
+  (null,'irlanda','2026-02-02','St Brigid''s Day'),
+  (null,'irlanda','2026-03-17','St Patrick''s Day'),
+  (null,'irlanda','2026-04-06','Easter Monday'),
+  (null,'irlanda','2026-05-04','May Bank Holiday'),
+  (null,'irlanda','2026-06-01','June Bank Holiday'),
+  (null,'irlanda','2026-08-03','August Bank Holiday'),
+  (null,'irlanda','2026-10-26','October Bank Holiday'),
+  (null,'irlanda','2026-12-25','Christmas Day'),
+  (null,'irlanda','2026-12-28','St Stephen''s Day (substitute)')
+on conflict (pais, data) where tenant_id is null do nothing;
+
+-- MODELO para Malta (lista de ~14 feriados a confirmar) — descomente e complete:
 -- insert into feriado (tenant_id, pais, data, nome) values
---   (null, 'irlanda',      '2026-01-01', 'New Year''s Day'),
---   (null, 'malta',        '2026-01-01', 'L-Ewwel tas-Sena'),
---   (null, 'reino_unido',  '2026-01-01', 'New Year''s Day'),
---   (null, 'nova_zelandia','2026-01-01', 'New Year''s Day')
+--   (null,'malta','2026-01-01','L-Ewwel tas-Sena')
 -- on conflict (pais, data) where tenant_id is null do nothing;
+
+-- ----------------------------------------------------------------------------
+-- 1b) FERIADOS 2027 (APLICADOS) — recarregar anualmente (ver MANUTENÇÃO Y+2)
+-- ----------------------------------------------------------------------------
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'canada','2027-01-01','New Year''s Day'),(null,'canada','2027-03-26','Good Friday'),
+  (null,'canada','2027-05-24','Victoria Day'),(null,'canada','2027-07-01','Canada Day'),
+  (null,'canada','2027-09-06','Labour Day'),(null,'canada','2027-09-30','National Day for Truth and Reconciliation'),
+  (null,'canada','2027-10-11','Thanksgiving'),(null,'canada','2027-11-11','Remembrance Day'),
+  (null,'canada','2027-12-25','Christmas Day'),(null,'canada','2027-12-26','Boxing Day'),
+  (null,'australia','2027-01-01','New Year''s Day'),(null,'australia','2027-01-26','Australia Day'),
+  (null,'australia','2027-03-26','Good Friday'),(null,'australia','2027-03-27','Easter Saturday'),
+  (null,'australia','2027-03-29','Easter Monday'),(null,'australia','2027-04-25','Anzac Day'),
+  (null,'australia','2027-12-25','Christmas Day'),(null,'australia','2027-12-27','Boxing Day'),
+  (null,'eua','2027-01-01','New Year''s Day'),(null,'eua','2027-01-18','Martin Luther King Jr. Day'),
+  (null,'eua','2027-02-15','Presidents'' Day'),(null,'eua','2027-05-31','Memorial Day'),
+  (null,'eua','2027-06-18','Juneteenth'),(null,'eua','2027-07-05','Independence Day'),
+  (null,'eua','2027-09-06','Labor Day'),(null,'eua','2027-10-11','Columbus Day'),
+  (null,'eua','2027-11-11','Veterans Day'),(null,'eua','2027-11-25','Thanksgiving'),(null,'eua','2027-12-24','Christmas Day'),
+  (null,'nova_zelandia','2027-01-01','New Year''s Day'),(null,'nova_zelandia','2027-01-02','Day after New Year''s Day'),
+  (null,'nova_zelandia','2027-02-08','Waitangi Day'),(null,'nova_zelandia','2027-03-26','Good Friday'),
+  (null,'nova_zelandia','2027-03-29','Easter Monday'),(null,'nova_zelandia','2027-04-26','Anzac Day'),
+  (null,'nova_zelandia','2027-06-07','King''s Birthday'),(null,'nova_zelandia','2027-10-25','Labour Day'),
+  (null,'nova_zelandia','2027-12-25','Christmas Day'),(null,'nova_zelandia','2027-12-27','Boxing Day'),
+  (null,'reino_unido','2027-01-01','New Year''s Day'),(null,'reino_unido','2027-03-26','Good Friday'),
+  (null,'reino_unido','2027-03-29','Easter Monday'),(null,'reino_unido','2027-05-03','Early May Bank Holiday'),
+  (null,'reino_unido','2027-05-31','Spring Bank Holiday'),(null,'reino_unido','2027-08-30','Summer Bank Holiday'),
+  (null,'reino_unido','2027-12-27','Christmas Day'),(null,'reino_unido','2027-12-28','Boxing Day'),
+  (null,'irlanda','2027-01-01','New Year''s Day'),(null,'irlanda','2027-02-01','St Brigid''s Day'),
+  (null,'irlanda','2027-03-17','St Patrick''s Day'),(null,'irlanda','2027-03-29','Easter Monday'),
+  (null,'irlanda','2027-05-03','May Bank Holiday'),(null,'irlanda','2027-06-07','June Bank Holiday'),
+  (null,'irlanda','2027-08-02','August Bank Holiday'),(null,'irlanda','2027-10-25','October Bank Holiday'),
+  (null,'irlanda','2027-12-27','Christmas Day'),(null,'irlanda','2027-12-28','St Stephen''s Day')
+on conflict (pais, data) where tenant_id is null do nothing;
+
+-- ----------------------------------------------------------------------------
+-- 1c) FERIADOS 2028 (APLICADOS)
+-- ----------------------------------------------------------------------------
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'canada','2028-01-01','New Year''s Day'),(null,'canada','2028-04-14','Good Friday'),
+  (null,'canada','2028-05-22','Victoria Day'),(null,'canada','2028-07-03','Canada Day'),
+  (null,'canada','2028-09-04','Labour Day'),(null,'canada','2028-09-30','National Day for Truth and Reconciliation'),
+  (null,'canada','2028-10-09','Thanksgiving'),(null,'canada','2028-11-11','Remembrance Day'),
+  (null,'canada','2028-12-25','Christmas Day'),(null,'canada','2028-12-26','Boxing Day'),
+  (null,'australia','2028-01-01','New Year''s Day'),(null,'australia','2028-01-26','Australia Day'),
+  (null,'australia','2028-04-14','Good Friday'),(null,'australia','2028-04-15','Easter Saturday'),
+  (null,'australia','2028-04-17','Easter Monday'),(null,'australia','2028-04-25','Anzac Day'),
+  (null,'australia','2028-12-25','Christmas Day'),(null,'australia','2028-12-26','Boxing Day'),
+  (null,'eua','2027-12-31','New Year''s Day (observed)'),(null,'eua','2028-01-17','Martin Luther King Jr. Day'),
+  (null,'eua','2028-02-21','Presidents'' Day'),(null,'eua','2028-05-29','Memorial Day'),
+  (null,'eua','2028-06-19','Juneteenth'),(null,'eua','2028-07-04','Independence Day'),
+  (null,'eua','2028-09-04','Labor Day'),(null,'eua','2028-10-09','Columbus Day'),
+  (null,'eua','2028-11-10','Veterans Day'),(null,'eua','2028-11-23','Thanksgiving'),(null,'eua','2028-12-25','Christmas Day'),
+  (null,'nova_zelandia','2028-01-01','New Year''s Day'),(null,'nova_zelandia','2028-01-02','Day after New Year''s Day'),
+  (null,'nova_zelandia','2028-02-07','Waitangi Day'),(null,'nova_zelandia','2028-04-14','Good Friday'),
+  (null,'nova_zelandia','2028-04-17','Easter Monday'),(null,'nova_zelandia','2028-04-25','Anzac Day'),
+  (null,'nova_zelandia','2028-06-05','King''s Birthday'),(null,'nova_zelandia','2028-10-23','Labour Day'),
+  (null,'nova_zelandia','2028-12-25','Christmas Day'),(null,'nova_zelandia','2028-12-26','Boxing Day'),
+  (null,'reino_unido','2028-01-03','New Year''s Day'),(null,'reino_unido','2028-04-14','Good Friday'),
+  (null,'reino_unido','2028-04-17','Easter Monday'),(null,'reino_unido','2028-05-01','Early May Bank Holiday'),
+  (null,'reino_unido','2028-05-29','Spring Bank Holiday'),(null,'reino_unido','2028-08-28','Summer Bank Holiday'),
+  (null,'reino_unido','2028-12-25','Christmas Day'),(null,'reino_unido','2028-12-26','Boxing Day'),
+  (null,'irlanda','2028-01-03','New Year''s Day'),(null,'irlanda','2028-02-07','St Brigid''s Day'),
+  (null,'irlanda','2028-03-17','St Patrick''s Day'),(null,'irlanda','2028-04-17','Easter Monday'),
+  (null,'irlanda','2028-05-01','May Bank Holiday'),(null,'irlanda','2028-06-05','June Bank Holiday'),
+  (null,'irlanda','2028-08-07','August Bank Holiday'),(null,'irlanda','2028-10-30','October Bank Holiday'),
+  (null,'irlanda','2028-12-25','Christmas Day'),(null,'irlanda','2028-12-26','St Stephen''s Day')
+on conflict (pais, data) where tenant_id is null do nothing;
 
 -- ----------------------------------------------------------------------------
 -- 2) POLÍTICA DE RETENÇÃO POR CAMPUS — EXEMPLO/placeholder (CONFIRMAR!)
