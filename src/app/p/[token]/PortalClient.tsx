@@ -281,7 +281,7 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
           <p>
             Conversão {fx.sourceCurrency} → {fx.presentmentCurrency} pela taxa{" "}
             <strong>{fx.rate?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</strong>
-            {fx.rateAt ? `, de ${fmtData(fx.rateAt)}` : ""} (congelada nesta cotação).
+            {fx.rateAt ? `, de ${fmtData(fx.rateAt)}` : ""} — <strong>cotação do dia</strong>, atualizada cada vez que este link é aberto.
           </p>
           {fx.disclaimer ? <p className="mt-1 opacity-80">{fx.disclaimer}</p> : null}
         </section>

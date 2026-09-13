@@ -7,17 +7,22 @@
 // uma fotografia SANITIZADA (sem ids internos, so o 1o nome do estudante);
 // recordQuoteEvent/selectQuoteOption registram o comportamento do estudante.
 //
-// Invariante: cotacao emitida NAO muda de valor porque o cambio mudou — a taxa
-// e congelada aqui e o portal so le quote.fx_rate.
+// Moeda/preco: o VALOR NA MOEDA DO CURSO (bruto/taxas/liquido) e congelado na
+// emissao (o preco da escola nao muda). O CAMBIO, porem, e FLUTUANTE: o portal
+// converte para R$ pela cotacao_vet do DIA em que o link e aberto (regra de
+// negocio — se a cotacao for encaminhada dias depois, o R$ reflete o cambio
+// daquele dia; mesma regra do Pix na Area do Cliente). quote.fx_rate fica so
+// como registro/fallback. (Isto substitui o antigo invariante de "congelar o
+// cambio no portal".)
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
+import { converterParaBRL } from "@/lib/cambio";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
 import {
   podeEmitir,
-  converterPelaTaxa,
   validadeCambioQuote,
   cambioVencidoPorData,
   jaEmitida,
@@ -768,17 +773,44 @@ export async function getPublicQuote(
 
   const localeQuote = ((quote.locale as string) || "pt-BR") as ContentLocale;
   const totais = await carregarTotaisPorOpcao(supabase, tenantId, quote.id as string, localeQuote);
-  const fxRate = quote.fx_rate != null ? toNum(quote.fx_rate) : null;
+
+  // CÂMBIO FLUTUANTE: o R$ é convertido pela cotacao_vet do DIA em que o link é
+  // aberto (não pela taxa congelada na emissão). A dívida fica na moeda do curso
+  // (valores de origem intactos) e o R$ acompanha o câmbio do dia — mesma regra
+  // do Pix na Área do Cliente. Se o link for reaberto/encaminhado dias depois,
+  // o R$ reflete o câmbio daquele dia.
+  const frozenFxRate = quote.fx_rate != null ? toNum(quote.fx_rate) : null; // fallback
   const sourceCurrency = (quote.source_currency as string) ?? null;
+  const hoje = hojeBrasilISO();
+  const moedasOrigem = Array.from(new Set(totais.map((t) => t.currency).filter((c) => !!c && c !== presentment)));
+  const vetPorMoeda = new Map<string, { vet: number; data: string }>();
+  for (const moeda of moedasOrigem) {
+    const { data: row } = await supabase
+      .from("cotacoes_cambio")
+      .select("cotacao_vet, data")
+      .eq("moeda", moeda)
+      .lte("data", hoje)
+      .order("data", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (row && row.cotacao_vet != null) {
+      vetPorMoeda.set(moeda, { vet: toNum(row.cotacao_vet), data: (row.data as string).slice(0, 10) });
+    }
+  }
   const fxNecessario = !!sourceCurrency && sourceCurrency !== presentment;
+  const vetPrimaria = sourceCurrency ? vetPorMoeda.get(sourceCurrency) ?? null : null;
+  // Taxa do dia para a moeda de origem primária (com fallback ao congelado).
+  const rateExibida = vetPrimaria?.vet ?? frozenFxRate;
 
   const selectedId = quote.selected_option_id as string | null;
   let selectedIndex: number | null = null;
 
   const options = totais.map((t, index) => {
     if (selectedId && t.option.id === selectedId) selectedIndex = index;
+    const v = vetPorMoeda.get(t.currency);
+    const vet = v?.vet ?? (t.currency === sourceCurrency ? frozenFxRate : null); // fallback só p/ moeda primária
     const liquidoConvertido =
-      fxNecessario && fxRate ? converterPelaTaxa(t.liquido, fxRate) : null;
+      t.currency !== presentment && vet ? converterParaBRL(t.liquido, vet) : null;
     return {
       index,
       label: t.option.label,
@@ -827,9 +859,9 @@ export async function getPublicQuote(
     notesHtml,
     fx: {
       necessario: fxNecessario,
-      rate: fxRate,
-      rateAt: (quote.fx_rate_at as string) ?? null,
-      source: (quote.fx_source as string) ?? null,
+      rate: rateExibida,
+      rateAt: vetPrimaria ? `${vetPrimaria.data}T00:00:00.000Z` : ((quote.fx_rate_at as string) ?? null),
+      source: "BACEN PTAX + IOF 3,5% + spread 5% — cotação do dia",
       sourceCurrency,
       presentmentCurrency: presentment,
       disclaimer: (policy?.disclaimer as string) ?? "",
