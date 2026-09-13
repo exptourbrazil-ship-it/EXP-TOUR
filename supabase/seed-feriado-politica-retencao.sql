@@ -13,8 +13,8 @@
 --  porque muitos são móveis (Páscoa, n-ésima segunda, "observed"/mondayised).
 --  Portanto o calendário precisa ser RECARREGADO a cada ano.
 --  REGRA: manter sempre pelo menos o ANO CORRENTE + 2 (Y+2) já carregados.
---  Aplicado até aqui: 2026, 2027 e 2028 (canada, australia, eua, nova_zelandia,
---  reino_unido, irlanda). Antes de 2028 acabar, gere e rode 2029+.
+--  Aplicado até aqui: 2026, 2027, 2028 e 2029 (canada, australia, eua,
+--  nova_zelandia, reino_unido, irlanda). Antes de 2029 acabar, gere e rode 2030+.
 --  COMO GERAR os próximos anos (datas móveis já calculadas): use os scripts Node
 --  do PR que criou este arquivo (Meeus para a Páscoa + n-ésima segunda + regras
 --  de observância) — ver o histórico do commit. Ou calcule manualmente e adicione
@@ -184,6 +184,40 @@ insert into feriado (tenant_id, pais, data, nome) values
   (null,'irlanda','2028-05-01','May Bank Holiday'),(null,'irlanda','2028-06-05','June Bank Holiday'),
   (null,'irlanda','2028-08-07','August Bank Holiday'),(null,'irlanda','2028-10-30','October Bank Holiday'),
   (null,'irlanda','2028-12-25','Christmas Day'),(null,'irlanda','2028-12-26','St Stephen''s Day')
+on conflict (pais, data) where tenant_id is null do nothing;
+
+-- ----------------------------------------------------------------------------
+-- 1d) FERIADOS 2029 (APLICADOS)
+-- ----------------------------------------------------------------------------
+insert into feriado (tenant_id, pais, data, nome) values
+  (null,'canada','2029-01-01','New Year''s Day'),(null,'canada','2029-03-30','Good Friday'),
+  (null,'canada','2029-05-21','Victoria Day'),(null,'canada','2029-07-02','Canada Day'),
+  (null,'canada','2029-09-03','Labour Day'),(null,'canada','2029-09-30','National Day for Truth and Reconciliation'),
+  (null,'canada','2029-10-08','Thanksgiving'),(null,'canada','2029-11-11','Remembrance Day'),
+  (null,'canada','2029-12-25','Christmas Day'),(null,'canada','2029-12-26','Boxing Day'),
+  (null,'australia','2029-01-01','New Year''s Day'),(null,'australia','2029-01-26','Australia Day'),
+  (null,'australia','2029-03-30','Good Friday'),(null,'australia','2029-03-31','Easter Saturday'),
+  (null,'australia','2029-04-02','Easter Monday'),(null,'australia','2029-04-25','Anzac Day'),
+  (null,'australia','2029-12-25','Christmas Day'),(null,'australia','2029-12-26','Boxing Day'),
+  (null,'eua','2029-01-01','New Year''s Day'),(null,'eua','2029-01-15','Martin Luther King Jr. Day'),
+  (null,'eua','2029-02-19','Presidents'' Day'),(null,'eua','2029-05-28','Memorial Day'),
+  (null,'eua','2029-06-19','Juneteenth'),(null,'eua','2029-07-04','Independence Day'),
+  (null,'eua','2029-09-03','Labor Day'),(null,'eua','2029-10-08','Columbus Day'),
+  (null,'eua','2029-11-12','Veterans Day'),(null,'eua','2029-11-22','Thanksgiving'),(null,'eua','2029-12-25','Christmas Day'),
+  (null,'nova_zelandia','2029-01-01','New Year''s Day'),(null,'nova_zelandia','2029-01-02','Day after New Year''s Day'),
+  (null,'nova_zelandia','2029-02-06','Waitangi Day'),(null,'nova_zelandia','2029-03-30','Good Friday'),
+  (null,'nova_zelandia','2029-04-02','Easter Monday'),(null,'nova_zelandia','2029-04-25','Anzac Day'),
+  (null,'nova_zelandia','2029-06-04','King''s Birthday'),(null,'nova_zelandia','2029-10-22','Labour Day'),
+  (null,'nova_zelandia','2029-12-25','Christmas Day'),(null,'nova_zelandia','2029-12-26','Boxing Day'),
+  (null,'reino_unido','2029-01-01','New Year''s Day'),(null,'reino_unido','2029-03-30','Good Friday'),
+  (null,'reino_unido','2029-04-02','Easter Monday'),(null,'reino_unido','2029-05-07','Early May Bank Holiday'),
+  (null,'reino_unido','2029-05-28','Spring Bank Holiday'),(null,'reino_unido','2029-08-27','Summer Bank Holiday'),
+  (null,'reino_unido','2029-12-25','Christmas Day'),(null,'reino_unido','2029-12-26','Boxing Day'),
+  (null,'irlanda','2029-01-01','New Year''s Day'),(null,'irlanda','2029-02-05','St Brigid''s Day'),
+  (null,'irlanda','2029-03-19','St Patrick''s Day (observed)'),(null,'irlanda','2029-04-02','Easter Monday'),
+  (null,'irlanda','2029-05-07','May Bank Holiday'),(null,'irlanda','2029-06-04','June Bank Holiday'),
+  (null,'irlanda','2029-08-06','August Bank Holiday'),(null,'irlanda','2029-10-29','October Bank Holiday'),
+  (null,'irlanda','2029-12-25','Christmas Day'),(null,'irlanda','2029-12-26','St Stephen''s Day')
 on conflict (pais, data) where tenant_id is null do nothing;
 
 -- ----------------------------------------------------------------------------
