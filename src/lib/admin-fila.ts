@@ -693,6 +693,12 @@ export async function acaoTarefa(
   if (!chaveDedupe) return { ok: false };
   const supabase = getSupabase();
 
+  // Isolamento por tenant: resolverContexto ja escopa pelo tenant do deploy — a
+  // fonte viva vem de coletarFontesAoVivo(membership) (filtra todas as fontes por
+  // titular/contrato/supplier/tenant do deploy) e a task persistida passa por
+  // idsDeTasksDoTenant. Chave de OUTRO tenant => ctx null => acao recusada aqui,
+  // ANTES de materializar/mutar. (Modo GLOBAL degradado, sem CATALOGO_TENANT_SLUG,
+  // nao escopa — mesma degradacao documentada da fila inteira.)
   const ctx = await resolverContexto(supabase, chaveDedupe, agoraMs);
   if (!ctx) return { ok: false };
 
