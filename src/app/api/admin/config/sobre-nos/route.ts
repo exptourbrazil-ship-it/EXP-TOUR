@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   const r = await salvarConfigMarca(
     supabase,
     tenantId,
-    { aboutUsHtml: body?.aboutUsHtml, website: body?.website, address: body?.address, email: body?.email, phone: body?.phone },
+    { aboutUsHtml: body?.aboutUsHtml, website: body?.website, address: body?.address, email: body?.email, phone: body?.phone, chatUrl: body?.chatUrl },
     (await usuarioAdminAtual()) ?? "admin",
     obterIp(request),
   );

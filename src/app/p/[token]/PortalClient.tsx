@@ -847,7 +847,10 @@ function DetalheOpcao({
 // ---------------------------------------------------------------------------
 function AboutUs({ dados }: { dados: PublicQuote }) {
   const a = dados.aboutUs;
-  const temContato = a.website || a.address || a.email || a.phone;
+  const waDigits = (a.phone || "").replace(/\D/g, "");
+  const waUrl = waDigits ? `https://wa.me/${waDigits}` : null;
+  const siteUrl = /^https?:\/\/[^\s]+$/i.test(a.website || "") ? a.website : null; // só http/https vira link
+  const temContato = a.website || a.address || a.email;
   return (
     <section className="rounded-2xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] p-5">
       <h2 className="titulo-portal text-xl text-[color:var(--p-ink)]">Sobre a {dados.brand}</h2>
@@ -861,6 +864,32 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
           {dados.brand} acompanha você em cada etapa do seu intercâmbio.
         </p>
       )}
+
+      {/* CTAs: falar com o Altus AI (chat) + WhatsApp */}
+      {a.chatUrl || waUrl ? (
+        <div className="mt-5 flex flex-wrap gap-2">
+          {a.chatUrl ? (
+            <a
+              href={a.chatUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+            >
+              Falar com o Altus AI
+            </a>
+          ) : null}
+          {waUrl ? (
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-5 py-3 text-sm font-medium text-[color:var(--p-ink)] hover:opacity-90"
+            >
+              WhatsApp
+            </a>
+          ) : null}
+        </div>
+      ) : null}
 
       {dados.consultant ? (
         <div className="mt-5 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
@@ -879,19 +908,19 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
           {a.website ? (
             <div className="flex gap-2">
               <dt className="text-[color:var(--p-muted)]">Site</dt>
-              <dd className="text-[color:var(--p-ink)]">{a.website}</dd>
+              <dd>
+                {siteUrl ? (
+                  <a href={siteUrl} target="_blank" rel="noopener noreferrer" className="text-[color:var(--p-nav)] underline">{a.website}</a>
+                ) : (
+                  <span className="text-[color:var(--p-ink)]">{a.website}</span>
+                )}
+              </dd>
             </div>
           ) : null}
           {a.email ? (
             <div className="flex gap-2">
               <dt className="text-[color:var(--p-muted)]">E-mail</dt>
               <dd className="text-[color:var(--p-ink)]">{a.email}</dd>
-            </div>
-          ) : null}
-          {a.phone ? (
-            <div className="flex gap-2">
-              <dt className="text-[color:var(--p-muted)]">Telefone</dt>
-              <dd className="text-[color:var(--p-ink)]">{a.phone}</dd>
             </div>
           ) : null}
           {a.address ? (

@@ -1241,6 +1241,7 @@ create table if not exists tenant (
   logo_url text, brand_color text,
   contact_email text, contact_phone text, website text, address text,
   about_us_html text, -- institucional da agencia, exibido na aba "About Us" da cotacao
+  chat_url text, -- link do chat (ex.: Altus AI) exibido como botao na aba "Sobre nos"
   created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
 );
 

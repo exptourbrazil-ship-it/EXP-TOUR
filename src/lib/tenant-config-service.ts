@@ -13,6 +13,7 @@ export type ConfigMarca = {
   address: string;
   email: string;
   phone: string;
+  chatUrl: string;
 };
 
 const MAX_ABOUT = 20000;
@@ -21,7 +22,7 @@ const corta = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 export async function obterConfigMarca(supabase: SupabaseClient, tenantId: string): Promise<ConfigMarca | null> {
   const { data } = await supabase
     .from("tenant")
-    .select("name, about_us_html, website, address, contact_email, contact_phone")
+    .select("name, about_us_html, website, address, contact_email, contact_phone, chat_url")
     .eq("id", tenantId)
     .maybeSingle();
   if (!data) return null;
@@ -32,7 +33,13 @@ export async function obterConfigMarca(supabase: SupabaseClient, tenantId: strin
     address: (data.address as string) ?? "",
     email: (data.contact_email as string) ?? "",
     phone: (data.contact_phone as string) ?? "",
+    chatUrl: (data.chat_url as string) ?? "",
   };
+}
+
+// URL http/https simples (evita javascript:/data:). Vazio é permitido (limpa).
+function urlValidaOuVazia(v: string): boolean {
+  return v === "" || /^https?:\/\/[^\s]+$/i.test(v);
 }
 
 export type SalvarConfigMarcaArgs = {
@@ -41,6 +48,7 @@ export type SalvarConfigMarcaArgs = {
   address: unknown;
   email: unknown;
   phone: unknown;
+  chatUrl: unknown;
 };
 
 export async function salvarConfigMarca(
@@ -58,6 +66,10 @@ export async function salvarConfigMarca(
   const address = corta(args.address, 500);
   const email = corta(args.email, 254);
   const phone = corta(args.phone, 40);
+  const chatUrl = corta(args.chatUrl, 500);
+  if (!urlValidaOuVazia(chatUrl)) {
+    return { ok: false, erro: "O link do chat deve começar com http:// ou https://." };
+  }
 
   const { error } = await supabase
     .from("tenant")
@@ -67,6 +79,7 @@ export async function salvarConfigMarca(
       address: address || null,
       contact_email: email || null,
       contact_phone: phone || null,
+      chat_url: chatUrl || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", tenantId);

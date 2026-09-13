@@ -610,6 +610,7 @@ export type PublicQuote = {
     address: string | null;
     email: string | null;
     phone: string | null;
+    chatUrl: string | null; // link do chat (Altus AI), so http/https
   };
   // Aba "Notes": observacoes do consultor por cotacao (HTML sanitizado). null = sem notas.
   notesHtml: string | null;
@@ -745,7 +746,7 @@ export async function getPublicQuote(
   // os tokens visuais da instancia no portal (ver src/lib/tenant-brand.ts).
   const { data: tenant } = await supabase
     .from("tenant")
-    .select("name, slug, logo_url, website, address, contact_email, contact_phone, about_us_html")
+    .select("name, slug, logo_url, website, address, contact_email, contact_phone, about_us_html, chat_url")
     .eq("id", tenantId)
     .maybeSingle();
   const { data: policy } = await supabase
@@ -821,6 +822,7 @@ export async function getPublicQuote(
       address: (tenant?.address as string) ?? null,
       email: (tenant?.contact_email as string) ?? null,
       phone: (tenant?.contact_phone as string) ?? null,
+      chatUrl: /^https?:\/\/[^\s]+$/i.test((tenant?.chat_url as string) ?? "") ? (tenant?.chat_url as string) : null,
     },
     notesHtml,
     fx: {

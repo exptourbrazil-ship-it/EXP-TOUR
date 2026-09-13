@@ -15,6 +15,7 @@ export default function SobreNosForm({ inicial }: { inicial: ConfigMarca }) {
   const [address, setAddress] = useState(inicial.address);
   const [email, setEmail] = useState(inicial.email);
   const [phone, setPhone] = useState(inicial.phone);
+  const [chatUrl, setChatUrl] = useState(inicial.chatUrl);
   const [salvando, setSalvando] = useState(false);
   const [ok, setOk] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -27,7 +28,7 @@ export default function SobreNosForm({ inicial }: { inicial: ConfigMarca }) {
       const r = await fetch("/api/admin/config/sobre-nos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aboutUsHtml, website, address, email, phone }),
+        body: JSON.stringify({ aboutUsHtml, website, address, email, phone, chatUrl }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) setErro(j?.erro || "Não foi possível salvar.");
@@ -51,13 +52,18 @@ export default function SobreNosForm({ inicial }: { inicial: ConfigMarca }) {
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Contato</h2>
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Contato e atendimento</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div><label className={lbl}>Site</label><input value={website} onChange={(e) => { setWebsite(e.target.value); setOk(false); }} className={inp} placeholder="www.suaagencia.com.br" /></div>
-          <div><label className={lbl}>E-mail</label><input value={email} onChange={(e) => { setEmail(e.target.value); setOk(false); }} type="email" className={inp} placeholder="contato@suaagencia.com.br" /></div>
-          <div><label className={lbl}>Telefone</label><input value={phone} onChange={(e) => { setPhone(e.target.value); setOk(false); }} className={inp} placeholder="(11) 99999-9999" /></div>
-          <div><label className={lbl}>Endereço</label><input value={address} onChange={(e) => { setAddress(e.target.value); setOk(false); }} className={inp} placeholder="Rua…, nº — Cidade/UF" /></div>
+          <div>
+            <label className={lbl}>Link do chat (Altus AI) — botão “Falar com o Altus AI”</label>
+            <input value={chatUrl} onChange={(e) => { setChatUrl(e.target.value); setOk(false); }} className={inp} placeholder="https://www.forio.com.br/chat" />
+          </div>
+          <div><label className={lbl}>WhatsApp (vira botão)</label><input value={phone} onChange={(e) => { setPhone(e.target.value); setOk(false); }} className={inp} placeholder="+55 11 99999-9999" /></div>
+          <div><label className={lbl}>Site</label><input value={website} onChange={(e) => { setWebsite(e.target.value); setOk(false); }} className={inp} placeholder="https://www.suaagencia.com.br" /></div>
+          <div><label className={lbl}>E-mail (opcional)</label><input value={email} onChange={(e) => { setEmail(e.target.value); setOk(false); }} type="email" className={inp} placeholder="contato@suaagencia.com.br" /></div>
+          <div className="sm:col-span-2"><label className={lbl}>Endereço (opcional)</label><input value={address} onChange={(e) => { setAddress(e.target.value); setOk(false); }} className={inp} placeholder="Rua…, nº — Cidade/UF" /></div>
         </div>
+        <p className="mt-2 text-[11px] text-neutral-400">O link do chat e o WhatsApp viram botões na aba “Sobre nós” da cotação. Deixe em branco para ocultar.</p>
       </div>
 
       <button type="button" onClick={salvar} disabled={salvando}
