@@ -1,7 +1,14 @@
 // Geracao do PDF da cotacao (portal do estudante) — SERVER-ONLY.
 // Usa @react-pdf/renderer (JS puro, sem headless browser) para produzir um PDF
-// de marca a partir da fotografia publica (getPublicQuote). NUNCA importar em
-// codigo client. Os valores ja vieram congelados na emissao; aqui so formatamos.
+// de marca a partir da fotografia publica (getPublicQuote), no formato Edvisor:
+// por opcao -> Cursos/Acomodacao (com Quick Info), Sobre a escola, Price
+// Breakdown (taxas linha a linha) e Plano de pagamento; alem de Notes e Sobre
+// nos. NUNCA importar em codigo client.
+//
+// CAMBIO: os valores na MOEDA do curso vem congelados na emissao; a conversao
+// em R$ (op.liquidoConvertido / fx.rate) ja vem FLUTUANTE de getPublicQuote —
+// e a cotacao do DIA em que o PDF e gerado (mesma regra do portal e do Pix).
+// Aqui so formatamos; nao ha nada "congelado" na conversao.
 import {
   Document,
   Page,
@@ -49,6 +56,36 @@ function fmtData(iso: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+// HTML -> texto plano. O react-pdf nao renderiza HTML; a descricao/notas ja vem
+// SANITIZADA de getPublicQuote (allowlist), entao aqui so removemos as tags,
+// decodificamos as poucas entidades comuns e colapsamos o espaco em branco.
+// Corta ao teto para nao estourar o layout.
+function htmlParaTexto(html: string | null | undefined, teto = 600): string {
+  if (!html) return "";
+  const semTags = String(html)
+    .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, "\n")
+    .replace(/<[^>]*>/g, "");
+  const decodificado = semTags
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
+  const limpo = decodificado.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return limpo.length > teto ? `${limpo.slice(0, teto - 1).trimEnd()}…` : limpo;
+}
+
+// Campo de TEXTO PLANO (nao-HTML): so colapsa espaco e corta ao teto. Usado
+// para plano.notes / plano.method, que o portal exibe literalmente (JSX escapa,
+// sem dangerouslySetInnerHTML). Nao remove "<...>" para nao mutilar texto como
+// "menores <18" — o objetivo e paridade exata com o portal.
+function textoPlano(v: string | null | undefined, teto = 300): string {
+  if (!v) return "";
+  const limpo = String(v).replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return limpo.length > teto ? `${limpo.slice(0, teto - 1).trimEnd()}…` : limpo;
+}
+
 // Estilos derivados do tema de PDF do tenant (cores de impressao). A faixa do
 // cabecalho ganha regua inferior so quando t.barLine existe (letterhead claro
 // da Forio); a EXP Tour mantem a faixa verde sem regua.
@@ -71,6 +108,8 @@ function makeStyles(t: PdfTheme) {
     body: { paddingHorizontal: 40, paddingTop: 24 },
     h1: { fontSize: 20, color: t.brand, ...bold },
     intro: { fontSize: 10, color: t.muted, marginTop: 4 },
+    metaRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 6 },
+    metaItem: { fontSize: 8, color: t.faint, marginRight: 16 },
     card: { borderWidth: 1, borderColor: t.line, borderRadius: 8, padding: 14, marginTop: 14 },
     label: { fontSize: 7, color: t.faint, letterSpacing: 1, textTransform: "uppercase" },
     optHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
@@ -81,57 +120,108 @@ function makeStyles(t: PdfTheme) {
     total: { fontSize: 15, color: t.brand, ...bold },
     totalConv: { fontSize: 8, color: t.muted, marginTop: 1 },
     sep: { borderTopWidth: 1, borderTopColor: t.line, marginTop: 10, marginBottom: 8 },
+    // Blocos internos da opcao (Edvisor)
+    secTitle: { fontSize: 8, color: t.faint, letterSpacing: 1, textTransform: "uppercase", marginTop: 12, marginBottom: 4 },
     itemRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
     itemName: { color: t.ink, flex: 1, paddingRight: 12 },
     itemMeta: { color: t.faint },
     itemVal: { color: t.brand },
+    detalheLinha: { fontSize: 8, color: t.muted, marginTop: 2, paddingRight: 12 },
+    escolaNome: { color: t.ink, ...bold, fontSize: 10 },
+    escolaLocal: { fontSize: 8, color: t.faint },
+    escolaDesc: { fontSize: 8, color: t.muted, marginTop: 3, lineHeight: 1.4 },
+    chipsLinha: { fontSize: 8, color: t.muted, marginTop: 3 },
     sumRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 3 },
-    sumRot: { color: t.muted },
+    sumRot: { color: t.muted, flex: 1, paddingRight: 12 },
+    sumTag: { fontSize: 7, color: t.faint },
     sumTotalRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4, borderTopWidth: 1, borderTopColor: t.line, paddingTop: 4 },
     sumTotal: { color: t.brand, ...bold },
+    planoRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 3 },
+    planoSeq: { color: t.muted, width: 90 },
+    planoData: { color: t.ink, flex: 1 },
+    planoVal: { color: t.ink },
+    planoNota: { fontSize: 8, color: t.faint, marginTop: 3 },
     fxBox: { marginTop: 16, borderWidth: 1, borderColor: t.line, borderRadius: 8, padding: 12 },
     fxText: { fontSize: 8, color: t.muted },
+    notesText: { fontSize: 9, color: t.ink, marginTop: 4, lineHeight: 1.4 },
+    aboutText: { fontSize: 8, color: t.muted, marginTop: 3, lineHeight: 1.4 },
+    contatoLinha: { fontSize: 8, color: t.muted, marginTop: 2 },
     footer: { position: "absolute", bottom: 24, left: 40, right: 40, textAlign: "center", fontSize: 7, color: t.faint },
   });
 }
 
 type Styles = ReturnType<typeof makeStyles>;
+type Opcao = PublicQuote["options"][number];
 
-function ItemLinha({ it, s }: { it: PublicQuote["options"][number]["itens"][number]; s: Styles }) {
+// Linha compacta de "Quick Info" (curso) ou atributos (acomodacao): junta
+// rotulo/valor com " · ", cortando ao teto para nao virar paragrafo.
+function linhaQuickInfo(linhas: { rotulo: string; valor: string }[], max = 6): string {
+  return linhas
+    .filter((l) => l.valor)
+    .slice(0, max)
+    .map((l) => (l.rotulo ? `${l.rotulo}: ${l.valor}` : l.valor))
+    .join("  ·  ");
+}
+
+function ItemLinha({ it, s }: { it: Opcao["itens"][number]; s: Styles }) {
+  const quick = it.detalhes?.programa ? linhaQuickInfo(it.detalhes.programa.quickInfo) : "";
+  const acom = it.detalhes?.acomodacao ? linhaQuickInfo(it.detalhes.acomodacao.linhas) : "";
+  const detalhe = quick || acom;
   return (
-    <View style={s.itemRow}>
-      <Text style={s.itemName}>
-        {it.nome}
-        {it.startDate ? (
-          <Text style={s.itemMeta}>
-            {"  "}
-            {fmtData(it.startDate)}
-            {it.endDate ? ` a ${fmtData(it.endDate)}` : ""}
-          </Text>
-        ) : null}
-      </Text>
-      <Text style={s.itemVal}>{fmtMoeda(it.grossAmount, it.currency)}</Text>
+    <View wrap={false}>
+      <View style={s.itemRow}>
+        <Text style={s.itemName}>
+          {it.nome}
+          {it.startDate ? (
+            <Text style={s.itemMeta}>
+              {"  "}
+              {fmtData(it.startDate)}
+              {it.endDate ? ` a ${fmtData(it.endDate)}` : ""}
+            </Text>
+          ) : null}
+        </Text>
+        <Text style={s.itemVal}>{fmtMoeda(it.grossAmount, it.currency)}</Text>
+      </View>
+      {detalhe ? <Text style={s.detalheLinha}>{detalhe}</Text> : null}
     </View>
   );
 }
 
-function OpcaoBloco({
-  op,
-  fx,
-  s,
-}: {
-  op: PublicQuote["options"][number];
-  fx: PublicQuote["fx"];
-  s: Styles;
-}) {
+// "Sobre a escola" — resumo do campus (nome, local, descricao curta, amenities/
+// acreditacoes/nacionalidades). Renderizado uma vez por opcao quando ha campus.
+function EscolaResumo({ esc, s }: { esc: NonNullable<Opcao["itens"][number]["detalhes"]["escola"]>; s: Styles }) {
+  const desc = htmlParaTexto(esc.descriptionHtml, 400);
+  const amen = esc.amenities.slice(0, 8).join(" · ");
+  const acred = esc.accreditations.slice(0, 6).join(" · ");
+  const nac = esc.nationalityMix.slice(0, 6).map((n) => `${n.pais} ${n.percentual}%`).join("  ·  ");
+  if (!esc.nome && !desc && !amen && !acred && !nac) return null;
+  return (
+    <View wrap={false}>
+      <Text style={s.secTitle}>Sobre a escola</Text>
+      {esc.nome ? <Text style={s.escolaNome}>{esc.nome}</Text> : null}
+      {esc.local ? <Text style={s.escolaLocal}>{esc.local}</Text> : null}
+      {desc ? <Text style={s.escolaDesc}>{desc}</Text> : null}
+      {amen ? <Text style={s.chipsLinha}>Comodidades: {amen}</Text> : null}
+      {acred ? <Text style={s.chipsLinha}>Acreditações: {acred}</Text> : null}
+      {nac ? <Text style={s.chipsLinha}>Nacionalidades: {nac}</Text> : null}
+    </View>
+  );
+}
+
+function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles }) {
   const temDesconto = op.descontos > 0;
   const conv =
     fx.necessario && op.liquidoConvertido != null
       ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency)
       : null;
+  // Escola: pega o primeiro item com bloco de escola (todos de uma opcao
+  // costumam apontar ao mesmo campus).
+  const escola = op.itens.map((it) => it.detalhes?.escola).find((e) => !!e) ?? null;
+  const plano = op.planoPagamento;
+
   return (
-    <View style={s.card} wrap={false}>
-      <View style={s.optHeaderRow}>
+    <View style={s.card}>
+      <View style={s.optHeaderRow} wrap={false}>
         <View>
           <Text style={s.optTitle}>{op.label}</Text>
           {op.isRecommended ? <Text style={s.badge}>Recomendada</Text> : null}
@@ -141,44 +231,80 @@ function OpcaoBloco({
             <Text style={s.strike}>{fmtMoeda(op.bruto + op.taxas, op.currency)}</Text>
           ) : null}
           <Text style={s.total}>{fmtMoeda(op.liquido, op.currency)}</Text>
-          {conv ? <Text style={s.totalConv}>~ {conv}</Text> : null}
+          {conv ? <Text style={s.totalConv}>~ {conv} (câmbio do dia)</Text> : null}
         </View>
       </View>
 
       <View style={s.sep} />
 
+      {/* Cursos / Acomodacao / Servicos */}
+      <Text style={s.secTitle}>Itens da opção</Text>
       {op.itens.map((it, i) => (
         <ItemLinha key={i} it={it} s={s} />
       ))}
 
-      <View style={{ marginTop: 8 }}>
-        <View style={s.sumRow}>
-          <Text style={s.sumRot}>Subtotal</Text>
-          <Text>{fmtMoeda(op.bruto, op.currency)}</Text>
-        </View>
-        {op.taxas > 0 ? (
-          <View style={s.sumRow}>
-            <Text style={s.sumRot}>Taxas</Text>
-            <Text>{fmtMoeda(op.taxas, op.currency)}</Text>
-          </View>
-        ) : null}
-        {op.descontos > 0 ? (
-          <View style={s.sumRow}>
-            <Text style={s.sumRot}>Descontos</Text>
-            <Text>- {fmtMoeda(op.descontos, op.currency)}</Text>
-          </View>
-        ) : null}
-        <View style={s.sumTotalRow}>
-          <Text style={s.sumTotal}>Total</Text>
-          <Text style={s.sumTotal}>{fmtMoeda(op.liquido, op.currency)}</Text>
-        </View>
-        {op.depositAmount != null ? (
-          <View style={s.sumRow}>
-            <Text style={s.sumRot}>Entrada</Text>
-            <Text>{fmtMoeda(op.depositAmount, op.depositCurrency ?? op.currency)}</Text>
-          </View>
-        ) : null}
+      {escola ? <EscolaResumo esc={escola} s={s} /> : null}
+
+      {/* Price Breakdown (taxas linha a linha) */}
+      <Text style={s.secTitle}>Detalhamento do preço</Text>
+      <View style={s.sumRow}>
+        <Text style={s.sumRot}>Subtotal</Text>
+        <Text>{fmtMoeda(op.bruto, op.currency)}</Text>
       </View>
+      {op.taxasDetalhadas.length > 0
+        ? op.taxasDetalhadas.map((tx, i) => (
+            <View key={i} style={s.sumRow} wrap={false}>
+              <Text style={s.sumRot}>
+                {tx.nome}
+                {tx.isRefundable === true ? <Text style={s.sumTag}>  reembolsável</Text> : null}
+                {tx.isRefundable === false ? <Text style={s.sumTag}>  não reembolsável</Text> : null}
+              </Text>
+              <Text>{fmtMoeda(tx.amount, tx.currency)}</Text>
+            </View>
+          ))
+        : op.taxas > 0
+          ? (
+            <View style={s.sumRow}>
+              <Text style={s.sumRot}>Taxas</Text>
+              <Text>{fmtMoeda(op.taxas, op.currency)}</Text>
+            </View>
+          )
+          : null}
+      {op.descontos > 0 ? (
+        <View style={s.sumRow}>
+          <Text style={s.sumRot}>Descontos</Text>
+          <Text>- {fmtMoeda(op.descontos, op.currency)}</Text>
+        </View>
+      ) : null}
+      <View style={s.sumTotalRow} wrap={false}>
+        <Text style={s.sumTotal}>Total</Text>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={s.sumTotal}>{fmtMoeda(op.liquido, op.currency)}</Text>
+          {conv ? <Text style={s.totalConv}>~ {conv} (câmbio do dia)</Text> : null}
+        </View>
+      </View>
+      {op.depositAmount != null ? (
+        <View style={s.sumRow}>
+          <Text style={s.sumRot}>Entrada</Text>
+          <Text>{fmtMoeda(op.depositAmount, op.depositCurrency ?? op.currency)}</Text>
+        </View>
+      ) : null}
+
+      {/* Plano de pagamento */}
+      {plano && plano.parcelas.length > 0 ? (
+        <View>
+          <Text style={s.secTitle}>Plano de pagamento</Text>
+          {plano.parcelas.map((p, i) => (
+            <View key={i} style={s.planoRow} wrap={false}>
+              <Text style={s.planoSeq}>{p.description || `Parcela ${p.sequence}`}</Text>
+              <Text style={s.planoData}>{fmtData(p.dueDate)}</Text>
+              <Text style={s.planoVal}>{fmtMoeda(p.amount, p.currency)}</Text>
+            </View>
+          ))}
+          {plano.method ? <Text style={s.planoNota}>Forma de pagamento: {textoPlano(plano.method, 80)}</Text> : null}
+          {plano.notes ? <Text style={s.planoNota}>{textoPlano(plano.notes, 300)}</Text> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -201,6 +327,10 @@ export async function renderQuotePdf(
   if (t.font === "Inter") registrarInter();
   const s = makeStyles(t);
 
+  const notes = htmlParaTexto(data.notesHtml, 1500);
+  const about = htmlParaTexto(data.aboutUs.html, 1500);
+  const a = data.aboutUs;
+
   const doc = (
     <Document title={`Cotacao ${data.reference}`} author={data.brand}>
       <Page size="A4" style={s.page}>
@@ -221,9 +351,14 @@ export async function renderQuotePdf(
             {options.length === 1 ? "opcao" : "opcoes"} para voce
             {data.validUntil ? `. Valida ate ${fmtData(data.validUntil)}.` : "."}
           </Text>
+          <View style={s.metaRow}>
+            <Text style={s.metaItem}>Cotacao {data.reference}</Text>
+            {data.issuedOn ? <Text style={s.metaItem}>Emitida em {fmtData(data.issuedOn)}</Text> : null}
+            {data.consultant?.nome ? <Text style={s.metaItem}>Preparada por {data.consultant.nome}</Text> : null}
+          </View>
 
           {data.consultant ? (
-            <View style={s.card}>
+            <View style={s.card} wrap={false}>
               <Text style={s.label}>Seu consultor</Text>
               <Text style={{ color: t.brand, marginTop: 2 }}>
                 {data.consultant.nome ?? `Equipe ${data.brand}`}
@@ -239,21 +374,43 @@ export async function renderQuotePdf(
           ))}
 
           {data.fx.necessario ? (
-            <View style={s.fxBox}>
+            <View style={s.fxBox} wrap={false}>
               <Text style={s.fxText}>
-                Conversao {data.fx.sourceCurrency} para {data.fx.presentmentCurrency} pela taxa{" "}
-                {data.fx.rate?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
-                {data.fx.rateAt ? `, de ${fmtData(data.fx.rateAt)}` : ""} (congelada nesta cotacao).
+                Conversao {data.fx.sourceCurrency} para {data.fx.presentmentCurrency} pela cotacao do dia
+                {data.fx.rateAt ? ` (${fmtData(data.fx.rateAt)})` : ""}: 1 {data.fx.sourceCurrency} ={" "}
+                {data.fx.rate?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })} {data.fx.presentmentCurrency}.
+              </Text>
+              <Text style={[s.fxText, { marginTop: 3 }]}>
+                O valor na moeda do curso e fixo; o R$ e recalculado pela cotacao do dia sempre que este documento e gerado
+                {data.fx.source ? ` (${data.fx.source})` : ""}.
               </Text>
               {data.fx.disclaimer ? (
                 <Text style={[s.fxText, { marginTop: 3 }]}>{data.fx.disclaimer}</Text>
               ) : null}
             </View>
           ) : null}
+
+          {notes ? (
+            <View style={s.card} wrap={false}>
+              <Text style={s.label}>Observacoes</Text>
+              <Text style={s.notesText}>{notes}</Text>
+            </View>
+          ) : null}
+
+          {about || a.website || a.email || a.phone || a.address ? (
+            <View style={s.card} wrap={false}>
+              <Text style={s.label}>Sobre {data.brand}</Text>
+              {about ? <Text style={s.aboutText}>{about}</Text> : null}
+              {a.website ? <Text style={s.contatoLinha}>{a.website}</Text> : null}
+              {a.email ? <Text style={s.contatoLinha}>{a.email}</Text> : null}
+              {a.phone ? <Text style={s.contatoLinha}>{a.phone}</Text> : null}
+              {a.address ? <Text style={s.contatoLinha}>{a.address}</Text> : null}
+            </View>
+          ) : null}
         </View>
 
         <Text style={s.footer} fixed>
-          Cotacao {data.reference} · valores congelados na emissao.
+          Cotacao {data.reference} · valor na moeda do curso fixo · R$ pela cotacao do dia.
         </Text>
       </Page>
     </Document>
