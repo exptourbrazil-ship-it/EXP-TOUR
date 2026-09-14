@@ -32,6 +32,13 @@ alter table if exists titulares add column if not exists arquivado_por text;
 alter table if exists titulares add column if not exists arquivado_motivo text;
 create index if not exists idx_titulares_arquivado on titulares(arquivado_em);
 
+-- Perfil de ACESSO do titular na Area do Cliente (spec 1 §3): bloqueio
+-- financeiro do Participante (Clausula 5.4.4 + LGPD). NULL => contratante
+-- (acesso pleno, comportamento atual) via normalizacao em codigo
+-- (src/lib/perfil-acesso.ts). Aplicado via migration titulares_perfil.
+alter table if exists titulares add column if not exists perfil text
+  check (perfil in ('contratante','participante','terceiro_pagador'));
+
 -- Contratos: uma viagem/grupo contratado por um titular
 create table if not exists contratos (
   id uuid primary key default gen_random_uuid(),
