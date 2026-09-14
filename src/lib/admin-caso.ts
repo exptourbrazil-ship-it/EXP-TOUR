@@ -39,6 +39,7 @@ export type CasoTitular = {
   created_at: string | null;
   anonimizado_em: string | null;
   arquivado_em: string | null;
+  perfil: string | null; // perfil de acesso ao portal (contratante/participante/terceiro_pagador)
 };
 
 export type CasoContrato = {
@@ -277,7 +278,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
 
   const { data: titular } = await supabase
     .from("titulares")
-    .select("id, nome_completo, cpf, telefone, email, data_inicio, created_at, anonimizado_em, arquivado_em")
+    .select("id, nome_completo, cpf, telefone, email, data_inicio, created_at, anonimizado_em, arquivado_em, perfil")
     .eq("id", titularId)
     .maybeSingle();
 

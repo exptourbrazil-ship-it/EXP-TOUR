@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { createClient } from "@supabase/supabase-js"
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session"
+import { titularPodeCliente } from "@/lib/perfil-service"
 import InicioClient from "./InicioClient"
 
 // Dias ate o inicio, calculado NO SERVIDOR para dar um valor estavel ao
@@ -69,15 +70,24 @@ export default async function InicioPage() {
   const dataInicioEfetiva =
     (contrato && (contrato as any).data_inicio) || (titular ? (titular as any).data_inicio : null) || null
 
+  // Bloqueio financeiro por PERFIL (5.4.4 + LGPD): quem não pode ver valores não
+  // recebe a CTA/atalhos financeiros na home. E, mais importante, os campos
+  // financeiros do contrato NÃO devem sair do servidor para o navegador do
+  // Participante — esconder na UI não basta (o payload de hidratação é legível).
+  const mostrarValores = await titularPodeCliente(supabase, sessao.titularId, "valores.ver")
+  const contratoParaCliente =
+    contrato && !mostrarValores ? { ...(contrato as any), valor_total: null, moeda: null } : contrato
+
   return (
     <InicioClient
       nomeCompleto={titular ? titular.nome_completo : null}
-      contrato={contrato}
+      contrato={contratoParaCliente}
       dataInicioTitular={titular ? (titular as any).data_inicio : null}
       diasAteInicioServidor={diasAteServidor(dataInicioEfetiva)}
       documentosEnviados={documentosEnviados || 0}
       parcelasPagas={parcelasPagas}
       parcelasTotal={parcelasTotal}
+      mostrarValores={mostrarValores}
     />
   )
 }

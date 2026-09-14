@@ -10,6 +10,7 @@ import { CONFIRM_KIND_LABEL, CONFIRM_STATUS_LABEL, type ConfirmKind, type Confir
 import ConfirmacaoAdmin from "./ConfirmacaoAdmin";
 import EditorParcelasContrato from "@/components/EditorParcelasContrato";
 import { fmtMoeda, fmtBRL, fmtData } from "@/lib/formato";
+import { PERFIS, normalizarPerfil } from "@/lib/perfil-acesso";
 import { cotacaoImplicita } from "@/lib/pagamento-manual";
 import {
   TIPOS_EXCECAO,
@@ -41,6 +42,7 @@ export type PermissoesCaso = {
   gerirFinanceiro: boolean;
   editarCpf: boolean;
   anonimizarDados: boolean;
+  definirPerfil: boolean;
 };
 
 type Aba = "jornada" | "financeiro" | "documentos" | "comunicacao" | "eventos" | "acoes";
@@ -1459,6 +1461,9 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
           }))}
         />
       ) : null}
+
+      {/* Perfil de acesso ao portal (bloqueio financeiro do Participante) */}
+      {permissoes.definirPerfil ? <SecaoPerfilAcesso caso={caso} /> : null}
 
       {/* Reenviar acesso ao cliente */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
@@ -3989,6 +3994,75 @@ function AcertoCard({
 }
 
 // ---- Reembolso unificado (PRÉVIA read-only) ---------------------------------
+// Perfil de ACESSO do titular ao portal (spec 1 §3 / Cláusula 5.4.4 + LGPD).
+// Marcar "Participante" esconde e nega TODO o financeiro na Área do Cliente na
+// hora (o portal lê o perfil vigente a cada requisição). "Terceiro pagador" só
+// vê o comprovante do que pagou. "Contratante" tem acesso pleno (padrão).
+function SecaoPerfilAcesso({ caso }: { caso: Caso }) {
+  const router = useRouter();
+  const atual = normalizarPerfil(caso.titular.perfil);
+  const [perfil, setPerfil] = useState(atual);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  async function salvar() {
+    setErro(null);
+    setOk(false);
+    setSalvando(true);
+    try {
+      const res = await fetch(`/api/admin/clientes/${caso.titular.id}/perfil`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ perfil }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) setErro(json.error || "Falha ao salvar.");
+      else {
+        setOk(true);
+        router.refresh();
+      }
+    } catch (e: any) {
+      setErro(e?.message || "Erro de rede.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Perfil de acesso ao portal</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        Define o que este acesso enxerga na Área do Cliente. <strong>Participante</strong> (estudante) nunca vê saldo,
+        valores ou o financeiro (Cláusula 5.4.4 + LGPD); <strong>terceiro pagador</strong> vê só o comprovante do que
+        pagou; <strong>contratante</strong> tem acesso pleno. Vale na hora.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={perfil}
+          onChange={(e) => { setPerfil(normalizarPerfil(e.target.value)); setOk(false); }}
+          className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-sm"
+        >
+          {PERFIS.map((p) => (
+            <option key={p.valor} value={p.valor}>{p.rotulo}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={salvando || perfil === atual}
+          className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-brand-cream disabled:opacity-50"
+        >
+          {salvando ? "Salvando…" : "Salvar perfil"}
+        </button>
+        {ok ? <span className="text-xs text-emerald-700">Perfil atualizado.</span> : null}
+      </div>
+      {erro ? <p className="mt-2 text-sm text-red-700">{erro}</p> : null}
+    </section>
+  );
+}
+
 // Solicitações de cancelamento DELIBERADO feitas pelo cliente no portal
 // (spec 1 §3). Mostra o pedido (motivo, valor que o cliente confirmou nomeando,
 // memória do cálculo) e deixa a equipe ACOMPANHAR o status. NÃO cancela o

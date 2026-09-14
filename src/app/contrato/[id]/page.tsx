@@ -6,6 +6,7 @@ import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { getTenantBrand } from "@/lib/tenant-brand";
 import { carregarDocumentoIntegral } from "@/lib/documento-integral-service";
 import { montarDocumentoIntegral, type Bloco } from "@/lib/documento-integral";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import ImprimirBotao from "./ImprimirBotao";
 
 export const runtime = "nodejs";
@@ -51,6 +52,12 @@ export default async function ContratoIntegralPage({ params }: { params: Promise
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): a Via Integral traz Quadro Resumo,
+  // câmbio (Anexo II) e Anexo III — valores. Só quem pode ver valores acessa.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "valores.ver"))) {
+    redirect("/inicio");
+  }
 
   const input = await carregarDocumentoIntegral(supabase, sessao.titularId, id);
   if (!input) notFound();
