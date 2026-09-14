@@ -61,12 +61,27 @@ export type DocCompartilhadoSnapshot = {
   processamentoImediatoMarcadoEmISO: string | null;
 };
 
+// Alteração de ESCOPO (E3) que muda o valor do programa. Um aditivo de COMPRA
+// (delta>0) aplicado exige o aceite eletrônico do cliente (aditivo_aceito_em). O
+// sinal-verdade do aumento de preço é `delta > 0`, NÃO o rótulo `sentido` (que é
+// nullable e derivado — uma aplicação direta por SQL pode gravar delta>0 com
+// sentido nulo). A camada de dados só traz as aplicadas de escopo com delta>0.
+export type AlteracaoSnapshot = {
+  id: string;
+  contratoId: string;
+  tipo: string; // 'deferral' | 'escopo'
+  status: string; // 'rascunho' | 'aplicado' | 'cancelado'
+  delta: number | null; // novo - atual (na moeda); > 0 = aditivo de compra
+  aditivoAceitoEmISO: string | null;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
-  // Opcional para retrocompatibilidade dos testes antigos; a camada de dados
-  // sempre preenche. As verificações que não a usam ignoram.
+  // Opcionais para retrocompatibilidade dos testes antigos; a camada de dados
+  // sempre preenche. As verificações que não os usam ignoram.
   docsCompartilhados?: DocCompartilhadoSnapshot[];
+  alteracoes?: AlteracaoSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -193,12 +208,44 @@ export function checarRemessaAntesDoD7(snap: SnapshotRetaguarda): Achado[] {
   return achados;
 }
 
+/**
+ * Alteração de PREÇO (aditivo de compra, E3 delta>0) APLICADA sem o aceite
+ * eletrônico do cliente registrado.
+ *
+ * Camada detectiva de "alteração de preço com aceite" (§7-D): o controle
+ * preventivo recusa aplicar o aditivo sem `aditivo_aceito_em`
+ * (alteracao-service). Este pega o que passou fora do sistema. ALTO (o cliente
+ * teria sido cobrado a mais sem consentir).
+ */
+export function checarAlteracaoSemAceite(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const a of snap.alteracoes ?? []) {
+    // Aumento de preço = delta>0 (o sinal-verdade), não o rótulo `sentido`. Assim
+    // pega também a aplicação direta por SQL que grava delta>0 com sentido nulo —
+    // justamente o caminho que não passa pelo gate preventivo (que checa sentido).
+    const ehAditivoAplicado =
+      a.status === "aplicado" && a.tipo === "escopo" && (a.delta ?? 0) > 0;
+    if (ehAditivoAplicado && !a.aditivoAceitoEmISO) {
+      achados.push({
+        chave: `retaguarda:alteracao_sem_aceite:${a.id}`,
+        categoria: "alteracao_sem_aceite",
+        severidade: "alto",
+        entidade: { tipo: "alteracao", id: a.id },
+        contratoId: a.contratoId,
+        resumo: `Alteração de preço (aditivo) ${a.id} aplicada sem aceite do cliente registrado — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
   checarParcelaPagaSemLastro,
   checarPagamentoSemParcelaPaga,
   checarRemessaAntesDoD7,
+  checarAlteracaoSemAceite,
 ];
 
 /**
