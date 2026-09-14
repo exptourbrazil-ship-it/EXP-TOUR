@@ -17,7 +17,9 @@ import {
   type AchadoPersistido,
   type ParcelaSnapshot,
   type PagamentoSnapshot,
+  type DocCompartilhadoSnapshot,
 } from "@/lib/retaguarda";
+import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 
 export type ResumoVarredura = {
   tenantId: string;
@@ -39,9 +41,14 @@ const LOTE_IN = 500;
 async function carregarSnapshot(
   supabase: SupabaseClient,
   contratoIds: string[],
-): Promise<{ parcelas: ParcelaSnapshot[]; pagamentos: PagamentoSnapshot[] }> {
+): Promise<{
+  parcelas: ParcelaSnapshot[];
+  pagamentos: PagamentoSnapshot[];
+  docsCompartilhados: DocCompartilhadoSnapshot[];
+}> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
+  const docsCompartilhados: DocCompartilhadoSnapshot[] = [];
 
   for (const lote of emLotes(contratoIds, LOTE_IN)) {
     const { data: ps, error: e1 } = await supabase
@@ -70,9 +77,37 @@ async function carregarSnapshot(
         externalPaymentId: (g.external_payment_id as string) ?? "",
       });
     }
+
+    // Documentos JÁ compartilhados com o fornecedor (compartilhado_em não nulo),
+    // com a janela de arrependimento do contrato para a checagem D+7. A janela é
+    // o carimbo gravado (data_fim_arrependimento) ou, na falta, o aceite
+    // (created_at) + 7 dias — mesma regra da trava preventiva.
+    const { data: docs, error: e3 } = await supabase
+      .from("documentos")
+      .select(
+        "id, contrato_id, compartilhado_em, contrato:contratos(data_fim_arrependimento, created_at, processamento_imediato)",
+      )
+      .in("contrato_id", lote)
+      .not("compartilhado_em", "is", null);
+    if (e3) throw new Error("Falha ao ler documentos compartilhados da retaguarda: " + e3.message);
+    for (const d of docs ?? []) {
+      const rel: any = (d as any).contrato;
+      const c = Array.isArray(rel) ? rel[0] : rel;
+      const carimbo = (c?.data_fim_arrependimento as string) ?? null;
+      const aceite = (c?.created_at as string) ?? null;
+      const janelaFimISO =
+        carimbo ?? (aceite ? prazoArrependimentoRemessaISO(aceite) : null);
+      docsCompartilhados.push({
+        docId: (d as any).id as string,
+        contratoId: (d as any).contrato_id as string,
+        compartilhadoEmISO: (d as any).compartilhado_em as string,
+        janelaFimISO,
+        processamentoImediato: Boolean(c?.processamento_imediato),
+      });
+    }
   }
 
-  return { parcelas, pagamentos };
+  return { parcelas, pagamentos, docsCompartilhados };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   checarParcelaPagaSemLastro,
   checarPagamentoSemParcelaPaga,
+  checarRemessaAntesDoD7,
   detectarRetaguarda,
   reconciliarAchados,
   type Achado,
@@ -154,4 +155,57 @@ test("reconciliar: cenario misto", () => {
   assert.deepEqual(plano.manter.map((a) => a.chave), ["mantido"]);
   assert.deepEqual(plano.reabrir.map((a) => a.chave), ["voltou"]);
   assert.deepEqual(plano.resolver, ["sumiu"]);
+});
+
+// ---- checarRemessaAntesDoD7 -------------------------------------------------
+
+function doc(over: Partial<{
+  docId: string; contratoId: string; compartilhadoEmISO: string;
+  janelaFimISO: string | null; processamentoImediato: boolean;
+}> = {}) {
+  return {
+    docId: over.docId ?? "d1",
+    contratoId: over.contratoId ?? "c1",
+    compartilhadoEmISO: over.compartilhadoEmISO ?? "2026-01-05T00:00:00Z",
+    janelaFimISO: over.janelaFimISO === undefined ? "2026-01-10T00:00:00Z" : over.janelaFimISO,
+    processamentoImediato: over.processamentoImediato ?? false,
+  };
+}
+
+test("D+7: compartilhado ANTES do fim da janela -> achado alto", () => {
+  const a = checarRemessaAntesDoD7({ parcelas: [], pagamentos: [], docsCompartilhados: [doc()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "remessa_antes_do_d7");
+  assert.equal(a[0].severidade, "alto");
+  assert.equal(a[0].entidade.tipo, "documento");
+  assert.equal(a[0].chave, "retaguarda:remessa_antes_do_d7:d1");
+});
+
+test("D+7: compartilhado DEPOIS da janela -> sem achado", () => {
+  const a = checarRemessaAntesDoD7({
+    parcelas: [], pagamentos: [],
+    docsCompartilhados: [doc({ compartilhadoEmISO: "2026-01-11T00:00:00Z" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("D+7: processamento imediato nao flagra (excecao do contrato)", () => {
+  const a = checarRemessaAntesDoD7({
+    parcelas: [], pagamentos: [],
+    docsCompartilhados: [doc({ processamentoImediato: true })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("D+7: sem janela conhecida nao flagra (defensivo)", () => {
+  const a = checarRemessaAntesDoD7({
+    parcelas: [], pagamentos: [],
+    docsCompartilhados: [doc({ janelaFimISO: null })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("D+7: snapshot sem docsCompartilhados nao quebra", () => {
+  const a = checarRemessaAntesDoD7({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
 });

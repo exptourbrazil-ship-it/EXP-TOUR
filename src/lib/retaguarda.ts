@@ -44,9 +44,23 @@ export type PagamentoSnapshot = {
   externalPaymentId: string;
 };
 
+// Documento COMPARTILHADO com o fornecedor (o "1º contato registrado" para a
+// checagem de D+7). `janelaFimISO` é o fim da janela de arrependimento gravado no
+// contrato (ou derivado do aceite + 7 dias) — resolvido pela camada de dados.
+export type DocCompartilhadoSnapshot = {
+  docId: string;
+  contratoId: string;
+  compartilhadoEmISO: string;
+  janelaFimISO: string | null;
+  processamentoImediato: boolean;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
+  // Opcional para retrocompatibilidade dos testes antigos; a camada de dados
+  // sempre preenche. As verificações que não a usam ignoram.
+  docsCompartilhados?: DocCompartilhadoSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -110,11 +124,46 @@ export function checarPagamentoSemParcelaPaga(snap: SnapshotRetaguarda): Achado[
   return achados;
 }
 
+/**
+ * Documento COMPARTILHADO com o fornecedor ANTES do fim do prazo de arrependimento
+ * (D+7), sem processamento imediato autorizado.
+ *
+ * Camada detectiva da "trava D+7" (§7-D): o controle preventivo bloqueia o
+ * compartilhamento na ação; este confere o que passou — e-mail manual fora do
+ * sistema, bug, ou carimbo tardio. Compara `compartilhado_em` com a janela de
+ * arrependimento (Cláusula 2.5.2 / CDC art. 49). ALTO (peso jurídico).
+ *
+ * Não flagra quando: processamento imediato (exceção expressa do contrato) ou
+ * sem janela conhecida (defensivo — igual à trava, que não bloqueia sem âncora).
+ */
+export function checarRemessaAntesDoD7(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const d of snap.docsCompartilhados ?? []) {
+    if (d.processamentoImediato) continue;
+    if (!d.janelaFimISO) continue;
+    const compartilhado = new Date(d.compartilhadoEmISO).getTime();
+    const fim = new Date(d.janelaFimISO).getTime();
+    if (!Number.isFinite(compartilhado) || !Number.isFinite(fim)) continue;
+    if (compartilhado < fim) {
+      achados.push({
+        chave: `retaguarda:remessa_antes_do_d7:${d.docId}`,
+        categoria: "remessa_antes_do_d7",
+        severidade: "alto",
+        entidade: { tipo: "documento", id: d.docId },
+        contratoId: d.contratoId,
+        resumo: `Documento ${d.docId} compartilhado com o fornecedor antes do fim do prazo de arrependimento (D+7) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
   checarParcelaPagaSemLastro,
   checarPagamentoSemParcelaPaga,
+  checarRemessaAntesDoD7,
 ];
 
 /**
