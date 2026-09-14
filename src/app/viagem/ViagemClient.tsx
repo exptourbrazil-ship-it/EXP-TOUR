@@ -173,7 +173,7 @@ export default function ViagemClient(props: ViagemClientProps) {
                   href={props.afiliadoPassagemUrl}
                   target="_blank"
                   rel="noreferrer nofollow sponsored"
-                  className="flex items-center justify-between rounded-xl bg-brand px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
+                  className="flex items-center justify-between rounded-xl bg-cta px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
                 >
                   <span>Comprar passagem aérea</span>
                   <span className="ml-3 shrink-0">&rarr;</span>
@@ -184,7 +184,7 @@ export default function ViagemClient(props: ViagemClientProps) {
                   href={props.afiliadoMoedaUrl}
                   target="_blank"
                   rel="noreferrer nofollow sponsored"
-                  className="flex items-center justify-between rounded-xl bg-brand px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
+                  className="flex items-center justify-between rounded-xl bg-cta px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
                 >
                   <span>Comprar moeda do destino</span>
                   <span className="ml-3 shrink-0">&rarr;</span>
@@ -195,7 +195,7 @@ export default function ViagemClient(props: ViagemClientProps) {
                   href={props.afiliadoChipUrl}
                   target="_blank"
                   rel="noreferrer nofollow sponsored"
-                  className="flex items-center justify-between rounded-xl bg-brand px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
+                  className="flex items-center justify-between rounded-xl bg-cta px-4 py-3 text-sm font-medium text-brand-cream transition hover:opacity-90"
                 >
                   <span>Comprar chip de celular</span>
                   <span className="ml-3 shrink-0">&rarr;</span>

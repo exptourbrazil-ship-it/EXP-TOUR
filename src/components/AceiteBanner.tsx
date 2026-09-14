@@ -109,7 +109,7 @@ export default function AceiteBanner() {
             <button
               type="button"
               onClick={() => setAberto(true)}
-              className="flex-shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-brand-cream transition hover:opacity-90"
+              className="flex-shrink-0 rounded-lg bg-cta px-3 py-1.5 text-xs font-semibold text-brand-cream transition hover:opacity-90"
             >
               Ler e aceitar
             </button>
@@ -163,7 +163,7 @@ export default function AceiteBanner() {
                 <button type="button" onClick={() => setAberto(false)} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand-cream/60">
                   Fechar
                 </button>
-                <button type="button" onClick={aceitar} disabled={!marcado || enviando} className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-brand-cream transition hover:opacity-90 disabled:opacity-50">
+                <button type="button" onClick={aceitar} disabled={!marcado || enviando} className="rounded-xl bg-cta px-4 py-2 text-sm font-semibold text-brand-cream transition hover:opacity-90 disabled:opacity-50">
                   {enviando ? "Registrando..." : "Aceitar"}
                 </button>
               </div>

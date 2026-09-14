@@ -149,7 +149,7 @@ export default function CancelarClient({
             </p>
             <button
               onClick={() => router.push("/inicio")}
-              className="mt-4 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream"
+              className="mt-4 rounded-xl bg-cta px-4 py-2 text-sm font-medium text-brand-cream"
             >
               Voltar ao início
             </button>
@@ -211,7 +211,7 @@ export default function CancelarClient({
                   <button
                     onClick={() => setPasso("alternativas")}
                     disabled={!motivo}
-                    className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
+                    className="rounded-xl bg-cta px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
                   >
                     Continuar
                   </button>
@@ -299,7 +299,7 @@ export default function CancelarClient({
                   {semCalculo ? (
                     <button
                       onClick={() => router.push("/inicio")}
-                      className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream"
+                      className="rounded-xl bg-cta px-4 py-2 text-sm font-medium text-brand-cream"
                     >
                       Falar com a equipe
                     </button>
@@ -342,7 +342,7 @@ export default function CancelarClient({
                   <button
                     onClick={enviar}
                     disabled={enviando || !valorConfere}
-                    className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
+                    className="rounded-xl bg-cta px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
                   >
                     {enviando ? "Registrando..." : "Confirmar cancelamento"}
                   </button>

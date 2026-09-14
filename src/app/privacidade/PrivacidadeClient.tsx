@@ -111,7 +111,7 @@ export default function PrivacidadeClient({
                     <button
                       onClick={() => alternar(t.chave, true)}
                       disabled={processando === t.chave}
-                      className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
+                      className="rounded-xl bg-cta px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-50"
                     >
                       {processando === t.chave ? "..." : concedidoVersaoAntiga ? "Confirmar novamente" : "Autorizar"}
                     </button>
