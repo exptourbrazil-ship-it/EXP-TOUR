@@ -8,7 +8,8 @@ import type { PublicQuote } from "@/lib/quote-issue-service";
 // Preco + plano de pagamento) · About Us (institucional da agencia) · Notes
 // (observacoes do consultor). Registra comportamento (opened/option_viewed/
 // downloaded/option_selected) e conduz a escolha em 2 etapas (irreversivel).
-// NAO recalcula nada: os valores vieram congelados na emissao.
+// O valor na MOEDA do curso vem congelado na emissao; a conversao em R$ e a
+// cotacao do DIA (getPublicQuote recalcula pelo cotacao_vet corrente).
 //
 // Visual por TENANT: cores/tipografia vem de variaveis CSS (--p-*) aplicadas no
 // wrapper (ver page.tsx + src/lib/tenant-brand.ts).
@@ -298,7 +299,7 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
       </div>
 
       <p className="mt-8 text-center text-[11px] text-[color:var(--p-muted)] opacity-80">
-        Cotação {dados.reference} · valores congelados na emissão
+        Cotação {dados.reference} · valor na moeda do curso fixo · R$ pela cotação do dia
         {dados.validUntil ? ` · válida até ${fmtData(dados.validUntil)}` : ""}.
       </p>
     </div>
