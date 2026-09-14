@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { enviarAvisoInternoEmail } from "@/lib/email";
 import { varrerRetaguarda } from "@/lib/retaguarda-service";
+import { montarResumoAlertaRetaguarda } from "@/lib/retaguarda-alerta";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,11 +30,52 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY as string
   );
 
+  let r: Awaited<ReturnType<typeof varrerRetaguarda>>;
   try {
-    const resumo = await varrerRetaguarda(supabase);
-    return NextResponse.json({ ok: true, ...resumo });
+    r = await varrerRetaguarda(supabase);
   } catch (err) {
     console.error("[retaguarda] varredura falhou:", err instanceof Error ? err.message : "erro");
     return NextResponse.json({ ok: false, erro: "Varredura falhou" }, { status: 500 });
   }
+
+  // Alerta interno dos achados ALTO NOVOS desta rodada. Best-effort: falha de
+  // e-mail não derruba a varredura (o painel continua sendo a fonte de verdade).
+  let alertado = false;
+  if (r.novosAlto.length > 0) {
+    try {
+      const marca = await nomeDoTenant(supabase, r.tenantId);
+      const resumo = montarResumoAlertaRetaguarda({
+        novos: r.novosAlto.map((a) => ({ categoria: a.categoria, resumo: a.resumo })),
+        marca,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL,
+      });
+      if (resumo) {
+        await enviarAvisoInternoEmail(resumo.assunto, resumo.texto);
+        alertado = true;
+      }
+    } catch (err) {
+      console.error("[retaguarda] falha ao enviar alerta interno:", err instanceof Error ? err.message : "erro");
+    }
+  }
+
+  // Não serializa novosAlto (lista) no JSON — só os contadores + alertado.
+  return NextResponse.json({
+    ok: true,
+    tenantId: r.tenantId,
+    contratos: r.contratos,
+    novos: r.novos,
+    reabertos: r.reabertos,
+    mantidos: r.mantidos,
+    resolvidos: r.resolvidos,
+    abertosTotal: r.abertosTotal,
+    alertado,
+  });
+}
+
+// Nome de marca do tenant para o assunto (fallback: id). Mesmo padrão dos demais
+// crons de alerta.
+async function nomeDoTenant(supabase: SupabaseClient, tenantId: string): Promise<string> {
+  const { data } = await supabase.from("tenant").select("name, slug").eq("id", tenantId).maybeSingle();
+  const nome = (data as { name?: string; slug?: string } | null);
+  return (nome?.name && nome.name.trim()) || nome?.slug || tenantId;
 }
