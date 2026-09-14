@@ -1,0 +1,180 @@
+// Camada de dados da RETAGUARDA (server-only, service role). Monta o snapshot
+// ESCOPADO POR TENANT, roda o motor detectivo puro (retaguarda.ts), reconcilia
+// com o que já está persistido e aplica o plano em `retaguarda_achado`.
+//
+// Escopo por tenant (docs/deploy-multi-tenant.md): parcelas/pagamentos não têm
+// tenant_id — escopam pelos contratos do tenant (membershipDoTenant). FALHA
+// FECHADA: se o tenant não resolver, o serviço lança e o cron não processa.
+//
+// O detective NUNCA muta dado de negócio (LGPD art. 20, spec 7-F.2): só grava
+// ACHADOS para verificação humana. A única escrita é em `retaguarda_achado`.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolverEscopoTenant, membershipDoTenant, emLotes } from "@/lib/cron-tenant";
+import {
+  detectarRetaguarda,
+  reconciliarAchados,
+  type Achado,
+  type AchadoPersistido,
+  type ParcelaSnapshot,
+  type PagamentoSnapshot,
+} from "@/lib/retaguarda";
+
+export type ResumoVarredura = {
+  tenantId: string;
+  contratos: number;
+  achadosAtuais: number;
+  novos: number;
+  reabertos: number;
+  mantidos: number;
+  resolvidos: number;
+  abertosTotal: number;
+};
+
+const LOTE_IN = 500;
+
+// Monta os arrays do snapshot lendo só os contratos do tenant. Loteia o .in().
+async function carregarSnapshot(
+  supabase: SupabaseClient,
+  contratoIds: string[],
+): Promise<{ parcelas: ParcelaSnapshot[]; pagamentos: PagamentoSnapshot[] }> {
+  const parcelas: ParcelaSnapshot[] = [];
+  const pagamentos: PagamentoSnapshot[] = [];
+
+  for (const lote of emLotes(contratoIds, LOTE_IN)) {
+    const { data: ps, error: e1 } = await supabase
+      .from("parcelas")
+      .select("id, contrato_id, status, paid_at")
+      .in("contrato_id", lote);
+    if (e1) throw new Error("Falha ao ler parcelas da retaguarda: " + e1.message);
+    for (const p of ps ?? []) {
+      parcelas.push({
+        id: p.id as string,
+        contratoId: p.contrato_id as string,
+        status: (p.status as string) ?? "",
+        paidAt: (p.paid_at as string) ?? null,
+      });
+    }
+
+    const { data: pg, error: e2 } = await supabase
+      .from("pagamentos")
+      .select("parcela_id, contrato_id, external_payment_id")
+      .in("contrato_id", lote);
+    if (e2) throw new Error("Falha ao ler pagamentos da retaguarda: " + e2.message);
+    for (const g of pg ?? []) {
+      pagamentos.push({
+        parcelaId: g.parcela_id as string,
+        contratoId: g.contrato_id as string,
+        externalPaymentId: (g.external_payment_id as string) ?? "",
+      });
+    }
+  }
+
+  return { parcelas, pagamentos };
+}
+
+// Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
+// tenant_id (guardrail tenant-isolation). Best-effort por linha: um erro isolado
+// não derruba a varredura inteira (o próximo ciclo reconcilia de novo).
+async function persistirPlano(
+  supabase: SupabaseClient,
+  tenantId: string,
+  plano: ReturnType<typeof reconciliarAchados>,
+): Promise<void> {
+  const agora = new Date().toISOString();
+
+  const inserir = (a: Achado) => ({
+    tenant_id: tenantId,
+    chave: a.chave,
+    categoria: a.categoria,
+    severidade: a.severidade,
+    entidade_tipo: a.entidade.tipo,
+    entidade_id: a.entidade.id,
+    contrato_id: a.contratoId,
+    resumo: a.resumo,
+    status: "aberto",
+    primeira_vez: agora,
+    ultima_vez: agora,
+    resolvido_em: null,
+    updated_at: agora,
+  });
+
+  // Novos: insere. (Conflito na chave única cai no upsert por (tenant_id, chave).)
+  if (plano.abrir.length > 0) {
+    const { error } = await supabase
+      .from("retaguarda_achado")
+      .upsert(plano.abrir.map(inserir), { onConflict: "tenant_id,chave" });
+    if (error) console.error("[retaguarda] falha ao inserir achados novos:", error.message);
+  }
+
+  // Reabrir: voltou a aparecer depois de resolvido. Nunca silencioso.
+  for (const a of plano.reabrir) {
+    const { error } = await supabase
+      .from("retaguarda_achado")
+      .update({ status: "aberto", resolvido_em: null, ultima_vez: agora, updated_at: agora, resumo: a.resumo })
+      .eq("tenant_id", tenantId)
+      .eq("chave", a.chave);
+    if (error) console.error("[retaguarda] falha ao reabrir achado:", error.message);
+  }
+
+  // Manter: só atualiza "visto por último" (e o resumo, caso o texto evolua).
+  for (const a of plano.manter) {
+    const { error } = await supabase
+      .from("retaguarda_achado")
+      .update({ ultima_vez: agora, updated_at: agora, resumo: a.resumo })
+      .eq("tenant_id", tenantId)
+      .eq("chave", a.chave);
+    if (error) console.error("[retaguarda] falha ao manter achado:", error.message);
+  }
+
+  // Resolver: a inconsistência sumiu. Marca resolvido (histórico preservado).
+  for (const lote of emLotes(plano.resolver, LOTE_IN)) {
+    const { error } = await supabase
+      .from("retaguarda_achado")
+      .update({ status: "resolvido", resolvido_em: agora, updated_at: agora })
+      .eq("tenant_id", tenantId)
+      .in("chave", lote);
+    if (error) console.error("[retaguarda] falha ao resolver achados:", error.message);
+  }
+}
+
+/**
+ * Varre a retaguarda do tenant do deploy: monta o snapshot, detecta, reconcilia
+ * e persiste. Devolve os contadores da rodada. FALHA FECHADA no tenant.
+ */
+export async function varrerRetaguarda(supabase: SupabaseClient): Promise<ResumoVarredura> {
+  const escopo = await resolverEscopoTenant(supabase);
+  const membership = await membershipDoTenant(supabase, escopo);
+
+  // Tenant sem contratos: nada a varrer, mas ainda resolve achados que porventura
+  // tenham sobrado (contratos removidos) — a reconciliação cuida disso.
+  const snap = await carregarSnapshot(supabase, membership.contratoIds);
+  const atuais = detectarRetaguarda(snap);
+
+  // Carrega TODOS os status (aberto E resolvido): a reconciliação precisa
+  // distinguir "novo" (sem linha) de "reabrir" (linha resolvida que voltou) —
+  // reabrir preserva a primeira_vez e conta certo. Carregar só os abertos faria
+  // um recorrente parecer novo e apagaria o histórico.
+  const { data: persistData, error } = await supabase
+    .from("retaguarda_achado")
+    .select("chave, status")
+    .eq("tenant_id", escopo.tenantId);
+  if (error) throw new Error("Falha ao ler achados persistidos: " + error.message);
+  const persistidos: AchadoPersistido[] = (persistData ?? []).map((r) => ({
+    chave: r.chave as string,
+    status: r.status as "aberto" | "resolvido",
+  }));
+
+  const plano = reconciliarAchados(atuais, persistidos);
+  await persistirPlano(supabase, escopo.tenantId, plano);
+
+  return {
+    tenantId: escopo.tenantId,
+    contratos: membership.contratoIds.length,
+    achadosAtuais: atuais.length,
+    novos: plano.abrir.length,
+    reabertos: plano.reabrir.length,
+    mantidos: plano.manter.length,
+    resolvidos: plano.resolver.length,
+    abertosTotal: atuais.length,
+  };
+}
