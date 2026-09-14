@@ -1,0 +1,330 @@
+CONTRATO DE PRESTACAO DE SERVICOS DE ASSESSORIA E INTERMEDIACAO DE PROGRAMAS EDUCACIONAIS NO EXTERIOR
+TERMO DE ADESAO AS CONDICOES GERAIS
+
+[RASCUNHO v1 — texto-base gerado a partir de docs/contrato-arquitetura.md. NAO e
+texto juridico final: os itens entre colchetes e o conjunto do documento devem
+ser revisados e validados pelo juridico/financeiro antes de ser ativado como o
+Termo vigente. Ao ser aceito na plataforma, este texto forma, com o Quadro
+Resumo preenchido automaticamente no aceite e com os Anexos I, II e III, o
+documento integral do contrato.]
+
+Este documento estabelece as Condicoes Gerais aplicaveis a prestacao, pela
+CONTRATADA, de servicos de assessoria e intermediacao para a contratacao de
+programas educacionais no exterior junto a instituicoes e fornecedores
+parceiros. A adesao a estas Condicoes Gerais se da por marcacao eletronica
+(Clausula 17), no momento em que o CONTRATANTE aceita o Quadro Resumo da sua
+contratacao.
+
+
+1. DEFINICOES
+
+1.1. CONTRATADA: a agencia identificada no Quadro Resumo (adiante tambem "a
+Agencia"), que presta os servicos de assessoria e intermediacao.
+
+1.2. CONTRATANTE: a pessoa que adere a estas Condicoes Gerais e assume as
+obrigacoes financeiras da contratacao, identificada no Quadro Resumo. Quando o
+Participante for menor de idade ou nao for o proprio CONTRATANTE, o CONTRATANTE
+declara ter poderes para contratar em seu nome.
+
+1.3. PARTICIPANTE: a pessoa que fara o programa educacional.
+
+1.4. FORNECEDOR: a instituicao de ensino, escola, provedor de acomodacao,
+seguradora ou demais prestadores no exterior responsaveis pela execucao direta
+do programa.
+
+1.5. PROGRAMA: o conjunto de servicos educacionais contratados (curso,
+acomodacao, taxas e servicos correlatos) descrito no Quadro Resumo.
+
+1.6. QUADRO RESUMO: o conjunto de dados especificos da contratacao (CONTRATANTE,
+PARTICIPANTE, PROGRAMA, valores, moeda de referencia, regime de pagamento,
+Entrada e datas), preenchido automaticamente pela plataforma no momento do
+aceite e que integra, para todos os fins, este contrato.
+
+1.7. MOEDA DE REFERENCIA: a moeda em que e expresso o valor do PROGRAMA no
+Quadro Resumo (a moeda do curso). A obrigacao do CONTRATANTE e nessa moeda; os
+valores em Reais sao conversoes informativas (Clausula 6.7 e Anexo II).
+
+1.8. SALDO DEVEDOR: o valor total do PROGRAMA na MOEDA DE REFERENCIA que resta a
+amortizar, conforme a Clausula 7.
+
+
+2. OBJETO E NATUREZA DOS SERVICOS
+
+2.1. A CONTRATADA presta servicos de ASSESSORIA e INTERMEDIACAO: orientacao na
+escolha do PROGRAMA, cotacao, apoio na documentacao, comunicacao com o
+FORNECEDOR e acompanhamento durante o processo. A CONTRATADA NAO e a executora
+direta do PROGRAMA, que e prestado pelo FORNECEDOR.
+
+2.2. A responsabilidade pela prestacao academica, de acomodacao e demais
+servicos no exterior e do respectivo FORNECEDOR, nos termos das politicas dele
+(Anexo III). A CONTRATADA responde pelos seus proprios servicos de assessoria e
+intermediacao.
+
+2.3. A CONTRATADA nao garante a concessao de vistos, a admissao pela instituicao
+nem quaisquer atos de autoridade de terceiros, cujos requisitos sao informados
+ao CONTRATANTE.
+
+2.4. As cotacoes e simulacoes tem carater informativo e nao reservam vaga nem
+preco ate a efetiva contratacao e cumprimento das condicoes do FORNECEDOR.
+
+2.5. SEQUENCIA DE CONTRATACAO. A contratacao observa a seguinte ordem: (a)
+Proposta, com validade de [10] dias; (b) acesso a Area do Cliente sem
+compromisso, para consulta de dados, valores e Anexo III, sem pagamento e sem
+reserva de vaga ou preco; (c) assinatura por marcacao eletronica destas
+Condicoes Gerais e do Quadro Resumo; (d) pagamento da Entrada, em ate [5] dias
+(D+5) do aceite; (e) Ficha de matricula. Enquanto nao concluida essa sequencia,
+a contratacao nao pode ser tomada como matricula confirmada.
+
+2.5.2. A Entrada nao e remetida ao FORNECEDOR durante o prazo de arrependimento
+(Clausula 8), salvo autorizacao expressa de "processamento imediato" dada pelo
+CONTRATANTE na Ficha de matricula.
+
+
+3. OBRIGACOES DA CONTRATADA
+
+3.1. Prestar as informacoes essenciais do PROGRAMA de forma clara e previa,
+inclusive valores, moeda, metodologia de cambio (Anexo II) e politica de
+pagamento do FORNECEDOR (Anexo III).
+
+3.2. Intermediar a comunicacao com o FORNECEDOR e apoiar o CONTRATANTE na
+organizacao da documentacao e dos prazos.
+
+3.3. Disponibilizar, na Area do Cliente, o extrato de SALDO DEVEDOR (na MOEDA DE
+REFERENCIA e em Reais do dia), o historico de pagamentos com a cotacao aplicada,
+os recibos itemizados e a via integral deste contrato (Clausula 17.3).
+
+3.4. Remeter ao FORNECEDOR os valores devidos, observados os prazos e as
+condicoes do Anexo III e a Clausula 2.5.2.
+
+
+4. OBRIGACOES DO CONTRATANTE E DO PARTICIPANTE
+
+4.1. Fornecer dados e documentos verdadeiros, completos e no prazo, respondendo
+por informacoes incorretas que impacem a contratacao.
+
+4.2. Cumprir os requisitos do FORNECEDOR e das autoridades (inclusive de visto e
+saude), bem como as regras de conduta da instituicao e da acomodacao.
+
+4.3. Efetuar os pagamentos na forma da Clausula 6 e do regime da Clausula 7.
+
+4.4. Manter dados de contato atualizados na Area do Cliente.
+
+
+5. DOCUMENTACAO E PRAZOS
+
+5.1. O CONTRATANTE reconhece que ha prazos do FORNECEDOR e das autoridades que
+nao sao controlados pela CONTRATADA e que atrasos na entrega de documentos podem
+afetar datas, valores e a viabilidade do PROGRAMA.
+
+5.2. Exigencias supervenientes de visto ou do FORNECEDOR podem demandar
+antecipacao de pagamentos, nos termos da Clausula 7.5.
+
+
+6. PRECO, CAMBIO E COBRANCA
+
+6.1. O valor total do PROGRAMA e o descrito no Quadro Resumo, na MOEDA DE
+REFERENCIA, e compreende os itens ali discriminados (curso, taxas, acomodacao e
+servicos), alem dos honorarios de intermediacao da CONTRATADA.
+
+6.2. A obrigacao do CONTRATANTE e expressa na MOEDA DE REFERENCIA. O valor na
+moeda do curso, uma vez emitida a contratacao, e fixo; o que varia e a conversao
+em Reais, apurada na data de cada pagamento (Anexo II).
+
+6.3. O pagamento se da pela amortizacao do SALDO DEVEDOR (Clausula 7), e nao por
+parcelas fixas.
+
+6.4. CAMBIO. A conversao para Reais segue a metodologia do Anexo II: PTAX de
+venda divulgada pelo Banco Central, acrescida da Taxa de Intermediacao e Cambio
+de [5%] e do IOF-cambio a aliquota vigente na data, de forma aditiva sobre o
+valor convertido. A metodologia e os componentes sao itemizados no recibo.
+
+6.5. COBRANCA POR PIX. Cada cobranca por Pix exibe a cotacao aplicada (PTAX e
+data), os percentuais e valores de intermediacao e IOF, o valor em Reais e a
+amortizacao correspondente do SALDO DEVEDOR, sem linha de tarifa de remessa. A
+cobranca por Pix e valida ate as 23h59 do dia de sua emissao.
+
+6.5.2. Apos a confirmacao do pagamento, e emitido recibo itemizado, disponivel
+na Area do Cliente e enviado por e-mail.
+
+6.6. A confirmacao do pagamento e feita exclusivamente pela conciliacao
+automatica do meio de pagamento; comprovantes de terceiros nao substituem a
+confirmacao.
+
+6.7. SIMULACAO EM REAIS NAO VINCULANTE. Os valores em Reais apresentados antes
+do pagamento sao simulacao informativa, calculada pela cotacao do dia e
+recalculada a cada consulta. Nao constituem preco fixo: a obrigacao e na MOEDA DE
+REFERENCIA.
+
+6.8. EXTRATO. O SALDO DEVEDOR fica sempre visivel na Area do Cliente, na MOEDA DE
+REFERENCIA e em Reais do dia, com o valor necessario para quitacao e a data
+limite (Clausula 7.4). O CONTRATANTE recebe avisos em D-30, D-15 e D-5 da data
+limite de quitacao.
+
+
+7. REGIME DE PAGAMENTO (SALDO DEVEDOR)
+
+7.1. O PROGRAMA e pago mediante amortizacao do SALDO DEVEDOR na MOEDA DE
+REFERENCIA, na forma desta clausula.
+
+7.2. ENTRADA. A Entrada compreende as taxas iniciais aplicaveis (por exemplo
+application fee e placement fee) e e devida em ate [5] dias (D+5) do aceite. A
+Entrada amortiza o SALDO DEVEDOR e observa a Clausula 2.5.2 quanto a remessa.
+
+7.3. AMORTIZACAO LIVRE. Apos a Entrada, o CONTRATANTE pode amortizar o SALDO
+DEVEDOR livremente, no montante e na frequencia que desejar, ate a quitacao.
+
+7.4. QUITACAO ATE D-30. O SALDO DEVEDOR deve estar integralmente quitado ate 30
+(trinta) dias antes da data de inicio do PROGRAMA (D-30), salvo prazo diverso do
+FORNECEDOR informado no Quadro Resumo ou no Anexo III.
+
+7.5. ANTECIPACAO POR EXIGENCIA. Exigencias de visto ou do FORNECEDOR podem
+determinar a antecipacao de pagamentos. Nesse caso, a CONTRATADA informa o
+documento que embasa a exigencia, o valor e sua composicao e a data limite,
+exibindo o lastro documental na Area do Cliente.
+
+7.6. Cada pagamento confirmado reduz o SALDO DEVEDOR pelo valor amortizado na
+MOEDA DE REFERENCIA.
+
+7.11. REPACTUACAO. O CONTRATANTE pode solicitar a repactuacao pela Area do
+Cliente; a alteracao depende de aceite da CONTRATADA e de termo proprio.
+
+7.12. Historico e extrato de pagamentos, com a cotacao aplicada em cada um,
+ficam disponiveis na Area do Cliente.
+
+
+8. DIREITO DE ARREPENDIMENTO
+
+8.1. O CONTRATANTE pode exercer o direito de arrependimento em ate 7 (sete) dias
+corridos contados do aceite (assinatura por marcacao eletronica), por meio da
+Area do Cliente ou dos canais informados.
+
+8.2. Exercido o arrependimento no prazo, os valores eventualmente pagos sao
+restituidos em ate [10] dias, por Pix a conta de origem, observados os valores
+comprovadamente nao recuperaveis ja incorridos com o FORNECEDOR quando houver
+autorizacao de processamento imediato.
+
+8.3. Durante o prazo de arrependimento, a Entrada nao e remetida ao FORNECEDOR,
+salvo autorizacao de processamento imediato (Clausula 2.5.2).
+
+
+9. CANCELAMENTO E REEMBOLSO
+
+9.1. O cancelamento apos o prazo de arrependimento observa a politica escalonada
+do Anexo I, conforme a etapa ja concluida do processo, alem dos valores
+comprovadamente nao recuperaveis e dos efeitos de cambio e IOF ja incorridos.
+
+9.2. A memoria de calculo do reembolso fica disponivel na Area do Cliente.
+
+9.3. Aplicam-se as dispensas e excecoes previstas no Anexo I.
+
+
+10. VIGENCIA
+
+10.1. Este contrato vigora a partir do aceite e ate a conclusao do PROGRAMA e a
+quitacao das obrigacoes, ressalvadas as clausulas que por natureza subsistam.
+
+
+11. RESPONSABILIDADE E SERVICOS DE TERCEIROS
+
+11.1. A execucao academica, de acomodacao, de seguro e demais servicos no
+exterior e de responsabilidade dos respectivos FORNECEDORES, conforme suas
+politicas (Anexo III). A CONTRATADA nao responde por fato exclusivo do
+FORNECEDOR, do CONTRATANTE, do PARTICIPANTE ou de terceiros, nem por caso
+fortuito e forca maior.
+
+
+12. CONFIDENCIALIDADE
+
+12.1. As partes tratam com confidencialidade os dados a que tiverem acesso em
+razao deste contrato, observada a Clausula 15 (protecao de dados).
+
+
+13. MORA E INADIMPLEMENTO
+
+13.1. O atraso no pagamento apos as datas limite sujeita o CONTRATANTE a multa de
+[2%] e juros de [1%] ao mes, alem de atualizacao pelo indice [IPCA/IGP-M], sobre
+o valor em atraso.
+
+13.2. Persistindo a mora, a CONTRATADA envia ao menos 2 (duas) comunicacoes
+amigaveis. O atraso por [15] dias autoriza a suspensao dos servicos e por [30]
+dias a resolucao do contrato, sem prejuizo do Anexo I.
+
+
+14. FORCA MAIOR
+
+14.1. Nenhuma parte responde por descumprimento decorrente de caso fortuito ou
+forca maior, comunicando a outra assim que possivel e mitigando os efeitos.
+
+
+15. PROTECAO DE DADOS (LGPD)
+
+15.1. O tratamento de dados pessoais observa a Lei 13.709/2018 e a Politica de
+Privacidade da CONTRATADA, incorporada por referencia.
+
+15.2. O compartilhamento de dados com FORNECEDORES, inclusive transferencia
+internacional, ocorre na medida necessaria a execucao do PROGRAMA.
+
+15.3. Dados pessoais sensiveis, em especial de saude, sao tratados mediante
+consentimento especifico e destacado do CONTRATANTE/PARTICIPANTE.
+
+
+16. USO DE IMAGEM
+
+16.1. Eventual autorizacao de uso de imagem e facultativa, dada em opt-in
+separado e revogavel, e nao e condicao para a contratacao.
+
+
+17. FORMALIZACAO E ASSINATURA
+
+17.1. ASSINATURA POR MARCACAO ELETRONICA. A adesao a estas Condicoes Gerais e ao
+Quadro Resumo se aperfeicoa por marcacao eletronica, com registro de data, hora,
+endereco IP, versao do documento (hash) e identificador de sessao, que
+constituem prova do aceite.
+
+17.2. O documento aceito compreende estas Condicoes Gerais (na versao vigente no
+aceite), o Quadro Resumo e os Anexos I, II e III.
+
+17.3. VIA INTEGRAL. A via integral do contrato (Condicoes Gerais + Quadro Resumo
++ Anexos) fica disponivel para consulta, download e impressao na Area do Cliente,
+com acesso permanente, nos termos do Decreto 7.962/2013.
+
+
+18. DISPOSICOES GERAIS E FORO
+
+18.1. A eventual tolerancia quanto a qualquer disposicao nao implica novacao nem
+renuncia.
+
+18.2. Se qualquer clausula for tida por invalida, as demais permanecem em vigor.
+
+18.3. Fica eleito o foro do domicilio do CONTRATANTE para dirimir controversias
+oriundas deste contrato.
+
+
+ANEXO I — POLITICA DE CANCELAMENTO E REEMBOLSO
+
+Retencao escalonada conforme a etapa concluida do processo, correspondente a
+[1%], [2%], [3,5%] e [5%] do valor do curso (tuition), limitada ao teto de
+[USD 800] equivalente, alem dos valores comprovadamente nao recuperaveis ja
+incorridos e dos efeitos de cambio e IOF. Dispensas e casos especiais conforme
+item [I.4]. A memoria de calculo e apresentada na Area do Cliente.
+[Percentuais, teto e dispensas a confirmar pelo juridico/financeiro.]
+
+
+ANEXO II — METODOLOGIA DE CAMBIO
+
+Valor em Reais = valor na moeda de referencia x PTAX de venda (Banco Central) x
+(1 + [5%]) + IOF-cambio, sendo o IOF aplicado de forma ADITIVA, a aliquota
+vigente na data, sobre o valor convertido (curso + taxas + acomodacao). Sao
+armazenados e itemizados os componentes: PTAX e a respectiva data de divulgacao,
+o percentual de intermediacao e cambio ([5%]) e o IOF (percentual e valor). A
+conversao e apurada na data de cada pagamento; os valores em Reais exibidos antes
+do pagamento sao simulacao informativa, nao vinculante (Clausula 6.7).
+[Base e aliquota do IOF a confirmar pelo financeiro; aliquota "vigente na data".]
+
+
+ANEXO III — POLITICA DE PAGAMENTO DOS FORNECEDORES
+
+Politica de pagamento aplicavel a cada PROGRAMA/ FORNECEDOR (prazos, marcos e
+condicoes de remessa), disponibilizada ao CONTRATANTE antes da contratacao e que
+integra este contrato para o PROGRAMA respectivo.
+[Conteudo por Programa, mantido no cadastro de Anexo III da plataforma.]
