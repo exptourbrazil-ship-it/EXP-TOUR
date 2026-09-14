@@ -13,6 +13,15 @@ tempo de request: cada deploy é fixado a um tenant por variável de ambiente.
   [`supabase/schema.sql`](../supabase/schema.sql)). O deploy do tenant legado é o
   dono desses registros; os demais, não.
 
+> **⚠️ `CATALOGO_TENANT_SLUG` é obrigatória para o LOGIN.** As 4 rotas de login
+> (cliente `request-code`/`verify-code`; fornecedor `login/request`/`login/verify`)
+> escopam por tenant reusando `resolverEscopoTenant`, que **falha fechado** se a
+> env faltar. Diferente do resto do app (que cai no default `forio` só para
+> tematização), sem a env **nenhum login abre sessão**. Confirme que ela está
+> setada em **ambos** os deploys antes de publicar (os crons já dependem dela
+> diariamente, então na prática já está — mas o login torna isso um pré-requisito
+> de porta de entrada, não só de background).
+
 ## Variáveis de ambiente por deploy
 
 Iguais nos dois deploys (mesmo banco/segredos), **exceto** as que definem a
