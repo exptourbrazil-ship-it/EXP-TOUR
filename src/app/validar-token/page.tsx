@@ -59,7 +59,7 @@ useEffect(() => {
 
 const cabecalho = createElement(
   "div",
-  { className: "bg-brand px-6 py-5 text-center" },
+  { className: "bg-cta px-6 py-5 text-center" },
   createElement("p", { className: "text-brand-gold text-xs font-semibold tracking-widest uppercase mb-1" }, "EXP TOUR"),
   createElement("h1", { className: "text-white text-lg font-semibold" }, "Validação de Acesso")
   );
@@ -109,7 +109,7 @@ const caixaSucesso = resultado.status === "valido"
 const botao = resultado.status === "valido"
   ? createElement(
     "a",
-    { href: "/", className: "inline-block w-full rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition" },
+    { href: "/", className: "inline-block w-full rounded-md bg-cta px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition" },
     "Acessar a Área do Cliente"
     )
   : createElement(

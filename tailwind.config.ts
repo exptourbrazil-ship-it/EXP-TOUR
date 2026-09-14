@@ -18,6 +18,13 @@ const config: Config = {
                                         golddark: "rgb(var(--brand-golddark) / <alpha-value>)",
                                         cream: "rgb(var(--brand-cream) / <alpha-value>)",
                             },
+                            // Cor do CALL-TO-ACTION por tenant (--p-cta/--p-cta-fg em
+                            // globals.css + tenant-brand.ts). EXP Tour: verde (= brand);
+                            // Forio: Portal Blue. Botoes de acao primaria usam bg-cta.
+                            cta: {
+                                        DEFAULT: "var(--p-cta)",
+                                        fg: "var(--p-cta-fg)",
+                            },
                   },
                   keyframes: {
                             "fade-in-up": {
@@ -34,7 +41,10 @@ const config: Config = {
                             "scale-in": "scale-in 0.2s ease-out both",
                   },
                   fontFamily: {
-                            serif: ["Bellefair", "Georgia", "Times New Roman", "serif"],
+                            // Titulos por TENANT: --p-heading resolve para Bellefair (EXP
+                            // Tour) ou Inter (Forio). Assim `font-serif` acompanha a marca
+                            // sem editar cada pagina. Fallbacks se a var faltar.
+                            serif: ["var(--p-heading)", "Bellefair", "Georgia", "Times New Roman", "serif"],
                             sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
                   },
           },

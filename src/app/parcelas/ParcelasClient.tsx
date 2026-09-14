@@ -107,7 +107,7 @@ function CopiarPix({ codigo }: { codigo: string }) {
         />
         <button
           onClick={copiar}
-          className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream"
+          className="shrink-0 rounded-lg bg-cta px-4 py-2 text-sm font-medium text-brand-cream"
         >
           {copiado ? "Copiado!" : "Copiar"}
         </button>
@@ -326,14 +326,14 @@ function AjustarParcelas({ parcelas, contratoId, dataInicio, moeda, valorTotalCo
             {etapa === "editar" ? (
               <>
                 <button onClick={onFechar} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600">Cancelar</button>
-                <button onClick={salvar} disabled={salvando || (conferirSoma && !somaConfere)} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
+                <button onClick={salvar} disabled={salvando || (conferirSoma && !somaConfere)} className="rounded-xl bg-cta px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
                   Revisar
                 </button>
               </>
             ) : (
               <>
                 <button onClick={() => { setEtapa("editar"); setErro(null) }} disabled={salvando} className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-neutral-600 disabled:opacity-50">Voltar</button>
-                <button onClick={confirmar} disabled={salvando || !aceite} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
+                <button onClick={confirmar} disabled={salvando || !aceite} className="rounded-xl bg-cta px-5 py-2 text-sm font-medium text-brand-cream disabled:opacity-50">
                   {salvando ? "Enviando..." : "Aceitar e aplicar"}
                 </button>
               </>
@@ -629,7 +629,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                           <button
                             onClick={() => iniciarCobranca(parcela.id)}
                             disabled={preparando === parcela.id}
-                            className={ehProxima ? "rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50" : "rounded-full border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50 disabled:opacity-50"}
+                            className={ehProxima ? "rounded-full bg-cta px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50" : "rounded-full border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50 disabled:opacity-50"}
                           >
                             {preparando === parcela.id ? "Calculando..." : ehProxima ? "Gerar Pix" : "Pagar antecipadamente"}
                           </button>
@@ -670,7 +670,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
                         <button
                           onClick={() => gerarCobranca(parcela.id)}
                           disabled={gerando === parcela.id}
-                          className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50"
+                          className="rounded-full bg-cta px-5 py-2.5 text-sm font-medium text-brand-cream shadow-sm disabled:opacity-50"
                         >
                           {gerando === parcela.id ? "Gerando..." : "Confirmar e gerar Pix"}
                         </button>
@@ -755,7 +755,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
 
       {aviso ? (
         <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4">
-          <div className="animate-fade-in-up rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-brand-cream shadow-lg">
+          <div className="animate-fade-in-up rounded-full bg-cta px-5 py-2.5 text-sm font-medium text-brand-cream shadow-lg">
             {aviso}
           </div>
         </div>
