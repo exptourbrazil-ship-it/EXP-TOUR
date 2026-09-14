@@ -1504,6 +1504,11 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
           capacidade que gateava internamente gateia aqui. */}
       {permissoes.gerirCaso ? <SecaoVisto caso={caso} podeGerir={permissoes.gerirCaso} /> : null}
 
+      {/* Solicitações de cancelamento vindas do PORTAL do cliente (spec 1 §3) */}
+      {permissoes.gerirCancelamento ? (
+        <SecaoSolicitacoesCancelamento caso={caso} />
+      ) : null}
+
       {/* Pedido de cancelamento do cliente — abre o E4 */}
       {permissoes.gerirCancelamento ? (
         <SecaoCancelamento caso={caso} podeGerir={permissoes.gerirCancelamento} />
@@ -3984,6 +3989,148 @@ function AcertoCard({
 }
 
 // ---- Reembolso unificado (PRÉVIA read-only) ---------------------------------
+// Solicitações de cancelamento DELIBERADO feitas pelo cliente no portal
+// (spec 1 §3). Mostra o pedido (motivo, valor que o cliente confirmou nomeando,
+// memória do cálculo) e deixa a equipe ACOMPANHAR o status. NÃO cancela o
+// contrato nem devolve dinheiro — o acerto é conduzido pelas seções abaixo.
+const ROTULO_STATUS_SOLIC: Record<string, string> = {
+  solicitado: "Solicitado pelo cliente",
+  em_analise: "Em análise",
+  concluido: "Concluído",
+  cancelado: "Cancelado",
+};
+
+function SecaoSolicitacoesCancelamento({ caso }: { caso: Caso }) {
+  const router = useRouter();
+  const lista = caso.solicitacoesCancelamento || [];
+  const [processando, setProcessando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const nomePorContrato = new Map(caso.contratos.map((c) => [c.id, c.nome || "Contrato"]));
+
+  async function mudarStatus(contratoId: string, solicitacaoId: string, status: string) {
+    setErro(null);
+    setProcessando(solicitacaoId);
+    try {
+      const res = await fetch(`/api/admin/contratos/${contratoId}/cancelamento-solicitacao`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solicitacaoId, status }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) setErro(json.error || "Falha ao atualizar.");
+      else router.refresh();
+    } catch (e: any) {
+      setErro(e?.message || "Erro de rede.");
+    } finally {
+      setProcessando(null);
+    }
+  }
+
+  if (lista.length === 0) return null;
+
+  return (
+    <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5">
+      <h3 className="font-serif text-lg text-brand">Solicitações de cancelamento (portal)</h3>
+      <p className="mt-1 text-xs text-neutral-500">
+        Pedidos que o cliente registrou pelo portal. O valor abaixo é o que ele confirmou nomeando na
+        tela — apoio ao acerto, que continua pelas ações desta aba. Mudar o status aqui é só
+        acompanhamento; não cancela nem devolve dinheiro.
+      </p>
+
+      {erro ? <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</p> : null}
+
+      <div className="mt-4 space-y-3">
+        {lista.map((s) => (
+          <div key={s.id} className="rounded-xl border border-neutral-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-brand">{nomePorContrato.get(s.contrato_id) || "Contrato"}</p>
+                <p className="text-xs text-neutral-500">
+                  {s.criado_em ? new Date(s.criado_em).toLocaleString("pt-BR") : "—"} · motivo: {s.motivo}
+                </p>
+              </div>
+              <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+                {ROTULO_STATUS_SOLIC[s.status] || s.status}
+              </span>
+            </div>
+
+            {s.motivo_detalhe ? (
+              <p className="mt-2 rounded-lg bg-neutral-50 p-2 text-sm text-neutral-600">{s.motivo_detalhe}</p>
+            ) : null}
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-amber-50 p-3">
+                <p className="text-xs text-amber-700">Retido confirmado pelo cliente</p>
+                <p className="mt-0.5 font-serif text-lg text-amber-900">{fmtBRL(Number(s.valor_ciente_brl) || 0)}</p>
+              </div>
+              <div className="rounded-lg bg-emerald-50 p-3">
+                <p className="text-xs text-emerald-700">Devolução estimada</p>
+                <p className="mt-0.5 font-serif text-lg text-emerald-900">{fmtBRL(Number(s.reembolso_estimado_brl) || 0)}</p>
+              </div>
+            </div>
+
+            {Array.isArray(s.memoria) && s.memoria.length > 0 ? (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs font-medium text-neutral-500">Memória do cálculo (como o cliente viu)</summary>
+                <dl className="mt-2 space-y-1.5 rounded-lg border border-neutral-100 p-3">
+                  {s.memoria.map((l, i) => (
+                    <div key={i} className="flex items-baseline justify-between gap-3 text-sm">
+                      <dt className="text-neutral-600">{l.rotulo}</dt>
+                      <dd className="font-medium text-brand">
+                        {l.tipo === "pct"
+                          ? `${Math.round(l.valor * 1000) / 10}%`
+                          : l.tipo === "moeda_brl"
+                          ? fmtBRL(Number(l.valor) || 0)
+                          : l.tipo === "moeda"
+                          ? fmtMoeda(Number(l.valor) || 0, s.moeda_programa || "BRL")
+                          : l.tipo === "num"
+                          ? String(l.valor)
+                          : ""}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            ) : null}
+
+            {s.status !== "concluido" && s.status !== "cancelado" ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {s.status === "solicitado" ? (
+                  <button
+                    type="button"
+                    disabled={processando === s.id}
+                    onClick={() => mudarStatus(s.contrato_id, s.id, "em_analise")}
+                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    Marcar em análise
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={processando === s.id}
+                  onClick={() => mudarStatus(s.contrato_id, s.id, "concluido")}
+                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-brand-cream hover:opacity-90 disabled:opacity-50"
+                >
+                  Marcar concluída
+                </button>
+                <button
+                  type="button"
+                  disabled={processando === s.id}
+                  onClick={() => mudarStatus(s.contrato_id, s.id, "cancelado")}
+                  className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-500 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Descartar pedido
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // Consome GET /api/admin/contratos/[id]/reembolso-unificado. Combina retenção
 // EXP Tour (Anexo I) + fornecedor (escada por campus) + câmbio numa memória
 // única. NÃO grava nem move dinheiro — é apoio à decisão do acerto.

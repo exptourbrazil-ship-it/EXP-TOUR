@@ -125,6 +125,39 @@ export async function tenantDoContrato(
 }
 
 /**
+ * Tenant de um TITULAR (dono do Caso 360). Prefere a coluna direta
+ * titulares.tenant_id; se NULL, deriva do contrato mais recente do titular
+ * (mesma lógica de fallback de tenantDoContrato). `existe: false` quando o
+ * titular não existe.
+ */
+export async function tenantDoTitular(
+  supabase: SupabaseClient,
+  titularId: string,
+): Promise<{ existe: boolean; tenantId: string | null }> {
+  const { data, error } = await supabase
+    .from("titulares")
+    .select("tenant_id")
+    .eq("id", titularId)
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao resolver o tenant do titular: ${error.message}`);
+  if (!data) return { existe: false, tenantId: null };
+
+  let tenantId = (data as { tenant_id?: string | null }).tenant_id ?? null;
+  if (tenantId == null) {
+    // Fallback: deriva do contrato mais recente (titular ainda não backfillado).
+    const { data: c } = await supabase
+      .from("contratos")
+      .select("tenant_id")
+      .eq("titular_id", titularId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    tenantId = (c as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+  }
+  return { existe: true, tenantId };
+}
+
+/**
  * Ids dos contratos visiveis a um escopo, para as LISTAGENS (GET sem contratoId).
  * Global => null (o chamador NAO filtra: ve todos). Escopado => os contratos do
  * tenant (via contratos.tenant_id, ja backfillado). Pode ser [] (tenant sem
