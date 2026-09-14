@@ -98,6 +98,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "casos.ver",
   },
   {
+    href: "/admin/retaguarda",
+    label: "Retaguarda",
+    descricao: "Achados detectivos abertos (inconsistências)",
+    icone: ICONES.antecipacoes,
+    capacidade: "casos.ver",
+  },
+  {
     href: "/admin/leads",
     label: "Leads",
     descricao: "Pedidos de matrícula vindos do orçamento",
@@ -308,6 +315,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/cambio": "Financeiro",
   "/admin/documentos": "Operação",
   "/admin/sla": "Operação",
+  "/admin/retaguarda": "Operação",
   "/admin/termos": "Configuração",
   "/admin/sobre-nos": "Configuração",
   "/admin/sistema": "Configuração",
