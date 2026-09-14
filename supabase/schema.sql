@@ -2844,6 +2844,39 @@ begin
 end;
 $subparc$;
 
+-- ---------------------------------------------------------------------------
+-- Retaguarda (camada detectiva 7-F): achados de inconsistencia persistidos.
+-- O detective (src/lib/retaguarda.ts) varre os dados e grava aqui cada achado
+-- por `chave` estavel; a reconciliacao abre/reabre/mantem/resolve entre rodadas.
+-- Escopado por tenant (tenant_id NOT NULL: o detective roda por deploy-tenant).
+-- `tenant_id` dentro do CREATE de proposito: entra na varredura do guardrail
+-- tenant-isolation.test.ts, que passa a EXIGIR filtro por tenant nas queries.
+-- Sem FK em contrato_id/entidade: um achado pode citar entidade ja apagada.
+create table if not exists retaguarda_achado (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  chave text not null,
+  categoria text not null,
+  severidade text not null check (severidade in ('alto','medio','baixo')),
+  entidade_tipo text not null,
+  entidade_id text not null,
+  contrato_id uuid,
+  resumo text not null,
+  status text not null default 'aberto' check (status in ('aberto','resolvido')),
+  primeira_vez timestamptz not null default now(),
+  ultima_vez timestamptz not null default now(),
+  resolvido_em timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+-- Uma linha por (tenant, chave): re-deteccao ATUALIZA em vez de duplicar.
+create unique index if not exists uq_retaguarda_achado_chave
+  on retaguarda_achado(tenant_id, chave);
+-- Painel de saude: abertos por severidade, do tenant.
+create index if not exists idx_retaguarda_achado_status
+  on retaguarda_achado(tenant_id, status, severidade);
+alter table if exists retaguarda_achado enable row level security;
+
 -- Isolamento por tenant nas rotas admin (ver supabase/migracao-anexo-iii-tenant.sql).
 -- Estas colunas ficam AQUI (fora dos blocos CREATE) de proposito: o guardrail em
 -- src/lib/tenant-isolation.test.ts deriva as tabelas "tenant-scoped" dos blocos

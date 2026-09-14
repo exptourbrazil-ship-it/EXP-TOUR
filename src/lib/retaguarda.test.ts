@@ -4,6 +4,8 @@ import {
   checarParcelaPagaSemLastro,
   checarPagamentoSemParcelaPaga,
   detectarRetaguarda,
+  reconciliarAchados,
+  type Achado,
   type SnapshotRetaguarda,
 } from "./retaguarda.ts";
 
@@ -92,4 +94,64 @@ test("detectarRetaguarda roda todas e ordena por severidade+chave", () => {
   // Ambos alto -> ordena por chave. 'pagamento_...' < 'parcela_...' alfabeticamente.
   assert.equal(achados[0].categoria, "pagamento_sem_parcela_paga");
   assert.equal(achados[1].categoria, "parcela_paga_sem_lastro");
+});
+
+// ---- reconciliarAchados -----------------------------------------------------
+
+function achado(chave: string): Achado {
+  return {
+    chave,
+    categoria: "x",
+    severidade: "alto",
+    entidade: { tipo: "parcela", id: chave },
+    contratoId: null,
+    resumo: "r",
+  };
+}
+
+test("reconciliar: achado novo -> abrir", () => {
+  const plano = reconciliarAchados([achado("k1")], []);
+  assert.equal(plano.abrir.length, 1);
+  assert.equal(plano.abrir[0].chave, "k1");
+  assert.deepEqual(plano.manter, []);
+  assert.deepEqual(plano.reabrir, []);
+  assert.deepEqual(plano.resolver, []);
+});
+
+test("reconciliar: achado ja aberto e presente -> manter", () => {
+  const plano = reconciliarAchados([achado("k1")], [{ chave: "k1", status: "aberto" }]);
+  assert.equal(plano.manter.length, 1);
+  assert.equal(plano.abrir.length, 0);
+});
+
+test("reconciliar: achado resolvido que voltou -> reabrir", () => {
+  const plano = reconciliarAchados([achado("k1")], [{ chave: "k1", status: "resolvido" }]);
+  assert.equal(plano.reabrir.length, 1);
+  assert.equal(plano.abrir.length, 0);
+});
+
+test("reconciliar: aberto que sumiu -> resolver", () => {
+  const plano = reconciliarAchados([], [{ chave: "k1", status: "aberto" }]);
+  assert.deepEqual(plano.resolver, ["k1"]);
+});
+
+test("reconciliar: resolvido ausente permanece intocado", () => {
+  const plano = reconciliarAchados([], [{ chave: "k1", status: "resolvido" }]);
+  assert.deepEqual(plano.resolver, []);
+  assert.deepEqual(plano.abrir, []);
+});
+
+test("reconciliar: cenario misto", () => {
+  const plano = reconciliarAchados(
+    [achado("novo"), achado("mantido"), achado("voltou")],
+    [
+      { chave: "mantido", status: "aberto" },
+      { chave: "voltou", status: "resolvido" },
+      { chave: "sumiu", status: "aberto" },
+    ],
+  );
+  assert.deepEqual(plano.abrir.map((a) => a.chave), ["novo"]);
+  assert.deepEqual(plano.manter.map((a) => a.chave), ["mantido"]);
+  assert.deepEqual(plano.reabrir.map((a) => a.chave), ["voltou"]);
+  assert.deepEqual(plano.resolver, ["sumiu"]);
 });
