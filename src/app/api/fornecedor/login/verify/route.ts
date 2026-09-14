@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { conferirTokenCodigo, FORNECEDOR_CODIGO_COOKIE } from "@/lib/fornecedor-codigo";
 import { criarSessaoFornecedor, FORNECEDOR_SESSION_COOKIE } from "@/lib/fornecedor-session";
+import { resolverEscopoTenant } from "@/lib/cron-tenant";
+import { tenantPertenceAoDeploy } from "@/lib/login-tenant";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
 import crypto from "node:crypto";
 
@@ -100,13 +102,31 @@ export async function POST(request: Request) {
   // /request e o /verify) e obtem os dados da sessao. Falha fechada.
   const { data: usuario } = await supabase
     .from("supplier_user")
-    .select("id, supplier_id, email, role, language, active, archived_at")
+    .select("id, supplier_id, email, role, language, active, archived_at, tenant_id")
     .eq("email", resultado.email)
     .eq("active", true)
     .is("archived_at", null)
     .maybeSingle();
 
   if (!usuario) {
+    return NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 });
+  }
+
+  // Escopo do deploy: este deploy só abre sessão para fornecedores do SEU tenant
+  // (dois deploys sobre o mesmo banco). É onde a sessão é emitida. Fornecedor de
+  // outro tenant recebe a MESMA resposta de não-autorizado. Falha FECHADA: sem
+  // escopo, não abre sessão.
+  let escopo;
+  try {
+    escopo = await resolverEscopoTenant(supabase);
+  } catch {
+    console.error("[fornecedor/verify] escopo de tenant indisponivel; login recusado");
+    return NextResponse.json(
+      { error: "Login de fornecedor nao configurado no servidor." },
+      { status: 503 }
+    );
+  }
+  if (!tenantPertenceAoDeploy(usuario.tenant_id, escopo.tenantId, escopo.incluiLegado)) {
     return NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 });
   }
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { criarSessao, SESSION_COOKIE } from "@/lib/session";
 import { conferirCodigoAcesso } from "@/lib/codigo-acesso";
+import { resolverEscopoTenant } from "@/lib/cron-tenant";
+import { tenantPertenceAoDeploy } from "@/lib/login-tenant";
 
 function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
@@ -27,11 +29,30 @@ export async function POST(request: Request) {
 
   const { data: titular } = await supabase
       .from("titulares")
-      .select("id")
+      .select("id, tenant_id")
       .eq("cpf", cpfLimpo)
       .maybeSingle();
 
   if (!titular) {
+        return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
+  }
+
+  // Escopo do deploy: no modelo de dois deploys sobre o mesmo banco, este deploy
+  // só abre sessão para titulares do SEU tenant (+ legado, se for o dono). É o
+  // ponto onde a sessão é emitida — o gate mais importante. Um titular de outro
+  // tenant recebe a MESMA resposta de código inválido (não revela que o CPF
+  // existe em outro tenant). Falha FECHADA: sem escopo, não abre sessão.
+  let escopo;
+  try {
+        escopo = await resolverEscopoTenant(supabase);
+  } catch {
+        console.error("[verify-code] escopo de tenant indisponivel; login recusado");
+        return NextResponse.json(
+          { error: "Login nao configurado no servidor." },
+          { status: 503 }
+        );
+  }
+  if (!tenantPertenceAoDeploy(titular.tenant_id, escopo.tenantId, escopo.incluiLegado)) {
         return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
   }
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoAcessoEmail } from "@/lib/email";
 import { slugDoTenant } from "@/lib/tenant-slug";
+import { resolverEscopoTenant } from "@/lib/cron-tenant";
+import { tenantPertenceAoDeploy } from "@/lib/login-tenant";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 import { hashCodigoAcesso, gerarCodigoAcesso } from "@/lib/codigo-acesso";
 
@@ -67,6 +69,21 @@ export async function POST(request: Request) {
       .maybeSingle();
 
       if (!titular || !titular.email) {
+        return NextResponse.json({ success: true });
+  }
+
+  // Escopo do deploy (modelo de dois deploys sobre o mesmo banco): este deploy
+  // só envia código a titulares do SEU tenant (+ legado, se for o dono). Um
+  // titular de outro tenant recebe a MESMA resposta genérica — nenhum código é
+  // enviado, e a URL do outro tenant não vira canal de acesso. Falha FECHADA:
+  // se o escopo não resolve (env do tenant ausente), não envia código.
+  try {
+        const escopo = await resolverEscopoTenant(supabase);
+        if (!tenantPertenceAoDeploy(titular.tenant_id, escopo.tenantId, escopo.incluiLegado)) {
+              return NextResponse.json({ success: true });
+        }
+  } catch {
+        console.error("[request-code] escopo de tenant indisponivel; codigo nao enviado");
         return NextResponse.json({ success: true });
   }
 

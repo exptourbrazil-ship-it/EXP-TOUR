@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enviarCodigoFornecedorEmail } from "@/lib/email";
 import { criarTokenCodigo, gerarCodigo, FORNECEDOR_CODIGO_COOKIE } from "@/lib/fornecedor-codigo";
+import { resolverEscopoTenant } from "@/lib/cron-tenant";
+import { tenantPertenceAoDeploy } from "@/lib/login-tenant";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -51,15 +53,31 @@ export async function POST(request: Request) {
 
   const { data: usuario } = await supabase
     .from("supplier_user")
-    .select("name, language")
+    .select("name, language, tenant_id")
     .eq("email", email)
     .eq("active", true)
     .is("archived_at", null)
     .maybeSingle();
 
-  if (!usuario) {
-    // Nao cadastrado/ativo: responde IGUAL (mesmo Set-Cookie), mas com um token
-    // decoy cujo codigo nunca foi enviado — o /verify nunca vai conferir.
+  // Escopo do deploy (dois deploys sobre o mesmo banco): este deploy só envia
+  // codigo a fornecedores do SEU tenant. Fornecedor de outro tenant (ou escopo
+  // indisponivel) cai no MESMO caminho decoy do e-mail nao cadastrado — sem
+  // vazar existencia e sem enviar codigo (falha FECHADA).
+  let pertenceAoTenant = false;
+  if (usuario) {
+    try {
+      const escopo = await resolverEscopoTenant(supabase);
+      pertenceAoTenant = tenantPertenceAoDeploy(usuario.tenant_id, escopo.tenantId, escopo.incluiLegado);
+    } catch {
+      console.error("[fornecedor/request] escopo de tenant indisponivel; codigo nao enviado");
+      pertenceAoTenant = false;
+    }
+  }
+
+  if (!usuario || !pertenceAoTenant) {
+    // Nao cadastrado/ativo (ou de outro tenant): responde IGUAL (mesmo
+    // Set-Cookie), mas com um token decoy cujo codigo nunca foi enviado — o
+    // /verify nunca vai conferir.
     let decoy: string;
     try {
       decoy = criarTokenCodigo(gerarCodigo(), email);
