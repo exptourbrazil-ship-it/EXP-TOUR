@@ -2365,10 +2365,14 @@ begin
 
   -- Prova imutavel do aceite (contexto 'checkout') = versao+hash do TEXTO do Termo.
   -- Idempotente pelo indice unico (titular, termo): duplo-clique/retry nao gera
-  -- segunda prova. Os metadados por-contrato do ato de marcacao (hash do Quadro
-  -- Resumo, id de sessao) ficam em `contratos`, nao aqui — este grao e por termo.
-  insert into aceites (titular_id, termo_id, versao, hash_conteudo, contexto, ip, user_agent)
-  values (v_titular_id, p_termo_id, p_versao, p_hash, 'checkout', p_ip, p_user_agent)
+  -- segunda prova. Registra tambem os elementos da marcacao eletronica da
+  -- Clausula 17.1 disponiveis por-aceite: IP, user-agent e id de sessao (assim o
+  -- proprio aceite e prova auto-suficiente). Por causa do dedup (titular, termo),
+  -- esses metadados sao os do PRIMEIRO aceite daquele termo; o grao por-contrato
+  -- do ato (hash do Quadro Resumo, id de sessao daquela assinatura) fica em
+  -- `contratos`, que permanece a fonte autoritativa por contrato.
+  insert into aceites (titular_id, termo_id, versao, hash_conteudo, contexto, ip, user_agent, sessao_id)
+  values (v_titular_id, p_termo_id, p_versao, p_hash, 'checkout', p_ip, p_user_agent, p_session_id)
   on conflict (titular_id, termo_id) do nothing;
 
   -- Evento no barramento (auditoria/replay externo). Idempotente por cotacao.
