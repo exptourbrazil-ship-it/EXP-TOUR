@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
+import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { checarELimitar, obterIp } from "@/lib/rate-limit";
 import { hashCodigoAcesso, gerarCodigoAcesso } from "@/lib/codigo-acesso";
@@ -35,6 +36,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Isolamento por tenant: barra se o titular da URL nao esta no escopo do admin.
+  // (O 404 do tenant e identico ao de titular inexistente — nao vaza existencia.)
+  const barrado = await barrarTitularForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   const { data: titular } = await supabase
     .from("titulares")

@@ -53,26 +53,35 @@ function getSupabase() {
 
 // Carrega parcelas (com moeda/destino/titular) + pagamentos do mes e calcula as
 // metricas. Lanca em caso de falha de query — o chamador decide como tratar.
-export async function carregarFinanceiro(): Promise<DadosFinanceiros> {
+// `contratoIds` escopa o painel por tenant (ver src/lib/admin-tenant.ts):
+//  - undefined/null => GLOBAL (todos os contratos) — comportamento historico;
+//  - array           => apenas esses contratos (admin escopado). Array vazio =>
+//    tenant sem contratos, retorna zerado (o filtro .in([]) nao traz nada).
+// parcelas e pagamentos tem contrato_id direto, entao os dois lados filtram igual.
+export async function carregarFinanceiro(contratoIds?: string[] | null): Promise<DadosFinanceiros> {
   const supabase = getSupabase();
   const hojeISO = hojeBrasilISO();
   const mesInicioISO = hojeISO.slice(0, 7) + "-01"; // YYYY-MM-01
 
-  const { data: parcelas, error: erroParcelas } = await supabase
+  let qParcelas = supabase
     .from("parcelas")
     .select(
       "id, numero, descricao, valor_atual, valor_cobrado_brl, vencimento, status, is_entrada, paid_at, contrato_id, contratos(moeda, pais_destino, estudante_nome, nome, titulares(id, nome_completo, cpf))"
     )
     .order("vencimento", { ascending: true });
+  if (contratoIds != null) qParcelas = qParcelas.in("contrato_id", contratoIds);
+  const { data: parcelas, error: erroParcelas } = await qParcelas;
 
   if (erroParcelas) {
     throw new Error("Falha ao carregar parcelas.");
   }
 
-  const { data: pagamentos, error: erroPagamentos } = await supabase
+  let qPagamentos = supabase
     .from("pagamentos")
     .select("valor_brl, pago_em")
     .gte("pago_em", mesInicioISO);
+  if (contratoIds != null) qPagamentos = qPagamentos.in("contrato_id", contratoIds);
+  const { data: pagamentos, error: erroPagamentos } = await qPagamentos;
 
   if (erroPagamentos) {
     throw new Error("Falha ao carregar pagamentos.");

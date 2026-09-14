@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { montarSignatarios, ehMenorDeIdade } from "@/lib/sign-events";
 import { criarEnvelopeDeTemplate } from "@/lib/zoho-sign";
@@ -37,6 +38,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  const barrado = await barrarContratoForaDoEscopo(supabase, contratoId);
+  if (barrado) return barrado;
 
   const { data: contrato, error: erroContrato } = await supabase
     .from("contratos")

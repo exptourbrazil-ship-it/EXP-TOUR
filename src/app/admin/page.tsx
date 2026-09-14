@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 import { exigirAdmin } from "@/lib/admin-guard";
 import { ADMIN_NAV } from "@/lib/admin-nav";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
+import { contratoIdsDoEscopoAtual } from "@/lib/admin-tenant";
 import { contarDocumentosPendentes } from "@/lib/admin-operacao";
 import { carregarFilaDoDia, carregarConcluidasHoje, type FilaDoDia, type ItemConcluida } from "@/lib/admin-fila";
 import { ESTADO_LABEL, type EstadoPrazo, type ItemFila } from "@/lib/fila-do-dia";
@@ -35,7 +37,11 @@ export default async function AdminHomePage({
   // Best-effort: se o carregamento falhar, a home ainda renderiza (cards em "—").
   let financeiro = null as Awaited<ReturnType<typeof carregarFinanceiro>> | null;
   try {
-    financeiro = await carregarFinanceiro();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+    );
+    financeiro = await carregarFinanceiro(await contratoIdsDoEscopoAtual(supabase));
   } catch {
     financeiro = null;
   }

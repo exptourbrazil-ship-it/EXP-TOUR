@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
+import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { obterIp } from "@/lib/rate-limit";
 import { arquivarTitular, desarquivarTitular, CadastroInvalido } from "@/lib/cadastro-service";
 
@@ -15,6 +17,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const { id } = await params;
   if (!id) return NextResponse.json({ ok: false, erro: "Cliente inválido." }, { status: 400 });
+
+  // Isolamento por tenant: barra se o titular da URL nao esta no escopo do admin.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const barrado = await barrarTitularForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   const body = (await request.json().catch(() => null)) as { motivo?: unknown } | null;
   const motivo = body && typeof body.motivo === "string" ? body.motivo : null;
@@ -42,6 +52,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
   const { id } = await params;
   if (!id) return NextResponse.json({ ok: false, erro: "Cliente inválido." }, { status: 400 });
+
+  // Isolamento por tenant: barra se o titular da URL nao esta no escopo do admin.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const barrado = await barrarTitularForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   try {
     const r = await desarquivarTitular({

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 import { TIPOS_CANCELAMENTO, type TipoCancelamento } from "@/lib/cancelamento";
 import { registrarTransicao, sincronizarEstadoContrato } from "@/lib/contrato-estado-service";
 
@@ -67,6 +68,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const supabase = getSupabase();
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
 
   const { data: contrato, error: selErr } = await supabase
@@ -137,6 +140,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const { id } = await params;
   const supabase = getSupabase();
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
 
   const { error } = await supabase

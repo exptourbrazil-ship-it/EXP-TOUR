@@ -23,6 +23,10 @@
 // coberto por `node --test` sem que o carregador tente resolver o alias "@/"
 // (mesmo motivo do import dinamico em cron-tenant.ts).
 import type { SupabaseClient } from "@supabase/supabase-js";
+// Import de TIPO apenas (apagado em runtime): manter o modulo carregavel por
+// `node --test` sem puxar next/server. As respostas 404 sao montadas com import
+// dinamico em `naoEncontrado`.
+import type { NextResponse } from "next/server";
 
 // Escopo resolvido do admin: global (sem restricao) ou preso a um tenant.
 export type EscopoAdmin = { global: true } | { global: false; tenantId: string };
@@ -174,4 +178,219 @@ export async function contratoIdsDoEscopo(
     .eq("tenant_id", escopo.tenantId);
   if (error) throw new Error(`Falha ao listar contratos do tenant: ${error.message}`);
   return (data ?? []).map((r) => (r as { id: string }).id);
+}
+
+/**
+ * Conveniencia: resolve o escopo do admin atual e devolve os ids de contrato
+ * visiveis (null = global; array = escopado, possivelmente vazio). Para paineis
+ * agregados (financeiro) que filtram por contrato.
+ */
+export async function contratoIdsDoEscopoAtual(
+  supabase: SupabaseClient,
+): Promise<string[] | null> {
+  const escopo = await escopoTenantAdmin(supabase);
+  return contratoIdsDoEscopo(supabase, escopo);
+}
+
+/**
+ * Ids dos titulares visiveis a um escopo, para as LISTAGENS. Global => null (nao
+ * filtra). Escopado => titulares do tenant. Pode ser [] (tenant sem titulares).
+ */
+export async function titularIdsDoEscopo(
+  supabase: SupabaseClient,
+  escopo: EscopoAdmin,
+): Promise<string[] | null> {
+  if (escopo.global) return null;
+  const { data, error } = await supabase
+    .from("titulares")
+    .select("id")
+    .eq("tenant_id", escopo.tenantId);
+  if (error) throw new Error(`Falha ao listar titulares do tenant: ${error.message}`);
+  return (data ?? []).map((r) => (r as { id: string }).id);
+}
+
+// Tenant de um titular. `existe: false` quando o titular nao existe.
+async function tenantDoTitularId(
+  supabase: SupabaseClient,
+  titularId: string,
+): Promise<{ existe: boolean; tenantId: string | null }> {
+  const { data, error } = await supabase
+    .from("titulares")
+    .select("tenant_id")
+    .eq("id", titularId)
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao resolver o tenant do titular: ${error.message}`);
+  if (!data) return { existe: false, tenantId: null };
+  return { existe: true, tenantId: (data as { tenant_id?: string | null }).tenant_id ?? null };
+}
+
+// ---------------------------------------------------------------------------
+// GUARDAS DE ROTA. Padrao unico para todas as rotas admin que recebem um id de
+// entidade: resolvem o tenant da entidade e devolvem uma resposta 404 PRONTA
+// quando o admin escopado nao pode agir sobre ela; ou `null` para prosseguir.
+// Admin GLOBAL sempre passa (retorna null). O 404 e identico para "inexistente"
+// e "de outro tenant" — nao vaza existencia. Chame LOGO APOS o params/id, antes
+// de qualquer efeito (leitura sensivel, 409 de imutabilidade, mutacao).
+// ---------------------------------------------------------------------------
+
+// 404 padrao (import dinamico de next/server: ver nota do import de tipo acima).
+async function naoEncontrado(): Promise<NextResponse> {
+  const { NextResponse } = await import("next/server");
+  return NextResponse.json({ ok: false, erro: "Recurso nao encontrado." }, { status: 404 });
+}
+
+// Nucleo: dado se a entidade existe e qual o seu tenant, decide 404 x prosseguir.
+async function barrar(
+  supabase: SupabaseClient,
+  existe: boolean,
+  tenantIdDaEntidade: string | null,
+): Promise<NextResponse | null> {
+  const escopo = await escopoTenantAdmin(supabase);
+  if (escopo.global) return null;
+  if (!existe || !escopoPermiteContrato(escopo, tenantIdDaEntidade)) return naoEncontrado();
+  return null;
+}
+
+/** Barra se o CONTRATO nao esta no escopo do admin. */
+export async function barrarContratoForaDoEscopo(
+  supabase: SupabaseClient,
+  contratoId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDoContrato(supabase, contratoId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se o TITULAR (cliente) nao esta no escopo do admin. */
+export async function barrarTitularForaDoEscopo(
+  supabase: SupabaseClient,
+  titularId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDoTitularId(supabase, titularId);
+  return barrar(supabase, existe, tenantId);
+}
+
+// Resolve {existe, tenantId} de uma entidade que aponta para um contrato pela
+// coluna informada (default "contrato_id"): o tenant vem do contrato.
+async function tenantViaContrato(
+  supabase: SupabaseClient,
+  tabela: string,
+  id: string,
+  coluna = "contrato_id",
+): Promise<{ existe: boolean; tenantId: string | null }> {
+  const { data, error } = await supabase.from(tabela).select(coluna).eq("id", id).maybeSingle();
+  if (error) throw new Error(`Falha ao resolver o tenant de ${tabela}: ${error.message}`);
+  if (!data) return { existe: false, tenantId: null };
+  const cid = (data as unknown as Record<string, string | null>)[coluna];
+  if (!cid) return { existe: true, tenantId: null };
+  const c = await tenantDoContrato(supabase, cid);
+  return { existe: true, tenantId: c.tenantId };
+}
+
+// Resolve {existe, tenantId} de uma entidade que aponta para um titular.
+async function tenantViaTitular(
+  supabase: SupabaseClient,
+  tabela: string,
+  id: string,
+  coluna = "titular_id",
+): Promise<{ existe: boolean; tenantId: string | null }> {
+  const { data, error } = await supabase.from(tabela).select(coluna).eq("id", id).maybeSingle();
+  if (error) throw new Error(`Falha ao resolver o tenant de ${tabela}: ${error.message}`);
+  if (!data) return { existe: false, tenantId: null };
+  const tid = (data as unknown as Record<string, string | null>)[coluna];
+  if (!tid) return { existe: true, tenantId: null };
+  const t = await tenantDoTitularId(supabase, tid);
+  return { existe: true, tenantId: t.tenantId };
+}
+
+/** Barra se a PARCELA (via contrato) nao esta no escopo. */
+export async function barrarParcelaForaDoEscopo(
+  supabase: SupabaseClient,
+  parcelaId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantViaContrato(supabase, "parcelas", parcelaId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se a REPACTUACAO (via contrato) nao esta no escopo. */
+export async function barrarRepactuacaoForaDoEscopo(
+  supabase: SupabaseClient,
+  repactuacaoId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantViaContrato(supabase, "repactuacoes", repactuacaoId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se a ANTECIPACAO (via contrato) nao esta no escopo. */
+export async function barrarAntecipacaoForaDoEscopo(
+  supabase: SupabaseClient,
+  antecipacaoId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantViaContrato(supabase, "antecipacoes", antecipacaoId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se a EXCECAO (via titular) nao esta no escopo. */
+export async function barrarExcecaoForaDoEscopo(
+  supabase: SupabaseClient,
+  excecaoId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantViaTitular(supabase, "case_exceptions", excecaoId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se o DOCUMENTO (via titular) nao esta no escopo. */
+export async function barrarDocumentoForaDoEscopo(
+  supabase: SupabaseClient,
+  documentoId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantViaTitular(supabase, "documentos", documentoId);
+  return barrar(supabase, existe, tenantId);
+}
+
+// Resolve {existe, tenantId} de uma entidade com coluna tenant_id DIRETA.
+async function tenantDireto(
+  supabase: SupabaseClient,
+  tabela: string,
+  id: string,
+): Promise<{ existe: boolean; tenantId: string | null }> {
+  const { data, error } = await supabase.from(tabela).select("tenant_id").eq("id", id).maybeSingle();
+  if (error) throw new Error(`Falha ao resolver o tenant de ${tabela}: ${error.message}`);
+  if (!data) return { existe: false, tenantId: null };
+  return { existe: true, tenantId: (data as { tenant_id?: string | null }).tenant_id ?? null };
+}
+
+/** Barra se o LEAD (lead.tenant_id direto) nao esta no escopo. */
+export async function barrarLeadForaDoEscopo(
+  supabase: SupabaseClient,
+  leadId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "lead", leadId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se a PROPOSTA (propostas.tenant_id direto) nao esta no escopo. */
+export async function barrarPropostaForaDoEscopo(
+  supabase: SupabaseClient,
+  propostaId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "propostas", propostaId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se o FORNECEDOR (supplier.tenant_id direto) nao esta no escopo. */
+export async function barrarSupplierForaDoEscopo(
+  supabase: SupabaseClient,
+  supplierId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "supplier", supplierId);
+  return barrar(supabase, existe, tenantId);
+}
+
+/** Barra se o USUARIO DE FORNECEDOR (supplier_user.tenant_id direto) nao esta no escopo. */
+export async function barrarSupplierUserForaDoEscopo(
+  supabase: SupabaseClient,
+  supplierUserId: string,
+): Promise<NextResponse | null> {
+  const { existe, tenantId } = await tenantDireto(supabase, "supplier_user", supplierUserId);
+  return barrar(supabase, existe, tenantId);
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { escopoTenantAdmin, titularIdsDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,14 @@ export async function GET(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  // Isolamento por tenant: admin nao-global ve apenas docs de titulares do seu
+  // tenant. Global (ids === null) ve todos.
+  const escopo = await escopoTenantAdmin(supabase);
+  const titularIdsEscopo = await titularIdsDoEscopo(supabase, escopo);
+  if (titularIdsEscopo !== null && titularIdsEscopo.length === 0) {
+    return NextResponse.json({ ok: true, documentos: [] });
+  }
+
   // A fila e sobre o que o CLIENTE enviou (origem 'titular'). Docs inseridos
   // pela equipe (origem 'admin') ou vindos do Zoho nao entram na revisao.
   let query = supabase
@@ -33,6 +42,9 @@ export async function GET(request: Request) {
     .eq("origem", "titular")
     .order("created_at", { ascending: true });
 
+  if (titularIdsEscopo !== null) {
+    query = query.in("titular_id", titularIdsEscopo);
+  }
   if (status !== "todos") {
     query = query.eq("status", status);
   }

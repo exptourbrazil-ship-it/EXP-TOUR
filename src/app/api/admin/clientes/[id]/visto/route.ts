@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { obterIp } from "@/lib/rate-limit";
 import { registrarStatusVisto, VistoBloqueado } from "@/lib/visto-service";
 
@@ -22,6 +24,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!contratoId || !status) {
     return NextResponse.json({ ok: false, error: "Informe contratoId e status" }, { status: 400 });
   }
+
+  // Isolamento por tenant: barra se o titular da URL nao esta no escopo do admin.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
+  if (barrado) return barrado;
 
   const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
   try {

@@ -2847,3 +2847,7 @@ create index if not exists idx_admin_users_tenant on admin_users(tenant_id);
 -- NULL = tenant legado (EXP Tour). Backfill fica na migracao (nao no schema).
 alter table if exists contratos add column if not exists tenant_id uuid references tenant(id);
 create index if not exists idx_contratos_tenant on contratos(tenant_id);
+-- propostas.tenant_id: escopo comercial da proposta (pre-contrato). NULL ate o
+-- backfill/insert gravar o tenant. Fora do CREATE pelo mesmo motivo acima.
+alter table if exists propostas add column if not exists tenant_id uuid references tenant(id);
+create index if not exists idx_propostas_tenant on propostas(tenant_id);

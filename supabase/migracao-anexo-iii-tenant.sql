@@ -36,6 +36,19 @@ update contratos c
 
 create index if not exists idx_contratos_tenant on contratos(tenant_id);
 
+-- 3) Tenant da PROPOSTA (pre-contrato). propostas nao tinha tenant; a coluna
+--    permite escopar a listagem/gestao no admin. Backfill a partir do contrato
+--    ligado (quando aceita); propostas ainda nao aceitas ficam NULL (o insert no
+--    admin passa a gravar o tenant do deploy). Escrita comercial por tenant.
+alter table if exists propostas
+  add column if not exists tenant_id uuid references tenant(id);
+update propostas p
+   set tenant_id = c.tenant_id
+  from contratos c
+ where p.contrato_id = c.id
+   and p.tenant_id is distinct from c.tenant_id;
+create index if not exists idx_propostas_tenant on propostas(tenant_id);
+
 -- OPERACIONAL (evitar lock-out): so atribua um tenant_id != NULL a um admin
 -- DEPOIS que os contratos/titulares daquele tenant carregarem tenant_id != NULL.
 -- Um admin escopado NAO ve contratos com tenant NULL (legado) — se os dados do

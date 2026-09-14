@@ -4,6 +4,7 @@ import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { aplicarEdicaoParcelas, ParcelaEditErro } from "@/lib/parcelas-edit-service";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 import type { ParcelaEditInput } from "@/lib/parcelas-edit";
 
 export const runtime = "nodejs";
@@ -36,6 +37,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+
+  const barrado = await barrarContratoForaDoEscopo(supabase, contratoId);
+  if (barrado) return barrado;
 
   try {
     const r = await aplicarEdicaoParcelas(supabase, { contratoId, parcelas });

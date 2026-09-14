@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { periodoValido, destinoValido } from "@/lib/forca-maior";
 import { contarAfetados, aplicarForcaMaior } from "@/lib/forca-maior-service";
+import { contratoIdsDoEscopoAtual } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // o lote (abrir E8 + e-mail por contrato) pode demorar
@@ -34,7 +36,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Periodo invalido" }, { status: 400 });
   }
 
-  const filtro = { destino, inicioDe, inicioAte };
+  // Escopo por tenant: coorte restrito aos contratos do admin (global = todos).
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const contratoIds = await contratoIdsDoEscopoAtual(supabase);
+  const filtro = { destino, inicioDe, inicioAte, contratoIds };
 
   // PREVIEW (read-only): a tela mostra o blast radius antes de aplicar.
   if (!confirmar) {
@@ -57,6 +65,7 @@ export async function POST(request: Request) {
       destino,
       inicioDe,
       inicioAte,
+      contratoIds,
       motivo,
       autor,
       ip: obterIp(request),

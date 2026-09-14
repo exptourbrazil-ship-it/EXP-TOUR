@@ -5,6 +5,7 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { carregarReembolsoContrato, definirEtapaAnexoI } from "@/lib/reembolso-service";
 import { etapaValida } from "@/lib/etapa-anexo-i";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const etapa = url.searchParams.get("etapa");
   const dispensa = url.searchParams.get("dispensa") === "true";
 
-  const dados = await carregarReembolsoContrato(supa(), id, {
+  const supabase = supa();
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
+  const dados = await carregarReembolsoContrato(supabase, id, {
     naoRecuperaveis: Number.isFinite(naoRecuperaveis) ? naoRecuperaveis : 0,
     etapaOverrideEntrada: etapa,
     dispensa,
@@ -54,6 +58,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "Etapa inválida." }, { status: 400 });
   }
   const supabase = supa();
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const ok = await definirEtapaAnexoI(supabase, id, etapa);
   if (!ok) return NextResponse.json({ ok: false, error: "Contrato não encontrado." }, { status: 404 });
 

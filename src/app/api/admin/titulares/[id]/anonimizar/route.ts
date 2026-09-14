@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { anonimizarTitular, AnonimizacaoBloqueada } from "@/lib/anonimizacao-service";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+
+  const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
+  if (barrado) return barrado;
 
   try {
     const r = await anonimizarTitular({

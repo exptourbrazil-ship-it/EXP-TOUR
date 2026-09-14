@@ -4,6 +4,7 @@ import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import type { CapacidadeAdmin } from "@/lib/admin-roles";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
+import { barrarContratoForaDoEscopo, escopoTenantAdmin } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
@@ -34,13 +35,17 @@ export async function GET(request: Request) {
   }
 
   const supabase = getSupabase();
+  const escopo = await escopoTenantAdmin(supabase);
 
   // Duas queries separadas (mais robusto que embed reverso do PostgREST):
   // 1) contratos + nome do titular; 2) viagem_info; merge por contrato_id.
-  const { data: contratosRaw, error } = await supabase
+  let qContratos = supabase
     .from("contratos")
     .select("id, nome, estudante_nome, pais_destino, titular_id")
     .order("estudante_nome", { ascending: true });
+  // Listagem escopada: admin nao-global ve apenas os contratos do seu tenant.
+  if (!escopo.global) qContratos = qContratos.eq("tenant_id", escopo.tenantId);
+  const { data: contratosRaw, error } = await qContratos;
 
   if (error) {
     return NextResponse.json({ ok: false, erro: "Nao foi possivel listar os contratos: " + error.message }, { status: 500 });
@@ -103,6 +108,8 @@ export async function POST(request: Request) {
   };
 
   const supabase = getSupabase();
+  const barrado = await barrarContratoForaDoEscopo(supabase, contratoId);
+  if (barrado) return barrado;
   const { error } = await supabase.from("viagem_info").upsert(registro, { onConflict: "contrato_id" });
 
   if (error) {

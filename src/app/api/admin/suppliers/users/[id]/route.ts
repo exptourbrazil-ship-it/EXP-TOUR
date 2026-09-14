@@ -4,6 +4,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
 import { enviarConviteFornecedorEmail } from "@/lib/email";
+import { barrarSupplierUserForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  const barrado = await barrarSupplierUserForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   const { data: usuario } = await supabase
     .from("supplier_user")
