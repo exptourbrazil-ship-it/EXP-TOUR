@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { createElement, Fragment } from "react";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import AcertoPropostaClient from "./AcertoPropostaClient";
 import AditivoPropostaClient from "./AditivoPropostaClient";
 import { converterParaBRL } from "@/lib/cambio";
@@ -26,6 +27,13 @@ export default async function ParcelasPage() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Bloqueio financeiro por PERFIL (spec 1 §3 / Cláusula 5.4.4 + LGPD): a aba
+  // Financeiro só existe para quem pode ver dinheiro. Participante/terceiro
+  // pagador -> volta ao início.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "financeiro.ver"))) {
+    redirect("/inicio");
+  }
 
   const { data: contratos } = await supabase
     .from("contratos")

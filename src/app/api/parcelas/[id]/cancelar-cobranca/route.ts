@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session"
+import { titularPodeCliente } from "@/lib/perfil-service"
 
 // Cancela uma cobranca Pix que foi gerada mas ainda NAO foi paga,
 // devolvendo a parcela para o estado "em aberto" (como as demais parcelas
@@ -55,6 +56,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if ((contrato as any).titular_id !== sessao.titularId) {
     return NextResponse.json({ ok: false, erro: "Parcela não pertence ao titular autenticado" }, { status: 403 })
+  }
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): só perfis com pagamento.gerir.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Seu perfil não permite esta ação." }, { status: 403 })
   }
 
   // 3) Nao permite cancelar uma parcela ja paga.

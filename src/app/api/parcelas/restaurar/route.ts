@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { parcelaTravada } from "@/lib/parcelas-edit";
+import { titularPodeCliente } from "@/lib/perfil-service";
 
 // Restaura o plano de parcelas do contrato para o "plano_original"
 // guardado em contratos.plano_original (snapshot do plano inicial).
@@ -59,6 +60,11 @@ export async function POST(request: Request) {
   }
   if ((contrato as any).titular_id !== sessao.titularId) {
     return NextResponse.json({ ok: false, erro: "Contrato não pertence ao titular autenticado" }, { status: 403 });
+  }
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): só perfis com pagamento.gerir.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Seu perfil não permite esta ação." }, { status: 403 });
   }
 
   const plano = (contrato as any).plano_original as LinhaOriginal[] | null;

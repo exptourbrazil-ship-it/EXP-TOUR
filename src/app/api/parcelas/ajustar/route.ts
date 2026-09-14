@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { aplicarEdicaoParcelas, ParcelaEditErro } from "@/lib/parcelas-edit-service";
+import { titularPodeCliente } from "@/lib/perfil-service";
 
 // Ajuste de parcelas pelo proprio cliente (aba Financeiro).
 // Permite editar valores e datas, adicionar e excluir parcelas (sem valor minimo).
@@ -66,6 +67,11 @@ export async function POST(request: Request) {
   }
   if ((contrato as any).titular_id !== sessao.titularId) {
     return NextResponse.json({ ok: false, erro: "Contrato não pertence ao titular autenticado" }, { status: 403 });
+  }
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): só perfis com pagamento.gerir ajustam parcelas.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Seu perfil não permite ajustar parcelas." }, { status: 403 });
   }
 
   // 2) Valida e aplica via serviço compartilhado (mesmas invariantes do Admin).

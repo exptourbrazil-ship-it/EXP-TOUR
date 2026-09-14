@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { obterIp } from "@/lib/rate-limit";
 import { aceitarAcerto, AcertoBloqueado } from "@/lib/acerto-service";
+import { titularPodeCliente } from "@/lib/perfil-service";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,16 @@ export async function POST(request: Request) {
   const acertoId = String(body?.acertoId || "");
   if (!acertoId) {
     return NextResponse.json({ ok: false, error: "Informe acertoId" }, { status: 400 });
+  }
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): aceitar acerto é ato financeiro do
+  // contratante. (aceitarAcerto revalida a posse do contrato pelo titularId.)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Seu perfil não permite aceitar o acerto." }, { status: 403 });
   }
 
   try {

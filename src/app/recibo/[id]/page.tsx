@@ -5,6 +5,7 @@ import Link from "next/link";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { getTenantBrand } from "@/lib/tenant-brand";
 import { carregarRecibo } from "@/lib/recibo-service";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import ImprimirBotao from "@/app/contrato/[id]/ImprimirBotao";
 
 export const runtime = "nodejs";
@@ -23,6 +24,12 @@ export default async function ReciboPage({ params }: { params: Promise<{ id: str
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): comprovantes só para quem pode vê-los
+  // (contratante; terceiro pagador vê o próprio). Participante -> volta ao início.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "recibos_proprios.ver"))) {
+    redirect("/inicio");
+  }
 
   const recibo = await carregarRecibo(supabase, sessao.titularId, id);
   if (!recibo) notFound();
