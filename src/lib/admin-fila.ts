@@ -6,7 +6,6 @@ import { createClient } from "@supabase/supabase-js";
 import {
   idadeEmDias,
   diasDeAtraso,
-  estadoPrazo,
   ordenarFila,
   filtrarPorPapel,
   filtrarMinhas,
@@ -25,6 +24,28 @@ import {
 import { labelTipoExcecao, papelAlvoDoTipo, slaDiasDoTipo } from "@/lib/excecao";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { resolverEscopoTenant, membershipDoTenant, type MembershipTenant } from "@/lib/cron-tenant";
+import { carregarFeriados } from "@/lib/dias-uteis-service";
+import { avaliarSLA, type Feriados, type StatusSLA } from "@/lib/sla";
+
+// SLA da Fila agora conta DIAS ÚTEIS (doc 18.6: calendário de São Paulo), não
+// dias corridos. O motor sla.ts devolve StatusSLA; a Fila usa EstadoPrazo, que
+// mapeia 1:1.
+const STATUS_PARA_ESTADO: Record<StatusSLA, EstadoPrazo> = {
+  vencido: "estourado",
+  vence_hoje: "hoje",
+  no_prazo: "no_prazo",
+};
+
+// Estado do prazo em DIAS ÚTEIS a partir da data de abertura (ISO). `idade` em
+// dias corridos continua exibida ("aberta há X dias"); o STATUS é por dia útil.
+function estadoPrazoUteis(
+  aberturaISO: string,
+  slaDias: number,
+  hojeISO: string,
+  feriados: Feriados,
+): EstadoPrazo {
+  return STATUS_PARA_ESTADO[avaliarSLA(aberturaISO, slaDias, hojeISO, feriados).status];
+}
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -109,6 +130,10 @@ async function coletarFontesAoVivo(
     .toISOString()
     .slice(0, 10);
 
+  // Feriados de negócio (São Paulo, doc 18.6) para o SLA em dias úteis. Vazio se
+  // ainda não semeados (pais='brasil') -> o motor conta só fim de semana.
+  const feriados = await carregarFeriados(supabase, { pais: "brasil", tenantId: membership?.tenantId });
+
   const fontes: FonteItem[] = [];
 
   // Falha FECHADA nas tres fontes: a reconciliacao do materializador conclui
@@ -135,7 +160,7 @@ async function coletarFontesAoVivo(
       href: d.titular_id ? `/admin/clientes/${d.titular_id}?aba=documentos` : "/admin/documentos",
       criadoEm: d.created_at,
       idadeDias: idade,
-      estado: estadoPrazo(idade, SLA_ANALISE_DOCUMENTO_DIAS),
+      estado: estadoPrazoUteis(d.created_at, SLA_ANALISE_DOCUMENTO_DIAS, hojeISO, feriados),
       chaveDedupe: `documento:${d.id}`,
       papelAlvo: "operacao",
       alvoTipo: "documento",
@@ -197,7 +222,7 @@ async function coletarFontesAoVivo(
       href: `/admin/clientes/${e.titular_id}`,
       criadoEm,
       idadeDias: idade,
-      estado: estadoPrazo(idade, slaDiasDoTipo(e.tipo)),
+      estado: estadoPrazoUteis(criadoEm, slaDiasDoTipo(e.tipo), hojeISO, feriados),
       chaveDedupe: `excecao:${e.id}`,
       papelAlvo: papelAlvoDoTipo(e.tipo),
       alvoTipo: "excecao",
@@ -229,7 +254,7 @@ async function coletarFontesAoVivo(
       href: `/admin/quotes/${q.id}`,
       criadoEm: q.issue_date,
       idadeDias: idade,
-      estado: estadoPrazo(idade, SLA_PROPOSTA_PARADA_DIAS),
+      estado: estadoPrazoUteis(q.issue_date, SLA_PROPOSTA_PARADA_DIAS, hojeISO, feriados),
       chaveDedupe: `proposta:${q.id}`,
       papelAlvo: "consultor",
       alvoTipo: "quote",
@@ -260,7 +285,7 @@ async function coletarFontesAoVivo(
       href: "/admin/fornecedores",
       criadoEm: c.created_at,
       idadeDias: idade,
-      estado: estadoPrazo(idade, SLA_CONFIRMACAO_FORNECEDOR_DIAS),
+      estado: estadoPrazoUteis(c.created_at, SLA_CONFIRMACAO_FORNECEDOR_DIAS, hojeISO, feriados),
       chaveDedupe: `confirmacao:${c.id}`,
       papelAlvo: "operacao",
       alvoTipo: "availability_confirmation",
