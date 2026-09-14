@@ -2944,8 +2944,10 @@ $subparc$;
 -- O detective (src/lib/retaguarda.ts) varre os dados e grava aqui cada achado
 -- por `chave` estavel; a reconciliacao abre/reabre/mantem/resolve entre rodadas.
 -- Escopado por tenant (tenant_id NOT NULL: o detective roda por deploy-tenant).
--- `tenant_id` dentro do CREATE de proposito: entra na varredura do guardrail
--- tenant-isolation.test.ts, que passa a EXIGIR filtro por tenant nas queries.
+-- Toda leitura/escrita em retaguarda_achado DEVE filtrar por tenant_id (feito em
+-- retaguarda-service.ts). Esse servico nao entra no guardrail tenant-isolation.
+-- test.ts porque tambem le parcelas/pagamentos (escopadas por contrato, nao por
+-- tenant_id) — ver a nota nesse teste.
 -- Sem FK em contrato_id/entidade: um achado pode citar entidade ja apagada.
 create table if not exists retaguarda_achado (
   id uuid primary key default gen_random_uuid(),
