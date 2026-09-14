@@ -44,15 +44,21 @@ export type PagamentoSnapshot = {
   externalPaymentId: string;
 };
 
-// Documento COMPARTILHADO com o fornecedor (o "1º contato registrado" para a
-// checagem de D+7). `janelaFimISO` é o fim da janela de arrependimento gravado no
-// contrato (ou derivado do aceite + 7 dias) — resolvido pela camada de dados.
+// Documento VISÍVEL ao fornecedor (compartilhado_fornecedor = true — o governador
+// da visibilidade da escola), com o carimbo do compartilhamento e a janela de
+// arrependimento, para a checagem de D+7. `compartilhadoEmISO` pode ser nulo
+// (visível sem carimbo de data → impossível verificar o D+7 → achado próprio).
+// `janelaFimISO` = fim gravado no contrato ou derivado do aceite + 7 dias.
+// `processamentoImediatoMarcadoEmISO` = quando a autorização foi marcada (a
+// isenção só vale se a autorização é anterior ao compartilhamento; marcação
+// retroativa não apaga uma violação passada).
 export type DocCompartilhadoSnapshot = {
   docId: string;
   contratoId: string;
-  compartilhadoEmISO: string;
+  compartilhadoEmISO: string | null;
   janelaFimISO: string | null;
   processamentoImediato: boolean;
+  processamentoImediatoMarcadoEmISO: string | null;
 };
 
 export type SnapshotRetaguarda = {
@@ -139,12 +145,41 @@ export function checarPagamentoSemParcelaPaga(snap: SnapshotRetaguarda): Achado[
 export function checarRemessaAntesDoD7(snap: SnapshotRetaguarda): Achado[] {
   const achados: Achado[] = [];
   for (const d of snap.docsCompartilhados ?? []) {
-    if (d.processamentoImediato) continue;
-    if (!d.janelaFimISO) continue;
+    // Visível ao fornecedor SEM carimbo de data: impossível verificar o D+7 —
+    // exatamente a deriva "fora do sistema / carimbo tardio". Achado próprio.
+    if (!d.compartilhadoEmISO) {
+      achados.push({
+        chave: `retaguarda:compartilhado_sem_carimbo:${d.docId}`,
+        categoria: "compartilhado_sem_carimbo",
+        severidade: "alto",
+        entidade: { tipo: "documento", id: d.docId },
+        contratoId: d.contratoId,
+        resumo: `Documento ${d.docId} está visível ao fornecedor sem carimbo de data — impossível verificar o D+7 (verificar).`,
+      });
+      continue;
+    }
+
     const compartilhado = new Date(d.compartilhadoEmISO).getTime();
+
+    // Processamento imediato isenta — SALVO prova de que a autorização veio
+    // DEPOIS do compartilhamento (marcação retroativa não apaga uma violação
+    // passada). Sem essa prova (autorização anterior/ao mesmo tempo, ou sem
+    // carimbo de autorização), a isenção vale.
+    if (d.processamentoImediato) {
+      const marcado = d.processamentoImediatoMarcadoEmISO
+        ? new Date(d.processamentoImediatoMarcadoEmISO).getTime()
+        : NaN;
+      const autorizacaoRetroativa =
+        Number.isFinite(marcado) && Number.isFinite(compartilhado) && marcado > compartilhado;
+      if (!autorizacaoRetroativa) continue;
+    }
+
+    if (!d.janelaFimISO) continue;
     const fim = new Date(d.janelaFimISO).getTime();
     if (!Number.isFinite(compartilhado) || !Number.isFinite(fim)) continue;
-    if (compartilhado < fim) {
+    // `<=` (não `<`) para paridade com a trava preventiva, que só LIBERA quando
+    // agora > fim (bloqueia enquanto agora <= fim).
+    if (compartilhado <= fim) {
       achados.push({
         chave: `retaguarda:remessa_antes_do_d7:${d.docId}`,
         categoria: "remessa_antes_do_d7",

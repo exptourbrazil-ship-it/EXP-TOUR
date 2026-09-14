@@ -160,15 +160,18 @@ test("reconciliar: cenario misto", () => {
 // ---- checarRemessaAntesDoD7 -------------------------------------------------
 
 function doc(over: Partial<{
-  docId: string; contratoId: string; compartilhadoEmISO: string;
+  docId: string; contratoId: string; compartilhadoEmISO: string | null;
   janelaFimISO: string | null; processamentoImediato: boolean;
+  processamentoImediatoMarcadoEmISO: string | null;
 }> = {}) {
   return {
     docId: over.docId ?? "d1",
     contratoId: over.contratoId ?? "c1",
-    compartilhadoEmISO: over.compartilhadoEmISO ?? "2026-01-05T00:00:00Z",
+    compartilhadoEmISO: over.compartilhadoEmISO === undefined ? "2026-01-05T00:00:00Z" : over.compartilhadoEmISO,
     janelaFimISO: over.janelaFimISO === undefined ? "2026-01-10T00:00:00Z" : over.janelaFimISO,
     processamentoImediato: over.processamentoImediato ?? false,
+    processamentoImediatoMarcadoEmISO:
+      over.processamentoImediatoMarcadoEmISO === undefined ? null : over.processamentoImediatoMarcadoEmISO,
   };
 }
 
@@ -189,12 +192,27 @@ test("D+7: compartilhado DEPOIS da janela -> sem achado", () => {
   assert.deepEqual(a, []);
 });
 
-test("D+7: processamento imediato nao flagra (excecao do contrato)", () => {
+test("D+7: processamento imediato marcado ANTES do share -> nao flagra", () => {
   const a = checarRemessaAntesDoD7({
     parcelas: [], pagamentos: [],
-    docsCompartilhados: [doc({ processamentoImediato: true })],
+    docsCompartilhados: [doc({
+      processamentoImediato: true,
+      processamentoImediatoMarcadoEmISO: "2026-01-01T00:00:00Z", // antes do share (01-05)
+    })],
   });
   assert.deepEqual(a, []);
+});
+
+test("D+7: processamento imediato RETROATIVO (marcado depois do share) -> flagra", () => {
+  const a = checarRemessaAntesDoD7({
+    parcelas: [], pagamentos: [],
+    docsCompartilhados: [doc({
+      processamentoImediato: true,
+      processamentoImediatoMarcadoEmISO: "2026-01-08T00:00:00Z", // depois do share (01-05)
+    })],
+  });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "remessa_antes_do_d7");
 });
 
 test("D+7: sem janela conhecida nao flagra (defensivo)", () => {
@@ -203,6 +221,17 @@ test("D+7: sem janela conhecida nao flagra (defensivo)", () => {
     docsCompartilhados: [doc({ janelaFimISO: null })],
   });
   assert.deepEqual(a, []);
+});
+
+test("D+7: visivel ao fornecedor SEM carimbo -> achado proprio", () => {
+  const a = checarRemessaAntesDoD7({
+    parcelas: [], pagamentos: [],
+    docsCompartilhados: [doc({ compartilhadoEmISO: null })],
+  });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "compartilhado_sem_carimbo");
+  assert.equal(a[0].severidade, "alto");
+  assert.equal(a[0].chave, "retaguarda:compartilhado_sem_carimbo:d1");
 });
 
 test("D+7: snapshot sem docsCompartilhados nao quebra", () => {

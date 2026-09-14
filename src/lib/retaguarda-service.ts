@@ -78,17 +78,21 @@ async function carregarSnapshot(
       });
     }
 
-    // Documentos JÁ compartilhados com o fornecedor (compartilhado_em não nulo),
-    // com a janela de arrependimento do contrato para a checagem D+7. A janela é
-    // o carimbo gravado (data_fim_arrependimento) ou, na falta, o aceite
-    // (created_at) + 7 dias — mesma regra da trava preventiva.
+    // Documentos VISÍVEIS ao fornecedor (compartilhado_fornecedor = true — o
+    // governador real da visibilidade da escola, ver rota de download do
+    // fornecedor), com a janela de arrependimento do contrato para a checagem
+    // D+7. A janela é o carimbo gravado (data_fim_arrependimento) ou, na falta,
+    // o aceite (created_at) + 7 dias — mesma regra da trava preventiva. O
+    // carimbo do compartilhamento (compartilhado_em) pode faltar mesmo com a
+    // visibilidade ligada (deriva fora do sistema): o motor emite um achado
+    // próprio nesse caso.
     const { data: docs, error: e3 } = await supabase
       .from("documentos")
       .select(
-        "id, contrato_id, compartilhado_em, contrato:contratos(data_fim_arrependimento, created_at, processamento_imediato)",
+        "id, contrato_id, compartilhado_em, contrato:contratos(data_fim_arrependimento, created_at, processamento_imediato, processamento_imediato_marcado_em)",
       )
       .in("contrato_id", lote)
-      .not("compartilhado_em", "is", null);
+      .eq("compartilhado_fornecedor", true);
     if (e3) throw new Error("Falha ao ler documentos compartilhados da retaguarda: " + e3.message);
     for (const d of docs ?? []) {
       const rel: any = (d as any).contrato;
@@ -100,9 +104,10 @@ async function carregarSnapshot(
       docsCompartilhados.push({
         docId: (d as any).id as string,
         contratoId: (d as any).contrato_id as string,
-        compartilhadoEmISO: (d as any).compartilhado_em as string,
+        compartilhadoEmISO: ((d as any).compartilhado_em as string) ?? null,
         janelaFimISO,
         processamentoImediato: Boolean(c?.processamento_imediato),
+        processamentoImediatoMarcadoEmISO: (c?.processamento_imediato_marcado_em as string) ?? null,
       });
     }
   }

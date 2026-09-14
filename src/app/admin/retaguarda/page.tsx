@@ -22,6 +22,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   parcela_paga_sem_lastro: "Parcela paga sem lastro",
   pagamento_sem_parcela_paga: "Pagamento sem parcela conciliada",
   remessa_antes_do_d7: "Compartilhado ao fornecedor antes do D+7",
+  compartilhado_sem_carimbo: "Visível ao fornecedor sem carimbo de data",
 };
 
 function fmtData(iso: string | null): string {
