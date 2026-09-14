@@ -61,6 +61,12 @@ const ARQUIVOS = [
   "src/lib/quote-service.ts",
   "src/lib/quote-issue-service.ts",
   "src/lib/catalog-route.ts",
+  // NB: retaguarda-service.ts NAO entra aqui de proposito. Ele grava em
+  // retaguarda_achado SEMPRE com filtro de tenant_id (verificado na revisao),
+  // mas tambem LE parcelas/pagamentos, que sao escopadas por contrato_id
+  // (membershipDoTenant), nao por tenant_id — o marcador que este guardrail
+  // reconhece. Inclui-lo geraria falso-positivo nessas leituras (o mesmo motivo
+  // pelo qual os crons que leem parcelas por contrato ficam fora desta lista).
 ];
 
 const SCHEMA = read("supabase/schema.sql");

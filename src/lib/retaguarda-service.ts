@@ -98,11 +98,15 @@ async function persistirPlano(
     updated_at: agora,
   });
 
-  // Novos: insere. (Conflito na chave única cai no upsert por (tenant_id, chave).)
+  // Novos: insere. `ignoreDuplicates` protege a `primeira_vez`: se duas execuções
+  // do cron se sobrepuserem e ambas classificarem o mesmo achado como "novo", o
+  // segundo upsert NÃO sobrescreve a linha existente (que já carrega a primeira_vez
+  // original) — o próximo ciclo o trata como "manter". Sem isso, o merge de
+  // conflito resetaria primeira_vez para agora, apagando o histórico.
   if (plano.abrir.length > 0) {
     const { error } = await supabase
       .from("retaguarda_achado")
-      .upsert(plano.abrir.map(inserir), { onConflict: "tenant_id,chave" });
+      .upsert(plano.abrir.map(inserir), { onConflict: "tenant_id,chave", ignoreDuplicates: true });
     if (error) console.error("[retaguarda] falha ao inserir achados novos:", error.message);
   }
 
