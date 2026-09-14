@@ -5,6 +5,7 @@ import Link from "next/link";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { getTenantBrand } from "@/lib/tenant-brand";
 import { carregarExtrato } from "@/lib/extrato-service";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import { brl, moe, ptaxFmt } from "@/lib/recibo-view";
 import ImprimirBotao from "@/app/contrato/[id]/ImprimirBotao";
 
@@ -38,6 +39,11 @@ export default async function ExtratoPage({ params }: { params: Promise<{ id: st
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+
+  // Bloqueio financeiro por PERFIL (5.4.4 + LGPD): o extrato é peça financeira.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "financeiro.ver"))) {
+    redirect("/inicio");
+  }
 
   const dados = await carregarExtrato(supabase, sessao.titularId, id);
   if (!dados) notFound();

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import {
   carregarConsequenciasCancelamento,
   solicitarCancelamento,
@@ -35,7 +36,14 @@ export async function GET(request: Request) {
   const contratoId = new URL(request.url).searchParams.get("contratoId");
   if (!contratoId) return NextResponse.json({ ok: false, error: "Informe o contrato." }, { status: 400 });
 
-  const dados = await carregarConsequenciasCancelamento(supa(), titularId, contratoId);
+  // Bloqueio por PERFIL (5.4.4 + LGPD): as consequências mostram valores retidos
+  // e reembolso — só perfis com pagamento.gerir (o contratante) podem ver/cancelar.
+  const clientGet = supa();
+  if (!(await titularPodeCliente(clientGet, titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Seu perfil não permite cancelar o programa." }, { status: 403 });
+  }
+
+  const dados = await carregarConsequenciasCancelamento(clientGet, titularId, contratoId);
   if (!dados) return NextResponse.json({ ok: false, error: "Contrato não encontrado." }, { status: 404 });
   return NextResponse.json({ ok: true, dados });
 }
@@ -53,6 +61,13 @@ export async function POST(request: Request) {
   // internos). O serviço deduplica solicitações em aberto, mas o limite corta
   // o abuso antes de tocar o banco/e-mail.
   const client = supa();
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): cancelar é decisão financeira do
+  // contratante. Participante/terceiro pagador -> 403.
+  if (!(await titularPodeCliente(client, titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Seu perfil não permite cancelar o programa." }, { status: 403 });
+  }
+
   const permitido = await checarELimitar(client, `cancelamento:${titularId}`, 5, 3600);
   if (!permitido) {
     return NextResponse.json(

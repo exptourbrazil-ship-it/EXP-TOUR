@@ -7,6 +7,7 @@ import { converterParaBRL, recomporVetTenant } from "@/lib/cambio";
 import { valorProgramaAtual } from "@/lib/parcelas";
 import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
 import { fimDoDiaSaoPauloISO } from "@/lib/cobranca-validade";
+import { titularPodeCliente } from "@/lib/perfil-service";
 
 // Gera (ou reaproveita) uma cobranca Pix para uma parcela especifica e grava
 // o QR code / codigo copia-e-cola de volta na tabela parcelas.
@@ -55,6 +56,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if ((parcela as any).contrato?.titular_id !== sessao.titularId) {
         return NextResponse.json(
           { ok: false, erro: "Esta parcela não pertence ao titular autenticado" },
+          { status: 403 }
+              );
+  }
+
+  // Bloqueio por PERFIL (spec 1 §3 / Cláusula 5.4.4 + LGPD): só perfis com
+  // pagamento.gerir movem dinheiro. Participante/terceiro pagador -> 403.
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+        return NextResponse.json(
+          { ok: false, erro: "Seu perfil não permite gerar cobranças." },
           { status: 403 }
               );
   }

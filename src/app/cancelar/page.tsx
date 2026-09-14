@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { carregarConsequenciasCancelamento } from "@/lib/cancelamento-self-service";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import CancelarClient from "./CancelarClient";
 
 // Pagina do servidor: cancelamento DELIBERADO self-service (spec 1 §3). Le a
@@ -18,6 +19,13 @@ export default async function CancelarPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): a tela mostra valor retido/reembolso —
+  // só o contratante (pagamento.gerir) pode ver/cancelar. Espelha o gate da rota
+  // /api/cliente/cancelamento (a página chama a MESMA calculadora no servidor).
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+    redirect("/inicio");
+  }
 
   const { data: titular } = await supabase
     .from("titulares")

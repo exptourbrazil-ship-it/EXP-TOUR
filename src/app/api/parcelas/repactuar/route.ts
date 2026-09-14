@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { solicitarRepactuacao, RepactuacaoBloqueada } from "@/lib/repactuacao-service";
 import { obterIp } from "@/lib/rate-limit";
+import { titularPodeCliente } from "@/lib/perfil-service";
 import type { ParcelaNova } from "@/lib/repactuacao";
 
 export const runtime = "nodejs";
@@ -79,6 +80,12 @@ export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Bloqueio por PERFIL (5.4.4 + LGPD): repactuar é ação financeira; só
+  // pagamento.gerir. (solicitarRepactuacao já valida a posse do contrato.)
+  if (!(await titularPodeCliente(supabase, sessao.titularId, "pagamento.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Seu perfil não permite repactuar." }, { status: 403 });
+  }
 
   try {
     const r = await solicitarRepactuacao({
