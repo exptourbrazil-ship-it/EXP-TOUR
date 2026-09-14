@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import BottomNav from "@/components/BottomNav"
 import Cabecalho from "@/components/Cabecalho"
 import SuporteRodape from "@/components/SuporteRodape"
@@ -736,6 +737,17 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
               </ul>
             </details>
           </section>
+        ) : null}
+
+        {/* Saída discreta para o cancelamento deliberado (spec 1 §3). Não é uma
+            aba: é uma ação rara e consciente, com alternativas antes de decidir. */}
+        {contratoId ? (
+          <p className="mt-8 text-center text-xs text-neutral-400">
+            Precisa cancelar o programa?{" "}
+            <Link href="/cancelar" className="underline hover:text-neutral-600">
+              Ver opções e consequências
+            </Link>
+          </p>
         ) : null}
       </main>
 
