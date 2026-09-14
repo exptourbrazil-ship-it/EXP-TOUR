@@ -38,6 +38,17 @@ test("ordena por atraso desc e inclui contexto de vence-hoje", () => {
   assert.match(r!.texto, /Além disso, 2 vence\(m\) hoje\./);
 });
 
+test("atraso 0 dias uteis (recem-vencido) tem texto proprio", () => {
+  const r = montarResumoAlertaSLA({
+    estourados: [{ ...UM, atrasoDiasUteis: 0 }],
+    venceHoje: 0,
+    marca: "Forio",
+  });
+  assert.ok(r);
+  assert.match(r!.texto, /prazo vencido \(0 dias úteis\)/);
+  assert.doesNotMatch(r!.texto, /0 dias úteis de atraso/);
+});
+
 test("singular de dia util e link absoluto com appUrl", () => {
   const r = montarResumoAlertaSLA({
     estourados: [{ ...UM, atrasoDiasUteis: 1 }],

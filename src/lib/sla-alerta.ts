@@ -37,6 +37,10 @@ export function montarResumoAlertaSLA(params: {
   const linhas = ordenados.map((e) => {
     const nome = e.titularNome || "(sem nome)";
     const dias = e.atrasoDiasUteis;
+    // Um caso ja "vencido" pode ter atraso 0 dias uteis (ex.: sabado logo apos um
+    // prazo na sexta): estourou, mas nenhum dia util passou. "0 dias uteis de
+    // atraso" lê estranho, entao damos um texto proprio.
+    if (dias <= 0) return `- ${e.tipoLabel} — ${nome}: prazo vencido (0 dias úteis)`;
     const plural = dias === 1 ? "dia útil" : "dias úteis";
     return `- ${e.tipoLabel} — ${nome}: ${dias} ${plural} de atraso`;
   });
