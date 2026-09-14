@@ -405,7 +405,7 @@ export async function aplicarAlteracao(args: {
   const { data: alt } = await supabase
     .from("alteracoes")
     .select(
-      "id, contrato_id, tipo, status, moeda, nova_data_inicio, nova_data_quitacao, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, credito_cliente, excecao_id, aditivo_aceito_em"
+      "id, contrato_id, tipo, status, moeda, nova_data_inicio, nova_data_quitacao, valor_programa_atual, valor_programa_novo, saldo_devedor, plano_proposto, sentido, delta, credito_cliente, excecao_id, aditivo_aceito_em"
     )
     .eq("id", args.alteracaoId)
     .maybeSingle();
@@ -452,9 +452,20 @@ export async function aplicarAlteracao(args: {
     );
   }
 
-  // E3 ADITIVO (delta>0): exige o aceite eletronico do cliente (Fatia E) antes de
-  // cobrar o acrescimo. "aceite -> cascata" (doc 01 §4 E3).
-  if (alt.tipo === "escopo" && alt.sentido === "aditivo" && !alt.aditivo_aceito_em) {
+  // E3 ADITIVO (aumento de preco): exige o aceite eletronico do cliente (Fatia E)
+  // antes de cobrar o acrescimo. "aceite -> cascata" (doc 01 §4 E3).
+  //
+  // O sinal-verdade e o AUMENTO (valor novo > atual), NAO o rotulo `sentido`, que
+  // e nullable e derivado. Antes o gate so olhava sentido==='aditivo': um rascunho
+  // com valor maior mas sentido nulo (ex.: gravado fora do fluxo) escaparia e
+  // cobraria o acrescimo sem aceite. Agora exige aceite se QUALQUER sinal de
+  // aumento estiver presente — valores, coluna delta ou o rotulo — falhando para
+  // o lado seguro (pedir aceite a mais nunca cobra sem consentir).
+  const deltaValores =
+    (Number(alt.valor_programa_novo) || 0) - (Number(alt.valor_programa_atual) || 0);
+  const haAumento =
+    deltaValores > 0 || Number(alt.delta || 0) > 0 || alt.sentido === "aditivo";
+  if (alt.tipo === "escopo" && haAumento && !alt.aditivo_aceito_em) {
     throw new AlteracaoBloqueada(
       "sem_aceite_aditivo",
       "O cliente ainda nao aceitou o aditivo de compra; proponha e aguarde o aceite"
