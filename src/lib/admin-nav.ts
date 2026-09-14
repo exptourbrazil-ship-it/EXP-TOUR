@@ -91,6 +91,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "documentos.analisar",
   },
   {
+    href: "/admin/sla",
+    label: "SLA",
+    descricao: "Exceções abertas e seus prazos de atendimento",
+    icone: ICONES.antecipacoes,
+    capacidade: "casos.ver",
+  },
+  {
     href: "/admin/leads",
     label: "Leads",
     descricao: "Pedidos de matrícula vindos do orçamento",
@@ -300,6 +307,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/antecipacoes": "Financeiro",
   "/admin/cambio": "Financeiro",
   "/admin/documentos": "Operação",
+  "/admin/sla": "Operação",
   "/admin/termos": "Configuração",
   "/admin/sobre-nos": "Configuração",
   "/admin/sistema": "Configuração",
