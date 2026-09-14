@@ -145,6 +145,23 @@ export type CasoAcerto = {
   criado_em: string | null;
 };
 
+// Solicitação de cancelamento DELIBERADO feita pelo cliente no portal (spec 1
+// §3). É o pedido — não o cancelamento em si; a equipe conduz o acerto pelas
+// Ações. Guarda o valor que o cliente confirmou nomeando + a memória do cálculo.
+export type CasoSolicitacaoCancelamento = {
+  id: string;
+  contrato_id: string;
+  motivo: string;
+  motivo_detalhe: string | null;
+  valor_ciente_brl: number | null;
+  reembolso_estimado_brl: number | null;
+  moeda_programa: string | null;
+  memoria: { rotulo: string; valor: number; tipo: string }[] | null;
+  status: string; // solicitado | em_analise | concluido | cancelado
+  origem: string | null;
+  criado_em: string | null;
+};
+
 export type CasoRepactuacao = {
   id: string;
   contrato_id: string;
@@ -233,6 +250,7 @@ export type Caso = {
   eventos: CasoEvento[];
   excecoes: CasoExcecao[];
   acertos: CasoAcerto[];
+  solicitacoesCancelamento: CasoSolicitacaoCancelamento[]; // pedidos do cliente (spec 1 §3)
   alteracoes: CasoAlteracao[];
   repactuacoes: CasoRepactuacao[];
   consentimentos: EstadoConsentimento[]; // LGPD 15/16: estado vigente por finalidade
@@ -343,6 +361,20 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     .eq("titular_id", titularId)
     .order("criado_em", { ascending: false });
   const acertos = (acertosData || []) as CasoAcerto[];
+
+  // Solicitações de cancelamento DELIBERADO feitas pelo cliente no portal
+  // (spec 1 §3). São os pedidos, não o cancelamento; a equipe conduz o acerto.
+  let solicitacoesCancelamento: CasoSolicitacaoCancelamento[] = [];
+  if (contratoIds.length > 0) {
+    const { data: solicData } = await supabase
+      .from("cancelamento_solicitacao")
+      .select(
+        "id, contrato_id, motivo, motivo_detalhe, valor_ciente_brl, reembolso_estimado_brl, moeda_programa, memoria, status, origem, criado_em"
+      )
+      .in("contrato_id", contratoIds)
+      .order("criado_em", { ascending: false });
+    solicitacoesCancelamento = (solicData || []) as CasoSolicitacaoCancelamento[];
+  }
 
   // Alteracoes (rascunhos do plano recalculado) do titular — previa do
   // adiamento (E2) para o Financeiro/Operacao revisar.
@@ -494,6 +526,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
     eventos,
     excecoes,
     acertos,
+    solicitacoesCancelamento,
     alteracoes,
     repactuacoes,
     consentimentos,

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { podeAdmin } from "@/lib/admin-roles";
 import { carregarCaso } from "@/lib/admin-caso";
+import { escopoTenantAdmin, escopoPermiteContrato, tenantDoTitular } from "@/lib/admin-tenant";
 import CasoClient from "./CasoClient";
 
 export const runtime = "nodejs";
@@ -23,6 +25,20 @@ export default async function CasoPage({
 }) {
   const { id } = await params;
   const { papel } = await exigirCapacidade("casos.ver", `/admin/clientes/${id}`);
+
+  // Isolamento por TENANT (banco compartilhado): um admin escopado a um tenant
+  // não pode abrir o Caso 360 de titular de OUTRO tenant. A capacidade sozinha
+  // não separa tenants; sem este gate, os dados do caso (inclusive financeiro e
+  // PII) seriam legíveis via URL cruzada. Titular fora do escopo -> notFound.
+  const supabaseEscopo = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  );
+  const escopo = await escopoTenantAdmin(supabaseEscopo);
+  if (!escopo.global) {
+    const { existe, tenantId } = await tenantDoTitular(supabaseEscopo, id);
+    if (!existe || !escopoPermiteContrato(escopo, tenantId)) notFound();
+  }
 
   // Aba inicial via deep-link da Fila do Dia (?aba=), validada contra a lista.
   const sp = searchParams ? await searchParams : undefined;
