@@ -1734,6 +1734,30 @@ create unique index if not exists uq_politica_retencao_ativa on politica_retenca
 create index if not exists idx_politica_retencao_campus on politica_retencao(campus_id);
 alter table if exists politica_retencao enable row level security;
 
+-- Solicitação de cancelamento DELIBERADO do cliente no portal (spec 1 §3). A tela
+-- não cancela nem mexe em dinheiro: registra a solicitação (valor que o cliente
+-- confirmou NOMEANDO + snapshot das consequências) e abre o E4 para a equipe
+-- conduzir o acerto. Aplicado via migration cancelamento_solicitacao.
+create table if not exists cancelamento_solicitacao (
+  id uuid primary key default gen_random_uuid(),
+  contrato_id uuid not null references contratos(id) on delete cascade,
+  titular_id uuid not null references titulares(id) on delete cascade,
+  motivo text not null,
+  motivo_detalhe text,
+  valor_ciente_brl numeric(12,2),        -- valor retido que o cliente digitou p/ confirmar
+  reembolso_estimado_brl numeric(12,2),  -- estimativa de devolução no momento
+  moeda_programa text,
+  memoria jsonb,                         -- snapshot da memória de consequências (auditoria)
+  status text not null default 'solicitado'
+    check (status in ('solicitado','em_analise','concluido','cancelado')),
+  origem text not null default 'portal',
+  ip text,
+  criado_em timestamptz not null default now()
+);
+create index if not exists idx_cancelamento_solic_contrato on cancelamento_solicitacao(contrato_id, criado_em desc);
+create index if not exists idx_cancelamento_solic_titular on cancelamento_solicitacao(titular_id, criado_em desc);
+alter table if exists cancelamento_solicitacao enable row level security;
+
 create table if not exists market (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
