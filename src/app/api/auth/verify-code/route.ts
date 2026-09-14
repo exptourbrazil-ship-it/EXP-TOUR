@@ -42,15 +42,17 @@ export async function POST(request: Request) {
   // ponto onde a sessão é emitida — o gate mais importante. Um titular de outro
   // tenant recebe a MESMA resposta de código inválido (não revela que o CPF
   // existe em outro tenant). Falha FECHADA: sem escopo, não abre sessão.
+  //
+  // O erro de resolução também responde com o MESMO 401 genérico (não um 503):
+  // um CPF inexistente já sai em 401 acima, então distinguir aqui (503 "existe"
+  // vs 401 "não existe") viraria um oráculo de enumeração de CPF na janela de
+  // env ausente. Mesma resposta = fecha sem vazar.
   let escopo;
   try {
         escopo = await resolverEscopoTenant(supabase);
   } catch {
         console.error("[verify-code] escopo de tenant indisponivel; login recusado");
-        return NextResponse.json(
-          { error: "Login nao configurado no servidor." },
-          { status: 503 }
-        );
+        return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
   }
   if (!tenantPertenceAoDeploy(titular.tenant_id, escopo.tenantId, escopo.incluiLegado)) {
         return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
