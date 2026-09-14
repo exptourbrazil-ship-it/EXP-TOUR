@@ -28,6 +28,9 @@ export type ResumoVarredura = {
   mantidos: number;
   resolvidos: number;
   abertosTotal: number;
+  // Achados NOVOS (abertos/reabertos nesta rodada) de severidade ALTA — o cron
+  // usa para o alerta interno. Não vai para o JSON de resposta.
+  novosAlto: Achado[];
 };
 
 const LOTE_IN = 500;
@@ -171,6 +174,9 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
   const plano = reconciliarAchados(atuais, persistidos);
   await persistirPlano(supabase, escopo.tenantId, plano);
 
+  // Novos ALTO = abertos + reabertos com severidade alta. Base do alerta interno.
+  const novosAlto = [...plano.abrir, ...plano.reabrir].filter((a) => a.severidade === "alto");
+
   return {
     tenantId: escopo.tenantId,
     contratos: membership.contratoIds.length,
@@ -180,5 +186,6 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
     mantidos: plano.manter.length,
     resolvidos: plano.resolver.length,
     abertosTotal: atuais.length,
+    novosAlto,
   };
 }
