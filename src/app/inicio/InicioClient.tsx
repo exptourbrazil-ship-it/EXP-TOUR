@@ -25,6 +25,7 @@ type InicioClientProps = {
   documentosEnviados?: number
   parcelasPagas?: number
   parcelasTotal?: number
+  mostrarValores?: boolean // false (participante/terceiro) -> sem CTA financeira
 }
 
 function saudacaoPorHorario(): string {
@@ -104,7 +105,13 @@ export default function InicioClient(props: InicioClientProps) {
   const atualIdx = indiceEtapaAtual(etapas)
   const concluidas = totalConcluidas(etapas)
   const etapaAtual = atualIdx < etapas.length ? etapas[atualIdx] : null
-  const cta = etapaAtual ? (CTA_POR_ETAPA[etapaAtual.nome] || CTA_POR_ETAPA.Pagamentos) : { rotulo: "Abrir Retorno", href: "/retorno" }
+  let cta = etapaAtual ? (CTA_POR_ETAPA[etapaAtual.nome] || CTA_POR_ETAPA.Pagamentos) : { rotulo: "Abrir Retorno", href: "/retorno" }
+  // Bloqueio financeiro por PERFIL (5.4.4 + LGPD): quem não pode ver valores não
+  // recebe CTA que leve ao Financeiro (a página redirecionaria de qualquer modo).
+  const mostrarValores = props.mostrarValores !== false
+  if (!mostrarValores && cta.href === "/parcelas") {
+    cta = { rotulo: "Ver documentos", href: "/documentos" }
+  }
 
   const bolinhaPorEstado: Record<EstadoEtapa, string> = {
     concluida: "bg-brand text-brand-cream",

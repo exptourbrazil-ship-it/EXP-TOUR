@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useTenantBrand } from "@/components/TenantBrandProvider";
 
 type ItemNav = {
@@ -82,6 +83,27 @@ export default function BottomNav() {
   // Wordmark da marca do tenant (EXP Tour -> "EXP TOUR"; Forio -> "Forio").
   const wordmark = useTenantBrand().email.wordmarkTop;
 
+  // Bloqueio financeiro por PERFIL (5.4.4 + LGPD): a aba Financeiro só aparece
+  // para quem pode ver dinheiro. Começa VISÍVEL (default contratante) e some se
+  // o perfil não permitir — o enforcement real é nas páginas/rotas; isto é UX.
+  const [mostrarFinanceiro, setMostrarFinanceiro] = useState(true);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/cliente/perfil", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (vivo && d && d.ok) setMostrarFinanceiro(!!d.financeiro);
+      })
+      .catch(() => {
+        /* silencioso: mantém o default (visível); a página redireciona se preciso */
+      });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const itens = ITENS.filter((i) => i.href !== "/parcelas" || mostrarFinanceiro);
+
   return (
     <>
     {/* Notebook/desktop: barra lateral fixa a esquerda (como no Admin). */}
@@ -91,7 +113,7 @@ export default function BottomNav() {
     >
       <span className="mb-6 px-2 font-serif text-lg tracking-wide text-brand">{wordmark}</span>
       <ul className="flex flex-col gap-1">
-        {ITENS.map((item) => {
+        {itens.map((item) => {
           const ativo = pathname === item.href;
           return (
             <li key={item.href}>
@@ -117,7 +139,7 @@ export default function BottomNav() {
     {/* Celular/tablet: barra inferior (flutuante no md). Some no notebook. */}
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur md:inset-x-0 md:bottom-4 md:border-t-0 md:bg-transparent md:backdrop-blur-0 lg:hidden">
       <div className="mx-auto flex max-w-3xl items-stretch justify-between px-1 md:max-w-xl md:gap-1 md:rounded-full md:border md:border-neutral-200 md:bg-white/95 md:px-2 md:py-1 md:shadow-lg md:backdrop-blur">
-        {ITENS.map((item) => {
+        {itens.map((item) => {
           const ativo = pathname === item.href;
           return (
             <Link

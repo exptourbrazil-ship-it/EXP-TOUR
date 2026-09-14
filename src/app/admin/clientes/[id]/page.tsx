@@ -58,6 +58,7 @@ export default async function CasoPage({
     gerirFinanceiro: podeAdmin(papel, "financeiro.gerir"),
     editarCpf: podeAdmin(papel, "override"),
     anonimizarDados: podeAdmin(papel, "config.gerir"), // LGPD art. 18 — só Gestor
+    definirPerfil: podeAdmin(papel, "config.gerir"), // perfil de acesso (5.4.4 + LGPD) — só Gestor
   };
 
   return <CasoClient caso={caso} permissoes={permissoes} abaInicial={abaInicial} />;
