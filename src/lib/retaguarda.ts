@@ -44,9 +44,29 @@ export type PagamentoSnapshot = {
   externalPaymentId: string;
 };
 
+// Documento VISÍVEL ao fornecedor (compartilhado_fornecedor = true — o governador
+// da visibilidade da escola), com o carimbo do compartilhamento e a janela de
+// arrependimento, para a checagem de D+7. `compartilhadoEmISO` pode ser nulo
+// (visível sem carimbo de data → impossível verificar o D+7 → achado próprio).
+// `janelaFimISO` = fim gravado no contrato ou derivado do aceite + 7 dias.
+// `processamentoImediatoMarcadoEmISO` = quando a autorização foi marcada (a
+// isenção só vale se a autorização é anterior ao compartilhamento; marcação
+// retroativa não apaga uma violação passada).
+export type DocCompartilhadoSnapshot = {
+  docId: string;
+  contratoId: string;
+  compartilhadoEmISO: string | null;
+  janelaFimISO: string | null;
+  processamentoImediato: boolean;
+  processamentoImediatoMarcadoEmISO: string | null;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
+  // Opcional para retrocompatibilidade dos testes antigos; a camada de dados
+  // sempre preenche. As verificações que não a usam ignoram.
+  docsCompartilhados?: DocCompartilhadoSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -110,11 +130,75 @@ export function checarPagamentoSemParcelaPaga(snap: SnapshotRetaguarda): Achado[
   return achados;
 }
 
+/**
+ * Documento COMPARTILHADO com o fornecedor ANTES do fim do prazo de arrependimento
+ * (D+7), sem processamento imediato autorizado.
+ *
+ * Camada detectiva da "trava D+7" (§7-D): o controle preventivo bloqueia o
+ * compartilhamento na ação; este confere o que passou — e-mail manual fora do
+ * sistema, bug, ou carimbo tardio. Compara `compartilhado_em` com a janela de
+ * arrependimento (Cláusula 2.5.2 / CDC art. 49). ALTO (peso jurídico).
+ *
+ * Não flagra quando: processamento imediato (exceção expressa do contrato) ou
+ * sem janela conhecida (defensivo — igual à trava, que não bloqueia sem âncora).
+ */
+export function checarRemessaAntesDoD7(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const d of snap.docsCompartilhados ?? []) {
+    // Visível ao fornecedor SEM carimbo de data: impossível verificar o D+7 —
+    // exatamente a deriva "fora do sistema / carimbo tardio". Achado próprio.
+    if (!d.compartilhadoEmISO) {
+      achados.push({
+        chave: `retaguarda:compartilhado_sem_carimbo:${d.docId}`,
+        categoria: "compartilhado_sem_carimbo",
+        severidade: "alto",
+        entidade: { tipo: "documento", id: d.docId },
+        contratoId: d.contratoId,
+        resumo: `Documento ${d.docId} está visível ao fornecedor sem carimbo de data — impossível verificar o D+7 (verificar).`,
+      });
+      continue;
+    }
+
+    const compartilhado = new Date(d.compartilhadoEmISO).getTime();
+
+    // Processamento imediato isenta — SALVO prova de que a autorização veio
+    // DEPOIS do compartilhamento (marcação retroativa não apaga uma violação
+    // passada). Sem essa prova (autorização anterior/ao mesmo tempo, ou sem
+    // carimbo de autorização), a isenção vale.
+    if (d.processamentoImediato) {
+      const marcado = d.processamentoImediatoMarcadoEmISO
+        ? new Date(d.processamentoImediatoMarcadoEmISO).getTime()
+        : NaN;
+      const autorizacaoRetroativa =
+        Number.isFinite(marcado) && Number.isFinite(compartilhado) && marcado > compartilhado;
+      if (!autorizacaoRetroativa) continue;
+    }
+
+    if (!d.janelaFimISO) continue;
+    const fim = new Date(d.janelaFimISO).getTime();
+    if (!Number.isFinite(compartilhado) || !Number.isFinite(fim)) continue;
+    // `<=` (não `<`) para paridade com a trava preventiva, que só LIBERA quando
+    // agora > fim (bloqueia enquanto agora <= fim).
+    if (compartilhado <= fim) {
+      achados.push({
+        chave: `retaguarda:remessa_antes_do_d7:${d.docId}`,
+        categoria: "remessa_antes_do_d7",
+        severidade: "alto",
+        entidade: { tipo: "documento", id: d.docId },
+        contratoId: d.contratoId,
+        resumo: `Documento ${d.docId} compartilhado com o fornecedor antes do fim do prazo de arrependimento (D+7) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
   checarParcelaPagaSemLastro,
   checarPagamentoSemParcelaPaga,
+  checarRemessaAntesDoD7,
 ];
 
 /**
