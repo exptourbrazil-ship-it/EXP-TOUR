@@ -244,19 +244,19 @@ test("D+7: snapshot sem docsCompartilhados nao quebra", () => {
 
 function alt(over: Partial<{
   id: string; contratoId: string; tipo: string; status: string;
-  sentido: string | null; aditivoAceitoEmISO: string | null;
+  delta: number | null; aditivoAceitoEmISO: string | null;
 }> = {}) {
   return {
     id: over.id ?? "a1",
     contratoId: over.contratoId ?? "c1",
     tipo: over.tipo ?? "escopo",
     status: over.status ?? "aplicado",
-    sentido: over.sentido === undefined ? "aditivo" : over.sentido,
+    delta: over.delta === undefined ? 500 : over.delta,
     aditivoAceitoEmISO: over.aditivoAceitoEmISO === undefined ? null : over.aditivoAceitoEmISO,
   };
 }
 
-test("alteracao: aditivo aplicado SEM aceite -> achado alto", () => {
+test("alteracao: aditivo (delta>0) aplicado SEM aceite -> achado alto", () => {
   const a = checarAlteracaoSemAceite({ parcelas: [], pagamentos: [], alteracoes: [alt()] });
   assert.equal(a.length, 1);
   assert.equal(a[0].categoria, "alteracao_sem_aceite");
@@ -276,15 +276,23 @@ test("alteracao: aditivo aplicado COM aceite -> sem achado", () => {
 test("alteracao: deferral (E2) nunca flagra", () => {
   const a = checarAlteracaoSemAceite({
     parcelas: [], pagamentos: [],
-    alteracoes: [alt({ tipo: "deferral", sentido: null })],
+    alteracoes: [alt({ tipo: "deferral", delta: null })],
   });
   assert.deepEqual(a, []);
 });
 
-test("alteracao: credito/neutro (nao-aditivo) nao flagra", () => {
+test("alteracao: credito (delta<0) nao flagra", () => {
   const a = checarAlteracaoSemAceite({
     parcelas: [], pagamentos: [],
-    alteracoes: [alt({ sentido: "credito" })],
+    alteracoes: [alt({ delta: -300 })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("alteracao: neutro (delta 0) nao flagra", () => {
+  const a = checarAlteracaoSemAceite({
+    parcelas: [], pagamentos: [],
+    alteracoes: [alt({ delta: 0 })],
   });
   assert.deepEqual(a, []);
 });

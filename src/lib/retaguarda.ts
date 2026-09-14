@@ -61,15 +61,17 @@ export type DocCompartilhadoSnapshot = {
   processamentoImediatoMarcadoEmISO: string | null;
 };
 
-// Alteração de ESCOPO (E3) que muda o valor do programa. Um aditivo de compra
-// (delta>0, sentido 'aditivo') aplicado exige o aceite eletrônico do cliente
-// (aditivo_aceito_em). A camada de dados só traz as aplicadas de escopo/aditivo.
+// Alteração de ESCOPO (E3) que muda o valor do programa. Um aditivo de COMPRA
+// (delta>0) aplicado exige o aceite eletrônico do cliente (aditivo_aceito_em). O
+// sinal-verdade do aumento de preço é `delta > 0`, NÃO o rótulo `sentido` (que é
+// nullable e derivado — uma aplicação direta por SQL pode gravar delta>0 com
+// sentido nulo). A camada de dados só traz as aplicadas de escopo com delta>0.
 export type AlteracaoSnapshot = {
   id: string;
   contratoId: string;
   tipo: string; // 'deferral' | 'escopo'
   status: string; // 'rascunho' | 'aplicado' | 'cancelado'
-  sentido: string | null; // 'aditivo' | 'credito' | 'neutro'
+  delta: number | null; // novo - atual (na moeda); > 0 = aditivo de compra
   aditivoAceitoEmISO: string | null;
 };
 
@@ -218,8 +220,11 @@ export function checarRemessaAntesDoD7(snap: SnapshotRetaguarda): Achado[] {
 export function checarAlteracaoSemAceite(snap: SnapshotRetaguarda): Achado[] {
   const achados: Achado[] = [];
   for (const a of snap.alteracoes ?? []) {
+    // Aumento de preço = delta>0 (o sinal-verdade), não o rótulo `sentido`. Assim
+    // pega também a aplicação direta por SQL que grava delta>0 com sentido nulo —
+    // justamente o caminho que não passa pelo gate preventivo (que checa sentido).
     const ehAditivoAplicado =
-      a.status === "aplicado" && a.tipo === "escopo" && a.sentido === "aditivo";
+      a.status === "aplicado" && a.tipo === "escopo" && (a.delta ?? 0) > 0;
     if (ehAditivoAplicado && !a.aditivoAceitoEmISO) {
       achados.push({
         chave: `retaguarda:alteracao_sem_aceite:${a.id}`,

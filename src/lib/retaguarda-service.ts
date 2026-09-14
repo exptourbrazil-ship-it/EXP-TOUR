@@ -119,11 +119,11 @@ async function carregarSnapshot(
     // (aditivo_aceito_em nulo) fica no motor puro.
     const { data: alts, error: e4 } = await supabase
       .from("alteracoes")
-      .select("id, contrato_id, tipo, status, sentido, aditivo_aceito_em")
+      .select("id, contrato_id, tipo, status, delta, aditivo_aceito_em")
       .in("contrato_id", lote)
       .eq("status", "aplicado")
       .eq("tipo", "escopo")
-      .eq("sentido", "aditivo");
+      .gt("delta", 0);
     if (e4) throw new Error("Falha ao ler alteracoes da retaguarda: " + e4.message);
     for (const a of alts ?? []) {
       alteracoes.push({
@@ -131,7 +131,7 @@ async function carregarSnapshot(
         contratoId: (a as any).contrato_id as string,
         tipo: (a as any).tipo as string,
         status: (a as any).status as string,
-        sentido: ((a as any).sentido as string) ?? null,
+        delta: (a as any).delta == null ? null : Number((a as any).delta),
         aditivoAceitoEmISO: ((a as any).aditivo_aceito_em as string) ?? null,
       });
     }
