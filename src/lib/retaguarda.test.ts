@@ -4,6 +4,7 @@ import {
   checarParcelaPagaSemLastro,
   checarPagamentoSemParcelaPaga,
   checarRemessaAntesDoD7,
+  checarAlteracaoSemAceite,
   detectarRetaguarda,
   reconciliarAchados,
   type Achado,
@@ -236,5 +237,62 @@ test("D+7: visivel ao fornecedor SEM carimbo -> achado proprio", () => {
 
 test("D+7: snapshot sem docsCompartilhados nao quebra", () => {
   const a = checarRemessaAntesDoD7({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarAlteracaoSemAceite -----------------------------------------------
+
+function alt(over: Partial<{
+  id: string; contratoId: string; tipo: string; status: string;
+  sentido: string | null; aditivoAceitoEmISO: string | null;
+}> = {}) {
+  return {
+    id: over.id ?? "a1",
+    contratoId: over.contratoId ?? "c1",
+    tipo: over.tipo ?? "escopo",
+    status: over.status ?? "aplicado",
+    sentido: over.sentido === undefined ? "aditivo" : over.sentido,
+    aditivoAceitoEmISO: over.aditivoAceitoEmISO === undefined ? null : over.aditivoAceitoEmISO,
+  };
+}
+
+test("alteracao: aditivo aplicado SEM aceite -> achado alto", () => {
+  const a = checarAlteracaoSemAceite({ parcelas: [], pagamentos: [], alteracoes: [alt()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "alteracao_sem_aceite");
+  assert.equal(a[0].severidade, "alto");
+  assert.equal(a[0].entidade.tipo, "alteracao");
+  assert.equal(a[0].chave, "retaguarda:alteracao_sem_aceite:a1");
+});
+
+test("alteracao: aditivo aplicado COM aceite -> sem achado", () => {
+  const a = checarAlteracaoSemAceite({
+    parcelas: [], pagamentos: [],
+    alteracoes: [alt({ aditivoAceitoEmISO: "2026-02-01T00:00:00Z" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("alteracao: deferral (E2) nunca flagra", () => {
+  const a = checarAlteracaoSemAceite({
+    parcelas: [], pagamentos: [],
+    alteracoes: [alt({ tipo: "deferral", sentido: null })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("alteracao: credito/neutro (nao-aditivo) nao flagra", () => {
+  const a = checarAlteracaoSemAceite({
+    parcelas: [], pagamentos: [],
+    alteracoes: [alt({ sentido: "credito" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("alteracao: rascunho (nao aplicado) nao flagra", () => {
+  const a = checarAlteracaoSemAceite({
+    parcelas: [], pagamentos: [],
+    alteracoes: [alt({ status: "rascunho" })],
+  });
   assert.deepEqual(a, []);
 });

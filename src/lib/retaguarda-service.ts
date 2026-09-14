@@ -18,6 +18,7 @@ import {
   type ParcelaSnapshot,
   type PagamentoSnapshot,
   type DocCompartilhadoSnapshot,
+  type AlteracaoSnapshot,
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 
@@ -45,10 +46,12 @@ async function carregarSnapshot(
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
   docsCompartilhados: DocCompartilhadoSnapshot[];
+  alteracoes: AlteracaoSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
   const docsCompartilhados: DocCompartilhadoSnapshot[] = [];
+  const alteracoes: AlteracaoSnapshot[] = [];
 
   for (const lote of emLotes(contratoIds, LOTE_IN)) {
     const { data: ps, error: e1 } = await supabase
@@ -110,9 +113,31 @@ async function carregarSnapshot(
         processamentoImediatoMarcadoEmISO: (c?.processamento_imediato_marcado_em as string) ?? null,
       });
     }
+
+    // Alterações de ESCOPO/aditivo APLICADAS dos contratos do tenant, para a
+    // checagem "alteração de preço sem aceite". Filtro grosso no SQL; o veredito
+    // (aditivo_aceito_em nulo) fica no motor puro.
+    const { data: alts, error: e4 } = await supabase
+      .from("alteracoes")
+      .select("id, contrato_id, tipo, status, sentido, aditivo_aceito_em")
+      .in("contrato_id", lote)
+      .eq("status", "aplicado")
+      .eq("tipo", "escopo")
+      .eq("sentido", "aditivo");
+    if (e4) throw new Error("Falha ao ler alteracoes da retaguarda: " + e4.message);
+    for (const a of alts ?? []) {
+      alteracoes.push({
+        id: (a as any).id as string,
+        contratoId: (a as any).contrato_id as string,
+        tipo: (a as any).tipo as string,
+        status: (a as any).status as string,
+        sentido: ((a as any).sentido as string) ?? null,
+        aditivoAceitoEmISO: ((a as any).aditivo_aceito_em as string) ?? null,
+      });
+    }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
