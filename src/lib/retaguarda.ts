@@ -128,3 +128,58 @@ export function detectarRetaguarda(snap: SnapshotRetaguarda): Achado[] {
     (a, b) => peso[a.severidade] - peso[b.severidade] || a.chave.localeCompare(b.chave),
   );
 }
+
+// ---- Reconciliação com o estado persistido ---------------------------------
+//
+// O detective roda periodicamente. Cada achado é PERSISTIDO por `chave` estável,
+// não só alertado: o painel de saúde precisa mostrar o que está ABERTO agora e o
+// histórico. A reconciliação compara a detecção de hoje com o que já está no
+// banco e decide o que abrir/reabrir/manter/resolver — pura e testável; a camada
+// de dados aplica o plano.
+
+export type StatusAchado = "aberto" | "resolvido";
+export type AchadoPersistido = { chave: string; status: StatusAchado };
+
+export type PlanoReconciliacao = {
+  abrir: Achado[]; // novo: não havia registro
+  reabrir: Achado[]; // havia registro RESOLVIDO e a inconsistência voltou
+  manter: Achado[]; // já aberto e ainda presente (só atualiza "visto por último")
+  resolver: string[]; // chaves ABERTAS que sumiram: a inconsistência foi corrigida
+};
+
+/**
+ * Decide o plano de reconciliação entre os achados detectados AGORA (`atuais`) e
+ * os já persistidos (`persistidos`). Determinístico e sem efeito colateral.
+ *
+ * - `atuais` sem registro           -> abrir
+ * - `atuais` com registro resolvido -> reabrir (voltou; nunca silencioso)
+ * - `atuais` com registro aberto    -> manter
+ * - persistido ABERTO que sumiu     -> resolver (corrigido)
+ *
+ * Persistidos com status 'resolvido' que continuam ausentes ficam como estão.
+ */
+export function reconciliarAchados(
+  atuais: Achado[],
+  persistidos: AchadoPersistido[],
+): PlanoReconciliacao {
+  const statusPorChave = new Map<string, StatusAchado>();
+  for (const p of persistidos) statusPorChave.set(p.chave, p.status);
+
+  const plano: PlanoReconciliacao = { abrir: [], reabrir: [], manter: [], resolver: [] };
+  const chavesAtuais = new Set<string>();
+
+  for (const a of atuais) {
+    if (chavesAtuais.has(a.chave)) continue; // dedupe defensivo
+    chavesAtuais.add(a.chave);
+    const status = statusPorChave.get(a.chave);
+    if (status === undefined) plano.abrir.push(a);
+    else if (status === "resolvido") plano.reabrir.push(a);
+    else plano.manter.push(a);
+  }
+
+  for (const p of persistidos) {
+    if (p.status === "aberto" && !chavesAtuais.has(p.chave)) plano.resolver.push(p.chave);
+  }
+
+  return plano;
+}
