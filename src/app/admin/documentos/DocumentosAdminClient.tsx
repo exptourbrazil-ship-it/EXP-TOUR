@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade } from "@/lib/documentos";
+import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, ehTipoDocumentoValido } from "@/lib/documentos";
+
+// Um tipo é "conhecido" quando está no catálogo (evita exibir o 1º tipo como se
+// fosse o real quando o doc tem um tipo legado/fora da lista).
+function tipoConhecido(valor: string | null | undefined): boolean {
+  return typeof valor === "string" && ehTipoDocumentoValido(valor);
+}
 
 const STATUS_OPCOES = ["pendente", "aprovado", "rejeitado"];
 
@@ -255,11 +261,19 @@ export default function DocumentosAdminClient() {
                 <label className="flex items-center gap-1 text-xs text-neutral-500">
                   Tipo
                   <select
-                    value={doc.tipo_documento || ""}
+                    value={tipoConhecido(doc.tipo_documento) ? doc.tipo_documento : "__desconhecido__"}
                     disabled={atualizandoId === doc.id}
-                    onChange={(e) => salvarMetadados(doc.id, { tipoDocumento: e.target.value })}
+                    onChange={(e) => {
+                      if (e.target.value === "__desconhecido__") return; // sentinela não salva
+                      salvarMetadados(doc.id, { tipoDocumento: e.target.value });
+                    }}
                     className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
                   >
+                    {/* Tipo legado/fora do catálogo: sentinela para não exibir o
+                        primeiro tipo como se fosse o real nem reclassificar sem querer. */}
+                    {!tipoConhecido(doc.tipo_documento) ? (
+                      <option value="__desconhecido__">{`(atual: ${doc.tipo_documento || "—"})`}</option>
+                    ) : null}
                     {CATEGORIAS_DOCUMENTO.map((cat) => (
                       <optgroup key={cat.valor} label={cat.label}>
                         {TIPOS_DOCUMENTO.filter((t) => t.categoria === cat.valor).map((t) => (
@@ -277,9 +291,9 @@ export default function DocumentosAdminClient() {
                     Validade
                     <input
                       type="date"
-                      defaultValue={(doc.validade || "").slice(0, 10)}
+                      value={(doc.validade || "").slice(0, 10)}
                       disabled={atualizandoId === doc.id}
-                      onBlur={(e) => {
+                      onChange={(e) => {
                         const novo = e.target.value || null;
                         const atual = (doc.validade || "").slice(0, 10) || null;
                         if (novo !== atual) salvarMetadados(doc.id, { validade: novo });

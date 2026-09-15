@@ -4,10 +4,23 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
-import { ehTipoDocumentoValido } from "@/lib/documentos";
+import { ehTipoDocumentoValido, tipoTemValidade } from "@/lib/documentos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Valida uma data de calendário REAL (não só o formato). Date.parse aceita
+// "2026-02-30" fazendo roll-over — aqui remontamos em UTC e conferimos os
+// componentes de volta, rejeitando datas impossíveis.
+function ehDataCalendarioValida(iso: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
 
 // Metadados de Vistos de UM documento: data de validade (expiração) e tipo. É a
 // INGESTÃO que alimenta os agentes de retaguarda de Vistos (validade vs.
@@ -41,11 +54,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     const v = body.validade;
     if (v === null || v === "") {
       patch.validade = null;
-    } else if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))) {
+    } else if (typeof v === "string" && ehDataCalendarioValida(v)) {
       patch.validade = v;
     } else {
       return NextResponse.json(
-        { ok: false, error: "Validade inválida. Use o formato AAAA-MM-DD ou vazio para limpar." },
+        { ok: false, error: "Validade inválida. Use o formato AAAA-MM-DD (data real) ou vazio para limpar." },
         { status: 400 },
       );
     }
@@ -57,6 +70,13 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ ok: false, error: "Tipo de documento inválido." }, { status: 400 });
     }
     patch.tipo_documento = t;
+    // Reclassificar para um tipo SEM validade limpa a validade órfã: senão o
+    // detective de Vistos (que olha qualquer doc com validade) seguiria sinalizando
+    // com base numa data que não pertence mais ao documento (achado da revisão).
+    // Só limpa quando o próprio request não está definindo uma validade.
+    if (!tipoTemValidade(t) && !temValidade) {
+      patch.validade = null;
+    }
   }
 
   const supabase = createClient(
@@ -90,12 +110,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     alvo: id,
     detalhe: {
       titular_id: doc.titular_id,
-      // Antes/depois só dos campos tocados (trilha do que mudou).
+      // Antes/depois só dos campos efetivamente tocados no patch (inclui a
+      // validade limpa automaticamente pela reclassificação).
       ...(temTipo ? { tipo_anterior: doc.tipo_documento, tipo_novo: patch.tipo_documento } : {}),
-      ...(temValidade ? { validade_anterior: (doc as { validade?: string | null }).validade ?? null, validade_nova: patch.validade } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "validade")
+        ? { validade_anterior: (doc as { validade?: string | null }).validade ?? null, validade_nova: patch.validade }
+        : {}),
     },
     ip: obterIp(request),
   });
 
-  return NextResponse.json({ ok: true, tipo_documento: patch.tipo_documento ?? doc.tipo_documento, validade: temValidade ? patch.validade : (doc as { validade?: string | null }).validade ?? null });
+  const validadeFinal = Object.prototype.hasOwnProperty.call(patch, "validade")
+    ? (patch.validade as string | null)
+    : ((doc as { validade?: string | null }).validade ?? null);
+  return NextResponse.json({ ok: true, tipo_documento: patch.tipo_documento ?? doc.tipo_documento, validade: validadeFinal });
 }
