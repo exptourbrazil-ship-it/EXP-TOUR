@@ -29,6 +29,7 @@ export type ReembolsoUnificadoInput = {
   moedaPrograma: string;
   // Componentes de retenção NA MOEDA DO PROGRAMA (já capados individualmente):
   retencaoExpTour: number; // Anexo I (etapa/estado)
+  rotuloRetencaoExpTour?: string; // rótulo da memória (default Anexo I; v3.1 = Remuneração)
   retencaoFornecedor: number; // escada do campus (soma das âncoras aplicáveis)
   naoRecuperaveis?: number; // valores comprometidos (application/placement fee, depósito remetido)
   remuneracaoServicos?: number; // fee de serviço da EXP Tour
@@ -105,7 +106,7 @@ export function calcularReembolsoUnificado(input: ReembolsoUnificadoInput): Reem
   const aindaDevidoBRL = round2(naoNeg(totalRetidoBRL - totalPagoBRL));
 
   const memoria: LinhaMemoria[] = [];
-  memoria.push({ rotulo: "Retenção EXP Tour (Anexo I)", valor: retencaoExpTourBruta, tipo: "moeda" });
+  memoria.push({ rotulo: input.rotuloRetencaoExpTour || "Retenção EXP Tour (Anexo I)", valor: retencaoExpTourBruta, tipo: "moeda" });
   if (pisoProximidadeAplicado) {
     memoria.push({
       rotulo: `Piso de proximidade (<${pisoDias} dias) — ${Math.round(pisoPct * 100)}% do tuition`,

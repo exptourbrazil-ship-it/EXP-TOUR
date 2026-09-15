@@ -13,6 +13,13 @@ import { carregarPoliticasRetencao } from "@/lib/politica-retencao-service";
 import { carregarFeriados } from "@/lib/dias-uteis-service";
 import { metricaPorAncora, direcaoDaAncora, calcularRetencaoCampus, type AncoraRetencao } from "@/lib/politica-retencao";
 import { calcularReembolsoUnificado, type ReembolsoUnificadoResultado } from "@/lib/reembolso-unificado";
+import {
+  calcularRemuneracaoServicos,
+  derivarEstadoProcesso,
+  type RemuneracaoResultado,
+} from "@/lib/remuneracao-servicos";
+import { estadoDoContrato } from "@/lib/contrato-estado-service";
+import { rankEstado } from "@/lib/contrato-estados";
 
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -147,8 +154,11 @@ export type ReembolsoUnificadoView = {
   contratoId: string;
   programaNome: string;
   moedaPrograma: string;
-  retencaoExpTour: number; // Anexo I (capada, sem não-recuperáveis)
-  etapaAplicada: EtapaChave;
+  retencaoExpTour: number; // Remuneração da Forio (v3.1 se resolvida; senão Anexo I legado)
+  etapaAplicada: EtapaChave; // etapa legada do Anexo I (mantida para compat)
+  // v3.1: Remuneração por Serviços Prestados sobre o Componente Educacional
+  // (degrau por estado + <30d, teto 800). null = caiu no cálculo legado.
+  remuneracao: RemuneracaoResultado | null;
   fornecedor: { resolvido: boolean; total: number; politicas: PoliticaAplicada[]; motivo?: string };
   cambio: { vet: number; ptax: number | null; iof: number; spread: number; resolvido: boolean };
   totalPagoBRL: number;
@@ -230,6 +240,41 @@ async function resolverAncorasDoCampus(
   return { campusId, porAncora, pesos };
 }
 
+// Componente Educacional do contrato (Cláusula 1.1.g.1): base da Remuneração por
+// Serviços Prestados, ≠ Custo do Programa. Deriva dos itens da cotação convertida:
+// curso e acomodação SEMPRE educacionais; seguro NUNCA; other/package pelo
+// `product.componente`. Retorna null quando não há cotação/itens (contratos
+// legados do CRM) — o chamador cai no cálculo legado (fail-safe).
+async function componenteEducacionalDoContrato(
+  supabase: SupabaseClient,
+  contratoId: string,
+): Promise<number | null> {
+  const { data: q } = await supabase
+    .from("quote")
+    .select("selected_option_id")
+    .eq("converted_contract_id", contratoId)
+    .maybeSingle();
+  if (!q?.selected_option_id) return null;
+  const { data: itens } = await supabase
+    .from("quote_item")
+    .select("\"group\", gross_amount, product:product_id(componente)")
+    .eq("quote_option_id", q.selected_option_id);
+  if (!itens || itens.length === 0) return null;
+  let total = 0;
+  for (const it of itens as Array<Record<string, unknown>>) {
+    const grupo = it.group as string;
+    const prod = it.product as { componente?: string } | null;
+    const educacional =
+      grupo === "program" || grupo === "accommodation"
+        ? true
+        : grupo === "insurance"
+          ? false
+          : prod?.componente === "educacional"; // other/package: usa o componente do produto
+    if (educacional) total += num(it.gross_amount) ?? 0;
+  }
+  return Math.round(total * 100) / 100;
+}
+
 export async function carregarReembolsoUnificado(
   supabase: SupabaseClient,
   contratoId: string,
@@ -240,11 +285,14 @@ export async function carregarReembolsoUnificado(
   const base = await carregarReembolsoContrato(supabase, contratoId, { naoRecuperaveis: 0 });
   if (!base) return null;
   const moedaPrograma = base.moeda;
-  const retencaoExpTour = base.resultado.totalRetido;
+  // Remuneração por Serviços Prestados: v3.1 (base = Componente Educacional, degrau
+  // por estado + <30d, teto 800) quando derivável; senão o cálculo legado do Anexo I
+  // (base = valor_total). Reatribuído abaixo, após resolver estado + diasAteInicio.
+  let retencaoExpTour = base.resultado.totalRetido;
 
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("data_inicio, pais_destino, titular_id, created_at")
+    .select("data_inicio, pais_destino, titular_id, created_at, visto_status")
     .eq("id", contratoId)
     .maybeSingle();
   const dataInicioISO = (contrato?.data_inicio as string) ?? null;
@@ -371,14 +419,49 @@ export async function carregarReembolsoUnificado(
     }
   }
 
+  // ── Remuneração por Serviços Prestados v3.1 (substitui a base tuition→Componente
+  // Educacional + degrau por estado). Só quando o Componente Educacional é
+  // derivável; senão mantém o cálculo legado do Anexo I (fail-safe).
+  const compEdu = await componenteEducacionalDoContrato(supabase, contratoId);
+  let remuneracao: RemuneracaoResultado | null = null;
+  if (compEdu != null) {
+    // estado do processo: LOA (documentos) + visto (visto_status em_analise/aprovado)
+    // + matrícula submetida (estado do contrato ≥ 'documentacao', avançado pelo admin).
+    const estadoContrato = await estadoDoContrato(supabase, contratoId);
+    const rank = estadoContrato ? rankEstado(estadoContrato) : null;
+    const rankDoc = rankEstado("documentacao");
+    const matriculaSubmetida = rank != null && rankDoc != null && rank >= rankDoc;
+    const vs = (contrato?.visto_status as string) ?? "";
+    const estado = derivarEstadoProcesso({
+      matriculaSubmetida,
+      temLOA: base.sinais.temLOA,
+      vistoInstruido: vs === "em_analise" || vs === "aprovado",
+    });
+    remuneracao = calcularRemuneracaoServicos({
+      moeda: moedaPrograma,
+      componenteEducacional: compEdu,
+      estado,
+      diasAteInicio,
+      atrasoImputavel: false,
+    });
+    retencaoExpTour = remuneracao.valor;
+  }
+
   const resultado = calcularReembolsoUnificado({
     moedaPrograma,
     retencaoExpTour,
     retencaoFornecedor: fornecedor.total,
     naoRecuperaveis: Math.max(0, num(opts.naoRecuperaveis) ?? 0),
-    remuneracaoServicos: Math.max(0, num(opts.remuneracaoServicos) ?? 0),
+    // v3.1: retencaoExpTour JÁ é a Remuneração da Forio (com teto/base corretos) —
+    // não somar de novo o fee what-if (evita duplicação) nem deixar o combinador
+    // aplicar o piso de proximidade sobre valor_total (a regra <30d já está embutida
+    // na Remuneração, sobre o Componente Educacional e com teto). Legado mantém ambos.
+    remuneracaoServicos: remuneracao != null ? 0 : Math.max(0, num(opts.remuneracaoServicos) ?? 0),
     tuition: base.tuition,
     diasAteInicio,
+    ...(remuneracao != null
+      ? { pisoProximidadePercentual: 0, rotuloRetencaoExpTour: "Remuneração por serviços prestados (Componente Educacional, teto 800)" }
+      : {}),
     vet,
     ptax: ptax ?? undefined,
     iof: cfg.iofCambio,
@@ -392,6 +475,7 @@ export async function carregarReembolsoUnificado(
     moedaPrograma,
     retencaoExpTour,
     etapaAplicada: base.etapaAplicada,
+    remuneracao,
     fornecedor,
     cambio: { vet, ptax, iof: cfg.iofCambio, spread: cfg.spreadCambio, resolvido: cambioResolvido },
     totalPagoBRL: Math.round(totalPagoBRL * 100) / 100,

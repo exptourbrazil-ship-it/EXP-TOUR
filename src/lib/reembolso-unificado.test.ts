@@ -75,3 +75,12 @@ test("U8 memória traz componentes, câmbio e total em BRL", () => {
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+test("U9 pisoProximidadePercentual:0 desativa o piso (v3.1: retencaoExpTour já capado)", () => {
+  // <30 dias + tuition alto: com o piso legado (5%) inflaria; com 0 fica no valor v3.1.
+  const legado = calcularReembolsoUnificado(base({ retencaoExpTour: 600, tuition: 20000, diasAteInicio: 20, retencaoFornecedor: 0 }));
+  assert.equal(legado.retencaoExpTour, 1000); // piso 5% de 20000 vence
+  const v31 = calcularReembolsoUnificado(base({ retencaoExpTour: 600, tuition: 20000, diasAteInicio: 20, retencaoFornecedor: 0, pisoProximidadePercentual: 0 }));
+  assert.equal(v31.retencaoExpTour, 600); // sem piso: mantém o valor v3.1 (base Componente Educacional + teto)
+  assert.equal(v31.pisoProximidadeAplicado, false);
+});
