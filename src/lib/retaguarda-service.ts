@@ -22,8 +22,10 @@ import {
   type RepactuacaoSnapshot,
   type DocValidadeSnapshot,
   type CartaRecusaSnapshot,
+  type SeguroContratoSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
+  adicionarDiasISO,
   TIPO_CARTA_RECUSA_VISTO,
   PRAZO_REPASSE_CARTA_RECUSA_DIAS_UTEIS,
 } from "@/lib/retaguarda";
@@ -54,6 +56,15 @@ const LOTE_IN = 500;
 // (tenant_config.visto_validade_min_meses) — env/default só de fallback.
 const VISTO_VALIDADE_MIN_MESES_PADRAO = 6;
 
+// Janela padrão do agente de Seguro: dias de antecedência do embarque a partir
+// dos quais a ausência de apólice vira alerta. Env override (SEGURO_ALERTA_DIAS_
+// ANTES); ausência de apólice segue sendo cobrada também após o embarque.
+const SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO = 30;
+function janelaAlertaSeguroDias(): number {
+  const env = Number(process.env.SEGURO_ALERTA_DIAS_ANTES);
+  return Number.isFinite(env) && env >= 0 ? Math.round(env) : SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO;
+}
+
 // Carrega o buffer de validade do tenant (linha -> env -> default). Deploy-safe:
 // banco sem a coluna -> select erra -> cai no env/default.
 async function carregarBufferValidadeMeses(
@@ -78,6 +89,7 @@ async function carregarSnapshot(
   contratoIds: string[],
   bufferValidadeMeses: number,
   feriados: Feriados,
+  janelaSeguroDias: number,
 ): Promise<{
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -86,6 +98,7 @@ async function carregarSnapshot(
   repactuacoes: RepactuacaoSnapshot[];
   docsValidade: DocValidadeSnapshot[];
   cartasRecusa: CartaRecusaSnapshot[];
+  segurosContrato: SeguroContratoSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -94,6 +107,7 @@ async function carregarSnapshot(
   const repactuacoes: RepactuacaoSnapshot[] = [];
   const docsValidade: DocValidadeSnapshot[] = [];
   const cartasRecusa: CartaRecusaSnapshot[] = [];
+  const segurosContrato: SeguroContratoSnapshot[] = [];
   // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
   const hojeBR = hojeBrasilISO();
   // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
@@ -255,9 +269,52 @@ async function carregarSnapshot(
         hojeISO: hojeBR,
       });
     }
+
+    // Seguro: contratos ATIVOS (não cancelados) com data de início, para checar a
+    // ausência de apólice antes do embarque. Traz titular_id p/ verificar a
+    // apólice no acervo do titular (as apólices vêm em nível de titular, sem
+    // contrato_id). Cancelados (cancelado_em não nulo) ficam de fora — não faz
+    // sentido cobrar seguro de uma viagem que não vai acontecer.
+    const { data: contratos, error: e8 } = await supabase
+      .from("contratos")
+      .select("id, titular_id, data_inicio, cancelado_em")
+      .in("id", lote)
+      .is("cancelado_em", null)
+      .not("data_inicio", "is", null);
+    if (e8) throw new Error("Falha ao ler contratos p/ seguro da retaguarda: " + e8.message);
+    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null }>;
+    const titularIds = Array.from(
+      new Set(linhasContrato.map((c) => c.titular_id).filter((t): t is string => !!t)),
+    );
+    // Titulares que TÊM ao menos uma apólice de seguro no acervo.
+    const titularesComSeguro = new Set<string>();
+    for (const loteTit of emLotes(titularIds, LOTE_IN)) {
+      const { data: segs, error: e9 } = await supabase
+        .from("documentos")
+        .select("titular_id")
+        .in("titular_id", loteTit)
+        .eq("tipo_documento", "seguro_saude");
+      if (e9) throw new Error("Falha ao ler apólices de seguro da retaguarda: " + e9.message);
+      for (const s of segs ?? []) {
+        const t = (s as { titular_id?: string }).titular_id;
+        if (t) titularesComSeguro.add(t);
+      }
+    }
+    for (const c of linhasContrato) {
+      const inicio = (c.data_inicio ?? "").slice(0, 10);
+      if (!inicio) continue;
+      const limiteAlertaISO = adicionarDiasISO(inicio, -janelaSeguroDias);
+      if (!limiteAlertaISO) continue;
+      segurosContrato.push({
+        contratoId: c.id,
+        temSeguro: !!c.titular_id && titularesComSeguro.has(c.titular_id),
+        limiteAlertaISO,
+        hojeISO,
+      });
+    }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
@@ -395,10 +452,11 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
   // Feriados Brasil (nacionais + do tenant) para o prazo de repasse da carta de
   // recusa em dias úteis (Cláusula 10.3.1). Falha -> Set vazio (só fim de semana).
   const feriados = await carregarFeriados(supabase, { pais: "brasil", tenantId: escopo.tenantId });
+  const janelaSeguroDias = janelaAlertaSeguroDias();
 
   // Tenant sem contratos: nada a varrer, mas ainda resolve achados que porventura
   // tenham sobrado (contratos removidos) — a reconciliação cuida disso.
-  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados);
+  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados, janelaSeguroDias);
   const atuais = detectarRetaguarda(snap);
 
   // Carrega TODOS os status (aberto E resolvido): a reconciliação precisa

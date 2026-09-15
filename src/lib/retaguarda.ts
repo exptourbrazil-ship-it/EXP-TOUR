@@ -16,6 +16,15 @@
 
 export type SeveridadeAchado = "alto" | "medio" | "baixo";
 
+// Soma `dias` (pode ser negativo) a uma data ISO (YYYY-MM-DD), em UTC. Usado
+// pela camada de dados para a janela de alerta antes do embarque (Seguro).
+export function adicionarDiasISO(dataISO: string, dias: number): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dataISO);
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + dias * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 // Soma `meses` a uma data ISO (YYYY-MM-DD), devolvendo YYYY-MM-DD. Calendário
 // puro (UTC, sem fuso). Estouro de dia (ex.: 31 -> mês curto) normaliza para o
 // último dia do mês alvo. Usado pela camada de dados para a data-limite de
@@ -139,6 +148,18 @@ export type CartaRecusaSnapshot = {
   hojeISO: string;
 };
 
+// Contrato ATIVO com embarque próximo/passado, para o agente de Seguro (§7-F.1,
+// "apólice apresentada antes do embarque"). `temSeguro` = o titular tem algum
+// documento de seguro-saúde no acervo. `limiteAlertaISO` = data de início do
+// programa menos a janela de antecedência (calculada na camada de dados). Se o
+// embarque está dentro da janela (ou já passou) e não há apólice, alerta.
+export type SeguroContratoSnapshot = {
+  contratoId: string;
+  temSeguro: boolean;
+  limiteAlertaISO: string;
+  hojeISO: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -149,6 +170,7 @@ export type SnapshotRetaguarda = {
   repactuacoes?: RepactuacaoSnapshot[];
   docsValidade?: DocValidadeSnapshot[];
   cartasRecusa?: CartaRecusaSnapshot[];
+  segurosContrato?: SeguroContratoSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -402,6 +424,39 @@ export function checarCartaRecusaNaoRepassada(snap: SnapshotRetaguarda): Achado[
   return achados;
 }
 
+/**
+ * Contrato com embarque próximo (ou já passado) e SEM apólice de seguro no
+ * acervo do titular.
+ *
+ * Agente de Seguro (§7-F.1, "apólice apresentada antes do embarque"): a camada
+ * de dados traz, por contrato ativo com data de início, se o titular tem algum
+ * documento de seguro-saúde e o `limiteAlertaISO` (início − janela de
+ * antecedência). Se o embarque está dentro da janela ou já ocorreu e não há
+ * apólice, o cliente pode viajar sem seguro. MÉDIO (operacional / "alerta
+ * escalonado"; resolve quando a apólice é anexada — sem atrito de ack).
+ *
+ * Só compara datas YYYY-MM-DD; a janela e a exclusão de cancelados ficam na
+ * camada de dados.
+ */
+export function checarSeguroAusenteAntesEmbarque(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const s of snap.segurosContrato ?? []) {
+    if (s.temSeguro) continue; // já há apólice: nada a cobrar
+    if (!s.limiteAlertaISO || !s.hojeISO) continue;
+    if (s.hojeISO >= s.limiteAlertaISO) {
+      achados.push({
+        chave: `retaguarda:seguro_ausente_embarque:${s.contratoId}`,
+        categoria: "seguro_ausente_embarque",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: s.contratoId },
+        contratoId: s.contratoId,
+        resumo: `Contrato ${s.contratoId} com embarque próximo/ocorrido e sem apólice de seguro no acervo — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -412,6 +467,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarRepactuacaoSemAceite,
   checarDocumentoValidadeInsuficiente,
   checarCartaRecusaNaoRepassada,
+  checarSeguroAusenteAntesEmbarque,
 ];
 
 /**
