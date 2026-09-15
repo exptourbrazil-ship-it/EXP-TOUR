@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO } from "@/lib/documentos";
+import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, ehTipoDocumentoValido } from "@/lib/documentos";
+
+// Um tipo é "conhecido" quando está no catálogo (evita exibir o 1º tipo como se
+// fosse o real quando o doc tem um tipo legado/fora da lista).
+function tipoConhecido(valor: string | null | undefined): boolean {
+  return typeof valor === "string" && ehTipoDocumentoValido(valor);
+}
 
 const STATUS_OPCOES = ["pendente", "aprovado", "rejeitado"];
 
@@ -84,6 +90,43 @@ export default function DocumentosAdminClient() {
         setErroBusca(json.error || "falha ao atualizar status");
       }
     } catch (err: any) {
+      setErroBusca(err.message);
+    } finally {
+      setAtualizandoId(null);
+    }
+  }
+
+  // Metadados de Vistos: tipo e/ou validade. Atualização otimista com rollback no
+  // erro (mantém a linha consistente com o servidor). Envia só o(s) campo(s) tocado(s).
+  async function salvarMetadados(id: string, patch: { tipoDocumento?: string; validade?: string | null }) {
+    const anterior = documentos.find((d) => d.id === id);
+    setAtualizandoId(id);
+    setErroBusca(null);
+    setDocumentos((docs) =>
+      docs.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              ...(patch.tipoDocumento !== undefined ? { tipo_documento: patch.tipoDocumento } : {}),
+              ...(patch.validade !== undefined ? { validade: patch.validade } : {}),
+            }
+          : d,
+      ),
+    );
+    try {
+      const res = await fetch(`/api/admin/documentos/${id}/metadados`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        // Rollback ao estado anterior.
+        setDocumentos((docs) => docs.map((d) => (d.id === id && anterior ? anterior : d)));
+        setErroBusca(json.error || "falha ao salvar metadados");
+      }
+    } catch (err: any) {
+      setDocumentos((docs) => docs.map((d) => (d.id === id && anterior ? anterior : d)));
       setErroBusca(err.message);
     } finally {
       setAtualizandoId(null);
@@ -184,33 +227,81 @@ export default function DocumentosAdminClient() {
           {documentos.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-3"
+              className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-3"
             >
-              <span className="min-w-0 truncate text-sm text-brand">
-                {doc.nome_arquivo}{" "}
-                <span className="text-neutral-400">({doc.tipo_documento})</span>
-              </span>
-              <div className="flex flex-shrink-0 items-center gap-2">
-                <a
-                  href={`/api/admin/documentos/${doc.id}/download`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-brand transition hover:bg-brand-cream/60"
-                >
-                  Ver
-                </a>
-                <select
-                  value={doc.status || "pendente"}
-                  disabled={atualizandoId === doc.id}
-                  onChange={(e) => alterarStatus(doc.id, e.target.value)}
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                >
-                  {STATUS_OPCOES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-sm text-brand">{doc.nome_arquivo}</span>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <a
+                    href={`/api/admin/documentos/${doc.id}/download`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-brand transition hover:bg-brand-cream/60"
+                  >
+                    Ver
+                  </a>
+                  <select
+                    value={doc.status || "pendente"}
+                    disabled={atualizandoId === doc.id}
+                    onChange={(e) => alterarStatus(doc.id, e.target.value)}
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  >
+                    {STATUS_OPCOES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Metadados de Vistos: reclassificar o tipo e, quando o tipo carrega
+                  validade (passaporte, visto, seguro...), a data de expiração. */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-2">
+                <label className="flex items-center gap-1 text-xs text-neutral-500">
+                  Tipo
+                  <select
+                    value={tipoConhecido(doc.tipo_documento) ? doc.tipo_documento : "__desconhecido__"}
+                    disabled={atualizandoId === doc.id}
+                    onChange={(e) => {
+                      if (e.target.value === "__desconhecido__") return; // sentinela não salva
+                      salvarMetadados(doc.id, { tipoDocumento: e.target.value });
+                    }}
+                    className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
+                  >
+                    {/* Tipo legado/fora do catálogo: sentinela para não exibir o
+                        primeiro tipo como se fosse o real nem reclassificar sem querer. */}
+                    {!tipoConhecido(doc.tipo_documento) ? (
+                      <option value="__desconhecido__">{`(atual: ${doc.tipo_documento || "—"})`}</option>
+                    ) : null}
+                    {CATEGORIAS_DOCUMENTO.map((cat) => (
+                      <optgroup key={cat.valor} label={cat.label}>
+                        {TIPOS_DOCUMENTO.filter((t) => t.categoria === cat.valor).map((t) => (
+                          <option key={t.valor} value={t.valor}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+
+                {tipoTemValidade(doc.tipo_documento) ? (
+                  <label className="flex items-center gap-1 text-xs text-neutral-500">
+                    Validade
+                    <input
+                      type="date"
+                      value={(doc.validade || "").slice(0, 10)}
+                      disabled={atualizandoId === doc.id}
+                      onChange={(e) => {
+                        const novo = e.target.value || null;
+                        const atual = (doc.validade || "").slice(0, 10) || null;
+                        if (novo !== atual) salvarMetadados(doc.id, { validade: novo });
+                      }}
+                      className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
           ))}
