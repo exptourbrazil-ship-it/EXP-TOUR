@@ -3008,3 +3008,14 @@ create index if not exists idx_contratos_tenant on contratos(tenant_id);
 -- backfill/insert gravar o tenant. Fora do CREATE pelo mesmo motivo acima.
 alter table if exists propostas add column if not exists tenant_id uuid references tenant(id);
 create index if not exists idx_propostas_tenant on propostas(tenant_id);
+
+-- ============================================================================
+-- Agente de Vistos (retaguarda §7-F.1): validade de documento vs. exigencia
+-- ============================================================================
+-- Camada detectiva: um documento (ex.: passaporte) cuja validade nao cobre a
+-- exigencia do destino — expira antes de (inicio do programa + buffer de meses).
+-- documentos.validade: data de expiracao do documento (nullable; so os que tem).
+-- tenant_config.visto_validade_min_meses: buffer minimo por tenant (default de
+-- codigo = 6). Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
+alter table if exists documentos add column if not exists validade date;
+alter table if exists tenant_config add column if not exists visto_validade_min_meses smallint;

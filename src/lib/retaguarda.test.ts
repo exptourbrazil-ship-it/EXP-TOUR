@@ -6,6 +6,8 @@ import {
   checarRemessaAntesDoD7,
   checarAlteracaoSemAceite,
   checarRepactuacaoSemAceite,
+  checarDocumentoValidadeInsuficiente,
+  adicionarMesesISO,
   detectarRetaguarda,
   reconciliarAchados,
   type Achado,
@@ -355,5 +357,76 @@ test("repactuacao: recusada/cancelada nao flagra", () => {
 
 test("repactuacao: snapshot sem o array nao quebra", () => {
   const a = checarRepactuacaoSemAceite({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- adicionarMesesISO ------------------------------------------------------
+
+test("adicionarMesesISO: soma simples de meses", () => {
+  assert.equal(adicionarMesesISO("2026-03-15", 6), "2026-09-15");
+});
+
+test("adicionarMesesISO: vira o ano", () => {
+  assert.equal(adicionarMesesISO("2026-10-01", 6), "2027-04-01");
+});
+
+test("adicionarMesesISO: estouro de dia normaliza para o ultimo dia do mes", () => {
+  // 31 de agosto + 6 = fevereiro (28 em ano nao bissexto).
+  assert.equal(adicionarMesesISO("2025-08-31", 6), "2026-02-28");
+});
+
+test("adicionarMesesISO: data invalida -> null", () => {
+  assert.equal(adicionarMesesISO("nao-e-data", 6), null);
+});
+
+// ---- checarDocumentoValidadeInsuficiente ------------------------------------
+
+function docV(over: Partial<{
+  docId: string; contratoId: string; validadeISO: string; referenciaISO: string;
+}> = {}) {
+  return {
+    docId: over.docId ?? "d1",
+    contratoId: over.contratoId ?? "c1",
+    validadeISO: over.validadeISO ?? "2026-06-01",
+    referenciaISO: over.referenciaISO ?? "2026-09-01",
+  };
+}
+
+test("validade: expira ANTES da referencia -> achado medio", () => {
+  const a = checarDocumentoValidadeInsuficiente({ parcelas: [], pagamentos: [], docsValidade: [docV()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "documento_validade_insuficiente");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "documento");
+  assert.equal(a[0].contratoId, "c1");
+  assert.equal(a[0].chave, "retaguarda:documento_validade_insuficiente:d1");
+});
+
+test("validade: cobre a referencia (igual) -> sem achado", () => {
+  const a = checarDocumentoValidadeInsuficiente({
+    parcelas: [], pagamentos: [],
+    docsValidade: [docV({ validadeISO: "2026-09-01", referenciaISO: "2026-09-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("validade: cobre a referencia (depois) -> sem achado", () => {
+  const a = checarDocumentoValidadeInsuficiente({
+    parcelas: [], pagamentos: [],
+    docsValidade: [docV({ validadeISO: "2027-01-01", referenciaISO: "2026-09-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("validade: campos vazios nao quebram nem flagram", () => {
+  const a = checarDocumentoValidadeInsuficiente({
+    parcelas: [], pagamentos: [],
+    docsValidade: [docV({ validadeISO: "", referenciaISO: "2026-09-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("validade: snapshot sem o array nao quebra", () => {
+  const a = checarDocumentoValidadeInsuficiente({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

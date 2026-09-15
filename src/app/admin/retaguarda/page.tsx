@@ -26,6 +26,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   compartilhado_sem_carimbo: "Visível ao fornecedor sem carimbo de data",
   alteracao_sem_aceite: "Alteração de preço aplicada sem aceite",
   repactuacao_sem_aceite: "Repactuação aplicada sem aceite",
+  documento_validade_insuficiente: "Documento vence antes da exigência do destino",
 };
 
 function fmtData(iso: string | null): string {
