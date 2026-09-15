@@ -23,6 +23,7 @@ import {
   type DocValidadeSnapshot,
   type CartaRecusaSnapshot,
   type SeguroContratoSnapshot,
+  type SeguroVigenciaSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -99,6 +100,7 @@ async function carregarSnapshot(
   docsValidade: DocValidadeSnapshot[];
   cartasRecusa: CartaRecusaSnapshot[];
   segurosContrato: SeguroContratoSnapshot[];
+  segurosVigencia: SeguroVigenciaSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -108,6 +110,7 @@ async function carregarSnapshot(
   const docsValidade: DocValidadeSnapshot[] = [];
   const cartasRecusa: CartaRecusaSnapshot[] = [];
   const segurosContrato: SeguroContratoSnapshot[] = [];
+  const segurosVigencia: SeguroVigenciaSnapshot[] = [];
   // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
   const hojeBR = hojeBrasilISO();
   // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
@@ -219,11 +222,16 @@ async function carregarSnapshot(
     // data-limite (início + buffer). Escopo preventivo: só programas que ainda
     // não começaram (data_inicio >= hoje) — depois do embarque o alerta perde a
     // ação. Filtro grosso no SQL (validade not null); o veredito fica no motor.
+    // Exclui seguro_saude: a validade da apólice tem regra própria (cobrir o
+    // período do programa, não o buffer de passaporte +6m) — é do agente de
+    // Seguro, abaixo. Aplicar o buffer de passaporte à apólice super-flagraria
+    // programas curtos.
     const { data: docsV, error: e6 } = await supabase
       .from("documentos")
       .select("id, contrato_id, validade, contrato:contratos(data_inicio)")
       .in("contrato_id", lote)
-      .not("validade", "is", null);
+      .not("validade", "is", null)
+      .neq("tipo_documento", "seguro_saude");
     if (e6) throw new Error("Falha ao ler validade de documentos da retaguarda: " + e6.message);
     for (const d of docsV ?? []) {
       const rel: any = (d as any).contrato;
@@ -286,18 +294,27 @@ async function carregarSnapshot(
     const titularIds = Array.from(
       new Set(linhasContrato.map((c) => c.titular_id).filter((t): t is string => !!t)),
     );
-    // Titulares que TÊM ao menos uma apólice de seguro no acervo.
+    // Titulares que TÊM ao menos uma apólice de seguro no acervo, e a MELHOR
+    // (maior) validade entre as apólices de cada titular — insumo da vigência.
     const titularesComSeguro = new Set<string>();
+    const melhorValidadePorTitular = new Map<string, string>();
     for (const loteTit of emLotes(titularIds, LOTE_IN)) {
       const { data: segs, error: e9 } = await supabase
         .from("documentos")
-        .select("titular_id")
+        .select("titular_id, validade")
         .in("titular_id", loteTit)
         .eq("tipo_documento", "seguro_saude");
       if (e9) throw new Error("Falha ao ler apólices de seguro da retaguarda: " + e9.message);
       for (const s of segs ?? []) {
         const t = (s as { titular_id?: string }).titular_id;
-        if (t) titularesComSeguro.add(t);
+        if (!t) continue;
+        titularesComSeguro.add(t);
+        const val = ((s as { validade?: string | null }).validade ?? "").slice(0, 10);
+        if (val) {
+          const atual = melhorValidadePorTitular.get(t);
+          // "Melhor" cobertura = a de maior validade (comparação lexicográfica de YYYY-MM-DD).
+          if (!atual || val > atual) melhorValidadePorTitular.set(t, val);
+        }
       }
     }
     for (const c of linhasContrato) {
@@ -311,10 +328,19 @@ async function carregarSnapshot(
         limiteAlertaISO,
         hojeISO,
       });
+      // Vigência: só quando HÁ apólice com validade registrada (senão não há o
+      // que julgar — a ausência de apólice é a outra checagem). Referência v1 =
+      // INÍCIO do programa: um seguro que expira antes do embarque não cobre o
+      // período. Quando houver data de término do programa, a referência sobe
+      // para o fim (cobertura de todo o período).
+      const coberturaAteISO = c.titular_id ? (melhorValidadePorTitular.get(c.titular_id) ?? null) : null;
+      if (coberturaAteISO) {
+        segurosVigencia.push({ contratoId: c.id, referenciaISO: inicio, coberturaAteISO });
+      }
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
