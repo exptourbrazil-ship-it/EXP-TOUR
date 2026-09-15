@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarConfigTenant, type ConfigTenant, type LinhaTenantConfig } from "@/lib/tenant-config-merge";
 import { SPREAD_PADRAO, IOF_PADRAO } from "@/lib/cambio";
+import { carregarIofVigente } from "@/lib/iof-vigencia";
 import { MORA_MULTA_PADRAO, MORA_JUROS_MES_PADRAO, MORA_INDICE_PADRAO } from "@/lib/mora";
 import { TETO_RETENCAO_PADRAO, ETAPAS_ANEXO_I_PADRAO } from "@/lib/reembolso-anexo-i";
 
@@ -49,7 +50,16 @@ export async function carregarConfigTenant(
     moraIndice: envNum("MORA_INDICE_PERCENTUAL"),
     reembolsoTeto: envNum("REEMBOLSO_TETO"),
   };
-  return montarConfigTenant(row, env, defaults());
+  const cfg = montarConfigTenant(row, env, defaults());
+
+  // §8 (fonte única): a alíquota de IOF-câmbio vem da tabela de VIGÊNCIA (a
+  // vigente hoje), que é autoritativa por ser federal (igual para todo tenant).
+  // Tabela vazia/ausente -> mantém o resultado acima (env/default), backward-safe.
+  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const iofVigente = await carregarIofVigente(supabase, hoje);
+  if (iofVigente != null) cfg.iofCambio = iofVigente;
+
+  return cfg;
 }
 
 // Resolve o tenant de um titular (contratos nao tem tenant_id proprio; vem do

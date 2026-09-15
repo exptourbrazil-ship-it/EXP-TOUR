@@ -1864,6 +1864,18 @@ create table if not exists campus_politica (
 create index if not exists idx_campus_politica_tenant on campus_politica(tenant_id);
 alter table if exists campus_politica enable row level security;
 
+-- IOF-câmbio por VIGÊNCIA (Contrato v3.1 §8, migracao-iof-vigencia.sql). Fonte
+-- única da alíquota de IOF; global (federal). Alíquota vigente = maior
+-- vigente_desde <= data. Ver src/lib/iof-vigencia.ts. Seed 0,035 = default de código.
+create table if not exists iof_vigencia (
+  id uuid primary key default gen_random_uuid(),
+  aliquota numeric(6,4) not null check (aliquota >= 0 and aliquota <= 1),
+  vigente_desde date not null unique,
+  observacao text,
+  criado_em timestamptz not null default now()
+);
+alter table if exists iof_vigencia enable row level security;
+
 create table if not exists market (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),

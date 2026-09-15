@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { comporCotacaoVet } from "@/lib/cambio";
+import { carregarIofVigente } from "@/lib/iof-vigencia";
 
 // MULTI-TENANT (ver docs/deploy-multi-tenant.md, secao Cron): NAO escopa por
 // tenant DE PROPOSITO. `cotacoes_cambio` e uma referencia de cambio GLOBAL
@@ -133,8 +134,12 @@ export async function GET(request: Request) {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const spreadPercentual = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
-  const iofPercentual = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
   const hojeISO = new Date().toISOString().slice(0, 10);
+  // §8 fonte única: IOF-câmbio da tabela de vigência (vigente na data que grava a
+  // VET), com fallback ao env/default. Mesma fonte que gerar-cobranca recompõe,
+  // então a VET congelada na emissão bate com a cobrada mesmo após mudança de alíquota.
+  const iofVigente = await carregarIofVigente(supabase, hojeISO);
+  const iofPercentual = iofVigente ?? Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
 
   const resultados: Record<string, number | string> = {};
 

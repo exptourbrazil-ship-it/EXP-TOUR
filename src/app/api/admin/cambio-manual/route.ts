@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { comporCotacaoVet } from "@/lib/cambio";
+import { carregarIofVigente } from "@/lib/iof-vigencia";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -38,8 +39,11 @@ export async function POST(request: Request) {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const spreadPercentual = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
-  const iofPercentual = Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
   const hojeISO = new Date().toISOString().slice(0, 10);
+  // §8 fonte única: IOF da tabela de vigência (fallback env/default) — mesma fonte
+  // da recomposição na cobrança, para a VET gravada não divergir.
+  const iofVigente = await carregarIofVigente(supabase, hojeISO);
+  const iofPercentual = iofVigente ?? Number(process.env.IOF_CAMBIO_PERCENTUAL || "0.035");
 
   const cotacaoVet = comporCotacaoVet(cambioComercial, spreadPercentual, iofPercentual);
 
