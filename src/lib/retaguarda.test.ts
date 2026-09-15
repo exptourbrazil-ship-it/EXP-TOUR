@@ -8,7 +8,9 @@ import {
   checarRepactuacaoSemAceite,
   checarDocumentoValidadeInsuficiente,
   checarCartaRecusaNaoRepassada,
+  checarSeguroAusenteAntesEmbarque,
   adicionarMesesISO,
+  adicionarDiasISO,
   detectarRetaguarda,
   reconciliarAchados,
   type Achado,
@@ -490,5 +492,63 @@ test("carta recusa: prazo vazio nao quebra nem flagra", () => {
 
 test("carta recusa: snapshot sem o array nao quebra", () => {
   const a = checarCartaRecusaNaoRepassada({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- adicionarDiasISO -------------------------------------------------------
+
+test("adicionarDiasISO: soma e subtrai dias, vira mes/ano", () => {
+  assert.equal(adicionarDiasISO("2026-03-15", 10), "2026-03-25");
+  assert.equal(adicionarDiasISO("2026-03-05", -10), "2026-02-23");
+  assert.equal(adicionarDiasISO("2026-01-01", -1), "2025-12-31");
+  assert.equal(adicionarDiasISO("nao-e-data", 5), null);
+});
+
+// ---- checarSeguroAusenteAntesEmbarque ---------------------------------------
+
+function seg(over: Partial<{
+  contratoId: string; temSeguro: boolean; limiteAlertaISO: string; hojeISO: string;
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    temSeguro: over.temSeguro ?? false,
+    limiteAlertaISO: over.limiteAlertaISO ?? "2026-05-01",
+    hojeISO: over.hojeISO ?? "2026-05-10",
+  };
+}
+
+test("seguro: sem apolice e dentro da janela (hoje >= limite) -> achado medio", () => {
+  const a = checarSeguroAusenteAntesEmbarque({ parcelas: [], pagamentos: [], segurosContrato: [seg()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "seguro_ausente_embarque");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].contratoId, "c1");
+  assert.equal(a[0].chave, "retaguarda:seguro_ausente_embarque:c1");
+});
+
+test("seguro: com apolice -> sem achado", () => {
+  const a = checarSeguroAusenteAntesEmbarque({
+    parcelas: [], pagamentos: [], segurosContrato: [seg({ temSeguro: true })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("seguro: embarque ainda longe (hoje < limite) -> sem achado", () => {
+  const a = checarSeguroAusenteAntesEmbarque({
+    parcelas: [], pagamentos: [], segurosContrato: [seg({ hojeISO: "2026-04-01", limiteAlertaISO: "2026-05-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("seguro: hoje == limite (fronteira) -> achado", () => {
+  const a = checarSeguroAusenteAntesEmbarque({
+    parcelas: [], pagamentos: [], segurosContrato: [seg({ hojeISO: "2026-05-01", limiteAlertaISO: "2026-05-01" })],
+  });
+  assert.equal(a.length, 1);
+});
+
+test("seguro: snapshot sem o array nao quebra", () => {
+  const a = checarSeguroAusenteAntesEmbarque({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });
