@@ -91,6 +91,28 @@ export function resolverDegrauRemuneracao(input: {
   };
 }
 
+// Sinais que derivam o ESTADO do processo v3.1 (forio-arquitetura-operacao §2,
+// estados 11/12/13). Distinto da EtapaChave do Anexo I legado (etapa-anexo-i.ts):
+// aqui o 2% é a MATRÍCULA SUBMETIDA ao Fornecedor (estado 11), NÃO a entrada paga
+// — a entrada precede a submissão, e reter 2% antes de submeter superestimaria a
+// Remuneração. Não há degrau de "assinatura 1%": antes de submeter é 0% (salvo
+// atraso imputável, tratado no cálculo do degrau).
+export type SinaisEstadoProcesso = {
+  matriculaSubmetida?: boolean; // estado 11: submetida e processada ao Fornecedor
+  temLOA?: boolean; // estado 12: carta de aceitação (LOA) emitida
+  vistoInstruido?: boolean; // estado 13: pedido de visto instruído
+};
+
+// Deriva o EstadoProcesso do maior marco atingido (monotônico: visto > loa >
+// submetida > nao_submetida). Puro; consome sinais já disponíveis no serviço
+// (documentos carta_aceite; contratos.visto_status) + o marco de submissão.
+export function derivarEstadoProcesso(s: SinaisEstadoProcesso): EstadoProcesso {
+  if (s.vistoInstruido) return "visto";
+  if (s.temLOA) return "loa";
+  if (s.matriculaSubmetida) return "submetida";
+  return "nao_submetida";
+}
+
 export type LinhaMemoria = { rotulo: string; valor: number; tipo: "moeda" | "pct" | "num" };
 
 export type RemuneracaoResultado = {

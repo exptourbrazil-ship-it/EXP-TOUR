@@ -3,9 +3,21 @@ import assert from "node:assert/strict";
 import {
   resolverDegrauRemuneracao,
   calcularRemuneracaoServicos,
+  derivarEstadoProcesso,
   PCT_POR_ESTADO,
   TETO_REMUNERACAO,
 } from "./remuneracao-servicos.ts";
+
+// ── derivação do estado do processo (elo com a máquina de estados) ───────────
+
+test("derivarEstadoProcesso escolhe o maior marco atingido", () => {
+  assert.equal(derivarEstadoProcesso({}), "nao_submetida");
+  assert.equal(derivarEstadoProcesso({ matriculaSubmetida: true }), "submetida");
+  assert.equal(derivarEstadoProcesso({ matriculaSubmetida: true, temLOA: true }), "loa");
+  assert.equal(derivarEstadoProcesso({ temLOA: true, vistoInstruido: true }), "visto");
+  // entrada paga NÃO conta como submetida (só o marco de submissão)
+  assert.equal(derivarEstadoProcesso({ matriculaSubmetida: false }), "nao_submetida");
+});
 
 // ── degrau por estado ────────────────────────────────────────────────────────
 
