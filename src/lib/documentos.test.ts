@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ehTipoDocumentoValido,
   tipoTemValidade,
+  tipoTemCobertura,
   categorizarNomeArquivo,
   labelDoTipoDocumento,
   TIPOS_DOCUMENTO,
@@ -21,6 +22,12 @@ test("tipoTemValidade: passaporte/visto têm; carta de recusa e invoice não", (
   assert.equal(tipoTemValidade("seguro_saude"), true);
   assert.equal(tipoTemValidade("carta_recusa_visto"), false);
   assert.equal(tipoTemValidade("invoice_escola"), false);
+});
+
+test("tipoTemCobertura: só a apólice de seguro carrega valor de cobertura", () => {
+  assert.equal(tipoTemCobertura("seguro_saude"), true);
+  assert.equal(tipoTemCobertura("passaporte"), false);
+  assert.equal(tipoTemCobertura("carta_recusa_visto"), false);
 });
 
 test("carta de recusa: novo tipo é categorizável pelo nome do arquivo", () => {

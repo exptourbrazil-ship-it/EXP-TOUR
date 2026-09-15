@@ -172,6 +172,17 @@ export type SeguroVigenciaSnapshot = {
   referenciaISO: string;
 };
 
+// Cobertura do seguro vs. mínimo do destino, para o agente de Seguro (§7-F.1,
+// "cobertura contra o mínimo do destino"). A camada de dados resolve a MESMA
+// moeda (mínimo do país × maior cobertura do titular naquela moeda) e traz os
+// dois valores comparáveis; o motor só compara. `moeda` é só para o resumo.
+export type SeguroCoberturaSnapshot = {
+  contratoId: string;
+  coberturaValor: number;
+  minimoValor: number;
+  moeda: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -184,6 +195,7 @@ export type SnapshotRetaguarda = {
   cartasRecusa?: CartaRecusaSnapshot[];
   segurosContrato?: SeguroContratoSnapshot[];
   segurosVigencia?: SeguroVigenciaSnapshot[];
+  segurosCobertura?: SeguroCoberturaSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -502,6 +514,34 @@ export function checarSeguroVigenciaInsuficiente(snap: SnapshotRetaguarda): Acha
   return achados;
 }
 
+/**
+ * Seguro cuja COBERTURA está abaixo do mínimo exigido pelo destino.
+ *
+ * Agente de Seguro (§7-F.1, "cobertura contra o mínimo do destino"): a camada de
+ * dados resolve o mínimo do país do contrato e a MAIOR cobertura do titular na
+ * mesma moeda; traz os dois valores comparáveis. Se a cobertura é MENOR que o
+ * mínimo, a apólice não atende o destino. MÉDIO (resolve ao contratar cobertura
+ * adequada). Só compara na MESMA moeda (a camada de dados garante isso);
+ * moedas diferentes ficam de fora (exigiria conversão cambial).
+ */
+export function checarSeguroCoberturaAbaixoMinimo(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const s of snap.segurosCobertura ?? []) {
+    if (!Number.isFinite(s.coberturaValor) || !Number.isFinite(s.minimoValor) || s.minimoValor <= 0) continue;
+    if (s.coberturaValor < s.minimoValor) {
+      achados.push({
+        chave: `retaguarda:seguro_cobertura_abaixo_minimo:${s.contratoId}`,
+        categoria: "seguro_cobertura_abaixo_minimo",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: s.contratoId },
+        contratoId: s.contratoId,
+        resumo: `Contrato ${s.contratoId}: cobertura do seguro (${s.coberturaValor} ${s.moeda}) abaixo do mínimo do destino (${s.minimoValor} ${s.moeda}) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -514,6 +554,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarCartaRecusaNaoRepassada,
   checarSeguroAusenteAntesEmbarque,
   checarSeguroVigenciaInsuficiente,
+  checarSeguroCoberturaAbaixoMinimo,
 ];
 
 /**

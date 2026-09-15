@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, ehTipoDocumentoValido } from "@/lib/documentos";
+import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, tipoTemCobertura, ehTipoDocumentoValido } from "@/lib/documentos";
 
 // Um tipo é "conhecido" quando está no catálogo (evita exibir o 1º tipo como se
 // fosse o real quando o doc tem um tipo legado/fora da lista).
@@ -98,7 +98,10 @@ export default function DocumentosAdminClient() {
 
   // Metadados de Vistos: tipo e/ou validade. Atualização otimista com rollback no
   // erro (mantém a linha consistente com o servidor). Envia só o(s) campo(s) tocado(s).
-  async function salvarMetadados(id: string, patch: { tipoDocumento?: string; validade?: string | null }) {
+  async function salvarMetadados(
+    id: string,
+    patch: { tipoDocumento?: string; validade?: string | null; coberturaValor?: number | null; coberturaMoeda?: string | null },
+  ) {
     const anterior = documentos.find((d) => d.id === id);
     setAtualizandoId(id);
     setErroBusca(null);
@@ -109,6 +112,8 @@ export default function DocumentosAdminClient() {
               ...d,
               ...(patch.tipoDocumento !== undefined ? { tipo_documento: patch.tipoDocumento } : {}),
               ...(patch.validade !== undefined ? { validade: patch.validade } : {}),
+              ...(patch.coberturaValor !== undefined ? { cobertura_valor: patch.coberturaValor } : {}),
+              ...(patch.coberturaMoeda !== undefined ? { cobertura_moeda: patch.coberturaMoeda } : {}),
             }
           : d,
       ),
@@ -301,6 +306,45 @@ export default function DocumentosAdminClient() {
                       className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
                     />
                   </label>
+                ) : null}
+
+                {tipoTemCobertura(doc.tipo_documento) ? (
+                  <>
+                    <label className="flex items-center gap-1 text-xs text-neutral-500">
+                      Cobertura
+                      <input
+                        type="number"
+                        min={0}
+                        step="1000"
+                        value={doc.cobertura_valor ?? ""}
+                        disabled={atualizandoId === doc.id}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          const novo = raw === "" ? null : Number(raw);
+                          const atual = doc.cobertura_valor ?? null;
+                          if (novo !== atual) salvarMetadados(doc.id, { coberturaValor: novo });
+                        }}
+                        className="w-28 rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-neutral-500">
+                      Moeda
+                      <input
+                        type="text"
+                        maxLength={5}
+                        placeholder="EUR"
+                        value={doc.cobertura_moeda ?? ""}
+                        disabled={atualizandoId === doc.id}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim().toUpperCase();
+                          const novo = raw === "" ? null : raw;
+                          const atual = doc.cobertura_moeda ?? null;
+                          if (novo !== atual) salvarMetadados(doc.id, { coberturaMoeda: novo });
+                        }}
+                        className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm uppercase text-brand"
+                      />
+                    </label>
+                  </>
                 ) : null}
               </div>
             </div>

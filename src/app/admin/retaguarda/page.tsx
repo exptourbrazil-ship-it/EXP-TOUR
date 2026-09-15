@@ -30,6 +30,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   carta_recusa_visto_atrasada: "Carta de recusa de visto não repassada em 1 dia útil",
   seguro_ausente_embarque: "Sem apólice de seguro antes do embarque",
   seguro_vigencia_insuficiente: "Apólice de seguro não cobre o período",
+  seguro_cobertura_abaixo_minimo: "Cobertura do seguro abaixo do mínimo do destino",
 };
 
 function fmtData(iso: string | null): string {

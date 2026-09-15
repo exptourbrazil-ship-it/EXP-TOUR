@@ -10,6 +10,7 @@ import {
   checarCartaRecusaNaoRepassada,
   checarSeguroAusenteAntesEmbarque,
   checarSeguroVigenciaInsuficiente,
+  checarSeguroCoberturaAbaixoMinimo,
   adicionarMesesISO,
   adicionarDiasISO,
   detectarRetaguarda,
@@ -592,5 +593,54 @@ test("vigencia: cobertura vai alem da referencia -> sem achado", () => {
 
 test("vigencia: snapshot sem o array nao quebra", () => {
   const a = checarSeguroVigenciaInsuficiente({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarSeguroCoberturaAbaixoMinimo --------------------------------------
+
+function cob(over: Partial<{
+  contratoId: string; coberturaValor: number; minimoValor: number; moeda: string;
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    coberturaValor: over.coberturaValor ?? 20000,
+    minimoValor: over.minimoValor ?? 30000,
+    moeda: over.moeda ?? "EUR",
+  };
+}
+
+test("cobertura: abaixo do minimo -> achado medio", () => {
+  const a = checarSeguroCoberturaAbaixoMinimo({ parcelas: [], pagamentos: [], segurosCobertura: [cob()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "seguro_cobertura_abaixo_minimo");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].contratoId, "c1");
+  assert.equal(a[0].chave, "retaguarda:seguro_cobertura_abaixo_minimo:c1");
+});
+
+test("cobertura: igual ao minimo -> sem achado", () => {
+  const a = checarSeguroCoberturaAbaixoMinimo({
+    parcelas: [], pagamentos: [], segurosCobertura: [cob({ coberturaValor: 30000 })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("cobertura: acima do minimo -> sem achado", () => {
+  const a = checarSeguroCoberturaAbaixoMinimo({
+    parcelas: [], pagamentos: [], segurosCobertura: [cob({ coberturaValor: 50000 })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("cobertura: minimo zero/invalido -> sem achado (nada a exigir)", () => {
+  const a = checarSeguroCoberturaAbaixoMinimo({
+    parcelas: [], pagamentos: [], segurosCobertura: [cob({ minimoValor: 0 })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("cobertura: snapshot sem o array nao quebra", () => {
+  const a = checarSeguroCoberturaAbaixoMinimo({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

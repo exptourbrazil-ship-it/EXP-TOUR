@@ -41,9 +41,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
   const temValidade = Object.prototype.hasOwnProperty.call(body, "validade");
   const temTipo = Object.prototype.hasOwnProperty.call(body, "tipoDocumento");
-  if (!temValidade && !temTipo) {
+  const temCoberturaValor = Object.prototype.hasOwnProperty.call(body, "coberturaValor");
+  const temCoberturaMoeda = Object.prototype.hasOwnProperty.call(body, "coberturaMoeda");
+  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda) {
     return NextResponse.json(
-      { ok: false, error: "Informe validade e/ou tipoDocumento." },
+      { ok: false, error: "Informe validade, tipoDocumento, coberturaValor e/ou coberturaMoeda." },
       { status: 400 },
     );
   }
@@ -79,6 +81,30 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
   }
 
+  // Cobertura da apólice (agente de Seguro): valor + moeda. Só o agente de
+  // cobertura lê estes campos (e só de docs seguro_saude), então não há
+  // super-flag por deixá-los em outro tipo; valida mesmo assim.
+  if (temCoberturaValor) {
+    const v = body.coberturaValor;
+    if (v === null || v === "") {
+      patch.cobertura_valor = null;
+    } else {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) patch.cobertura_valor = n;
+      else return NextResponse.json({ ok: false, error: "Valor de cobertura inválido." }, { status: 400 });
+    }
+  }
+  if (temCoberturaMoeda) {
+    const m = body.coberturaMoeda;
+    if (m === null || m === "") {
+      patch.cobertura_moeda = null;
+    } else if (typeof m === "string" && /^[A-Za-z]{2,5}$/.test(m)) {
+      patch.cobertura_moeda = m.toUpperCase();
+    } else {
+      return NextResponse.json({ ok: false, error: "Moeda de cobertura inválida (use 2 a 5 letras)." }, { status: 400 });
+    }
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
@@ -90,7 +116,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
   const { data: doc } = await supabase
     .from("documentos")
-    .select("id, titular_id, tipo_documento, validade")
+    .select("id, titular_id, tipo_documento, validade, cobertura_valor, cobertura_moeda")
     .eq("id", id)
     .maybeSingle();
   if (!doc) {
@@ -115,6 +141,12 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       ...(temTipo ? { tipo_anterior: doc.tipo_documento, tipo_novo: patch.tipo_documento } : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "validade")
         ? { validade_anterior: (doc as { validade?: string | null }).validade ?? null, validade_nova: patch.validade }
+        : {}),
+      ...(temCoberturaValor
+        ? { cobertura_valor_anterior: (doc as { cobertura_valor?: number | null }).cobertura_valor ?? null, cobertura_valor_novo: patch.cobertura_valor }
+        : {}),
+      ...(temCoberturaMoeda
+        ? { cobertura_moeda_anterior: (doc as { cobertura_moeda?: string | null }).cobertura_moeda ?? null, cobertura_moeda_nova: patch.cobertura_moeda }
         : {}),
     },
     ip: obterIp(request),
