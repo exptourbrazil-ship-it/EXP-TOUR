@@ -212,13 +212,20 @@ async function persistirPlano(
     if (error) console.error("[retaguarda] falha ao manter achado:", error.message);
   }
 
-  // Resolver: a inconsistência sumiu. Divide por severidade:
-  //  - ALTO: resolve com confirmado=FALSE (aguarda ack humano). Assim uma edição
-  //    dos campos observados que "apague" a evidência não fecha o caso em
-  //    silêncio — fica visível na fila de confirmação (achado da revisão F7).
+  // Resolver: a inconsistência sumiu. Divide por severidade, FALHANDO SEGURO:
   //  - MÉDIO/BAIXO: resolve confirmado=TRUE (self-healing, sem atrito).
-  const resolverAlto = plano.resolver.filter((c) => severidadePorChave.get(c) === "alto");
-  const resolverConfirmado = plano.resolver.filter((c) => severidadePorChave.get(c) !== "alto");
+  //  - QUALQUER OUTRO (ALTO, ou severidade desconhecida/ausente): resolve com
+  //    confirmado=FALSE (aguarda ack humano). Assim uma edição dos campos
+  //    observados que "apague" a evidência não fecha o caso em silêncio — fica
+  //    visível na fila de confirmação (achado da revisão F7). Tratar o
+  //    desconhecido como aguarda-ack evita que uma chave sem severidade no mapa
+  //    se auto-resolva por engano.
+  const éSelfHealing = (c: string) => {
+    const s = severidadePorChave.get(c);
+    return s === "medio" || s === "baixo";
+  };
+  const resolverConfirmado = plano.resolver.filter(éSelfHealing);
+  const resolverAlto = plano.resolver.filter((c) => !éSelfHealing(c));
 
   for (const lote of emLotes(resolverConfirmado, LOTE_IN)) {
     const { error } = await supabase
@@ -234,7 +241,7 @@ async function persistirPlano(
       .update({ status: "resolvido", resolvido_em: agora, confirmado: false, updated_at: agora })
       .eq("tenant_id", tenantId)
       .in("chave", lote);
-    if (error) console.error("[retaguarda] falha ao resolver achados ALTO:", error.message);
+    if (error) console.error("[retaguarda] falha ao resolver achados aguardando ack:", error.message);
   }
 
   // Trilha da reconciliação: registra a rodada quando houve QUALQUER transição

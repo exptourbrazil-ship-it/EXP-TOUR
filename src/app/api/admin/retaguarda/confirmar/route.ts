@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { resolverEscopoTenant } from "@/lib/cron-tenant";
 import { obterIp } from "@/lib/rate-limit";
@@ -16,8 +16,15 @@ export const dynamic = "force-dynamic";
 //
 // Gate casos.gerir (ação operacional), escopo de tenant, auditado.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
+  // Gate por SESSÃO (cookie), não por Bearer de env: o ack tem de ficar
+  // atribuído a uma pessoa identificada. checarCapacidadeAdmin não aceita a via
+  // Bearer de compatibilidade — assim `confirmado_por` é sempre um humano real.
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
     return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  }
+  const usuario = await usuarioAdminAtual();
+  if (!usuario) {
+    return NextResponse.json({ ok: false, error: "Sessao sem usuario" }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -41,7 +48,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Tenant nao resolvido" }, { status: 500 });
   }
 
-  const usuario = (await usuarioAdminAtual()) || "admin";
   const agora = new Date().toISOString();
 
   // Confirma SOMENTE um achado deste tenant que esteja resolvido-aguardando
