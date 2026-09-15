@@ -27,6 +27,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   alteracao_sem_aceite: "Alteração de preço aplicada sem aceite",
   repactuacao_sem_aceite: "Repactuação aplicada sem aceite",
   documento_validade_insuficiente: "Documento vence antes da exigência do destino",
+  carta_recusa_visto_atrasada: "Carta de recusa de visto não repassada em 1 dia útil",
 };
 
 function fmtData(iso: string | null): string {
