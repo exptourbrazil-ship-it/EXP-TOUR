@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
-import { exigirCapacidade } from "@/lib/admin-guard";
+import { exigirCapacidade, checarCapacidadeAdmin } from "@/lib/admin-guard";
 import { carregarPainelRetaguarda, type LinhaAchado } from "@/lib/retaguarda-painel";
 import type { SeveridadeAchado } from "@/lib/retaguarda";
+import ConfirmarResolucaoBtn from "./ConfirmarResolucaoBtn";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,9 @@ export default async function PainelRetaguardaPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
   const painel = await carregarPainelRetaguarda(supabase);
+  // O botão de confirmar exige a capacidade de AÇÃO (casos.gerir); a rota
+  // reforça no servidor. Quem tem só casos.ver vê a fila, mas não confirma.
+  const podeConfirmar = await checarCapacidadeAdmin("casos.gerir");
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -70,6 +74,10 @@ export default async function PainelRetaguardaPage() {
         <div className="rounded-xl border border-neutral-200 bg-white px-4 py-2">
           <div className="text-xs text-neutral-500">Total aberto</div>
           <div className="text-xl font-semibold text-brand">{painel.contadores.total}</div>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-white px-4 py-2">
+          <div className="text-xs text-neutral-500">Aguardando confirmação</div>
+          <div className="text-xl font-semibold" style={{ color: "#7c3aed" }}>{painel.contadores.aguardando}</div>
         </div>
       </div>
 
@@ -126,6 +134,57 @@ export default async function PainelRetaguardaPage() {
           </table>
         </div>
       )}
+
+      {painel.aguardando.length > 0 ? (
+        <div className="mt-8">
+          <h2 className="font-serif text-lg text-brand">Aguardando confirmação de resolução</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Achados ALTO que sumiram da varredura e foram resolvidos automaticamente. Confirme que a
+            inconsistência foi de fato tratada — assim uma resolução por edição não fecha o caso sem
+            revisão humana.
+          </p>
+          <div className="mt-3 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                  <th className="px-3 py-2">Tipo</th>
+                  <th className="px-3 py-2">Achado</th>
+                  <th className="px-3 py-2">Desde</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {painel.aguardando.map((l) => {
+                  const href = linkDoCaso(l);
+                  return (
+                    <tr key={l.id} className="border-b border-neutral-100 last:border-0">
+                      <td className="px-3 py-2 text-neutral-800">
+                        {ROTULO_CATEGORIA[l.categoria] ?? l.categoria}
+                      </td>
+                      <td className="px-3 py-2 text-neutral-600">{l.resumo}</td>
+                      <td className="px-3 py-2 text-neutral-600">{fmtData(l.primeiraVezISO)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          {href ? (
+                            <Link href={href} className="text-sm font-medium text-brand-golddark underline">
+                              Abrir caso
+                            </Link>
+                          ) : null}
+                          {podeConfirmar ? (
+                            <ConfirmarResolucaoBtn id={l.id} />
+                          ) : (
+                            <span className="text-xs text-neutral-400">aguardando</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

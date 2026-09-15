@@ -19,8 +19,10 @@ import {
   type PagamentoSnapshot,
   type DocCompartilhadoSnapshot,
   type AlteracaoSnapshot,
+  type SeveridadeAchado,
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
+import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 
 export type ResumoVarredura = {
   tenantId: string;
@@ -147,6 +149,7 @@ async function persistirPlano(
   supabase: SupabaseClient,
   tenantId: string,
   plano: ReturnType<typeof reconciliarAchados>,
+  severidadePorChave: Map<string, SeveridadeAchado>,
 ): Promise<void> {
   const agora = new Date().toISOString();
 
@@ -178,11 +181,22 @@ async function persistirPlano(
     if (error) console.error("[retaguarda] falha ao inserir achados novos:", error.message);
   }
 
-  // Reabrir: voltou a aparecer depois de resolvido. Nunca silencioso.
+  // Reabrir: voltou a aparecer depois de resolvido. Nunca silencioso. Reseta a
+  // confirmação (um achado reaberto está ativo de novo; se depois for resolvido
+  // como ALTO, volta a aguardar ack).
   for (const a of plano.reabrir) {
     const { error } = await supabase
       .from("retaguarda_achado")
-      .update({ status: "aberto", resolvido_em: null, ultima_vez: agora, updated_at: agora, resumo: a.resumo })
+      .update({
+        status: "aberto",
+        resolvido_em: null,
+        confirmado: true,
+        confirmado_por: null,
+        confirmado_em: null,
+        ultima_vez: agora,
+        updated_at: agora,
+        resumo: a.resumo,
+      })
       .eq("tenant_id", tenantId)
       .eq("chave", a.chave);
     if (error) console.error("[retaguarda] falha ao reabrir achado:", error.message);
@@ -198,14 +212,48 @@ async function persistirPlano(
     if (error) console.error("[retaguarda] falha ao manter achado:", error.message);
   }
 
-  // Resolver: a inconsistência sumiu. Marca resolvido (histórico preservado).
-  for (const lote of emLotes(plano.resolver, LOTE_IN)) {
+  // Resolver: a inconsistência sumiu. Divide por severidade:
+  //  - ALTO: resolve com confirmado=FALSE (aguarda ack humano). Assim uma edição
+  //    dos campos observados que "apague" a evidência não fecha o caso em
+  //    silêncio — fica visível na fila de confirmação (achado da revisão F7).
+  //  - MÉDIO/BAIXO: resolve confirmado=TRUE (self-healing, sem atrito).
+  const resolverAlto = plano.resolver.filter((c) => severidadePorChave.get(c) === "alto");
+  const resolverConfirmado = plano.resolver.filter((c) => severidadePorChave.get(c) !== "alto");
+
+  for (const lote of emLotes(resolverConfirmado, LOTE_IN)) {
     const { error } = await supabase
       .from("retaguarda_achado")
-      .update({ status: "resolvido", resolvido_em: agora, updated_at: agora })
+      .update({ status: "resolvido", resolvido_em: agora, confirmado: true, updated_at: agora })
       .eq("tenant_id", tenantId)
       .in("chave", lote);
     if (error) console.error("[retaguarda] falha ao resolver achados:", error.message);
+  }
+  for (const lote of emLotes(resolverAlto, LOTE_IN)) {
+    const { error } = await supabase
+      .from("retaguarda_achado")
+      .update({ status: "resolvido", resolvido_em: agora, confirmado: false, updated_at: agora })
+      .eq("tenant_id", tenantId)
+      .in("chave", lote);
+    if (error) console.error("[retaguarda] falha ao resolver achados ALTO:", error.message);
+  }
+
+  // Trilha da reconciliação: registra a rodada quando houve QUALQUER transição
+  // aberto↔resolvido (a resolução automatica deixa de ser invisivel — pedido da
+  // revisão F7). Best-effort (registrarAuditoriaAdmin nunca lança).
+  const houveTransicao =
+    plano.abrir.length + plano.reabrir.length + plano.resolver.length > 0;
+  if (houveTransicao) {
+    await registrarAuditoriaAdmin(supabase, {
+      usuario: "sistema:retaguarda",
+      acao: "retaguarda.reconciliacao",
+      alvo: tenantId,
+      detalhe: {
+        novos: plano.abrir.map((a) => a.chave),
+        reabertos: plano.reabrir.map((a) => a.chave),
+        resolvidos_confirmados: resolverConfirmado,
+        resolvidos_aguardando_ack: resolverAlto,
+      },
+    });
   }
 }
 
@@ -228,16 +276,23 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
   // um recorrente parecer novo e apagaria o histórico.
   const { data: persistData, error } = await supabase
     .from("retaguarda_achado")
-    .select("chave, status")
+    .select("chave, status, severidade")
     .eq("tenant_id", escopo.tenantId);
   if (error) throw new Error("Falha ao ler achados persistidos: " + error.message);
   const persistidos: AchadoPersistido[] = (persistData ?? []).map((r) => ({
     chave: r.chave as string,
     status: r.status as "aberto" | "resolvido",
+    severidade: r.severidade as SeveridadeAchado,
   }));
 
+  // Severidade por chave (persistida + atual) para dividir a resolução: um ALTO
+  // que some resolve aguardando ack; MÉDIO/BAIXO resolve confirmado.
+  const severidadePorChave = new Map<string, SeveridadeAchado>();
+  for (const p of persistidos) if (p.severidade) severidadePorChave.set(p.chave, p.severidade);
+  for (const a of atuais) severidadePorChave.set(a.chave, a.severidade);
+
   const plano = reconciliarAchados(atuais, persistidos);
-  await persistirPlano(supabase, escopo.tenantId, plano);
+  await persistirPlano(supabase, escopo.tenantId, plano, severidadePorChave);
 
   // Novos ALTO = abertos + reabertos com severidade alta. Base do alerta interno.
   const novosAlto = [...plano.abrir, ...plano.reabrir].filter((a) => a.severidade === "alto");
