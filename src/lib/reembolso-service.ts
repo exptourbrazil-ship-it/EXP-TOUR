@@ -178,32 +178,56 @@ const GRUPO_ANCORA: Record<string, AncoraRetencao> = {
 async function resolverAncorasDoCampus(
   supabase: SupabaseClient,
   contratoId: string,
-): Promise<{ campusId: string | null; porAncora: Partial<Record<AncoraRetencao, { base: number; ancoraISO: string | null }>> }> {
+): Promise<{
+  campusId: string | null;
+  porAncora: Partial<Record<AncoraRetencao, { base: number; ancoraISO: string | null }>>;
+  // v3.1: valor semanal (curso e tudo) p/ a retenção por N semanas. null quando a
+  // duração em semanas não é derivável — aí a guarda mantém a política "não resolvida".
+  pesos: { semanaCurso: number | null; semanaTudo: number | null };
+}> {
+  const vazio = { semanaCurso: null, semanaTudo: null };
   const { data: q } = await supabase
     .from("quote")
     .select("id, selected_option_id")
     .eq("converted_contract_id", contratoId)
     .maybeSingle();
-  if (!q?.selected_option_id) return { campusId: null, porAncora: {} };
+  if (!q?.selected_option_id) return { campusId: null, porAncora: {}, pesos: vazio };
 
   const { data: itens } = await supabase
     .from("quote_item")
-    .select("\"group\", campus_id, start_date, gross_amount")
+    .select("\"group\", campus_id, start_date, gross_amount, quantity, unit")
     .eq("quote_option_id", q.selected_option_id);
 
   const porAncora: Partial<Record<AncoraRetencao, { base: number; ancoraISO: string | null }>> = {};
   let campusId: string | null = null;
+  let programaGross = 0;
+  let totalGross = 0;
+  let semanas = 0; // duração do CURSO em semanas (base da conta por semana)
   for (const it of itens ?? []) {
-    const ancora = GRUPO_ANCORA[(it as any).group as string];
+    const gross = num((it as any).gross_amount) ?? 0;
+    totalGross += gross;
+    const grupo = (it as any).group as string;
+    if (grupo === "program") {
+      programaGross += gross;
+      const unit = String((it as any).unit ?? "").toLowerCase();
+      const qtd = num((it as any).quantity) ?? 0;
+      // Duração TOTAL do curso = SOMA das semanas dos itens program week-like
+      // (cursos sequenciais somam). MAX inflaria o valor semanal com >1 curso.
+      if (["week", "weeks", "semana", "semanas"].includes(unit)) semanas += qtd;
+    }
+    const ancora = GRUPO_ANCORA[grupo];
     if (!ancora) continue;
     if (!campusId && (it as any).campus_id) campusId = (it as any).campus_id as string;
-    const base = num((it as any).gross_amount) ?? 0;
     const ancoraISO = ((it as any).start_date as string) ?? null;
     // Soma bases do mesmo grupo (uma âncora pode ter mais de uma linha).
     const atual = porAncora[ancora];
-    porAncora[ancora] = { base: (atual?.base ?? 0) + base, ancoraISO: atual?.ancoraISO ?? ancoraISO };
+    porAncora[ancora] = { base: (atual?.base ?? 0) + gross, ancoraISO: atual?.ancoraISO ?? ancoraISO };
   }
-  return { campusId, porAncora };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const pesos = semanas > 0
+    ? { semanaCurso: r2(programaGross / semanas), semanaTudo: r2(totalGross / semanas) }
+    : vazio;
+  return { campusId, porAncora, pesos };
 }
 
 export async function carregarReembolsoUnificado(
@@ -220,11 +244,14 @@ export async function carregarReembolsoUnificado(
 
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("data_inicio, pais_destino, titular_id")
+    .select("data_inicio, pais_destino, titular_id, created_at")
     .eq("id", contratoId)
     .maybeSingle();
   const dataInicioISO = (contrato?.data_inicio as string) ?? null;
   const paisDestino = (contrato?.pais_destino as string) ?? null;
+  // Data de assinatura = criação do contrato (converter_cotacao insere o contrato
+  // no mesmo ato do aceite). Âncora das políticas de retenção por 'assinatura'.
+  const assinaturaISO = (contrato?.created_at as string)?.slice(0, 10) ?? null;
 
   const hoje = hojeSaoPauloISO();
   const cancelamentoISO = opts.dataCancelamentoISO?.slice(0, 10) || hoje;
@@ -270,7 +297,7 @@ export async function carregarReembolsoUnificado(
 
   // Retenção do fornecedor (escada por campus), best-effort.
   const fornecedor: ReembolsoUnificadoView["fornecedor"] = { resolvido: false, total: 0, politicas: [] };
-  const { campusId, porAncora } = await resolverAncorasDoCampus(supabase, contratoId);
+  const { campusId, porAncora, pesos } = await resolverAncorasDoCampus(supabase, contratoId);
   if (!campusId) {
     fornecedor.motivo = "Contrato sem campus vinculado (cotação não encontrada).";
   } else {
@@ -297,30 +324,41 @@ export async function carregarReembolsoUnificado(
       const naoResolvidas: string[] = [];
       for (const pol of aplicaveis) {
         const anc = porAncora[pol.ancora];
-        const ancoraISO = anc?.ancoraISO ?? (pol.ancora === "inicio_curso" ? dataInicioISO : null);
+        // Data da âncora: acomodação/curso vêm de porAncora (ou início do curso);
+        // assinatura = criação do contrato; reserva ainda não tem fonte de data.
+        const ancoraISO =
+          anc?.ancoraISO ??
+          (pol.ancora === "inicio_curso" ? dataInicioISO : pol.ancora === "assinatura" ? assinaturaISO : null);
         const baseRet = anc?.base ?? 0;
 
-        // v3.1 — FALHA VISÍVEL, não silenciosa: modos novos cuja fonte de dados o
-        // serviço ainda não deriva subestimariam a retenção do fornecedor (retido
-        // 0). Em vez de somar 0, marca a política como NÃO resolvida com motivo.
-        // A fiação (valor semanal do curso/tudo; data de assinatura/reserva) entra
-        // na frente B (calculadora de reembolso), onde a duração/quote está à mão.
+        // v3.1 — FALHA VISÍVEL, não silenciosa: se um modo novo NÃO TEM a fonte de
+        // dados necessária, marca a política como NÃO resolvida (não soma 0). Com a
+        // fiação da frente B (valor semanal derivado de quote_item + data de
+        // assinatura), os modos passam a CALCULAR quando os dados existem; só resta
+        // 'reserva' (sem fonte de data) e cursos sem duração em semanas.
         const precisaSemanal = (pol.degraus || []).some((d) => d.retencaoSemanas != null || d.minimoSemanas != null);
+        const semSemanal = precisaSemanal && pesos.semanaCurso == null;
         const semDataAncora = (pol.ancora === "assinatura" || pol.ancora === "reserva") && !ancoraISO;
-        if (precisaSemanal || semDataAncora) {
-          const motivo = precisaSemanal
-            ? "retenção por semanas ainda não calculável (falta valor semanal do curso/tudo)"
-            : "sem data da âncora (assinatura/reserva) para calcular";
+        if (semSemanal || semDataAncora) {
+          const motivo = semSemanal
+            ? "retenção por semanas não calculável (duração do curso em semanas indisponível)"
+            : `sem data da âncora (${pol.ancora}) para calcular`;
           naoResolvidas.push(`${pol.ancora}: ${motivo}`);
           fornecedor.politicas.push({ ancora: pol.ancora, unidade: pol.unidade, metrica: null, base: baseRet, retido: 0, naoResolvida: true, motivo });
           continue;
         }
 
         // âncoras assinatura/reserva medem métrica DECORRIDA; curso/acomodação,
-        // RESTANTE. metricaPorAncora roteia; para as 2 âncoras atuais o resultado é
+        // RESTANTE. metricaPorAncora roteia; para as 2 âncoras antigas o resultado é
         // idêntico ao anterior (metricaRestante).
         const metrica = metricaPorAncora(pol.ancora, pol.unidade, { ancoraISO, cancelamentoISO, feriados });
-        const r = calcularRetencaoCampus(pol, { base: baseRet, metricaRestante: metrica, sentido: direcaoDaAncora(pol.ancora) });
+        const r = calcularRetencaoCampus(pol, {
+          base: baseRet,
+          metricaRestante: metrica,
+          sentido: direcaoDaAncora(pol.ancora),
+          valorSemanaCurso: pesos.semanaCurso,
+          valorSemanaTudo: pesos.semanaTudo,
+        });
         fornecedor.total += r.totalRetido;
         fornecedor.politicas.push({ ancora: pol.ancora, unidade: pol.unidade, metrica, base: baseRet, retido: r.totalRetido });
       }
