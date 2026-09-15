@@ -3031,3 +3031,13 @@ create index if not exists idx_propostas_tenant on propostas(tenant_id);
 -- codigo = 6). Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
 alter table if exists documentos add column if not exists validade date;
 alter table if exists tenant_config add column if not exists visto_validade_min_meses smallint;
+
+-- ============================================================================
+-- Agente de Seguro (retaguarda §7-F.1): cobertura vs. mínimo do destino
+-- ============================================================================
+-- Valor/moeda de cobertura da apólice (documento seguro_saude) e o mínimo de
+-- cobertura por país no config do tenant (jsonb { "<pais>": {valor, moeda} }).
+-- Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
+alter table if exists documentos add column if not exists cobertura_valor numeric;
+alter table if exists documentos add column if not exists cobertura_moeda text;
+alter table if exists tenant_config add column if not exists seguro_cobertura_minima jsonb;

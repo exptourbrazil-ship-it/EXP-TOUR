@@ -24,6 +24,7 @@ import {
   type CartaRecusaSnapshot,
   type SeguroContratoSnapshot,
   type SeguroVigenciaSnapshot,
+  type SeguroCoberturaSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -66,6 +67,40 @@ function janelaAlertaSeguroDias(): number {
   return Number.isFinite(env) && env >= 0 ? Math.round(env) : SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO;
 }
 
+// Mínimos de cobertura de seguro por país (destino), do config do tenant. Forma
+// esperada: { "<pais>": { valor: number, moeda: "XXX" } }. Deploy-safe: coluna
+// ausente/erro -> mapa vazio (o agente de cobertura simplesmente não roda).
+export type MinimoCobertura = { valor: number; moeda: string };
+async function carregarMinimosCoberturaSeguro(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<Map<string, MinimoCobertura>> {
+  const mapa = new Map<string, MinimoCobertura>();
+  const { data, error } = await supabase
+    .from("tenant_config")
+    .select("seguro_cobertura_minima")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const raw = !error && data ? (data as { seguro_cobertura_minima?: unknown }).seguro_cobertura_minima : null;
+  if (raw && typeof raw === "object") {
+    for (const [paisRaw, v] of Object.entries(raw as Record<string, unknown>)) {
+      const obj = v as { valor?: unknown; moeda?: unknown } | null;
+      const valor = Number(obj?.valor);
+      // Normaliza os DOIS lados da comparação para a mesma forma canônica que a
+      // ingestão grava: país = slug minúsculo (igual a contratos.pais_destino);
+      // moeda = maiúscula (igual à rota, que faz toUpperCase). Sem isso, um
+      // config com "eur"/"Portugal" nunca casaria e o agente ficaria mudo.
+      const pais = paisRaw.trim().toLowerCase();
+      const moedaBruta = typeof obj?.moeda === "string" ? obj.moeda.trim().toUpperCase() : "";
+      const moeda = /^[A-Z]{2,5}$/.test(moedaBruta) ? moedaBruta : "";
+      if (pais && Number.isFinite(valor) && valor > 0 && moeda) {
+        mapa.set(pais, { valor, moeda });
+      }
+    }
+  }
+  return mapa;
+}
+
 // Carrega o buffer de validade do tenant (linha -> env -> default). Deploy-safe:
 // banco sem a coluna -> select erra -> cai no env/default.
 async function carregarBufferValidadeMeses(
@@ -91,6 +126,7 @@ async function carregarSnapshot(
   bufferValidadeMeses: number,
   feriados: Feriados,
   janelaSeguroDias: number,
+  minimosCobertura: Map<string, MinimoCobertura>,
 ): Promise<{
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -101,6 +137,7 @@ async function carregarSnapshot(
   cartasRecusa: CartaRecusaSnapshot[];
   segurosContrato: SeguroContratoSnapshot[];
   segurosVigencia: SeguroVigenciaSnapshot[];
+  segurosCobertura: SeguroCoberturaSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -111,6 +148,7 @@ async function carregarSnapshot(
   const cartasRecusa: CartaRecusaSnapshot[] = [];
   const segurosContrato: SeguroContratoSnapshot[] = [];
   const segurosVigencia: SeguroVigenciaSnapshot[] = [];
+  const segurosCobertura: SeguroCoberturaSnapshot[] = [];
   // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
   const hojeBR = hojeBrasilISO();
   // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
@@ -285,12 +323,12 @@ async function carregarSnapshot(
     // sentido cobrar seguro de uma viagem que não vai acontecer.
     const { data: contratos, error: e8 } = await supabase
       .from("contratos")
-      .select("id, titular_id, data_inicio, cancelado_em")
+      .select("id, titular_id, data_inicio, cancelado_em, pais_destino")
       .in("id", lote)
       .is("cancelado_em", null)
       .not("data_inicio", "is", null);
     if (e8) throw new Error("Falha ao ler contratos p/ seguro da retaguarda: " + e8.message);
-    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null }>;
+    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null; pais_destino: string | null }>;
     const titularIds = Array.from(
       new Set(linhasContrato.map((c) => c.titular_id).filter((t): t is string => !!t)),
     );
@@ -298,10 +336,12 @@ async function carregarSnapshot(
     // (maior) validade entre as apólices de cada titular — insumo da vigência.
     const titularesComSeguro = new Set<string>();
     const melhorValidadePorTitular = new Map<string, string>();
+    // Maior cobertura por titular E por moeda (comparação só na mesma moeda).
+    const coberturaPorTitularMoeda = new Map<string, Map<string, number>>();
     for (const loteTit of emLotes(titularIds, LOTE_IN)) {
       const { data: segs, error: e9 } = await supabase
         .from("documentos")
-        .select("titular_id, validade")
+        .select("titular_id, validade, cobertura_valor, cobertura_moeda")
         .in("titular_id", loteTit)
         .eq("tipo_documento", "seguro_saude");
       if (e9) throw new Error("Falha ao ler apólices de seguro da retaguarda: " + e9.message);
@@ -314,6 +354,16 @@ async function carregarSnapshot(
           const atual = melhorValidadePorTitular.get(t);
           // "Melhor" cobertura = a de maior validade (comparação lexicográfica de YYYY-MM-DD).
           if (!atual || val > atual) melhorValidadePorTitular.set(t, val);
+        }
+        const cobValor = Number((s as { cobertura_valor?: unknown }).cobertura_valor);
+        const cobMoeda = (((s as { cobertura_moeda?: unknown }).cobertura_moeda as string) || "").trim().toUpperCase();
+        // > 0: cobertura 0 é tratada como "não informada" (placeholder), não como
+        // cobertura zero real — evita falso-positivo por um 0 de preenchimento.
+        if (Number.isFinite(cobValor) && cobValor > 0 && cobMoeda) {
+          let porMoeda = coberturaPorTitularMoeda.get(t);
+          if (!porMoeda) { porMoeda = new Map<string, number>(); coberturaPorTitularMoeda.set(t, porMoeda); }
+          const atual = porMoeda.get(cobMoeda);
+          if (atual === undefined || cobValor > atual) porMoeda.set(cobMoeda, cobValor);
         }
       }
     }
@@ -337,10 +387,27 @@ async function carregarSnapshot(
       if (coberturaAteISO) {
         segurosVigencia.push({ contratoId: c.id, referenciaISO: inicio, coberturaAteISO });
       }
+
+      // Cobertura vs. mínimo do destino: só quando o país do contrato tem mínimo
+      // configurado E o titular tem cobertura registrada NA MESMA moeda do mínimo
+      // (comparação sem conversão cambial). Do contrário, não há o que comparar.
+      const pais = (c.pais_destino ?? "").trim().toLowerCase();
+      const minimo = pais ? minimosCobertura.get(pais) : undefined;
+      if (minimo && c.titular_id) {
+        const coberturaValor = coberturaPorTitularMoeda.get(c.titular_id)?.get(minimo.moeda);
+        if (coberturaValor !== undefined) {
+          segurosCobertura.push({
+            contratoId: c.id,
+            coberturaValor,
+            minimoValor: minimo.valor,
+            moeda: minimo.moeda,
+          });
+        }
+      }
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
@@ -479,10 +546,11 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
   // recusa em dias úteis (Cláusula 10.3.1). Falha -> Set vazio (só fim de semana).
   const feriados = await carregarFeriados(supabase, { pais: "brasil", tenantId: escopo.tenantId });
   const janelaSeguroDias = janelaAlertaSeguroDias();
+  const minimosCobertura = await carregarMinimosCoberturaSeguro(supabase, escopo.tenantId);
 
   // Tenant sem contratos: nada a varrer, mas ainda resolve achados que porventura
   // tenham sobrado (contratos removidos) — a reconciliação cuida disso.
-  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados, janelaSeguroDias);
+  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados, janelaSeguroDias, minimosCobertura);
   const atuais = detectarRetaguarda(snap);
 
   // Carrega TODOS os status (aberto E resolvido): a reconciliação precisa

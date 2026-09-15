@@ -72,6 +72,12 @@ export function tipoTemValidade(valor: string): boolean {
   return TIPOS_COM_VALIDADE.has(valor);
 }
 
+// Tipos que carregam VALOR DE COBERTURA (agente de Seguro: cobertura vs. mínimo
+// do destino). Hoje só a apólice de seguro-saúde.
+export function tipoTemCobertura(valor: string): boolean {
+  return valor === "seguro_saude";
+}
+
 export function ehTipoDocumentoValido(valor: string): boolean {
   return TIPOS_DOCUMENTO.some((t) => t.valor === valor);
 }
