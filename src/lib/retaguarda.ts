@@ -16,6 +16,22 @@
 
 export type SeveridadeAchado = "alto" | "medio" | "baixo";
 
+// Soma `meses` a uma data ISO (YYYY-MM-DD), devolvendo YYYY-MM-DD. Calendário
+// puro (UTC, sem fuso). Estouro de dia (ex.: 31 -> mês curto) normaliza para o
+// último dia do mês alvo. Usado pela camada de dados para a data-limite de
+// validade do documento (início do programa + buffer de meses do tenant).
+export function adicionarMesesISO(dataISO: string, meses: number): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dataISO);
+  if (!m) return null;
+  const ano = Number(m[1]);
+  const mes = Number(m[2]) - 1; // 0-based
+  const dia = Number(m[3]);
+  const alvo = new Date(Date.UTC(ano, mes + meses, 1));
+  const ultimoDiaAlvo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  alvo.setUTCDate(Math.min(dia, ultimoDiaAlvo));
+  return alvo.toISOString().slice(0, 10);
+}
+
 export type Achado = {
   // Estável por caso: mesma inconsistência => mesma chave (dedupe do alerta e do
   // painel). Formato: retaguarda:<categoria>:<id da entidade>.
@@ -87,6 +103,19 @@ export type RepactuacaoSnapshot = {
   aceitoEmISO: string | null;
 };
 
+// Documento com carimbo de VALIDADE (ex.: passaporte), para o agente de Vistos
+// (§7-F.1): a validade tem de cobrir a exigência do destino. `referenciaISO` é a
+// data-limite até a qual o documento PRECISA continuar válido — a camada de
+// dados a calcula (início do programa + buffer de meses do tenant), mantendo o
+// motor puro (sem aritmética de mês nem config). `validadeISO` é a data de
+// expiração gravada no documento.
+export type DocValidadeSnapshot = {
+  docId: string;
+  contratoId: string;
+  validadeISO: string; // data de expiração do documento (YYYY-MM-DD)
+  referenciaISO: string; // até quando precisa continuar válido (início + buffer)
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -95,6 +124,7 @@ export type SnapshotRetaguarda = {
   docsCompartilhados?: DocCompartilhadoSnapshot[];
   alteracoes?: AlteracaoSnapshot[];
   repactuacoes?: RepactuacaoSnapshot[];
+  docsValidade?: DocValidadeSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -280,6 +310,40 @@ export function checarRepactuacaoSemAceite(snap: SnapshotRetaguarda): Achado[] {
   return achados;
 }
 
+/**
+ * Documento (ex.: passaporte) cuja VALIDADE não cobre a exigência do destino —
+ * expira antes da data-limite em que ainda precisa estar válido.
+ *
+ * Agente de Vistos (§7-F.1, "janelas de validade de documento"): a camada de
+ * dados traz, por documento com validade gravada, a `referenciaISO` = início do
+ * programa + buffer mínimo de meses do tenant. Se a validade é ANTERIOR à
+ * referência, o documento vence cedo demais — risco de recusa de visto / embarque
+ * negado. Comparação só de datas-calendário (YYYY-MM-DD), sem fuso.
+ *
+ * MÉDIO (não é dinheiro; e é auto-resolúvel — renovar o passaporte e atualizar a
+ * validade fecha o caso sem precisar de ack humano). Só verifica documentos que
+ * TÊM validade gravada; documento sem validade é lacuna de outro agente
+ * (Documentação/checklist), não deste.
+ */
+export function checarDocumentoValidadeInsuficiente(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const d of snap.docsValidade ?? []) {
+    if (!d.validadeISO || !d.referenciaISO) continue;
+    // Datas no formato YYYY-MM-DD comparam corretamente por ordem lexicográfica.
+    if (d.validadeISO < d.referenciaISO) {
+      achados.push({
+        chave: `retaguarda:documento_validade_insuficiente:${d.docId}`,
+        categoria: "documento_validade_insuficiente",
+        severidade: "medio",
+        entidade: { tipo: "documento", id: d.docId },
+        contratoId: d.contratoId,
+        resumo: `Documento ${d.docId} expira (${d.validadeISO}) antes da validade mínima exigida para o programa (${d.referenciaISO}) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -288,6 +352,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarRemessaAntesDoD7,
   checarAlteracaoSemAceite,
   checarRepactuacaoSemAceite,
+  checarDocumentoValidadeInsuficiente,
 ];
 
 /**

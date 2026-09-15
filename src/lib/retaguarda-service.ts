@@ -20,7 +20,9 @@ import {
   type DocCompartilhadoSnapshot,
   type AlteracaoSnapshot,
   type RepactuacaoSnapshot,
+  type DocValidadeSnapshot,
   type SeveridadeAchado,
+  adicionarMesesISO,
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
@@ -41,22 +43,50 @@ export type ResumoVarredura = {
 
 const LOTE_IN = 500;
 
+// Buffer padrão do agente de Vistos: meses que o documento (passaporte) deve
+// permanecer válido além do início do programa. Parâmetro de negócio por tenant
+// (tenant_config.visto_validade_min_meses) — env/default só de fallback.
+const VISTO_VALIDADE_MIN_MESES_PADRAO = 6;
+
+// Carrega o buffer de validade do tenant (linha -> env -> default). Deploy-safe:
+// banco sem a coluna -> select erra -> cai no env/default.
+async function carregarBufferValidadeMeses(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("tenant_config")
+    .select("visto_validade_min_meses")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const linha = !error && data ? Number((data as { visto_validade_min_meses?: unknown }).visto_validade_min_meses) : NaN;
+  if (Number.isFinite(linha) && linha >= 0) return Math.round(linha);
+  const env = Number(process.env.VISTO_VALIDADE_MIN_MESES);
+  if (Number.isFinite(env) && env >= 0) return Math.round(env);
+  return VISTO_VALIDADE_MIN_MESES_PADRAO;
+}
+
 // Monta os arrays do snapshot lendo só os contratos do tenant. Loteia o .in().
 async function carregarSnapshot(
   supabase: SupabaseClient,
   contratoIds: string[],
+  bufferValidadeMeses: number,
 ): Promise<{
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
   docsCompartilhados: DocCompartilhadoSnapshot[];
   alteracoes: AlteracaoSnapshot[];
   repactuacoes: RepactuacaoSnapshot[];
+  docsValidade: DocValidadeSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
   const docsCompartilhados: DocCompartilhadoSnapshot[] = [];
   const alteracoes: AlteracaoSnapshot[] = [];
   const repactuacoes: RepactuacaoSnapshot[] = [];
+  const docsValidade: DocValidadeSnapshot[] = [];
+  // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
+  const hojeISO = new Date().toISOString().slice(0, 10);
 
   for (const lote of emLotes(contratoIds, LOTE_IN)) {
     const { data: ps, error: e1 } = await supabase
@@ -158,9 +188,39 @@ async function carregarSnapshot(
         aceitoEmISO: ((r as any).aceito_em as string) ?? null,
       });
     }
+
+    // Documentos com VALIDADE gravada, para o agente de Vistos (validade vs.
+    // exigência do destino). Traz a data_inicio do contrato para calcular a
+    // data-limite (início + buffer). Escopo preventivo: só programas que ainda
+    // não começaram (data_inicio >= hoje) — depois do embarque o alerta perde a
+    // ação. Filtro grosso no SQL (validade not null); o veredito fica no motor.
+    const { data: docsV, error: e6 } = await supabase
+      .from("documentos")
+      .select("id, contrato_id, validade, contrato:contratos(data_inicio)")
+      .in("contrato_id", lote)
+      .not("validade", "is", null);
+    if (e6) throw new Error("Falha ao ler validade de documentos da retaguarda: " + e6.message);
+    for (const d of docsV ?? []) {
+      const rel: any = (d as any).contrato;
+      const c = Array.isArray(rel) ? rel[0] : rel;
+      const dataInicio = (c?.data_inicio as string) ?? null;
+      const validade = ((d as any).validade as string) ?? null;
+      if (!dataInicio || !validade) continue;
+      const inicioDia = dataInicio.slice(0, 10);
+      // Preventivo: ignora programas já iniciados (janela de ação encerrada).
+      if (inicioDia < hojeISO) continue;
+      const referenciaISO = adicionarMesesISO(inicioDia, bufferValidadeMeses);
+      if (!referenciaISO) continue;
+      docsValidade.push({
+        docId: (d as any).id as string,
+        contratoId: (d as any).contrato_id as string,
+        validadeISO: validade.slice(0, 10),
+        referenciaISO,
+      });
+    }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
@@ -293,9 +353,12 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
   const escopo = await resolverEscopoTenant(supabase);
   const membership = await membershipDoTenant(supabase, escopo);
 
+  // Buffer de validade do agente de Vistos (por tenant do deploy).
+  const bufferValidadeMeses = await carregarBufferValidadeMeses(supabase, escopo.tenantId);
+
   // Tenant sem contratos: nada a varrer, mas ainda resolve achados que porventura
   // tenham sobrado (contratos removidos) — a reconciliação cuida disso.
-  const snap = await carregarSnapshot(supabase, membership.contratoIds);
+  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses);
   const atuais = detectarRetaguarda(snap);
 
   // Carrega TODOS os status (aberto E resolvido): a reconciliação precisa
