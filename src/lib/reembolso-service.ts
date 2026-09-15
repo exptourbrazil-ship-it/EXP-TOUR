@@ -11,7 +11,7 @@ import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
 import { extrairComercial, recomporVetTenant } from "@/lib/cambio";
 import { carregarPoliticasRetencao } from "@/lib/politica-retencao-service";
 import { carregarFeriados } from "@/lib/dias-uteis-service";
-import { metricaRestante, calcularRetencaoCampus, type AncoraRetencao } from "@/lib/politica-retencao";
+import { metricaPorAncora, direcaoDaAncora, calcularRetencaoCampus, type AncoraRetencao } from "@/lib/politica-retencao";
 import { calcularReembolsoUnificado, type ReembolsoUnificadoResultado } from "@/lib/reembolso-unificado";
 
 function num(v: unknown): number | null {
@@ -136,6 +136,11 @@ export type PoliticaAplicada = {
   metrica: number | null;
   base: number;
   retido: number;
+  // v3.1: política cadastrada num modo cuja FONTE de dados o serviço ainda não
+  // provê (valor semanal do curso/tudo; data de assinatura/reserva). Nesse caso
+  // NÃO somamos 0 silenciosamente — sinalizamos para falhar visível.
+  naoResolvida?: boolean;
+  motivo?: string;
 };
 
 export type ReembolsoUnificadoView = {
@@ -289,14 +294,40 @@ export async function carregarReembolsoUnificado(
       } else if (ignoradas > 0) {
         fornecedor.motivo = `${ignoradas} política(s) em moeda diferente do programa foram ignoradas.`;
       }
+      const naoResolvidas: string[] = [];
       for (const pol of aplicaveis) {
         const anc = porAncora[pol.ancora];
         const ancoraISO = anc?.ancoraISO ?? (pol.ancora === "inicio_curso" ? dataInicioISO : null);
         const baseRet = anc?.base ?? 0;
-        const metrica = metricaRestante(pol.unidade, { ancoraISO, cancelamentoISO, feriados });
-        const r = calcularRetencaoCampus(pol, { base: baseRet, metricaRestante: metrica });
+
+        // v3.1 — FALHA VISÍVEL, não silenciosa: modos novos cuja fonte de dados o
+        // serviço ainda não deriva subestimariam a retenção do fornecedor (retido
+        // 0). Em vez de somar 0, marca a política como NÃO resolvida com motivo.
+        // A fiação (valor semanal do curso/tudo; data de assinatura/reserva) entra
+        // na frente B (calculadora de reembolso), onde a duração/quote está à mão.
+        const precisaSemanal = (pol.degraus || []).some((d) => d.retencaoSemanas != null || d.minimoSemanas != null);
+        const semDataAncora = (pol.ancora === "assinatura" || pol.ancora === "reserva") && !ancoraISO;
+        if (precisaSemanal || semDataAncora) {
+          const motivo = precisaSemanal
+            ? "retenção por semanas ainda não calculável (falta valor semanal do curso/tudo)"
+            : "sem data da âncora (assinatura/reserva) para calcular";
+          naoResolvidas.push(`${pol.ancora}: ${motivo}`);
+          fornecedor.politicas.push({ ancora: pol.ancora, unidade: pol.unidade, metrica: null, base: baseRet, retido: 0, naoResolvida: true, motivo });
+          continue;
+        }
+
+        // âncoras assinatura/reserva medem métrica DECORRIDA; curso/acomodação,
+        // RESTANTE. metricaPorAncora roteia; para as 2 âncoras atuais o resultado é
+        // idêntico ao anterior (metricaRestante).
+        const metrica = metricaPorAncora(pol.ancora, pol.unidade, { ancoraISO, cancelamentoISO, feriados });
+        const r = calcularRetencaoCampus(pol, { base: baseRet, metricaRestante: metrica, sentido: direcaoDaAncora(pol.ancora) });
         fornecedor.total += r.totalRetido;
         fornecedor.politicas.push({ ancora: pol.ancora, unidade: pol.unidade, metrica, base: baseRet, retido: r.totalRetido });
+      }
+      if (naoResolvidas.length > 0) {
+        fornecedor.resolvido = false;
+        const aviso = `Política(s) não somada(s) — ${naoResolvidas.join("; ")}.`;
+        fornecedor.motivo = fornecedor.motivo ? `${fornecedor.motivo} ${aviso}` : aviso;
       }
       fornecedor.total = Math.round(fornecedor.total * 100) / 100;
     }

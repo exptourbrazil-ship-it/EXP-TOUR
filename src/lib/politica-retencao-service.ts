@@ -10,7 +10,7 @@ import type {
   DegrauRetencao,
 } from "@/lib/politica-retencao";
 
-const ANCORAS: AncoraRetencao[] = ["inicio_curso", "chegada_acomodacao"];
+const ANCORAS: AncoraRetencao[] = ["inicio_curso", "chegada_acomodacao", "assinatura", "reserva"];
 const UNIDADES: UnidadeRetencao[] = ["dias_corridos", "dias_uteis", "semanas", "percent_horas"];
 
 function num(v: unknown): number | null {
@@ -28,13 +28,25 @@ function normalizarDegraus(raw: unknown): DegrauRetencao[] {
     const ate = o.ate == null ? null : num(o.ate);
     const pct = o.retencaoPercentual == null ? undefined : num(o.retencaoPercentual) ?? undefined;
     const valor = o.retencaoValor == null ? undefined : num(o.retencaoValor) ?? undefined;
-    // Um degrau precisa de um limite (ate ou null explícito) e de uma retenção.
+    // v3.1: retenção por N semanas + piso do degrau (monetário ou em semanas).
+    const semanas = o.retencaoSemanas == null ? undefined : num(o.retencaoSemanas) ?? undefined;
+    const semanasBase = o.retencaoSemanasBase === "tudo" ? "tudo" : o.retencaoSemanasBase === "curso" ? "curso" : undefined;
+    const minimo = o.minimo == null ? undefined : num(o.minimo) ?? undefined;
+    const minimoSemanas = o.minimoSemanas == null ? undefined : num(o.minimoSemanas) ?? undefined;
+    const minimoSemanasBase = o.minimoSemanasBase === "tudo" ? "tudo" : o.minimoSemanasBase === "curso" ? "curso" : undefined;
+    // Um degrau precisa de um limite (ate ou null explícito) e de UMA retenção
+    // (percentual, valor fixo ou N semanas).
     if (ate === undefined) continue;
-    if (pct === undefined && valor === undefined) continue;
+    if (pct === undefined && valor === undefined && semanas === undefined) continue;
     out.push({
       ate,
       ...(pct !== undefined ? { retencaoPercentual: pct } : {}),
       ...(valor !== undefined ? { retencaoValor: valor } : {}),
+      ...(semanas !== undefined ? { retencaoSemanas: semanas } : {}),
+      ...(semanasBase !== undefined ? { retencaoSemanasBase: semanasBase } : {}),
+      ...(minimo !== undefined ? { minimo } : {}),
+      ...(minimoSemanas !== undefined ? { minimoSemanas } : {}),
+      ...(minimoSemanasBase !== undefined ? { minimoSemanasBase } : {}),
       ...(typeof o.rotulo === "string" ? { rotulo: o.rotulo } : {}),
     });
   }

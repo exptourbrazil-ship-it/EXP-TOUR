@@ -1726,9 +1726,13 @@ create table if not exists politica_retencao (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
   campus_id uuid not null references campus(id) on delete cascade,
-  ancora text not null check (ancora in ('inicio_curso','chegada_acomodacao')),
+  -- v3.1 (migracao-retencao-ancoras-v3.1.sql): assinatura/reserva além de
+  -- inicio_curso/chegada_acomodacao (VanWest conta da assinatura; OISE/Regent da reserva).
+  ancora text not null check (ancora in ('inicio_curso','chegada_acomodacao','assinatura','reserva')),
   unidade text not null check (unidade in ('dias_corridos','dias_uteis','semanas','percent_horas')),
-  degraus jsonb not null default '[]'::jsonb, -- [{ ate, retencaoPercentual|retencaoValor, rotulo }]
+  -- degraus: [{ ate, retencaoPercentual | retencaoValor | retencaoSemanas(+retencaoSemanasBase),
+  --   minimo | minimoSemanas(+minimoSemanasBase), rotulo }] — ver src/lib/politica-retencao.ts
+  degraus jsonb not null default '[]'::jsonb,
   moeda char(3),                 -- null => base_currency do campus
   teto numeric(12,2),            -- cap do valor retido
   minimo numeric(12,2),          -- piso do valor retido

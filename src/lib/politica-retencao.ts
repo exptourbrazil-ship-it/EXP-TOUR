@@ -16,16 +16,38 @@
 // dinheiro nem grava — calcula e itemiza. A COMBINAÇÃO com o degrau de ESTADO
 // (Anexo I) e com o câmbio é da calculadora unificada (fatia seguinte).
 
-export type AncoraRetencao = "inicio_curso" | "chegada_acomodacao";
+// v3.1 (§2.1): 4 âncoras. início do curso / chegada da acomodação medem a métrica
+// RESTANTE até uma data FUTURA (mais restante = mais longe = menos retenção).
+// assinatura / reserva medem a métrica DECORRIDA desde uma data PASSADA (ex.:
+// VanWest conta 7 dias da assinatura para o reembolso integral; OISE/Regent 14
+// dias da reserva). O algoritmo de seleção de degrau é o mesmo; muda só o SENTIDO
+// da métrica (o autor do degrau expressa a escada de acordo).
+export type AncoraRetencao = "inicio_curso" | "chegada_acomodacao" | "assinatura" | "reserva";
 export type UnidadeRetencao = "dias_corridos" | "dias_uteis" | "semanas" | "percent_horas";
 
+// Sentido da métrica por âncora. Âncora de data FUTURA (curso/acomodação) => o
+// que interessa é quanto FALTA; âncora de data PASSADA (assinatura/reserva) => o
+// que interessa é quanto já DECORREU.
+export function direcaoDaAncora(ancora: AncoraRetencao): "restante" | "decorrido" {
+  return ancora === "assinatura" || ancora === "reserva" ? "decorrido" : "restante";
+}
+
 export type DegrauRetencao = {
-  // Limite superior da MÉTRICA RESTANTE para este degrau valer (ex.: ate=30 =>
-  // "faltando até 30 unidades para a âncora"). null = sem limite (degrau mais
-  // distante, tipicamente 0% de retenção).
+  // Limite superior da MÉTRICA (restante ou decorrida) para este degrau valer
+  // (metrica <= ate). null = sem limite (degrau extremo).
   ate: number | null;
   retencaoPercentual?: number; // 0..1 do valor-base
-  retencaoValor?: number; // valor fixo na moeda da política (alternativa ao %)
+  retencaoValor?: number; // valor fixo na moeda da política
+  // v3.1: retenção por N semanas (retencaoSemanas × valor semanal do curso ou de
+  // tudo — o valor semanal vem do ctx de cálculo). Ex.: LSI retém 2 semanas de
+  // curso; The London School 1 a 3 semanas.
+  retencaoSemanas?: number;
+  retencaoSemanasBase?: "curso" | "tudo"; // default 'curso'
+  // v3.1: piso do valor retido NESTE degrau (antes do teto/mínimo da política).
+  // Monetário OU em semanas (ex.: Anglo "sempre no mínimo 8 semanas de curso").
+  minimo?: number;
+  minimoSemanas?: number;
+  minimoSemanasBase?: "curso" | "tudo"; // default 'curso'
   rotulo?: string;
 };
 
@@ -120,6 +142,49 @@ export function metricaRestante(
   return total;
 }
 
+// Métrica DECORRIDA desde a âncora (assinatura/reserva), na unidade da política.
+// Cancelamento na âncora ou antes => 0 (nada decorreu). percent_horas não se aplica
+// a essas âncoras (é métrica de horas cumpridas pós-início) => null.
+export function metricaDecorrida(
+  unidade: UnidadeRetencao,
+  p: { ancoraISO?: string | null; cancelamentoISO?: string | null; feriados?: Set<string> },
+): number | null {
+  if (unidade === "percent_horas") return null;
+  if (!p.ancoraISO || !p.cancelamentoISO) return null;
+  const ancora = utcDeISO(p.ancoraISO);
+  const cancel = utcDeISO(p.cancelamentoISO);
+  if (!Number.isFinite(ancora) || !Number.isFinite(cancel)) return null;
+  if (cancel <= ancora) return 0; // ainda não decorreu nada desde a âncora
+
+  if (unidade === "dias_corridos") return Math.floor((cancel - ancora) / MS_DIA);
+  if (unidade === "semanas") return Math.floor((cancel - ancora) / MS_DIA / 7);
+  // dias_uteis: dias úteis decorridos no intervalo (âncora, cancelamento].
+  let total = 0;
+  for (let ms = ancora + MS_DIA; ms <= cancel; ms += MS_DIA) {
+    if (ehDiaUtilInline(isoDeUTC(ms), p.feriados)) total += 1;
+  }
+  return total;
+}
+
+// Dispatcher: escolhe restante×decorrida pelo SENTIDO da âncora. É o ponto de
+// entrada que o serviço deve usar para qualquer âncora. Âncoras de data futura
+// (curso/acomodação) usam a métrica RESTANTE já existente; assinatura/reserva
+// usam a DECORRIDA. percent_horas é sempre restante de horas (independe da âncora).
+export function metricaPorAncora(
+  ancora: AncoraRetencao,
+  unidade: UnidadeRetencao,
+  p: {
+    ancoraISO?: string | null;
+    cancelamentoISO?: string | null;
+    feriados?: Set<string>;
+    horasCumpridas?: number | null;
+    horasTotais?: number | null;
+  },
+): number | null {
+  if (unidade === "percent_horas") return metricaRestante(unidade, p);
+  return direcaoDaAncora(ancora) === "decorrido" ? metricaDecorrida(unidade, p) : metricaRestante(unidade, p);
+}
+
 // Seleciona o degrau para uma métrica: o de MENOR `ate` que ainda comporta a
 // métrica (metrica <= ate). `ate: null` é o teto do último degrau (mais distante).
 export function selecionarDegrau(degraus: DegrauRetencao[], metrica: number | null): DegrauRetencao | null {
@@ -145,19 +210,57 @@ const ROTULO_UNIDADE: Record<UnidadeRetencao, string> = {
 
 export function calcularRetencaoCampus(
   politica: PoliticaRetencao,
-  ctx: { base: number; metricaRestante: number | null },
+  ctx: {
+    base: number;
+    metricaRestante: number | null; // "a métrica" (restante OU decorrida; nome mantido p/ compat)
+    sentido?: "restante" | "decorrido"; // só rotula a memória; default restante
+    valorSemanaCurso?: number | null; // valor semanal do curso (retenção por n_semanas)
+    valorSemanaTudo?: number | null; // valor semanal de tudo
+  },
 ): RetencaoCampusResultado {
   const moeda = politica.moeda || "BRL";
   const unidade = politica.unidade;
   const base = naoNeg(round2(ctx.base));
   const metrica = ctx.metricaRestante;
+  const sentido = ctx.sentido ?? "restante";
   const degrau = selecionarDegrau(politica.degraus, metrica);
 
+  const baseSemanal = (qual: "curso" | "tudo" | undefined): number =>
+    naoNeg(round2(Number(qual === "tudo" ? ctx.valorSemanaTudo : ctx.valorSemanaCurso) || 0));
+
+  // Prioridade da retenção do degrau: valor fixo > N semanas > percentual da base.
   const retencaoPercentual = degrau?.retencaoPercentual != null ? degrau.retencaoPercentual : 0;
   const retencaoValorFixo = degrau?.retencaoValor != null ? round2(degrau.retencaoValor) : null;
-  const retencaoBruta = retencaoValorFixo != null ? naoNeg(retencaoValorFixo) : round2(base * retencaoPercentual);
+  let modo: "fixo" | "semanas" | "pct" = "pct";
+  let retencaoBruta: number;
+  if (retencaoValorFixo != null) {
+    retencaoBruta = naoNeg(retencaoValorFixo);
+    modo = "fixo";
+  } else if (degrau?.retencaoSemanas != null) {
+    retencaoBruta = round2(naoNeg(degrau.retencaoSemanas) * baseSemanal(degrau.retencaoSemanasBase));
+    modo = "semanas";
+  } else {
+    retencaoBruta = round2(base * retencaoPercentual);
+    modo = "pct";
+  }
 
-  // Piso (mínimo) e teto (cap) sobre o valor retido, nesta ordem.
+  // Piso do DEGRAU (v3.1), monetário ou em semanas (ex.: Anglo "mínimo 8 semanas
+  // de curso"), aplicado ANTES do mínimo/teto da POLÍTICA.
+  const retencaoAntesPisoDegrau = retencaoBruta;
+  let minimoDegrauAplicado = false;
+  if (degrau) {
+    let pisoDegrau = 0;
+    if (degrau.minimo != null) pisoDegrau = Math.max(pisoDegrau, round2(naoNeg(degrau.minimo)));
+    if (degrau.minimoSemanas != null) {
+      pisoDegrau = Math.max(pisoDegrau, round2(naoNeg(degrau.minimoSemanas) * baseSemanal(degrau.minimoSemanasBase)));
+    }
+    if (pisoDegrau > 0 && retencaoBruta < pisoDegrau) {
+      retencaoBruta = pisoDegrau;
+      minimoDegrauAplicado = true;
+    }
+  }
+
+  // Piso (mínimo) e teto (cap) da POLÍTICA sobre o valor retido, nesta ordem.
   let totalRetido = retencaoBruta;
   let minimoAplicado = false;
   if (politica.minimo != null && totalRetido < politica.minimo) {
@@ -174,18 +277,26 @@ export function calcularRetencaoCampus(
   const memoria: LinhaMemoria[] = [];
   memoria.push({ rotulo: "Base de cálculo (retenção do fornecedor)", valor: base, tipo: "moeda" });
   if (metrica != null) {
-    memoria.push({ rotulo: `Faltam para a âncora (${ROTULO_UNIDADE[unidade]})`, valor: metrica, tipo: "num" });
+    const rot = sentido === "decorrido"
+      ? `Decorridos desde a âncora (${ROTULO_UNIDADE[unidade]})`
+      : `Faltam para a âncora (${ROTULO_UNIDADE[unidade]})`;
+    memoria.push({ rotulo: rot, valor: metrica, tipo: "num" });
   }
   if (degrau) {
-    if (retencaoValorFixo != null) {
-      memoria.push({ rotulo: `Degrau${degrau.rotulo ? " — " + degrau.rotulo : ""} (valor fixo)`, valor: retencaoBruta, tipo: "moeda" });
+    const suf = degrau.rotulo ? " — " + degrau.rotulo : "";
+    if (modo === "fixo") {
+      memoria.push({ rotulo: `Degrau${suf} (valor fixo)`, valor: retencaoAntesPisoDegrau, tipo: "moeda" });
+    } else if (modo === "semanas") {
+      const qual = degrau.retencaoSemanasBase === "tudo" ? "tudo" : "curso";
+      memoria.push({ rotulo: `Degrau${suf} (${degrau.retencaoSemanas} semana(s) de ${qual})`, valor: retencaoAntesPisoDegrau, tipo: "moeda" });
     } else {
-      memoria.push({ rotulo: `Degrau${degrau.rotulo ? " — " + degrau.rotulo : ""}`, valor: retencaoPercentual, tipo: "pct" });
-      memoria.push({ rotulo: "Retenção do fornecedor", valor: retencaoBruta, tipo: "moeda" });
+      memoria.push({ rotulo: `Degrau${suf}`, valor: retencaoPercentual, tipo: "pct" });
+      memoria.push({ rotulo: "Retenção do fornecedor", valor: retencaoAntesPisoDegrau, tipo: "moeda" });
     }
   } else {
     memoria.push({ rotulo: "Sem degrau aplicável (sem retenção)", valor: 0, tipo: "moeda" });
   }
+  if (minimoDegrauAplicado) memoria.push({ rotulo: "Ajustado ao mínimo do degrau", valor: retencaoBruta, tipo: "moeda" });
   if (minimoAplicado) memoria.push({ rotulo: `Ajustado ao mínimo (${moeda} ${politica.minimo})`, valor: totalRetido, tipo: "moeda" });
   if (tetoAtingido) memoria.push({ rotulo: `Limitado ao teto (${moeda} ${politica.teto})`, valor: totalRetido, tipo: "moeda" });
   memoria.push({ rotulo: "Total retido pelo fornecedor", valor: totalRetido, tipo: "moeda" });
@@ -196,7 +307,7 @@ export function calcularRetencaoCampus(
     metrica,
     degrau,
     base,
-    retencaoPercentual: retencaoValorFixo != null ? 0 : retencaoPercentual,
+    retencaoPercentual: modo === "pct" ? retencaoPercentual : 0,
     retencaoBruta,
     tetoAtingido,
     minimoAplicado,
