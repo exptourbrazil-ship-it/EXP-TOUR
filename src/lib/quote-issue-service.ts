@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
+import { inicioAlemDoIntake } from "@/lib/anexo3-entidades";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
 import {
@@ -332,6 +333,54 @@ export type IssueQuoteResult = {
   reused: boolean;
 };
 
+// Bloqueio §7 (Contrato v3.1): não emitir cotação cujo início do CURSO seja
+// posterior ao horizonte de preço confirmado do campus (campus_politica.
+// intake_maximo_vendavel) — vender além disso transfere o risco de reajuste à
+// Forio (Cláusula 6.1.1). Fail-safe: sem intake cadastrado, não bloqueia.
+async function checarIntakeMaximo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  quoteId: string,
+): Promise<{ bloqueado: boolean; motivo?: string }> {
+  const { data: ops } = await supabase
+    .from("quote_option")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("quote_id", quoteId);
+  const opIds = (ops ?? []).map((o) => o.id as string);
+  if (opIds.length === 0) return { bloqueado: false };
+
+  const { data: itens } = await supabase
+    .from("quote_item")
+    .select("campus_id, start_date")
+    .eq("tenant_id", tenantId)
+    .eq("group", "program")
+    .in("quote_option_id", opIds);
+  const programItens = (itens ?? []).filter((i) => i.campus_id && i.start_date);
+  if (programItens.length === 0) return { bloqueado: false };
+
+  const campusIds = Array.from(new Set(programItens.map((i) => i.campus_id as string)));
+  const { data: pols } = await supabase
+    .from("campus_politica")
+    .select("campus_id, intake_maximo_vendavel")
+    .eq("tenant_id", tenantId)
+    .in("campus_id", campusIds);
+  const intakePorCampus = new Map(
+    (pols ?? []).map((p) => [p.campus_id as string, (p.intake_maximo_vendavel as string) ?? null]),
+  );
+
+  for (const it of programItens) {
+    const intake = intakePorCampus.get(it.campus_id as string) ?? null;
+    if (inicioAlemDoIntake(it.start_date as string, intake)) {
+      return {
+        bloqueado: true,
+        motivo: `Início do curso em ${(it.start_date as string).slice(0, 10)} é posterior ao horizonte de preço confirmado do campus (até ${intake}). Ajuste a data de início ou atualize o intake máximo vendável do campus antes de emitir.`,
+      };
+    }
+  }
+  return { bloqueado: false };
+}
+
 export async function issueQuote(
   supabase: SupabaseClient,
   args: IssueQuoteArgs,
@@ -362,6 +411,10 @@ export async function issueQuote(
   if (quote.status !== "draft") {
     throw new Error(`So e possivel emitir cotacao em rascunho (status atual: ${quote.status}).`);
   }
+
+  // Bloqueio §7: início além do horizonte de preço confirmado do campus.
+  const intake = await checarIntakeMaximo(supabase, args.tenantId, args.quoteId);
+  if (intake.bloqueado) throw new Error(intake.motivo);
 
   const presentment = (quote.presentment_currency as string) || "BRL";
   const totais = await carregarTotaisPorOpcao(supabase, args.tenantId, args.quoteId);
