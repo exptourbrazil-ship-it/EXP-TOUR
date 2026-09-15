@@ -5,6 +5,7 @@ import {
   checarPagamentoSemParcelaPaga,
   checarRemessaAntesDoD7,
   checarAlteracaoSemAceite,
+  checarRepactuacaoSemAceite,
   detectarRetaguarda,
   reconciliarAchados,
   type Achado,
@@ -302,5 +303,57 @@ test("alteracao: rascunho (nao aplicado) nao flagra", () => {
     parcelas: [], pagamentos: [],
     alteracoes: [alt({ status: "rascunho" })],
   });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarRepactuacaoSemAceite ---------------------------------------------
+
+function rep(over: Partial<{
+  id: string; contratoId: string; status: string; aceitoEmISO: string | null;
+}> = {}) {
+  return {
+    id: over.id ?? "r1",
+    contratoId: over.contratoId ?? "c1",
+    status: over.status ?? "aplicada",
+    aceitoEmISO: over.aceitoEmISO === undefined ? null : over.aceitoEmISO,
+  };
+}
+
+test("repactuacao: aplicada SEM aceite -> achado alto", () => {
+  const a = checarRepactuacaoSemAceite({ parcelas: [], pagamentos: [], repactuacoes: [rep()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "repactuacao_sem_aceite");
+  assert.equal(a[0].severidade, "alto");
+  assert.equal(a[0].entidade.tipo, "repactuacao");
+  assert.equal(a[0].contratoId, "c1");
+  assert.equal(a[0].chave, "retaguarda:repactuacao_sem_aceite:r1");
+});
+
+test("repactuacao: aplicada COM aceite -> sem achado", () => {
+  const a = checarRepactuacaoSemAceite({
+    parcelas: [], pagamentos: [],
+    repactuacoes: [rep({ aceitoEmISO: "2026-02-01T00:00:00Z" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("repactuacao: aguardando_aprovacao sem aceite nao flagra (nao aplicada)", () => {
+  const a = checarRepactuacaoSemAceite({
+    parcelas: [], pagamentos: [],
+    repactuacoes: [rep({ status: "aguardando_aprovacao" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("repactuacao: recusada/cancelada nao flagra", () => {
+  const a = checarRepactuacaoSemAceite({
+    parcelas: [], pagamentos: [],
+    repactuacoes: [rep({ id: "r2", status: "recusada" }), rep({ id: "r3", status: "cancelada" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("repactuacao: snapshot sem o array nao quebra", () => {
+  const a = checarRepactuacaoSemAceite({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

@@ -75,6 +75,18 @@ export type AlteracaoSnapshot = {
   aditivoAceitoEmISO: string | null;
 };
 
+// Repactuação do cronograma (Cláusula 7.11) APLICADA. O aceite eletrônico do
+// cliente (`aceito_em`) é o que vale como ADITIVO — uma repactuação aplicada sem
+// esse carimbo mudou o cronograma sem o consentimento que a cláusula exige. Os
+// dois caminhos legítimos (self-service e aprovação admin) sempre gravam
+// `aceito_em`; a ausência é a deriva (aplicação direta por SQL, migração, bug).
+export type RepactuacaoSnapshot = {
+  id: string;
+  contratoId: string;
+  status: string; // 'aguardando_aprovacao' | 'aplicada' | 'recusada' | 'cancelada'
+  aceitoEmISO: string | null;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -82,6 +94,7 @@ export type SnapshotRetaguarda = {
   // sempre preenche. As verificações que não os usam ignoram.
   docsCompartilhados?: DocCompartilhadoSnapshot[];
   alteracoes?: AlteracaoSnapshot[];
+  repactuacoes?: RepactuacaoSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -239,6 +252,34 @@ export function checarAlteracaoSemAceite(snap: SnapshotRetaguarda): Achado[] {
   return achados;
 }
 
+/**
+ * Repactuação do cronograma (Cláusula 7.11) APLICADA sem o aceite eletrônico do
+ * cliente registrado.
+ *
+ * Camada detectiva de "repactuação com aceite" (§7-D): o serviço de repactuação
+ * recusa aplicar sem `aceito_em` (aceite_obrigatorio) — tanto no self-service
+ * quanto na aprovação admin, que só aplica uma solicitação do cliente já aceita.
+ * Este pega o que passou fora do sistema: uma repactuação 'aplicada' sem carimbo
+ * de aceite reescreveu o cronograma sem o aditivo que a cláusula exige. ALTO
+ * (peso jurídico — o cliente não consentiu com o novo cronograma).
+ */
+export function checarRepactuacaoSemAceite(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const r of snap.repactuacoes ?? []) {
+    if (r.status === "aplicada" && !r.aceitoEmISO) {
+      achados.push({
+        chave: `retaguarda:repactuacao_sem_aceite:${r.id}`,
+        categoria: "repactuacao_sem_aceite",
+        severidade: "alto",
+        entidade: { tipo: "repactuacao", id: r.id },
+        contratoId: r.contratoId,
+        resumo: `Repactuação ${r.id} aplicada sem aceite do cliente registrado — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -246,6 +287,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarPagamentoSemParcelaPaga,
   checarRemessaAntesDoD7,
   checarAlteracaoSemAceite,
+  checarRepactuacaoSemAceite,
 ];
 
 /**
