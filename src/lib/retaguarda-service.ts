@@ -21,10 +21,16 @@ import {
   type AlteracaoSnapshot,
   type RepactuacaoSnapshot,
   type DocValidadeSnapshot,
+  type CartaRecusaSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
+  TIPO_CARTA_RECUSA_VISTO,
+  PRAZO_REPASSE_CARTA_RECUSA_DIAS_UTEIS,
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
+import { somarDiasUteis, type Feriados } from "@/lib/dias-uteis";
+import { carregarFeriados } from "@/lib/dias-uteis-service";
+import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 
 export type ResumoVarredura = {
@@ -71,6 +77,7 @@ async function carregarSnapshot(
   supabase: SupabaseClient,
   contratoIds: string[],
   bufferValidadeMeses: number,
+  feriados: Feriados,
 ): Promise<{
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -78,6 +85,7 @@ async function carregarSnapshot(
   alteracoes: AlteracaoSnapshot[];
   repactuacoes: RepactuacaoSnapshot[];
   docsValidade: DocValidadeSnapshot[];
+  cartasRecusa: CartaRecusaSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -85,6 +93,9 @@ async function carregarSnapshot(
   const alteracoes: AlteracaoSnapshot[] = [];
   const repactuacoes: RepactuacaoSnapshot[] = [];
   const docsValidade: DocValidadeSnapshot[] = [];
+  const cartasRecusa: CartaRecusaSnapshot[] = [];
+  // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
+  const hojeBR = hojeBrasilISO();
   // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
   const hojeISO = new Date().toISOString().slice(0, 10);
 
@@ -218,9 +229,35 @@ async function carregarSnapshot(
         referenciaISO,
       });
     }
+
+    // Cartas de recusa de visto, para o agente de Vistos (prazo de repasse ao
+    // fornecedor, Cláusula 10.3.1: 1 dia útil do recebimento). O recebimento é o
+    // created_at do documento; o repasse é o compartilhamento com o fornecedor.
+    // Filtro grosso no SQL (tipo); o veredito (atrasada e não repassada) fica no
+    // motor puro, que só compara o prazo (calculado aqui em dias úteis) com hoje.
+    const { data: cartas, error: e7 } = await supabase
+      .from("documentos")
+      .select("id, contrato_id, created_at, compartilhado_fornecedor, compartilhado_em")
+      .in("contrato_id", lote)
+      .eq("tipo_documento", TIPO_CARTA_RECUSA_VISTO);
+    if (e7) throw new Error("Falha ao ler cartas de recusa da retaguarda: " + e7.message);
+    for (const c of cartas ?? []) {
+      const recebidoISO = ((c as any).created_at as string) ?? null;
+      if (!recebidoISO) continue;
+      const prazoRepasseISO = somarDiasUteis(recebidoISO.slice(0, 10), PRAZO_REPASSE_CARTA_RECUSA_DIAS_UTEIS, feriados);
+      const compartilhado =
+        (c as any).compartilhado_fornecedor === true && !!(c as any).compartilhado_em;
+      cartasRecusa.push({
+        docId: (c as any).id as string,
+        contratoId: (c as any).contrato_id as string,
+        compartilhado,
+        prazoRepasseISO,
+        hojeISO: hojeBR,
+      });
+    }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
@@ -355,10 +392,13 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
 
   // Buffer de validade do agente de Vistos (por tenant do deploy).
   const bufferValidadeMeses = await carregarBufferValidadeMeses(supabase, escopo.tenantId);
+  // Feriados Brasil (nacionais + do tenant) para o prazo de repasse da carta de
+  // recusa em dias úteis (Cláusula 10.3.1). Falha -> Set vazio (só fim de semana).
+  const feriados = await carregarFeriados(supabase, { pais: "brasil", tenantId: escopo.tenantId });
 
   // Tenant sem contratos: nada a varrer, mas ainda resolve achados que porventura
   // tenham sobrado (contratos removidos) — a reconciliação cuida disso.
-  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses);
+  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados);
   const atuais = detectarRetaguarda(snap);
 
   // Carrega TODOS os status (aberto E resolvido): a reconciliação precisa

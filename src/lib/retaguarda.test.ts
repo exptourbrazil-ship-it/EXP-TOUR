@@ -7,6 +7,7 @@ import {
   checarAlteracaoSemAceite,
   checarRepactuacaoSemAceite,
   checarDocumentoValidadeInsuficiente,
+  checarCartaRecusaNaoRepassada,
   adicionarMesesISO,
   detectarRetaguarda,
   reconciliarAchados,
@@ -428,5 +429,66 @@ test("validade: campos vazios nao quebram nem flagram", () => {
 
 test("validade: snapshot sem o array nao quebra", () => {
   const a = checarDocumentoValidadeInsuficiente({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarCartaRecusaNaoRepassada ------------------------------------------
+
+function carta(over: Partial<{
+  docId: string; contratoId: string; compartilhado: boolean; prazoRepasseISO: string; hojeISO: string;
+}> = {}) {
+  return {
+    docId: over.docId ?? "k1",
+    contratoId: over.contratoId ?? "c1",
+    compartilhado: over.compartilhado ?? false,
+    prazoRepasseISO: over.prazoRepasseISO ?? "2026-03-10",
+    hojeISO: over.hojeISO ?? "2026-03-12",
+  };
+}
+
+test("carta recusa: nao repassada e hoje > prazo -> achado medio", () => {
+  const a = checarCartaRecusaNaoRepassada({ parcelas: [], pagamentos: [], cartasRecusa: [carta()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "carta_recusa_visto_atrasada");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "documento");
+  assert.equal(a[0].contratoId, "c1");
+  assert.equal(a[0].chave, "retaguarda:carta_recusa_visto_atrasada:k1");
+});
+
+test("carta recusa: ja repassada -> sem achado", () => {
+  const a = checarCartaRecusaNaoRepassada({
+    parcelas: [], pagamentos: [],
+    cartasRecusa: [carta({ compartilhado: true })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("carta recusa: dentro do prazo (hoje == prazo) -> sem achado", () => {
+  const a = checarCartaRecusaNaoRepassada({
+    parcelas: [], pagamentos: [],
+    cartasRecusa: [carta({ hojeISO: "2026-03-10", prazoRepasseISO: "2026-03-10" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("carta recusa: hoje antes do prazo -> sem achado", () => {
+  const a = checarCartaRecusaNaoRepassada({
+    parcelas: [], pagamentos: [],
+    cartasRecusa: [carta({ hojeISO: "2026-03-09", prazoRepasseISO: "2026-03-10" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("carta recusa: prazo vazio nao quebra nem flagra", () => {
+  const a = checarCartaRecusaNaoRepassada({
+    parcelas: [], pagamentos: [],
+    cartasRecusa: [carta({ prazoRepasseISO: "" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("carta recusa: snapshot sem o array nao quebra", () => {
+  const a = checarCartaRecusaNaoRepassada({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

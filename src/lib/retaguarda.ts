@@ -116,6 +116,29 @@ export type DocValidadeSnapshot = {
   referenciaISO: string; // até quando precisa continuar válido (início + buffer)
 };
 
+// Tipo de documento que marca uma CARTA DE RECUSA DE VISTO. A camada de dados
+// filtra por ele; exportado para ficar num lugar só (domínio de Vistos).
+export const TIPO_CARTA_RECUSA_VISTO = "carta_recusa_visto";
+
+// Prazo de repasse da carta de recusa ao Fornecedor: 1 dia ÚTIL do recebimento
+// (Cláusula 10.3.1). Constante contratual (não é parâmetro tunável por tenant,
+// como o spread) — igual ao D+7 ser fixo por contrato.
+export const PRAZO_REPASSE_CARTA_RECUSA_DIAS_UTEIS = 1;
+
+// Carta de recusa de visto recebida, para o agente de Vistos (§7-F.1, "prazo
+// para apresentação da carta de recusa"). `prazoRepasseISO` é a data-limite de
+// repasse ao fornecedor (recebimento + 1 dia útil), calculada na camada de dados
+// com o calendário de feriados — o motor puro só compara datas. `hojeISO` é o
+// dia de referência (o mesmo para todas as linhas). `compartilhado` = já
+// repassado ao fornecedor.
+export type CartaRecusaSnapshot = {
+  docId: string;
+  contratoId: string;
+  compartilhado: boolean;
+  prazoRepasseISO: string;
+  hojeISO: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -125,6 +148,7 @@ export type SnapshotRetaguarda = {
   alteracoes?: AlteracaoSnapshot[];
   repactuacoes?: RepactuacaoSnapshot[];
   docsValidade?: DocValidadeSnapshot[];
+  cartasRecusa?: CartaRecusaSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -344,6 +368,40 @@ export function checarDocumentoValidadeInsuficiente(snap: SnapshotRetaguarda): A
   return achados;
 }
 
+/**
+ * Carta de recusa de visto recebida e NÃO repassada ao Fornecedor dentro do
+ * prazo de 1 dia útil (Cláusula 10.3.1).
+ *
+ * Agente de Vistos (§7-F.1, "prazo para apresentação da carta de recusa"): a
+ * camada de dados calcula, por carta recebida, `prazoRepasseISO` = recebimento +
+ * 1 dia útil (calendário de feriados). Se a carta ainda NÃO foi compartilhada com
+ * o fornecedor e a data de referência (`hojeISO`) já passou do prazo, o repasse
+ * está atrasado — o fornecedor precisa da carta para os próximos passos e o
+ * atraso trava o processo. MÉDIO (SLA operacional / "tarefa com prazo"; resolve
+ * de fato ao repassar — sem atrito de ack, como o vencimento de documento).
+ *
+ * Só compara datas YYYY-MM-DD (sem fuso); o cálculo de dias úteis fica na camada
+ * de dados, que tem o calendário.
+ */
+export function checarCartaRecusaNaoRepassada(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const c of snap.cartasRecusa ?? []) {
+    if (c.compartilhado) continue; // já repassada: nada a cobrar
+    if (!c.prazoRepasseISO || !c.hojeISO) continue;
+    if (c.hojeISO > c.prazoRepasseISO) {
+      achados.push({
+        chave: `retaguarda:carta_recusa_visto_atrasada:${c.docId}`,
+        categoria: "carta_recusa_visto_atrasada",
+        severidade: "medio",
+        entidade: { tipo: "documento", id: c.docId },
+        contratoId: c.contratoId,
+        resumo: `Carta de recusa de visto ${c.docId} não repassada ao fornecedor no prazo de 1 dia útil (limite ${c.prazoRepasseISO}) — repassar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -353,6 +411,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarAlteracaoSemAceite,
   checarRepactuacaoSemAceite,
   checarDocumentoValidadeInsuficiente,
+  checarCartaRecusaNaoRepassada,
 ];
 
 /**
