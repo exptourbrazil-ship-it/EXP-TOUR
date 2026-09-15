@@ -9,9 +9,14 @@ export const TIPOS_DOCUMENTO: {
 }[] = [
   { valor: "documento_identidade", label: "Documento de Identidade", categoria: "estudante", palavrasChave: ["rg", "identidade", "id card", "identity document"] },
   { valor: "passaporte", label: "Passaporte", categoria: "estudante", palavrasChave: ["passaporte", "passport"] },
+  // ANTES de "visto": um nome como "Visa Refusal Letter" contém "visa" e cairia
+  // como visto se este viesse depois (mesma lógica do net-antes-do-gross). As
+  // frases aqui são específicas e não casam um "Visa.pdf" simples.
+  { valor: "carta_recusa_visto", label: "Carta de Recusa de Visto", categoria: "estudante", palavrasChave: ["carta de recusa", "recusa de visto", "visa refusal", "refusal letter", "visa denial", "visa rejection"] },
   { valor: "visto", label: "Visto", categoria: "estudante", palavrasChave: ["visa", "visto"] },
   { valor: "visto_2", label: "Visto 2", categoria: "estudante", palavrasChave: ["visto 2", "visa 2", "second visa"] },
   { valor: "visto_eua", label: "Visto Americano (B1/B2)", categoria: "estudante", palavrasChave: ["b1/b2", "b1 b2", "b1b2", "visto americano", "us visa", "usa visa", "visto eua"] },
+  { valor: "carta_recusa_visto", label: "Carta de Recusa de Visto", categoria: "estudante", palavrasChave: ["carta de recusa", "recusa de visto", "visa refusal", "refusal letter", "visa denial", "visa rejection"] },
   { valor: "certidao_vacinacao", label: "Certidao de Vacinacao", categoria: "estudante", palavrasChave: ["vacina", "vaccination", "certidao de vacinacao"] },
   { valor: "passagem_aerea", label: "Passagem Aerea", categoria: "estudante", palavrasChave: ["airline ticket", "passagem aerea", "e-ticket", "eticket", "itinerary"] },
   { valor: "eta", label: "eTA e similares", categoria: "estudante", palavrasChave: ["eta", "electronic travel authorization", "entry authorization"] },
@@ -48,6 +53,27 @@ export function categorizarNomeArquivo(nomeArquivo: string): string | null {
 export function labelDoTipoDocumento(valor: string): string {
   const tipo = TIPOS_DOCUMENTO.find((t) => t.valor === valor);
   return tipo ? tipo.label : "Outro";
+}
+
+// Tipos que carregam uma data de VALIDADE relevante para o agente de Vistos
+// (janelas de validade vs. exigência do destino). A UI só oferece o campo de
+// validade para estes; a verificação detectiva olha qualquer documento com
+// validade gravada.
+export const TIPOS_COM_VALIDADE = new Set<string>([
+  "passaporte",
+  "visto",
+  "visto_2",
+  "visto_eua",
+  "eta",
+  "seguro_saude",
+]);
+
+export function tipoTemValidade(valor: string): boolean {
+  return TIPOS_COM_VALIDADE.has(valor);
+}
+
+export function ehTipoDocumentoValido(valor: string): boolean {
+  return TIPOS_DOCUMENTO.some((t) => t.valor === valor);
 }
 
 export function categoriaDoTipoDocumento(valor: string): CategoriaDocumento {
