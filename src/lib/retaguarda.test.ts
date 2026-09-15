@@ -9,6 +9,7 @@ import {
   checarDocumentoValidadeInsuficiente,
   checarCartaRecusaNaoRepassada,
   checarSeguroAusenteAntesEmbarque,
+  checarSeguroVigenciaInsuficiente,
   adicionarMesesISO,
   adicionarDiasISO,
   detectarRetaguarda,
@@ -550,5 +551,46 @@ test("seguro: hoje == limite (fronteira) -> achado", () => {
 
 test("seguro: snapshot sem o array nao quebra", () => {
   const a = checarSeguroAusenteAntesEmbarque({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarSeguroVigenciaInsuficiente ---------------------------------------
+
+function vig(over: Partial<{
+  contratoId: string; coberturaAteISO: string; referenciaISO: string;
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    coberturaAteISO: over.coberturaAteISO ?? "2026-06-01",
+    referenciaISO: over.referenciaISO ?? "2026-07-01",
+  };
+}
+
+test("vigencia: cobertura termina ANTES da referencia -> achado medio", () => {
+  const a = checarSeguroVigenciaInsuficiente({ parcelas: [], pagamentos: [], segurosVigencia: [vig()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "seguro_vigencia_insuficiente");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].contratoId, "c1");
+  assert.equal(a[0].chave, "retaguarda:seguro_vigencia_insuficiente:c1");
+});
+
+test("vigencia: cobertura alcanca a referencia (igual) -> sem achado", () => {
+  const a = checarSeguroVigenciaInsuficiente({
+    parcelas: [], pagamentos: [], segurosVigencia: [vig({ coberturaAteISO: "2026-07-01", referenciaISO: "2026-07-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("vigencia: cobertura vai alem da referencia -> sem achado", () => {
+  const a = checarSeguroVigenciaInsuficiente({
+    parcelas: [], pagamentos: [], segurosVigencia: [vig({ coberturaAteISO: "2026-12-31", referenciaISO: "2026-07-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("vigencia: snapshot sem o array nao quebra", () => {
+  const a = checarSeguroVigenciaInsuficiente({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

@@ -160,6 +160,18 @@ export type SeguroContratoSnapshot = {
   hojeISO: string;
 };
 
+// Vigência do seguro de um contrato, para o agente de Seguro (§7-F.1, "vigência
+// cobrindo todo o período"). `coberturaAteISO` = maior validade entre as
+// apólices do titular (fim da cobertura). `referenciaISO` = até quando a
+// cobertura precisa alcançar. v1: referência = início do programa (uma apólice
+// que expira antes do embarque não cobre o período); quando houver data de
+// término do programa, a referência sobe para o fim.
+export type SeguroVigenciaSnapshot = {
+  contratoId: string;
+  coberturaAteISO: string;
+  referenciaISO: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -171,6 +183,7 @@ export type SnapshotRetaguarda = {
   docsValidade?: DocValidadeSnapshot[];
   cartasRecusa?: CartaRecusaSnapshot[];
   segurosContrato?: SeguroContratoSnapshot[];
+  segurosVigencia?: SeguroVigenciaSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -457,6 +470,38 @@ export function checarSeguroAusenteAntesEmbarque(snap: SnapshotRetaguarda): Acha
   return achados;
 }
 
+/**
+ * Seguro cuja vigência NÃO cobre o período do programa — a cobertura termina
+ * antes da data de referência.
+ *
+ * Agente de Seguro (§7-F.1, "vigência cobrindo todo o período"): a camada de
+ * dados traz, por contrato ativo cujo titular tem apólice com validade, a maior
+ * validade (`coberturaAteISO`) e a `referenciaISO` até a qual a cobertura precisa
+ * alcançar (v1: início do programa). Se a cobertura termina ANTES da referência,
+ * o seguro não cobre o período. MÉDIO (operacional; resolve quando a apólice é
+ * renovada/atualizada, sem atrito de ack).
+ *
+ * Só flagra quando HÁ apólice com validade registrada (a ausência de apólice é a
+ * outra checagem). Compara só datas YYYY-MM-DD.
+ */
+export function checarSeguroVigenciaInsuficiente(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const s of snap.segurosVigencia ?? []) {
+    if (!s.coberturaAteISO || !s.referenciaISO) continue;
+    if (s.coberturaAteISO < s.referenciaISO) {
+      achados.push({
+        chave: `retaguarda:seguro_vigencia_insuficiente:${s.contratoId}`,
+        categoria: "seguro_vigencia_insuficiente",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: s.contratoId },
+        contratoId: s.contratoId,
+        resumo: `Contrato ${s.contratoId}: apólice de seguro expira (${s.coberturaAteISO}) antes do período do programa (ref. ${s.referenciaISO}) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -468,6 +513,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarDocumentoValidadeInsuficiente,
   checarCartaRecusaNaoRepassada,
   checarSeguroAusenteAntesEmbarque,
+  checarSeguroVigenciaInsuficiente,
 ];
 
 /**
