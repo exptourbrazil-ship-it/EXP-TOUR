@@ -19,6 +19,7 @@ import {
   type PagamentoSnapshot,
   type DocCompartilhadoSnapshot,
   type AlteracaoSnapshot,
+  type RepactuacaoSnapshot,
   type SeveridadeAchado,
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
@@ -49,11 +50,13 @@ async function carregarSnapshot(
   pagamentos: PagamentoSnapshot[];
   docsCompartilhados: DocCompartilhadoSnapshot[];
   alteracoes: AlteracaoSnapshot[];
+  repactuacoes: RepactuacaoSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
   const docsCompartilhados: DocCompartilhadoSnapshot[] = [];
   const alteracoes: AlteracaoSnapshot[] = [];
+  const repactuacoes: RepactuacaoSnapshot[] = [];
 
   for (const lote of emLotes(contratoIds, LOTE_IN)) {
     const { data: ps, error: e1 } = await supabase
@@ -137,9 +140,27 @@ async function carregarSnapshot(
         aditivoAceitoEmISO: ((a as any).aditivo_aceito_em as string) ?? null,
       });
     }
+
+    // Repactuações APLICADAS dos contratos do tenant, para a checagem
+    // "repactuação sem aceite". Filtro grosso no SQL (só as aplicadas); o
+    // veredito (aceito_em nulo) fica no motor puro.
+    const { data: reps, error: e5 } = await supabase
+      .from("repactuacoes")
+      .select("id, contrato_id, status, aceito_em")
+      .in("contrato_id", lote)
+      .eq("status", "aplicada");
+    if (e5) throw new Error("Falha ao ler repactuacoes da retaguarda: " + e5.message);
+    for (const r of reps ?? []) {
+      repactuacoes.push({
+        id: (r as any).id as string,
+        contratoId: (r as any).contrato_id as string,
+        status: (r as any).status as string,
+        aceitoEmISO: ((r as any).aceito_em as string) ?? null,
+      });
+    }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
