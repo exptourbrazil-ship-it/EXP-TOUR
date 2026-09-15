@@ -98,6 +98,18 @@ test("validarTaxaObrigatoria rejeita moeda e componente inválidos", () => {
   assert.equal(ok.ok, true);
 });
 
+test("condicao duracao_min exige duracaoMinimaSemanas (>=1); rejeita negativos", () => {
+  const semDur = validarTaxaObrigatoria(taxa({ condicaoAplicacao: "duracao_min" }));
+  assert.equal(semDur.ok, false);
+  const comDur = validarTaxaObrigatoria({ ...taxa({ condicaoAplicacao: "duracao_min" }), duracaoMinimaSemanas: 12 });
+  assert.equal(comDur.ok, true);
+  if (comDur.ok) assert.equal(comDur.valor.duracaoMinimaSemanas, 12);
+  const ordemNeg = validarTaxaObrigatoria({ ...taxa(), ordem: -1 });
+  assert.equal(ordemNeg.ok, false);
+  const durNeg = validarTaxaObrigatoria({ ...taxa(), duracaoMinimaSemanas: -5 });
+  assert.equal(durNeg.ok, false);
+});
+
 // ── ExigenciaAntecipacao (Cláusula 7.5 / 7.5.1) ──────────────────────────────
 
 test("exigência ativa SEM comprovante é bloqueada (Cláusula 7.5.1)", () => {

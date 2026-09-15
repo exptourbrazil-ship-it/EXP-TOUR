@@ -169,9 +169,11 @@ export type TaxaObrigatoria = {
   valor: number;
   moeda: string;
   condicaoAplicacao: CondicaoAplicacao;
+  duracaoMinimaSemanas: number | null; // exigida quando condicaoAplicacao = duracao_min
   reembolsavel: boolean;
   vencimentoDias: number; // assinatura + N dias corridos
   componente: Componente;
+  ordem: number;
 };
 
 export function validarTaxaObrigatoria(raw: unknown): Resultado<TaxaObrigatoria> {
@@ -192,6 +194,21 @@ export function validarTaxaObrigatoria(raw: unknown): Resultado<TaxaObrigatoria>
   if (vencimentoDias === null) erros.push({ campo: "vencimentoDias", erro: "inteiro não negativo" });
   const reembolsavel = typeof p.reembolsavel === "boolean" ? p.reembolsavel : null;
   if (reembolsavel === null) erros.push({ campo: "reembolsavel", erro: "booleano obrigatório" });
+
+  // duracaoMinimaSemanas: inteiro >= 0 quando informado; obrigatória (>=1) quando
+  // a condição é duracao_min (senão a taxa fica com semântica indefinida).
+  let duracaoMinimaSemanas: number | null = null;
+  if (p.duracaoMinimaSemanas != null) {
+    const d = intNaoNeg(p.duracaoMinimaSemanas);
+    if (d === null) erros.push({ campo: "duracaoMinimaSemanas", erro: "inteiro não negativo" });
+    else duracaoMinimaSemanas = d;
+  }
+  if (condicaoAplicacao === "duracao_min" && (duracaoMinimaSemanas === null || duracaoMinimaSemanas < 1)) {
+    erros.push({ campo: "duracaoMinimaSemanas", erro: "obrigatória (>=1) quando condição = duracao_min" });
+  }
+  const ordem = intNaoNeg(p.ordem);
+  if (p.ordem != null && ordem === null) erros.push({ campo: "ordem", erro: "inteiro não negativo" });
+
   if (erros.length) return { ok: false, erros };
   return {
     ok: true,
@@ -201,9 +218,11 @@ export function validarTaxaObrigatoria(raw: unknown): Resultado<TaxaObrigatoria>
       valor: valor!,
       moeda: moedaNorm(p.moeda),
       condicaoAplicacao: condicaoAplicacao!,
+      duracaoMinimaSemanas,
       reembolsavel: reembolsavel!,
       vencimentoDias: vencimentoDias!,
       componente: componente!,
+      ordem: ordem ?? 0,
     },
   };
 }

@@ -159,6 +159,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "fornecedores.gerir",
   },
   {
+    href: "/admin/config/campus",
+    label: "Política do campus",
+    descricao: "Anexo III: taxas obrigatórias, exigência de antecipação e política de reembolso por campus",
+    icone: ICONES.catalogo,
+    capacidade: "config.gerir",
+  },
+  {
     href: "/admin/conteudo",
     label: "Conteúdo dos cursos",
     descricao: "Aprovar o conteúdo dos cursos enviado pelas escolas (cotação)",
