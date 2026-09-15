@@ -4,7 +4,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
-import { ehTipoDocumentoValido, tipoTemValidade } from "@/lib/documentos";
+import { ehTipoDocumentoValido, tipoTemValidade, tipoTemCobertura } from "@/lib/documentos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,6 +121,19 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     .maybeSingle();
   if (!doc) {
     return NextResponse.json({ ok: false, error: "Documento nao encontrado" }, { status: 404 });
+  }
+
+  // Cobertura só faz sentido em documento que a carrega (hoje, apólice de
+  // seguro). Rejeita GRAVAR cobertura em outro tipo (limpar com null é livre) —
+  // evita que a cobertura fique guardada em doc arbitrário à espera de um agente
+  // futuro (achado da revisão).
+  const tipoEfetivo = (patch.tipo_documento as string) ?? (doc as { tipo_documento?: string }).tipo_documento ?? "";
+  const gravaCobertura = patch.cobertura_valor != null || patch.cobertura_moeda != null;
+  if (gravaCobertura && !tipoTemCobertura(tipoEfetivo)) {
+    return NextResponse.json(
+      { ok: false, error: "Cobertura só se aplica à apólice de seguro." },
+      { status: 422 },
+    );
   }
 
   const { error } = await supabase.from("documentos").update(patch).eq("id", id);

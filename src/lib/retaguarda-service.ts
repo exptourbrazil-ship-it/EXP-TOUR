@@ -83,10 +83,16 @@ async function carregarMinimosCoberturaSeguro(
     .maybeSingle();
   const raw = !error && data ? (data as { seguro_cobertura_minima?: unknown }).seguro_cobertura_minima : null;
   if (raw && typeof raw === "object") {
-    for (const [pais, v] of Object.entries(raw as Record<string, unknown>)) {
+    for (const [paisRaw, v] of Object.entries(raw as Record<string, unknown>)) {
       const obj = v as { valor?: unknown; moeda?: unknown } | null;
       const valor = Number(obj?.valor);
-      const moeda = typeof obj?.moeda === "string" ? obj.moeda : "";
+      // Normaliza os DOIS lados da comparação para a mesma forma canônica que a
+      // ingestão grava: país = slug minúsculo (igual a contratos.pais_destino);
+      // moeda = maiúscula (igual à rota, que faz toUpperCase). Sem isso, um
+      // config com "eur"/"Portugal" nunca casaria e o agente ficaria mudo.
+      const pais = paisRaw.trim().toLowerCase();
+      const moedaBruta = typeof obj?.moeda === "string" ? obj.moeda.trim().toUpperCase() : "";
+      const moeda = /^[A-Z]{2,5}$/.test(moedaBruta) ? moedaBruta : "";
       if (pais && Number.isFinite(valor) && valor > 0 && moeda) {
         mapa.set(pais, { valor, moeda });
       }
@@ -350,8 +356,10 @@ async function carregarSnapshot(
           if (!atual || val > atual) melhorValidadePorTitular.set(t, val);
         }
         const cobValor = Number((s as { cobertura_valor?: unknown }).cobertura_valor);
-        const cobMoeda = ((s as { cobertura_moeda?: unknown }).cobertura_moeda as string) || "";
-        if (Number.isFinite(cobValor) && cobValor >= 0 && cobMoeda) {
+        const cobMoeda = (((s as { cobertura_moeda?: unknown }).cobertura_moeda as string) || "").trim().toUpperCase();
+        // > 0: cobertura 0 é tratada como "não informada" (placeholder), não como
+        // cobertura zero real — evita falso-positivo por um 0 de preenchimento.
+        if (Number.isFinite(cobValor) && cobValor > 0 && cobMoeda) {
           let porMoeda = coberturaPorTitularMoeda.get(t);
           if (!porMoeda) { porMoeda = new Map<string, number>(); coberturaPorTitularMoeda.set(t, porMoeda); }
           const atual = porMoeda.get(cobMoeda);
@@ -383,7 +391,7 @@ async function carregarSnapshot(
       // Cobertura vs. mínimo do destino: só quando o país do contrato tem mínimo
       // configurado E o titular tem cobertura registrada NA MESMA moeda do mínimo
       // (comparação sem conversão cambial). Do contrário, não há o que comparar.
-      const pais = (c.pais_destino ?? "").trim();
+      const pais = (c.pais_destino ?? "").trim().toLowerCase();
       const minimo = pais ? minimosCobertura.get(pais) : undefined;
       if (minimo && c.titular_id) {
         const coberturaValor = coberturaPorTitularMoeda.get(c.titular_id)?.get(minimo.moeda);
