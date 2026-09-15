@@ -2972,6 +2972,18 @@ create unique index if not exists uq_retaguarda_achado_chave
 -- Painel de saude: abertos por severidade, do tenant.
 create index if not exists idx_retaguarda_achado_status
   on retaguarda_achado(tenant_id, status, severidade);
+-- Ack humano da resolução de achados ALTO. Quando um ALTO some da deteccao, o
+-- ciclo o marca 'resolvido' com confirmado=FALSE (aguardando confirmacao humana),
+-- para que um encobrimento por edicao dos campos observados nao apague a
+-- evidencia em silencio (achado da revisao de seguranca F7). MEDIO/BAIXO
+-- resolvem confirmados (confirmado=TRUE, default) — self-healing. Um admin
+-- confirma (confirmado=TRUE + confirmado_por/em). Reabertura reseta para TRUE.
+alter table if exists retaguarda_achado add column if not exists confirmado boolean not null default true;
+alter table if exists retaguarda_achado add column if not exists confirmado_por text;
+alter table if exists retaguarda_achado add column if not exists confirmado_em timestamptz;
+-- Fila de confirmacao: resolvidos ainda nao confirmados, do tenant.
+create index if not exists idx_retaguarda_achado_aguardando
+  on retaguarda_achado(tenant_id) where status = 'resolvido' and confirmado = false;
 alter table if exists retaguarda_achado enable row level security;
 
 -- Isolamento por tenant nas rotas admin (ver supabase/migracao-anexo-iii-tenant.sql).

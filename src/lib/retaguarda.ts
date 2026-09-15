@@ -269,7 +269,9 @@ export function detectarRetaguarda(snap: SnapshotRetaguarda): Achado[] {
 // de dados aplica o plano.
 
 export type StatusAchado = "aberto" | "resolvido";
-export type AchadoPersistido = { chave: string; status: StatusAchado };
+// `severidade` é opcional: a reconciliação pura não a usa (decide só por status);
+// a camada de dados a carrega para dividir a resolução (ALTO aguarda ack humano).
+export type AchadoPersistido = { chave: string; status: StatusAchado; severidade?: SeveridadeAchado };
 
 export type PlanoReconciliacao = {
   abrir: Achado[]; // novo: não havia registro
