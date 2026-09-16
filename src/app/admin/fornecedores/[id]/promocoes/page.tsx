@@ -24,11 +24,11 @@ export default async function FornecedorPromocoesPage({ params }: { params: Prom
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-serif text-lg text-brand">Promoções</h2>
-        <Link href="/admin/precos/promocoes/nova" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+        <Link href={`/admin/fornecedores/${id}/promocao/nova`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
           + Nova promoção
         </Link>
       </div>
-      <PromocoesListClient promocoes={promocoes} />
+      <PromocoesListClient promocoes={promocoes} editHrefBase={`/admin/fornecedores/${id}/promocao`} />
     </div>
   );
 }

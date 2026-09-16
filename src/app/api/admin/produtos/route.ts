@@ -24,6 +24,10 @@ export async function POST(request: Request) {
       actor: g.usuario,
       ip: g.ip,
       entrada: body,
+      supplierEsperado:
+        typeof (body as { supplier_esperado?: unknown }).supplier_esperado === "string"
+          ? (body as { supplier_esperado: string }).supplier_esperado
+          : undefined,
     });
     return okData(r);
   } catch (err) {

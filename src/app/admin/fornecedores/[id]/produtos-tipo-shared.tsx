@@ -31,11 +31,15 @@ export async function PaginaProdutosDoTipo({
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-serif text-lg text-brand">{titulo}</h2>
-        <Link href="/admin/produtos/novo" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+        <Link href={`/admin/fornecedores/${supplierId}/produto/novo`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
           + Novo
         </Link>
       </div>
-      <ProdutosDoTipoClient produtos={produtos} vazioLabel={vazio} />
+      <ProdutosDoTipoClient
+        produtos={produtos}
+        vazioLabel={vazio}
+        editHrefBase={`/admin/fornecedores/${supplierId}/produto`}
+      />
     </div>
   );
 }

@@ -40,7 +40,14 @@ const FILTROS = [
 // Lista de promoções: indicadores de topo, filtro por status, busca
 // (nome/fornecedor/campus, sem acento) e badge de status. Client-side sobre a
 // lista já carregada no servidor.
-export default function PromocoesListClient({ promocoes }: { promocoes: PromocaoLista[] }) {
+export default function PromocoesListClient({
+  promocoes,
+  editHrefBase = "/admin/precos/promocoes",
+}: {
+  promocoes: PromocaoLista[];
+  // Base do editor (o hub passa `/admin/fornecedores/<id>/promocao`).
+  editHrefBase?: string;
+}) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState("");
 
@@ -140,7 +147,7 @@ export default function PromocoesListClient({ promocoes }: { promocoes: Promocao
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link href={`/admin/precos/promocoes/${p.id}`} className="text-brand-golddark hover:underline">
+                    <Link href={`${editHrefBase}/${p.id}`} className="text-brand-golddark hover:underline">
                       Editar →
                     </Link>
                   </td>

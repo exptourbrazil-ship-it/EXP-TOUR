@@ -58,10 +58,14 @@ export default function ProdutoEditor({
   campi,
   produtos,
   inicial,
+  supplierEsperado,
 }: {
   campi: CampusOpt[];
   produtos: ProdutoOpt[]; // candidatos a item de pacote (do mesmo tenant)
   inicial?: ProdutoInicial;
+  // Fluxo do hub do fornecedor: enviado ao backend para exigir que o campus do
+  // produto seja DESTE fornecedor (não só do tenant).
+  supplierEsperado?: string;
 }) {
   const router = useRouter();
   const edicao = !!inicial?.id;
@@ -189,6 +193,7 @@ export default function ProdutoEditor({
       available_from: campo.available_from || undefined,
       available_until: campo.available_until || undefined,
       detail: montarDetalhe(),
+      ...(supplierEsperado ? { supplier_esperado: supplierEsperado } : {}),
     };
     try {
       const url = edicao ? `/api/admin/produtos/${inicial!.id}` : "/api/admin/produtos";

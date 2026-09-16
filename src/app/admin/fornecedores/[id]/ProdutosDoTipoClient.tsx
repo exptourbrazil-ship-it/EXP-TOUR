@@ -26,9 +26,13 @@ const VIS_BADGE: Record<string, string> = {
 export default function ProdutosDoTipoClient({
   produtos,
   vazioLabel,
+  editHrefBase,
 }: {
   produtos: ProdutoLista[];
   vazioLabel: string;
+  // Base do editor no hub (ex.: /admin/fornecedores/<id>/produto); o link vira
+  // `${editHrefBase}/${produtoId}`.
+  editHrefBase: string;
 }) {
   const [busca, setBusca] = useState("");
   const filtrados = useMemo(() => {
@@ -82,8 +86,8 @@ export default function ProdutosDoTipoClient({
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link href={`/admin/produtos/${p.id}`} className="text-brand-golddark hover:underline">
-                      Abrir →
+                    <Link href={`${editHrefBase}/${p.id}`} className="font-medium text-brand-golddark hover:underline">
+                      Editar →
                     </Link>
                   </td>
                 </tr>

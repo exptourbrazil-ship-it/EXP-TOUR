@@ -74,7 +74,7 @@ export default async function FornecedorInventarioPage({ params }: { params: Pro
 
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-neutral-400">Atalhos</p>
       <div className="flex flex-wrap gap-2">
-        <Link href="/admin/produtos/novo" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+        <Link href={`${base}/produto/novo`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
           + Novo produto
         </Link>
         <Link href={`${base}/disponibilidade`} className="rounded-lg border border-neutral-300 px-3 py-2 text-sm text-brand hover:bg-neutral-50">

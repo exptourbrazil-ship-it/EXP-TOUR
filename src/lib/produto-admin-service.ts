@@ -38,16 +38,6 @@ const TABELA_DETALHE: Record<Detalhe["kind"], string> = {
   package: "package",
 };
 
-// Confere que um campus pertence ao tenant vigente. Retorna true/false.
-async function campusDoTenant(supabase: SupabaseClient, tenantId: string, campusId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from("campus")
-    .select("id, tenant_id")
-    .eq("id", campusId)
-    .maybeSingle();
-  return !!data && (data as { tenant_id?: string }).tenant_id === tenantId;
-}
-
 // Confere que TODOS os ids sao produtos do tenant vigente (posse). Usado para os
 // itens de um pacote: um item so pode compor um pacote se for do mesmo tenant —
 // sem isso, um pacote poderia referenciar/expor produto de outro tenant.
@@ -127,6 +117,11 @@ export type SalvarProdutoArgs = {
   ip?: string | null;
   productId?: string | null; // ausente = criar; presente = editar
   entrada: unknown; // corpo cru (validado pelo motor)
+  // Fluxo do HUB do fornecedor: quando presente, o campus do produto TEM que ser
+  // deste fornecedor (não só do tenant) — impede que um produto criado/editado na
+  // moldura de um fornecedor nasça sob campus de outro. Ausente = comportamento
+  // global (só posse por tenant).
+  supplierEsperado?: string;
 };
 
 // Cria ou edita um produto (core + detalhe do vertical + itens de pacote) e grava
@@ -141,8 +136,16 @@ export async function salvarProdutoAdmin(
   if (!r.ok) throw new ProdutoAdminErro("validacao", r.falhas);
   const { core, detalhe, campus_id } = r.valor;
 
-  // Posse de tenant no campus alvo.
-  if (!(await campusDoTenant(supabase, tenantId, campus_id))) {
+  // Posse do campus: sempre do tenant; e, no fluxo do hub, do fornecedor esperado.
+  const { data: campusAlvo } = await supabase
+    .from("campus")
+    .select("id, tenant_id, supplier_id")
+    .eq("id", campus_id)
+    .maybeSingle();
+  if (!campusAlvo || (campusAlvo as { tenant_id?: string }).tenant_id !== tenantId) {
+    throw new ProdutoAdminErro("campus_invalido");
+  }
+  if (args.supplierEsperado && (campusAlvo as { supplier_id?: string }).supplier_id !== args.supplierEsperado) {
     throw new ProdutoAdminErro("campus_invalido");
   }
 

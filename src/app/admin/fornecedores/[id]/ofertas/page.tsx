@@ -28,7 +28,7 @@ export default async function FornecedorOfertasPage({ params }: { params: Promis
         Prévia: por enquanto mostra as promoções deste fornecedor. Um modelo próprio de bolsa/oferta
         (com criação separada, como no Edvisor) entra numa próxima etapa.
       </p>
-      <PromocoesListClient promocoes={promocoes} />
+      <PromocoesListClient promocoes={promocoes} editHrefBase={`/admin/fornecedores/${id}/promocao`} />
     </div>
   );
 }

@@ -28,6 +28,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ip: g.ip,
       productId: id,
       entrada: body,
+      supplierEsperado:
+        typeof (body as { supplier_esperado?: unknown }).supplier_esperado === "string"
+          ? (body as { supplier_esperado: string }).supplier_esperado
+          : undefined,
     });
     return okData(r);
   } catch (err) {
