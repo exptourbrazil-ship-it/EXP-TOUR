@@ -532,7 +532,11 @@ async function carregarSnapshot(
         if (e12) throw new Error("Falha ao ler tipos de documento da retaguarda: " + e12.message);
         for (const d of docsT ?? []) {
           const t = (d as { titular_id?: string }).titular_id;
-          const tipo = (d as { tipo_documento?: string | null }).tipo_documento;
+          // Normaliza a caixa (igual ao loader dos exigidos): os dois lados da
+          // comparação ficam na forma canônica lowercase, blindando contra dado
+          // legado com caixa divergente (evita contar um exigido presente como
+          // faltante).
+          const tipo = ((d as { tipo_documento?: string | null }).tipo_documento ?? "").trim().toLowerCase();
           if (!t || !tipo) continue;
           const set = tiposPorTitular.get(t);
           if (set) set.add(tipo); else tiposPorTitular.set(t, new Set([tipo]));
