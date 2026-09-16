@@ -467,10 +467,13 @@ async function carregarSnapshot(
       // que julgar — a ausência de apólice é a outra checagem). Referência = FIM
       // do programa quando gravado (cobertura de todo o período); na falta, cai
       // para o início (um seguro que expira antes do embarque já não cobre).
+      // Fail-safe: só aceitamos o fim se for POSTERIOR ao início — um data_fim
+      // anterior ao início (typo) NUNCA pode rebaixar a referência e engolir um
+      // alerta legítimo. A referência jamais desce abaixo do embarque.
       const coberturaAteISO = c.titular_id ? (melhorValidadePorTitular.get(c.titular_id) ?? null) : null;
       if (coberturaAteISO) {
         const fim = (c.data_fim ?? "").slice(0, 10);
-        const referenciaISO = fim || inicio;
+        const referenciaISO = fim && fim > inicio ? fim : inicio;
         segurosVigencia.push({ contratoId: c.id, referenciaISO, coberturaAteISO });
       }
 

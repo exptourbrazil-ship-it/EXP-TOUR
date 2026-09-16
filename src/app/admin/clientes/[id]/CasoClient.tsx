@@ -1893,8 +1893,9 @@ function FormContatoTitular({ caso }: { caso: Caso }) {
 
 // Dados do estudante de UM contrato. Capacidade casos.gerir.
 // Editor compacto da data de TÉRMINO do programa (contratos.data_fim). Alimenta
-// as verificações de retaguarda de Seguro (vigência) e Passagens (volta). O
-// servidor (casos.gerir) é a fonte de verdade da autorização.
+// hoje a verificação de retaguarda de Seguro (vigência) e fica disponível para a
+// de Passagens (volta) quando ela consumir o campo. O servidor (casos.gerir) é a
+// fonte de verdade da autorização.
 function DataFimContrato({ contrato }: { contrato: CasoContrato }) {
   const router = useRouter();
   const [salvando, setSalvando] = useState(false);

@@ -21,8 +21,9 @@ function ehDataCalendarioValida(iso: string): boolean {
 }
 
 // POST: define/limpa a data de TÉRMINO do programa (contratos.data_fim). Alimenta
-// as verificações de retaguarda de Seguro (vigência cobrindo o período) e
-// Passagens (volta vs. fim). Gate casos.gerir por SESSÃO (usuário identificado),
+// hoje a verificação de retaguarda de Seguro (vigência cobrindo o período); fica
+// disponível para a checagem de Passagens (volta vs. fim) quando ela consumir o
+// campo. Gate casos.gerir por SESSÃO (usuário identificado),
 // escopo por tenant (barrarContratoForaDoEscopo), auditado. Body: { dataFim:
 // "AAAA-MM-DD" | null }.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -58,11 +59,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: contrato } = await supabase
     .from("contratos")
-    .select("id, data_fim")
+    .select("id, data_inicio, data_fim")
     .eq("id", id)
     .maybeSingle();
   if (!contrato) {
     return NextResponse.json({ ok: false, error: "Contrato não encontrado." }, { status: 404 });
+  }
+
+  // Coerência: o término não pode ser anterior ao início. Além de dado
+  // incoerente, um data_fim < data_inicio rebaixaria a referência da vigência de
+  // Seguro e engoliria um alerta legítimo (a retaguarda tem fail-safe, mas não
+  // persistimos o dado inconsistente).
+  const dataInicio = ((contrato as { data_inicio?: string | null }).data_inicio ?? "").slice(0, 10);
+  if (dataFim && dataInicio && dataFim < dataInicio) {
+    return NextResponse.json(
+      { ok: false, error: "A data de término não pode ser anterior à data de início do contrato." },
+      { status: 400 },
+    );
   }
 
   const { error } = await supabase.from("contratos").update({ data_fim: dataFim }).eq("id", id);
