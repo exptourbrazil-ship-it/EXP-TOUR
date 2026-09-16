@@ -64,6 +64,16 @@ const VISTO_VALIDADE_MIN_MESES_PADRAO = 6;
 // Janela padrão do agente de Seguro: dias de antecedência do embarque a partir
 // dos quais a ausência de apólice vira alerta. Env override (SEGURO_ALERTA_DIAS_
 // ANTES); ausência de apólice segue sendo cobrada também após o embarque.
+// Data-calendário do Brasil (YYYY-MM-DD) de um timestamptz ISO — alinha um
+// created_at (UTC) ao mesmo calendário das colunas DATE preenchidas pelo admin.
+function dataBrasilDeISO(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // en-CA formata como YYYY-MM-DD; o timeZone fixa o dia no fuso do Brasil.
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
 const SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO = 30;
 function janelaAlertaSeguroDias(): number {
   const env = Number(process.env.SEGURO_ALERTA_DIAS_ANTES);
@@ -431,7 +441,11 @@ async function carregarSnapshot(
       if (e11) throw new Error("Falha ao ler vistos da retaguarda: " + e11.message);
       for (const v of vistos ?? []) {
         const t = (v as { titular_id?: string }).titular_id;
-        const dt = ((v as { created_at?: string | null }).created_at ?? "").slice(0, 10);
+        // created_at é timestamptz; a data de compra é DATE no calendário do
+        // admin (Brasil). Truncar o created_at em UTC (slice) desalinharia os dois
+        // (upload noturno BRT vira o dia seguinte em UTC), gerando falso-positivo
+        // no mesmo dia (achado da revisão). Converte para a data-calendário Brasil.
+        const dt = dataBrasilDeISO((v as { created_at?: string | null }).created_at ?? null);
         if (!t || !dt) continue;
         const atual = minVistoPorTitular.get(t);
         if (!atual || dt < atual) minVistoPorTitular.set(t, dt);
