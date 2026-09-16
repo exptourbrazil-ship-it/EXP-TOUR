@@ -166,6 +166,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "config.gerir",
   },
   {
+    href: "/admin/config/iof",
+    label: "IOF por vigência",
+    descricao: "Alíquota de IOF-câmbio por data de vigência (fonte única); agenda mudanças de alíquota",
+    icone: ICONES.catalogo,
+    capacidade: "config.gerir",
+  },
+  {
     href: "/admin/conteudo",
     label: "Conteúdo dos cursos",
     descricao: "Aprovar o conteúdo dos cursos enviado pelas escolas (cotação)",
