@@ -8,16 +8,20 @@ import { usePathname } from "next/navigation";
 // visível desde já. A ativa é destacada pelo pathname.
 type Aba = { slug: string; label: string; pronta: boolean };
 
+// Estrutura espelhando o inventário do Edvisor (por tipo de produto). Preço,
+// conteúdo e disponibilidade ficam DENTRO de cada produto. Material é aba extra
+// (pipeline fornecedor→IA→admin).
 const ABAS: Aba[] = [
-  { slug: "", label: "Visão geral", pronta: true },
-  { slug: "produtos", label: "Produtos", pronta: true },
+  { slug: "", label: "Inventário", pronta: true },
+  { slug: "escolas", label: "Meus Campi", pronta: true },
+  { slug: "programas", label: "Programas", pronta: true },
+  { slug: "acomodacao", label: "Acomodação", pronta: true },
+  { slug: "outros", label: "Outros", pronta: true },
+  { slug: "pacotes", label: "Pacotes", pronta: true },
+  { slug: "seguro", label: "Seguro", pronta: true },
+  { slug: "promocoes", label: "Promoções", pronta: true },
+  { slug: "ofertas", label: "Ofertas & Bolsas", pronta: true },
   { slug: "materiais", label: "Material", pronta: true },
-  { slug: "disponibilidade", label: "Disponibilidade", pronta: true },
-  { slug: "escolas", label: "Escolas / Campus", pronta: false },
-  { slug: "conteudo", label: "Conteúdo", pronta: false },
-  { slug: "precos", label: "Preço & tabelas", pronta: false },
-  { slug: "taxas", label: "Taxas", pronta: false },
-  { slug: "promocoes", label: "Promoções", pronta: false },
 ];
 
 export default function HubTabs({ supplierId }: { supplierId: string }) {

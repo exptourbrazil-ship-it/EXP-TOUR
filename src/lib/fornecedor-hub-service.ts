@@ -5,6 +5,7 @@
 // listagem existentes onde possível.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listarProdutosAdmin, type ProdutoLista } from "@/lib/produto-admin-service";
+import { listarPromocoesAdmin, type PromocaoLista } from "@/lib/promocao-admin-service";
 
 export type FornecedorHub = {
   id: string;
@@ -131,4 +132,76 @@ export async function resumoInventarioFornecedor(
     materiais: mat.count ?? 0,
     promocoes: promo.count ?? 0,
   };
+}
+
+// ── F1b: leituras escopadas por fornecedor para as abas restantes ───────────
+
+export type ContagemPorTipo = {
+  program: number;
+  accommodation: number;
+  insurance: number;
+  other: number;
+  package: number;
+};
+
+// Contagem de produtos por tipo (para o "Inventário" no estilo Edvisor: Programs,
+// Accommodations, Insurance, Other Products, Packages). Escopo tenant + supplier.
+export async function contarProdutosPorTipoDoFornecedor(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+): Promise<ContagemPorTipo> {
+  const zero: ContagemPorTipo = { program: 0, accommodation: 0, insurance: 0, other: 0, package: 0 };
+  const campusIds = await campusIdsDoFornecedor(supabase, tenantId, supplierId);
+  if (campusIds.length === 0) return zero;
+  const { data } = await supabase
+    .from("product")
+    .select("kind")
+    .eq("tenant_id", tenantId)
+    .in("campus_id", campusIds)
+    .is("archived_at", null);
+  const acc = { ...zero };
+  for (const r of (data ?? []) as { kind: string }[]) {
+    if (Object.hasOwn(acc, r.kind)) (acc as Record<string, number>)[r.kind] += 1;
+  }
+  return acc;
+}
+
+export type CampusHub = {
+  id: string;
+  nome: string;
+  cidade: string | null;
+  pais: string | null;
+  status: string;
+};
+
+// Escolas/Campus do fornecedor (unidades). Escopado por tenant + supplier.
+export async function listarCampusDoFornecedor(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+): Promise<CampusHub[]> {
+  const { data } = await supabase
+    .from("campus")
+    .select("id, name, city, country_code, status")
+    .eq("tenant_id", tenantId)
+    .eq("supplier_id", supplierId)
+    .is("archived_at", null)
+    .order("name");
+  return (data ?? []).map((c: any) => ({
+    id: c.id,
+    nome: c.name,
+    cidade: c.city ?? null,
+    pais: c.country_code ?? null,
+    status: c.status,
+  }));
+}
+
+// Promoções do fornecedor (promotion.supplier_id direto).
+export async function listarPromocoesDoFornecedor(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+): Promise<PromocaoLista[]> {
+  return listarPromocoesAdmin(supabase, tenantId, { supplierId });
 }
