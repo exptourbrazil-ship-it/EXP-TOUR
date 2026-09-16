@@ -53,6 +53,8 @@ export type CasoContrato = {
   estudante_email: string | null;
   pais_destino: string | null;
   visto_status: string | null;
+  data_inicio: string | null;
+  data_fim: string | null;
   cancelado_em: string | null;
   cancelado_tipo: string | null;
   cancelado_motivo: string | null;
@@ -288,7 +290,7 @@ export async function carregarCaso(titularId: string): Promise<Caso | null> {
   const { data: contratos } = await supabase
     .from("contratos")
     .select(
-      "id, nome, valor_total, moeda, estudante_nome, estudante_sexo, estudante_data_nascimento, estudante_email, pais_destino, visto_status, cancelado_em, cancelado_tipo, cancelado_motivo, cancelado_por, created_at, supplier_id"
+      "id, nome, valor_total, moeda, estudante_nome, estudante_sexo, estudante_data_nascimento, estudante_email, pais_destino, visto_status, data_inicio, data_fim, cancelado_em, cancelado_tipo, cancelado_motivo, cancelado_por, created_at, supplier_id"
     )
     .eq("titular_id", titularId)
     .order("created_at", { ascending: false });

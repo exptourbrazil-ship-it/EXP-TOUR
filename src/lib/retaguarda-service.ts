@@ -356,12 +356,12 @@ async function carregarSnapshot(
     // sentido cobrar seguro de uma viagem que não vai acontecer.
     const { data: contratos, error: e8 } = await supabase
       .from("contratos")
-      .select("id, titular_id, data_inicio, cancelado_em, pais_destino")
+      .select("id, titular_id, data_inicio, data_fim, cancelado_em, pais_destino")
       .in("id", lote)
       .is("cancelado_em", null)
       .not("data_inicio", "is", null);
     if (e8) throw new Error("Falha ao ler contratos p/ seguro da retaguarda: " + e8.message);
-    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null; pais_destino: string | null }>;
+    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null; data_fim: string | null; pais_destino: string | null }>;
     const titularIds = Array.from(
       new Set(linhasContrato.map((c) => c.titular_id).filter((t): t is string => !!t)),
     );
@@ -464,13 +464,17 @@ async function carregarSnapshot(
         hojeISO,
       });
       // Vigência: só quando HÁ apólice com validade registrada (senão não há o
-      // que julgar — a ausência de apólice é a outra checagem). Referência v1 =
-      // INÍCIO do programa: um seguro que expira antes do embarque não cobre o
-      // período. Quando houver data de término do programa, a referência sobe
-      // para o fim (cobertura de todo o período).
+      // que julgar — a ausência de apólice é a outra checagem). Referência = FIM
+      // do programa quando gravado (cobertura de todo o período); na falta, cai
+      // para o início (um seguro que expira antes do embarque já não cobre).
+      // Fail-safe: só aceitamos o fim se for POSTERIOR ao início — um data_fim
+      // anterior ao início (typo) NUNCA pode rebaixar a referência e engolir um
+      // alerta legítimo. A referência jamais desce abaixo do embarque.
       const coberturaAteISO = c.titular_id ? (melhorValidadePorTitular.get(c.titular_id) ?? null) : null;
       if (coberturaAteISO) {
-        segurosVigencia.push({ contratoId: c.id, referenciaISO: inicio, coberturaAteISO });
+        const fim = (c.data_fim ?? "").slice(0, 10);
+        const referenciaISO = fim && fim > inicio ? fim : inicio;
+        segurosVigencia.push({ contratoId: c.id, referenciaISO, coberturaAteISO });
       }
 
       // Cobertura vs. mínimo do destino: só quando o país do contrato tem mínimo

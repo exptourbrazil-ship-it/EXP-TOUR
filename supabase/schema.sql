@@ -3055,3 +3055,8 @@ alter table if exists documentos add column if not exists passagem_data_volta da
 -- Compara com a data (created_at) do documento de visto do titular. Aplicar
 -- tambem no SQL Editor de producao.
 alter table if exists documentos add column if not exists passagem_data_compra date;
+
+-- Data de TÉRMINO do programa (contratos.data_fim). Alimenta as verificações de
+-- retaguarda de Seguro (vigência cobrindo o período) e Passagens (volta vs. fim).
+-- Preenchida pela equipe no Caso 360. Aplicar tambem no SQL Editor de producao.
+alter table if exists contratos add column if not exists data_fim date;
