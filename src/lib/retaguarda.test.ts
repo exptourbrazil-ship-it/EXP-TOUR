@@ -12,6 +12,7 @@ import {
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
   checarPassagemDatasIncompativeis,
+  checarPassagemCompraAntesVisto,
   adicionarMesesISO,
   adicionarDiasISO,
   detectarRetaguarda,
@@ -700,5 +701,50 @@ test("passagem: campos vazios nao quebram nem flagram", () => {
 
 test("passagem: snapshot sem o array nao quebra", () => {
   const a = checarPassagemDatasIncompativeis({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarPassagemCompraAntesVisto -----------------------------------------
+
+function compra(over: Partial<{ contratoId: string; compraISO: string; vistoISO: string }> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    compraISO: over.compraISO ?? "2026-05-01",
+    vistoISO: over.vistoISO ?? "2026-06-01",
+  };
+}
+
+test("compra: bilhete comprado ANTES do visto -> achado medio", () => {
+  const a = checarPassagemCompraAntesVisto({ parcelas: [], pagamentos: [], passagensCompra: [compra()] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "passagem_compra_antes_visto");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].chave, "retaguarda:passagem_compra_antes_visto:c1");
+});
+
+test("compra: comprado no mesmo dia do visto -> sem achado", () => {
+  const a = checarPassagemCompraAntesVisto({
+    parcelas: [], pagamentos: [], passagensCompra: [compra({ compraISO: "2026-06-01", vistoISO: "2026-06-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("compra: comprado DEPOIS do visto -> sem achado", () => {
+  const a = checarPassagemCompraAntesVisto({
+    parcelas: [], pagamentos: [], passagensCompra: [compra({ compraISO: "2026-07-01", vistoISO: "2026-06-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("compra: campos vazios nao quebram nem flagram", () => {
+  const a = checarPassagemCompraAntesVisto({
+    parcelas: [], pagamentos: [], passagensCompra: [compra({ vistoISO: "" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("compra: snapshot sem o array nao quebra", () => {
+  const a = checarPassagemCompraAntesVisto({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

@@ -26,6 +26,7 @@ import {
   type SeguroVigenciaSnapshot,
   type SeguroCoberturaSnapshot,
   type PassagemSnapshot,
+  type PassagemCompraSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -34,6 +35,7 @@ import {
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 import { somarDiasUteis, type Feriados } from "@/lib/dias-uteis";
+import { TIPOS_VISTO } from "@/lib/documentos";
 import { carregarFeriados } from "@/lib/dias-uteis-service";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
@@ -62,6 +64,16 @@ const VISTO_VALIDADE_MIN_MESES_PADRAO = 6;
 // Janela padrão do agente de Seguro: dias de antecedência do embarque a partir
 // dos quais a ausência de apólice vira alerta. Env override (SEGURO_ALERTA_DIAS_
 // ANTES); ausência de apólice segue sendo cobrada também após o embarque.
+// Data-calendário do Brasil (YYYY-MM-DD) de um timestamptz ISO — alinha um
+// created_at (UTC) ao mesmo calendário das colunas DATE preenchidas pelo admin.
+function dataBrasilDeISO(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // en-CA formata como YYYY-MM-DD; o timeZone fixa o dia no fuso do Brasil.
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
 const SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO = 30;
 function janelaAlertaSeguroDias(): number {
   const env = Number(process.env.SEGURO_ALERTA_DIAS_ANTES);
@@ -154,6 +166,7 @@ async function carregarSnapshot(
   segurosVigencia: SeguroVigenciaSnapshot[];
   segurosCobertura: SeguroCoberturaSnapshot[];
   passagens: PassagemSnapshot[];
+  passagensCompra: PassagemCompraSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -166,6 +179,7 @@ async function carregarSnapshot(
   const segurosVigencia: SeguroVigenciaSnapshot[] = [];
   const segurosCobertura: SeguroCoberturaSnapshot[] = [];
   const passagens: PassagemSnapshot[] = [];
+  const passagensCompra: PassagemCompraSnapshot[] = [];
   const janelaPassAntes = janelaPassagemAntesDias();
   const janelaPassDepois = janelaPassagemDepoisDias();
   // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
@@ -387,23 +401,54 @@ async function carregarSnapshot(
       }
     }
 
-    // Bilhetes aéreos do titular, com data de ida (agente de Passagens). Lista
-    // por titular; a escolha do bilhete mais próximo do início é por contrato.
+    // Bilhetes aéreos do titular (agente de Passagens): datas de ida (para a
+    // compatibilidade com o programa) e a compra MAIS ANTIGA (para "compra
+    // posterior ao visto"). Lista de idas por titular; menor compra por titular.
     const idasPorTitular = new Map<string, string[]>();
+    const minCompraPorTitular = new Map<string, string>();
     for (const loteTit of emLotes(titularIds, LOTE_IN)) {
       const { data: pass, error: e10 } = await supabase
         .from("documentos")
-        .select("titular_id, passagem_data_ida")
+        .select("titular_id, passagem_data_ida, passagem_data_compra")
         .in("titular_id", loteTit)
-        .eq("tipo_documento", "passagem_aerea")
-        .not("passagem_data_ida", "is", null);
+        .eq("tipo_documento", "passagem_aerea");
       if (e10) throw new Error("Falha ao ler passagens da retaguarda: " + e10.message);
       for (const p of pass ?? []) {
         const t = (p as { titular_id?: string }).titular_id;
+        if (!t) continue;
         const ida = ((p as { passagem_data_ida?: string | null }).passagem_data_ida ?? "").slice(0, 10);
-        if (!t || !ida) continue;
-        const arr = idasPorTitular.get(t);
-        if (arr) arr.push(ida); else idasPorTitular.set(t, [ida]);
+        if (ida) {
+          const arr = idasPorTitular.get(t);
+          if (arr) arr.push(ida); else idasPorTitular.set(t, [ida]);
+        }
+        const compra = ((p as { passagem_data_compra?: string | null }).passagem_data_compra ?? "").slice(0, 10);
+        if (compra) {
+          const atual = minCompraPorTitular.get(t);
+          if (!atual || compra < atual) minCompraPorTitular.set(t, compra);
+        }
+      }
+    }
+
+    // Documento de visto do titular: a data (created_at) do visto MAIS ANTIGO —
+    // marco a partir do qual comprar o bilhete é seguro. Qualquer tipo de visto.
+    const minVistoPorTitular = new Map<string, string>();
+    for (const loteTit of emLotes(titularIds, LOTE_IN)) {
+      const { data: vistos, error: e11 } = await supabase
+        .from("documentos")
+        .select("titular_id, created_at")
+        .in("titular_id", loteTit)
+        .in("tipo_documento", Array.from(TIPOS_VISTO));
+      if (e11) throw new Error("Falha ao ler vistos da retaguarda: " + e11.message);
+      for (const v of vistos ?? []) {
+        const t = (v as { titular_id?: string }).titular_id;
+        // created_at é timestamptz; a data de compra é DATE no calendário do
+        // admin (Brasil). Truncar o created_at em UTC (slice) desalinharia os dois
+        // (upload noturno BRT vira o dia seguinte em UTC), gerando falso-positivo
+        // no mesmo dia (achado da revisão). Converte para a data-calendário Brasil.
+        const dt = dataBrasilDeISO((v as { created_at?: string | null }).created_at ?? null);
+        if (!t || !dt) continue;
+        const atual = minVistoPorTitular.get(t);
+        if (!atual || dt < atual) minVistoPorTitular.set(t, dt);
       }
     }
 
@@ -469,10 +514,20 @@ async function carregarSnapshot(
         }
         passagens.push({ contratoId: c.id, vooIdaISO, limiteAntesISO, limiteDepoisISO });
       }
+
+      // Compra vs. visto: só quando o titular TEM visto (data) E bilhete com data
+      // de compra. O motor sinaliza se a compra é anterior ao visto.
+      if (c.titular_id) {
+        const compraISO = minCompraPorTitular.get(c.titular_id);
+        const vistoISO = minVistoPorTitular.get(c.titular_id);
+        if (compraISO && vistoISO) {
+          passagensCompra.push({ contratoId: c.id, compraISO, vistoISO });
+        }
+      }
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com

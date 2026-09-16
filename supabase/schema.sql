@@ -3050,3 +3050,8 @@ alter table if exists tenant_config add column if not exists seguro_cobertura_mi
 -- futura). Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
 alter table if exists documentos add column if not exists passagem_data_ida date;
 alter table if exists documentos add column if not exists passagem_data_volta date;
+
+-- Passagens (§7-F.1) "compra posterior ao visto": data de COMPRA do bilhete.
+-- Compara com a data (created_at) do documento de visto do titular. Aplicar
+-- tambem no SQL Editor de producao.
+alter table if exists documentos add column if not exists passagem_data_compra date;

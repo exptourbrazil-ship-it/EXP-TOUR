@@ -32,6 +32,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   seguro_vigencia_insuficiente: "Apólice de seguro não cobre o período",
   seguro_cobertura_abaixo_minimo: "Cobertura do seguro abaixo do mínimo do destino",
   passagem_datas_incompativeis: "Data do bilhete incompatível com o programa",
+  passagem_compra_antes_visto: "Bilhete comprado antes do visto",
 };
 
 function fmtData(iso: string | null): string {
