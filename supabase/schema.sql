@@ -3069,3 +3069,15 @@ alter table if exists contratos add column if not exists data_fim date;
 -- quando um tipo exigido está ausente no acervo do titular (programa futuro).
 -- Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
 alter table if exists tenant_config add column if not exists visto_requisitos_consulado jsonb;
+
+-- ============================================================================
+-- Agente de Documentacao (retaguarda §7-F.1): consistencia de identidade
+-- ============================================================================
+-- Identidade extraida de CADA documento (nome, data de nascimento, passaporte).
+-- O agente compara estes campos entre todos os documentos do titular (mais o
+-- nome canonico do titular e a data de nascimento do contrato) e sinaliza
+-- divergencia. Preenchidos pela ingestao (rota de metadados). PII: nunca vao
+-- para log/console nem para o resumo do achado. Aplicar tambem no SQL Editor.
+alter table if exists documentos add column if not exists doc_nome text;
+alter table if exists documentos add column if not exists doc_data_nascimento date;
+alter table if exists documentos add column if not exists doc_passaporte text;

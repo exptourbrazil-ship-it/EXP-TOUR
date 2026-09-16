@@ -12,6 +12,7 @@ import {
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
   checarRequisitosConsulado,
+  checarDocumentacaoInconsistente,
   checarPassagemDatasIncompativeis,
   checarPassagemCompraAntesVisto,
   checarPassagemVoltaAntesDoFim,
@@ -646,6 +647,84 @@ test("cobertura: minimo zero/invalido -> sem achado (nada a exigir)", () => {
 
 test("cobertura: snapshot sem o array nao quebra", () => {
   const a = checarSeguroCoberturaAbaixoMinimo({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarDocumentacaoInconsistente ----------------------------------------
+
+function ident(over: Partial<{
+  contratoId: string; nomes: string[]; nascimentos: string[]; passaportes: string[];
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    nomes: over.nomes ?? ["Maria Silva", "Maria Silva"],
+    nascimentos: over.nascimentos ?? ["2000-05-01", "2000-05-01"],
+    passaportes: over.passaportes ?? ["AB123456", "AB123456"],
+  };
+}
+
+test("documentacao: nomes divergentes -> achado medio", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ nomes: ["Maria Silva", "Maria Souza"] })],
+  });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "documentacao_inconsistente");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].chave, "retaguarda:documentacao_inconsistente:c1");
+  assert.match(a[0].resumo, /nome/);
+  // Nunca expõe o valor (PII).
+  assert.doesNotMatch(a[0].resumo, /Souza|Silva/);
+});
+
+test("documentacao: acento/caixa/espaco nao contam como divergencia", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ nomes: ["José da Silva", "JOSE  DA SILVA", "jose da silva"] })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("documentacao: passaporte com separadores diferentes nao diverge", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ passaportes: ["AB-123.456", "ab123456"] })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("documentacao: passaporte divergente -> achado", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ passaportes: ["AB123456", "CD999999"] })],
+  });
+  assert.equal(a.length, 1);
+  assert.match(a[0].resumo, /passaporte/);
+});
+
+test("documentacao: nascimentos divergentes -> achado", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ nascimentos: ["2000-05-01", "2001-05-01"] })],
+  });
+  assert.equal(a.length, 1);
+  assert.match(a[0].resumo, /nascimento/);
+});
+
+test("documentacao: multiplos campos divergentes -> um achado citando todos", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ nomes: ["A", "B"], passaportes: ["X1", "Y2"] })],
+  });
+  assert.equal(a.length, 1);
+  assert.match(a[0].resumo, /nome/);
+  assert.match(a[0].resumo, /passaporte/);
+});
+
+test("documentacao: valores vazios ignorados (um so valor real nao diverge)", () => {
+  const a = checarDocumentacaoInconsistente({
+    parcelas: [], pagamentos: [], documentacaoIdentidade: [ident({ nomes: ["Maria Silva", "", "  "] })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("documentacao: snapshot sem o array nao quebra", () => {
+  const a = checarDocumentacaoInconsistente({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });
 

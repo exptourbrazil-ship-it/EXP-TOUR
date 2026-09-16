@@ -46,7 +46,10 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const temVooIda = Object.prototype.hasOwnProperty.call(body, "vooIda");
   const temVooVolta = Object.prototype.hasOwnProperty.call(body, "vooVolta");
   const temVooCompra = Object.prototype.hasOwnProperty.call(body, "vooCompra");
-  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda && !temVooIda && !temVooVolta && !temVooCompra) {
+  const temNome = Object.prototype.hasOwnProperty.call(body, "nome");
+  const temNascimento = Object.prototype.hasOwnProperty.call(body, "dataNascimento");
+  const temPassaporte = Object.prototype.hasOwnProperty.call(body, "passaporte");
+  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda && !temVooIda && !temVooVolta && !temVooCompra && !temNome && !temNascimento && !temPassaporte) {
     return NextResponse.json(
       { ok: false, error: "Informe ao menos um campo de metadados." },
       { status: 400 },
@@ -127,6 +130,48 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
   }
 
+  // Identidade extraída do documento (agente de Documentação): nome, data de
+  // nascimento e passaporte. Aplicam-se a QUALQUER tipo de documento (não são
+  // gated por tipo). O detective compara estes campos entre os documentos do
+  // titular; aqui só validamos a forma. Limpar com null/"" é livre.
+  if (temNome) {
+    const v = body.nome;
+    if (v === null || v === "") {
+      patch.doc_nome = null;
+    } else if (typeof v === "string" && v.trim().length > 0 && v.trim().length <= 200) {
+      patch.doc_nome = v.trim();
+    } else {
+      return NextResponse.json({ ok: false, error: "Nome inválido (1 a 200 caracteres)." }, { status: 400 });
+    }
+  }
+  if (temNascimento) {
+    const v = body.dataNascimento;
+    if (v === null || v === "") {
+      patch.doc_data_nascimento = null;
+    } else if (typeof v === "string" && ehDataCalendarioValida(v)) {
+      patch.doc_data_nascimento = v;
+    } else {
+      return NextResponse.json(
+        { ok: false, error: "Data de nascimento inválida. Use AAAA-MM-DD (data real) ou vazio para limpar." },
+        { status: 400 },
+      );
+    }
+  }
+  if (temPassaporte) {
+    const v = body.passaporte;
+    if (v === null || v === "") {
+      patch.doc_passaporte = null;
+    } else if (typeof v === "string" && v.trim().length > 0 && v.trim().length <= 64) {
+      // Guarda maiúsculo sem separadores (forma canônica; o motor normaliza igual).
+      patch.doc_passaporte = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (!patch.doc_passaporte) {
+        return NextResponse.json({ ok: false, error: "Passaporte inválido (use letras e números)." }, { status: 400 });
+      }
+    } else {
+      return NextResponse.json({ ok: false, error: "Passaporte inválido (1 a 64 caracteres)." }, { status: 400 });
+    }
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
@@ -201,6 +246,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       ...(temVooCompra
         ? { voo_compra_anterior: (doc as { passagem_data_compra?: string | null }).passagem_data_compra ?? null, voo_compra_novo: patch.passagem_data_compra }
         : {}),
+      // Identidade (nome, nascimento, passaporte) é PII: a trilha registra só QUE
+      // o campo foi editado e se foi definido ou limpo — nunca o valor.
+      ...(temNome ? { nome_editado: patch.doc_nome === null ? "limpo" : "definido" } : {}),
+      ...(temNascimento ? { nascimento_editado: patch.doc_data_nascimento === null ? "limpo" : "definido" } : {}),
+      ...(temPassaporte ? { passaporte_editado: patch.doc_passaporte === null ? "limpo" : "definido" } : {}),
     },
     ip: obterIp(request),
   });
