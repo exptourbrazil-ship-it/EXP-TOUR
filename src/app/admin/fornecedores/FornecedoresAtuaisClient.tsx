@@ -106,7 +106,9 @@ export default function FornecedoresAtuaisClient({ fornecedores }: { fornecedore
               {filtrados.map((f) => (
                 <tr key={f.id} className="border-t border-neutral-100">
                   <td className="px-4 py-2 font-medium text-brand">
-                    {f.name}
+                    <Link href={`/admin/fornecedores/${f.id}`} className="hover:underline">
+                      {f.name}
+                    </Link>
                     {f.preferido ? <span className="ml-2 text-xs text-brand-golddark">★ preferido</span> : null}
                   </td>
                   <td className="px-4 py-2 text-neutral-500">{f.country ?? "—"}</td>
@@ -117,11 +119,16 @@ export default function FornecedoresAtuaisClient({ fornecedores }: { fornecedore
                   </td>
                   <td className="px-4 py-2 text-neutral-500">{f.temAcesso ? "sim" : "—"}</td>
                   <td className="px-4 py-2 text-right">
-                    {f.website ? (
-                      <Link href={f.website} target="_blank" rel="noopener noreferrer" className="text-brand-golddark hover:underline">
-                        Site →
+                    <div className="flex items-center justify-end gap-3">
+                      {f.website ? (
+                        <Link href={f.website} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-brand">
+                          Site
+                        </Link>
+                      ) : null}
+                      <Link href={`/admin/fornecedores/${f.id}`} className="font-medium text-brand-golddark hover:underline">
+                        Abrir →
                       </Link>
-                    ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
