@@ -25,6 +25,7 @@ import {
   type SeguroContratoSnapshot,
   type SeguroVigenciaSnapshot,
   type SeguroCoberturaSnapshot,
+  type PassagemSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -65,6 +66,20 @@ const SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO = 30;
 function janelaAlertaSeguroDias(): number {
   const env = Number(process.env.SEGURO_ALERTA_DIAS_ANTES);
   return Number.isFinite(env) && env >= 0 ? Math.round(env) : SEGURO_ALERTA_DIAS_ANTES_EMBARQUE_PADRAO;
+}
+
+// Janela de compatibilidade da IDA do bilhete com o início do programa (agente de
+// Passagens): a ida pode ser até N dias ANTES do início (chegar cedo) e no máximo
+// M dias DEPOIS (tolerância de fuso/chegada no mesmo dia). Fora disso, incompatível.
+const PASSAGEM_JANELA_ANTES_DIAS_PADRAO = 30;
+const PASSAGEM_JANELA_DEPOIS_DIAS_PADRAO = 3;
+function janelaPassagemAntesDias(): number {
+  const env = Number(process.env.PASSAGEM_JANELA_ANTES_DIAS);
+  return Number.isFinite(env) && env >= 0 ? Math.round(env) : PASSAGEM_JANELA_ANTES_DIAS_PADRAO;
+}
+function janelaPassagemDepoisDias(): number {
+  const env = Number(process.env.PASSAGEM_JANELA_DEPOIS_DIAS);
+  return Number.isFinite(env) && env >= 0 ? Math.round(env) : PASSAGEM_JANELA_DEPOIS_DIAS_PADRAO;
 }
 
 // Mínimos de cobertura de seguro por país (destino), do config do tenant. Forma
@@ -138,6 +153,7 @@ async function carregarSnapshot(
   segurosContrato: SeguroContratoSnapshot[];
   segurosVigencia: SeguroVigenciaSnapshot[];
   segurosCobertura: SeguroCoberturaSnapshot[];
+  passagens: PassagemSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -149,6 +165,9 @@ async function carregarSnapshot(
   const segurosContrato: SeguroContratoSnapshot[] = [];
   const segurosVigencia: SeguroVigenciaSnapshot[] = [];
   const segurosCobertura: SeguroCoberturaSnapshot[] = [];
+  const passagens: PassagemSnapshot[] = [];
+  const janelaPassAntes = janelaPassagemAntesDias();
+  const janelaPassDepois = janelaPassagemDepoisDias();
   // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
   const hojeBR = hojeBrasilISO();
   // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
@@ -367,6 +386,27 @@ async function carregarSnapshot(
         }
       }
     }
+
+    // Bilhetes aéreos do titular, com data de ida (agente de Passagens). Lista
+    // por titular; a escolha do bilhete mais próximo do início é por contrato.
+    const idasPorTitular = new Map<string, string[]>();
+    for (const loteTit of emLotes(titularIds, LOTE_IN)) {
+      const { data: pass, error: e10 } = await supabase
+        .from("documentos")
+        .select("titular_id, passagem_data_ida")
+        .in("titular_id", loteTit)
+        .eq("tipo_documento", "passagem_aerea")
+        .not("passagem_data_ida", "is", null);
+      if (e10) throw new Error("Falha ao ler passagens da retaguarda: " + e10.message);
+      for (const p of pass ?? []) {
+        const t = (p as { titular_id?: string }).titular_id;
+        const ida = ((p as { passagem_data_ida?: string | null }).passagem_data_ida ?? "").slice(0, 10);
+        if (!t || !ida) continue;
+        const arr = idasPorTitular.get(t);
+        if (arr) arr.push(ida); else idasPorTitular.set(t, [ida]);
+      }
+    }
+
     for (const c of linhasContrato) {
       const inicio = (c.data_inicio ?? "").slice(0, 10);
       if (!inicio) continue;
@@ -404,10 +444,29 @@ async function carregarSnapshot(
           });
         }
       }
+
+      // Passagens: entre os bilhetes do titular, escolhe a ida MAIS PRÓXIMA do
+      // início (se qualquer bilhete for compatível, é este que vale — sem
+      // falso-positivo). Janela = início − antes .. início + depois.
+      const idas = c.titular_id ? idasPorTitular.get(c.titular_id) : undefined;
+      if (idas && idas.length > 0) {
+        const inicioMs = Date.parse(inicio + "T00:00:00Z");
+        let vooIdaISO = idas[0];
+        let melhorDist = Number.POSITIVE_INFINITY;
+        for (const ida of idas) {
+          const dist = Math.abs(Date.parse(ida + "T00:00:00Z") - inicioMs);
+          if (Number.isFinite(dist) && dist < melhorDist) { melhorDist = dist; vooIdaISO = ida; }
+        }
+        const limiteAntesISO = adicionarDiasISO(inicio, -janelaPassAntes);
+        const limiteDepoisISO = adicionarDiasISO(inicio, janelaPassDepois);
+        if (limiteAntesISO && limiteDepoisISO) {
+          passagens.push({ contratoId: c.id, vooIdaISO, limiteAntesISO, limiteDepoisISO });
+        }
+      }
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com

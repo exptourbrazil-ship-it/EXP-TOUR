@@ -4,7 +4,7 @@ import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
-import { ehTipoDocumentoValido, tipoTemValidade, tipoTemCobertura } from "@/lib/documentos";
+import { ehTipoDocumentoValido, tipoTemValidade, tipoTemCobertura, tipoTemVoo } from "@/lib/documentos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,9 +43,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const temTipo = Object.prototype.hasOwnProperty.call(body, "tipoDocumento");
   const temCoberturaValor = Object.prototype.hasOwnProperty.call(body, "coberturaValor");
   const temCoberturaMoeda = Object.prototype.hasOwnProperty.call(body, "coberturaMoeda");
-  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda) {
+  const temVooIda = Object.prototype.hasOwnProperty.call(body, "vooIda");
+  const temVooVolta = Object.prototype.hasOwnProperty.call(body, "vooVolta");
+  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda && !temVooIda && !temVooVolta) {
     return NextResponse.json(
-      { ok: false, error: "Informe validade, tipoDocumento, coberturaValor e/ou coberturaMoeda." },
+      { ok: false, error: "Informe ao menos um campo de metadados." },
       { status: 400 },
     );
   }
@@ -105,6 +107,24 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
   }
 
+  // Datas de voo (agente de Passagens). Mesma validação de data real da validade.
+  for (const [flag, campo, valor] of [
+    [temVooIda, "passagem_data_ida", body.vooIda],
+    [temVooVolta, "passagem_data_volta", body.vooVolta],
+  ] as const) {
+    if (!flag) continue;
+    if (valor === null || valor === "") {
+      patch[campo] = null;
+    } else if (typeof valor === "string" && ehDataCalendarioValida(valor)) {
+      patch[campo] = valor;
+    } else {
+      return NextResponse.json(
+        { ok: false, error: "Data de voo inválida. Use o formato AAAA-MM-DD (data real) ou vazio para limpar." },
+        { status: 400 },
+      );
+    }
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
@@ -116,7 +136,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
   const { data: doc } = await supabase
     .from("documentos")
-    .select("id, titular_id, tipo_documento, validade, cobertura_valor, cobertura_moeda")
+    .select("id, titular_id, tipo_documento, validade, cobertura_valor, cobertura_moeda, passagem_data_ida, passagem_data_volta")
     .eq("id", id)
     .maybeSingle();
   if (!doc) {
@@ -132,6 +152,15 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   if (gravaCobertura && !tipoTemCobertura(tipoEfetivo)) {
     return NextResponse.json(
       { ok: false, error: "Cobertura só se aplica à apólice de seguro." },
+      { status: 422 },
+    );
+  }
+  // Datas de voo só na passagem aérea (mesma lógica da cobertura). Limpar (null)
+  // é livre; gravar data em outro tipo é recusado.
+  const gravaVoo = patch.passagem_data_ida != null || patch.passagem_data_volta != null;
+  if (gravaVoo && !tipoTemVoo(tipoEfetivo)) {
+    return NextResponse.json(
+      { ok: false, error: "Datas de voo só se aplicam à passagem aérea." },
       { status: 422 },
     );
   }
@@ -160,6 +189,12 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         : {}),
       ...(temCoberturaMoeda
         ? { cobertura_moeda_anterior: (doc as { cobertura_moeda?: string | null }).cobertura_moeda ?? null, cobertura_moeda_nova: patch.cobertura_moeda }
+        : {}),
+      ...(temVooIda
+        ? { voo_ida_anterior: (doc as { passagem_data_ida?: string | null }).passagem_data_ida ?? null, voo_ida_novo: patch.passagem_data_ida }
+        : {}),
+      ...(temVooVolta
+        ? { voo_volta_anterior: (doc as { passagem_data_volta?: string | null }).passagem_data_volta ?? null, voo_volta_novo: patch.passagem_data_volta }
         : {}),
     },
     ip: obterIp(request),

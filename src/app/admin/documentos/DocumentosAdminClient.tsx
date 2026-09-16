@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, tipoTemCobertura, ehTipoDocumentoValido } from "@/lib/documentos";
+import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, tipoTemCobertura, tipoTemVoo, ehTipoDocumentoValido } from "@/lib/documentos";
 
 // Um tipo é "conhecido" quando está no catálogo (evita exibir o 1º tipo como se
 // fosse o real quando o doc tem um tipo legado/fora da lista).
@@ -100,7 +100,7 @@ export default function DocumentosAdminClient() {
   // erro (mantém a linha consistente com o servidor). Envia só o(s) campo(s) tocado(s).
   async function salvarMetadados(
     id: string,
-    patch: { tipoDocumento?: string; validade?: string | null; coberturaValor?: number | null; coberturaMoeda?: string | null },
+    patch: { tipoDocumento?: string; validade?: string | null; coberturaValor?: number | null; coberturaMoeda?: string | null; vooIda?: string | null; vooVolta?: string | null },
   ) {
     const anterior = documentos.find((d) => d.id === id);
     setAtualizandoId(id);
@@ -114,6 +114,8 @@ export default function DocumentosAdminClient() {
               ...(patch.validade !== undefined ? { validade: patch.validade } : {}),
               ...(patch.coberturaValor !== undefined ? { cobertura_valor: patch.coberturaValor } : {}),
               ...(patch.coberturaMoeda !== undefined ? { cobertura_moeda: patch.coberturaMoeda } : {}),
+              ...(patch.vooIda !== undefined ? { passagem_data_ida: patch.vooIda } : {}),
+              ...(patch.vooVolta !== undefined ? { passagem_data_volta: patch.vooVolta } : {}),
             }
           : d,
       ),
@@ -342,6 +344,39 @@ export default function DocumentosAdminClient() {
                           if (novo !== atual) salvarMetadados(doc.id, { coberturaMoeda: novo });
                         }}
                         className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm uppercase text-brand"
+                      />
+                    </label>
+                  </>
+                ) : null}
+
+                {tipoTemVoo(doc.tipo_documento) ? (
+                  <>
+                    <label className="flex items-center gap-1 text-xs text-neutral-500">
+                      Ida
+                      <input
+                        type="date"
+                        value={(doc.passagem_data_ida || "").slice(0, 10)}
+                        disabled={atualizandoId === doc.id}
+                        onChange={(e) => {
+                          const novo = e.target.value || null;
+                          const atual = (doc.passagem_data_ida || "").slice(0, 10) || null;
+                          if (novo !== atual) salvarMetadados(doc.id, { vooIda: novo });
+                        }}
+                        className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-neutral-500">
+                      Volta
+                      <input
+                        type="date"
+                        value={(doc.passagem_data_volta || "").slice(0, 10)}
+                        disabled={atualizandoId === doc.id}
+                        onChange={(e) => {
+                          const novo = e.target.value || null;
+                          const atual = (doc.passagem_data_volta || "").slice(0, 10) || null;
+                          if (novo !== atual) salvarMetadados(doc.id, { vooVolta: novo });
+                        }}
+                        className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
                       />
                     </label>
                   </>
