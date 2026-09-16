@@ -183,6 +183,20 @@ export type SeguroCoberturaSnapshot = {
   moeda: string;
 };
 
+// Requisitos publicados do consulado, para o agente de Vistos (§7-F.1,
+// "Requisitos publicados do consulado"). `exigidos` = tipos de documento que o
+// consulado do destino exige (do config por tenant/país); `presentes` = tipos
+// que o titular JÁ tem no acervo. O motor calcula o que falta (exigidos −
+// presentes) e sinaliza quando há requisito não atendido. `pais` é só para o
+// resumo. A camada de dados só monta o snapshot quando o país tem requisitos
+// configurados E o programa ainda não começou (janela preventiva).
+export type RequisitoConsuladoSnapshot = {
+  contratoId: string;
+  pais: string;
+  exigidos: string[];
+  presentes: string[];
+};
+
 // Datas do bilhete vs. início do programa, para o agente de Passagens (§7-F.1,
 // "datas do bilhete compatíveis com as do Programa"). `vooIdaISO` = a ida MAIS
 // PRÓXIMA do início entre os bilhetes do titular (a camada de dados escolhe a
@@ -236,6 +250,7 @@ export type SnapshotRetaguarda = {
   segurosContrato?: SeguroContratoSnapshot[];
   segurosVigencia?: SeguroVigenciaSnapshot[];
   segurosCobertura?: SeguroCoberturaSnapshot[];
+  requisitosConsulado?: RequisitoConsuladoSnapshot[];
   passagens?: PassagemSnapshot[];
   passagensCompra?: PassagemCompraSnapshot[];
   passagensVolta?: PassagemVoltaSnapshot[];
@@ -595,6 +610,36 @@ export function checarSeguroCoberturaAbaixoMinimo(snap: SnapshotRetaguarda): Ach
  * demais — a passagem não bate com o programa. MÉDIO (resolve ao corrigir o
  * bilhete/data). Só compara datas YYYY-MM-DD; a janela é da camada de dados.
  */
+/**
+ * Requisitos publicados do consulado não atendidos (§7-F.1, agente de Vistos,
+ * "Requisitos publicados do consulado").
+ *
+ * A camada de dados traz, por contrato cujo destino tem checklist configurado, os
+ * tipos de documento `exigidos` pelo consulado e os `presentes` no acervo do
+ * titular. O motor calcula os FALTANTES (exigidos − presentes) e sinaliza quando
+ * algum requisito não está atendido. MÉDIO (operacional; resolve ao subir o
+ * documento). O resumo lista só slugs de tipo de documento — sem PII.
+ */
+export function checarRequisitosConsulado(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const r of snap.requisitosConsulado ?? []) {
+    if (!r.exigidos || r.exigidos.length === 0) continue;
+    const presentes = new Set(r.presentes ?? []);
+    const faltantes = r.exigidos.filter((t) => !presentes.has(t));
+    if (faltantes.length > 0) {
+      achados.push({
+        chave: `retaguarda:requisitos_consulado:${r.contratoId}`,
+        categoria: "requisitos_consulado_incompletos",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: r.contratoId },
+        contratoId: r.contratoId,
+        resumo: `Contrato ${r.contratoId}: documentos exigidos pelo consulado do destino (${r.pais}) ausentes no acervo: ${faltantes.join(", ")} — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 export function checarPassagemDatasIncompativeis(snap: SnapshotRetaguarda): Achado[] {
   const achados: Achado[] = [];
   for (const p of snap.passagens ?? []) {
@@ -683,6 +728,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarSeguroAusenteAntesEmbarque,
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
+  checarRequisitosConsulado,
   checarPassagemDatasIncompativeis,
   checarPassagemCompraAntesVisto,
   checarPassagemVoltaAntesDoFim,

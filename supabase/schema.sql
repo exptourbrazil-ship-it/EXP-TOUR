@@ -3060,3 +3060,12 @@ alter table if exists documentos add column if not exists passagem_data_compra d
 -- retaguarda de Seguro (vigência cobrindo o período) e Passagens (volta vs. fim).
 -- Preenchida pela equipe no Caso 360. Aplicar tambem no SQL Editor de producao.
 alter table if exists contratos add column if not exists data_fim date;
+
+-- ============================================================================
+-- Agente de Vistos (retaguarda §7-F.1): requisitos publicados do consulado
+-- ============================================================================
+-- Checklist de documentos exigidos pelo consulado por país (destino) no config
+-- do tenant: jsonb { "<pais>": ["<tipo_documento>", ...] }. O agente sinaliza
+-- quando um tipo exigido está ausente no acervo do titular (programa futuro).
+-- Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
+alter table if exists tenant_config add column if not exists visto_requisitos_consulado jsonb;

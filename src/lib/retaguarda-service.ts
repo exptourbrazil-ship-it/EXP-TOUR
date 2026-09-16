@@ -28,6 +28,7 @@ import {
   type PassagemSnapshot,
   type PassagemCompraSnapshot,
   type PassagemVoltaSnapshot,
+  type RequisitoConsuladoSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -36,7 +37,7 @@ import {
 } from "@/lib/retaguarda";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 import { somarDiasUteis, type Feriados } from "@/lib/dias-uteis";
-import { TIPOS_VISTO } from "@/lib/documentos";
+import { TIPOS_VISTO, ehTipoDocumentoValido } from "@/lib/documentos";
 import { carregarFeriados } from "@/lib/dias-uteis-service";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
@@ -137,6 +138,40 @@ async function carregarMinimosCoberturaSeguro(
   return mapa;
 }
 
+// Requisitos publicados do consulado por país (destino), do config do tenant.
+// Forma esperada: { "<pais>": ["<tipo_documento>", ...] }. Normaliza o país para
+// slug minúsculo (igual a contratos.pais_destino) e valida cada tipo contra a
+// taxonomia (ehTipoDocumentoValido) — tipo desconhecido é descartado, para um
+// config errado não gerar achado com slug inexistente. Deploy-safe: coluna
+// ausente/erro -> mapa vazio (o agente simplesmente não roda).
+async function carregarRequisitosConsulado(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<Map<string, string[]>> {
+  const mapa = new Map<string, string[]>();
+  const { data, error } = await supabase
+    .from("tenant_config")
+    .select("visto_requisitos_consulado")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const raw = !error && data ? (data as { visto_requisitos_consulado?: unknown }).visto_requisitos_consulado : null;
+  if (raw && typeof raw === "object") {
+    for (const [paisRaw, v] of Object.entries(raw as Record<string, unknown>)) {
+      const pais = paisRaw.trim().toLowerCase();
+      if (!pais || !Array.isArray(v)) continue;
+      const exigidos = Array.from(
+        new Set(
+          v
+            .map((t) => (typeof t === "string" ? t.trim().toLowerCase() : ""))
+            .filter((t) => t && ehTipoDocumentoValido(t)),
+        ),
+      );
+      if (exigidos.length > 0) mapa.set(pais, exigidos);
+    }
+  }
+  return mapa;
+}
+
 // Carrega o buffer de validade do tenant (linha -> env -> default). Deploy-safe:
 // banco sem a coluna -> select erra -> cai no env/default.
 async function carregarBufferValidadeMeses(
@@ -163,6 +198,7 @@ async function carregarSnapshot(
   feriados: Feriados,
   janelaSeguroDias: number,
   minimosCobertura: Map<string, MinimoCobertura>,
+  requisitosConsuladoPorPais: Map<string, string[]>,
 ): Promise<{
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -177,6 +213,7 @@ async function carregarSnapshot(
   passagens: PassagemSnapshot[];
   passagensCompra: PassagemCompraSnapshot[];
   passagensVolta: PassagemVoltaSnapshot[];
+  requisitosConsulado: RequisitoConsuladoSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -191,6 +228,7 @@ async function carregarSnapshot(
   const passagens: PassagemSnapshot[] = [];
   const passagensCompra: PassagemCompraSnapshot[] = [];
   const passagensVolta: PassagemVoltaSnapshot[] = [];
+  const requisitosConsulado: RequisitoConsuladoSnapshot[] = [];
   const janelaPassAntes = janelaPassagemAntesDias();
   const janelaPassDepois = janelaPassagemDepoisDias();
   const janelaVoltaAntes = janelaPassagemVoltaAntesDias();
@@ -480,6 +518,28 @@ async function carregarSnapshot(
       }
     }
 
+    // Tipos de documento presentes no acervo por titular (agente de Vistos,
+    // "requisitos publicados do consulado"). Só lê quando HÁ requisito configurado
+    // — sem config, o agente não roda e a query é dispensável. É nível-titular
+    // (qualquer contrato_id) porque o checklist é do titular, não da parcela.
+    const tiposPorTitular = new Map<string, Set<string>>();
+    if (requisitosConsuladoPorPais.size > 0) {
+      for (const loteTit of emLotes(titularIds, LOTE_IN)) {
+        const { data: docsT, error: e12 } = await supabase
+          .from("documentos")
+          .select("titular_id, tipo_documento")
+          .in("titular_id", loteTit);
+        if (e12) throw new Error("Falha ao ler tipos de documento da retaguarda: " + e12.message);
+        for (const d of docsT ?? []) {
+          const t = (d as { titular_id?: string }).titular_id;
+          const tipo = (d as { tipo_documento?: string | null }).tipo_documento;
+          if (!t || !tipo) continue;
+          const set = tiposPorTitular.get(t);
+          if (set) set.add(tipo); else tiposPorTitular.set(t, new Set([tipo]));
+        }
+      }
+    }
+
     for (const c of linhasContrato) {
       const inicio = (c.data_inicio ?? "").slice(0, 10);
       if (!inicio) continue;
@@ -520,6 +580,17 @@ async function carregarSnapshot(
             moeda: minimo.moeda,
           });
         }
+      }
+
+      // Requisitos publicados do consulado (agente de Vistos): só quando o destino
+      // tem checklist configurado E o programa ainda não começou (janela
+      // preventiva — depois do embarque o alerta de doc faltante perde a ação,
+      // igual à validade de documento acima). Os `presentes` são os tipos do
+      // titular (Set vazio se nenhum); o motor calcula os faltantes.
+      const exigidos = pais ? requisitosConsuladoPorPais.get(pais) : undefined;
+      if (exigidos && inicio >= hojeISO) {
+        const presentes = c.titular_id ? Array.from(tiposPorTitular.get(c.titular_id) ?? []) : [];
+        requisitosConsulado.push({ contratoId: c.id, pais, exigidos, presentes });
       }
 
       // Passagens: janela = início − antes .. início + depois (ASSIMÉTRICA).
@@ -578,7 +649,7 @@ async function carregarSnapshot(
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra, passagensVolta };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra, passagensVolta, requisitosConsulado };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
@@ -718,10 +789,12 @@ export async function varrerRetaguarda(supabase: SupabaseClient): Promise<Resumo
   const feriados = await carregarFeriados(supabase, { pais: "brasil", tenantId: escopo.tenantId });
   const janelaSeguroDias = janelaAlertaSeguroDias();
   const minimosCobertura = await carregarMinimosCoberturaSeguro(supabase, escopo.tenantId);
+  // Requisitos publicados do consulado por país (agente de Vistos, por tenant).
+  const requisitosConsulado = await carregarRequisitosConsulado(supabase, escopo.tenantId);
 
   // Tenant sem contratos: nada a varrer, mas ainda resolve achados que porventura
   // tenham sobrado (contratos removidos) — a reconciliação cuida disso.
-  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados, janelaSeguroDias, minimosCobertura);
+  const snap = await carregarSnapshot(supabase, membership.contratoIds, bufferValidadeMeses, feriados, janelaSeguroDias, minimosCobertura, requisitosConsulado);
   const atuais = detectarRetaguarda(snap);
 
   // Carrega TODOS os status (aberto E resolvido): a reconciliação precisa
