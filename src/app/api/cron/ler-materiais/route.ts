@@ -43,8 +43,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, fila: fila.length, sem_ia: true, lidos: 0 });
   }
 
-  const resultado = { fila: fila.length, lidos: 0, precisa_campus: 0, reagendados: 0, erros: 0, outros: 0 };
+  // Orcamento de tempo: cada leitura pode levar dezenas de segundos (IA + varias
+  // gravacoes). Nao inicia outra leitura quando ja passou do orcamento — o que sobrar
+  // fica na fila (nao ha claim preso, porque a leitura em curso termina).
+  const inicio = Date.now();
+  const ORCAMENTO_MS = Number(process.env.CRON_LER_MATERIAIS_ORCAMENTO_MS || "35000");
+  const resultado = { fila: fila.length, lidos: 0, precisa_campus: 0, reagendados: 0, erros: 0, outros: 0, adiados: 0 };
   for (const materialId of fila) {
+    if (Date.now() - inicio > ORCAMENTO_MS) {
+      resultado.adiados++;
+      continue;
+    }
     const r = await lerMaterial(supabase, { tenantId, materialId, actor: "cron" });
     if (r.status === "lida") resultado.lidos++;
     else if (r.status === "precisa_campus") resultado.precisa_campus++;

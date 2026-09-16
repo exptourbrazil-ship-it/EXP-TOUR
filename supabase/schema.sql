@@ -2859,6 +2859,11 @@ alter table if exists material add column if not exists leitura_tentativas int n
 create index if not exists idx_material_leitura on material(tenant_id, leitura_status) where archived_at is null;
 alter table if exists price_submission add column if not exists source_material_id uuid references material(id) on delete set null;
 create index if not exists idx_price_submission_source_material on price_submission(source_material_id);
+-- F3.2: brochura -> proposta de CONTEUDO (migracao-material-leitura-brochura.sql, prod 16/09/2026).
+alter table if exists content_submission add column if not exists source_material_id uuid references material(id) on delete set null;
+alter table if exists campus_content_submission add column if not exists source_material_id uuid references material(id) on delete set null;
+create index if not exists idx_content_submission_source_material on content_submission(source_material_id);
+create index if not exists idx_campus_content_submission_source_material on campus_content_submission(source_material_id);
 
 -- Substituicao ATOMICA das regras de elegibilidade de um produto (compliance-
 -- sensivel: is_blocking impede a emissao da cotacao). delete+insert numa unica

@@ -37,7 +37,8 @@ const PROPOSTA_LABEL: Record<string, string> = {
   rejected: "recusada",
 };
 
-type Proposta = { id: string; status: string };
+type Proposta = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola"; href: string };
+const TIPO_PROPOSTA_LABEL: Record<Proposta["tipo"], string> = { preco: "preço", curso: "curso", acomodacao: "acomodação", escola: "escola" };
 
 // Aba Material do hub (F2 + F3.1): (1) fila "Aguardando aprovação" com Publicar/Recusar
 // (motivo obrigatório); (2) "Price lists — leitura por IA" (botão Ler, badge, link para a
@@ -56,7 +57,7 @@ export default function MateriaisHubClient({
   demais: MaterialAdmin[];
   hoje: string;
   campi: Array<{ id: string; nome: string }>;
-  propostas: Record<string, Proposta>;
+  propostas: Record<string, Proposta[]>;
 }) {
   const router = useRouter();
   const endpoint = `/api/admin/suppliers/${supplierId}/materiais`;
@@ -121,8 +122,8 @@ export default function MateriaisHubClient({
     if (!r) return;
     const st = String(r.status ?? "");
     const detalhe = r.erro ? String(r.erro) : "";
-    if (st === "lida") setAviso(`Proposta gerada (${String(r.itens ?? 0)} itens) — revise e publique em Preço & tabelas.`);
-    else if (st === "ja_lida") setAviso("Já existe uma proposta aberta deste material — revise-a em Preço & tabelas, ou use \"Ler de novo\" para substituí-la.");
+    if (st === "lida") setAviso(r.resumo ? `Lido. ${String(r.resumo)} — revise e publique.` : `Proposta gerada (${String(r.itens ?? 0)} itens) — revise e publique.`);
+    else if (st === "ja_lida") setAviso("Já existe uma proposta aberta deste material — revise-a, ou use \"Ler de novo\" para substituí-la.");
     else if (st === "sem_ia") setErro("A IA não está configurada neste ambiente (ANTHROPIC_API_KEY). O material segue na fila; nada foi gerado.");
     else if (st === "precisa_campus") setErro(detalhe || "Escolha o campus da proposta.");
     else if (st === "em_leitura") setAviso("Leitura já em andamento — aguarde e atualize a página.");
@@ -131,8 +132,9 @@ export default function MateriaisHubClient({
     else if (st === "nao_legivel") setErro(detalhe || "Este material não pode ser lido.");
   }
 
-  // Price lists (qualquer status de aprovacao, exceto recusados) para a secao de leitura.
-  const priceLists = [...pendentes, ...demais].filter((m) => tipoLegivel(m.tipo) && m.status !== "rejeitado");
+  // Materiais legiveis (price list, brochura; qualquer status de aprovacao, exceto
+  // recusados) para a secao de leitura por IA.
+  const legiveis = [...pendentes, ...demais].filter((m) => tipoLegivel(m.tipo) && m.status !== "rejeitado");
 
   return (
     <div className="space-y-8">
@@ -239,19 +241,20 @@ export default function MateriaisHubClient({
 
       {/* 2) Leitura por IA (F3.1): price lists -> proposta de preco pendente */}
       <section>
-        <h3 className="mb-1 font-serif text-base text-brand">Price lists — leitura por IA</h3>
+        <h3 className="mb-1 font-serif text-base text-brand">Leitura por IA — price lists e brochuras</h3>
         <p className="mb-3 text-xs text-neutral-500">
-          A ferramenta lê o PDF e monta uma <strong>proposta de preço</strong> (programas, acomodações, taxas) que fica
-          aguardando <strong>sua aprovação</strong> em Preço &amp; tabelas — nada vira preço na cotação sem você publicar.
-          A fila é lida automaticamente uma vez por dia; use o botão para ler agora.
+          <strong>Price list (PDF)</strong> vira uma proposta de <strong>preço</strong> (programas, acomodações, taxas);
+          <strong> brochura (PDF ou imagem)</strong> vira propostas de <strong>conteúdo</strong> dos cursos/acomodações que
+          ela descreve e do bloco da escola. Tudo fica aguardando <strong>sua aprovação</strong> — nada chega à cotação
+          sem você publicar. A fila é lida automaticamente uma vez por dia; use o botão para ler agora.
         </p>
-        {priceLists.length === 0 ? (
-          <p className="text-sm text-neutral-500">Nenhum price list neste fornecedor.</p>
+        {legiveis.length === 0 ? (
+          <p className="text-sm text-neutral-500">Nenhum price list ou brochura neste fornecedor.</p>
         ) : (
           <ul className="space-y-2">
-            {priceLists.map((m) => {
+            {legiveis.map((m) => {
               const st = (m.leituraStatus || "nao_aplicavel") as StatusLeitura;
-              const proposta = propostas[m.id];
+              const lista = propostas[m.id] ?? [];
               // 'lendo' esconde o botao; se o claim ficou obsoleto (processo morreu), o cron
               // retoma sozinho no proximo ciclo e o servidor tambem aceita reler.
               const podeBotao = st !== "lendo" && st !== "nao_suportado";
@@ -267,17 +270,20 @@ export default function MateriaisHubClient({
                         </span>
                       </div>
                       <div className="mt-0.5 text-xs text-neutral-500">
-                        {m.nomeArquivo ?? (m.linkUrl ? "link" : "arquivo")}
+                        {TIPO_MATERIAL_LABEL[m.tipo as TipoMaterial] || m.tipo} · {m.nomeArquivo ?? (m.linkUrl ? "link" : "arquivo")}
                         {m.leituraErro ? <span className="text-red-600"> · {m.leituraErro}</span> : null}
-                        {proposta ? (
-                          <>
-                            {" · proposta "}
-                            <Link href={`/admin/precos/${proposta.id}`} className="font-medium text-brand-golddark hover:underline">
-                              {PROPOSTA_LABEL[proposta.status] ?? proposta.status} → revisar
-                            </Link>
-                          </>
-                        ) : null}
                       </div>
+                      {lista.length > 0 ? (
+                        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                          {lista.map((p) => (
+                            <li key={p.id}>
+                              <Link href={p.href} className="font-medium text-brand-golddark hover:underline">
+                                {TIPO_PROPOSTA_LABEL[p.tipo]} · {PROPOSTA_LABEL[p.status] ?? p.status} →
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       {campi.length > 1 && podeBotao ? (

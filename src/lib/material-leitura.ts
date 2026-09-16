@@ -23,21 +23,35 @@ export const STATUS_LEITURA_LABEL: Record<StatusLeitura, string> = {
   sem_ia: "IA não configurada",
   erro: "falha na leitura",
   precisa_campus: "escolha o campus",
-  nao_suportado: "só PDF é lido",
+  nao_suportado: "formato não suportado",
 };
 
-// Tipos de material que a ferramenta le nesta fatia (F3.1 = price list).
-export const TIPOS_LEGIVEIS = ["price_list"] as const;
+// Tipos de material que a ferramenta le: price list (F3.1, so PDF) e brochura
+// (F3.2, PDF ou imagem — o modelo le imagem nativamente).
+export const TIPOS_LEGIVEIS = ["price_list", "brochura"] as const;
+export const MIMES_IMAGEM = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export function tipoLegivel(tipo: string): boolean {
   return (TIPOS_LEGIVEIS as readonly string[]).includes(tipo);
 }
 
+// Formato aceito por tipo: price list exige PDF (tabelas); brochura aceita PDF ou imagem.
+export function formatoSuportado(tipo: string, mime: string | null): boolean {
+  if (mime === "application/pdf") return tipoLegivel(tipo);
+  if (tipo === "brochura") return !!mime && (MIMES_IMAGEM as readonly string[]).includes(mime);
+  return false;
+}
+
+export function motivoFormato(tipo: string): string {
+  return tipo === "brochura" ? "brochura: só PDF ou imagem (JPG/PNG/WEBP) é lida" : "price list: só PDF é lido";
+}
+
 // Status inicial de um material recem-criado: entra na fila so se for de tipo
-// legivel E arquivo PDF. Link e imagem: 'nao_suportado' (honesto, nao 'pendente').
+// legivel E arquivo em formato suportado. Link/formato errado: 'nao_suportado'
+// (honesto, nao 'pendente').
 export function statusLeituraInicial(tipo: string, mime: string | null, linkUrl: string | null): StatusLeitura {
   if (!tipoLegivel(tipo)) return "nao_aplicavel";
-  if (linkUrl || mime !== "application/pdf") return "nao_suportado";
+  if (linkUrl || !formatoSuportado(tipo, mime)) return "nao_suportado";
   return "pendente";
 }
 
@@ -64,8 +78,8 @@ export function podeLer(m: MaterialParaLeitura, forcar = false, claimObsoleto = 
   if (m.archivedAt) return { ok: false, motivo: "material arquivado" };
   if (m.status === "rejeitado") return { ok: false, motivo: "material recusado — não é lido" };
   if (!tipoLegivel(m.tipo)) return { ok: false, motivo: "este tipo de material não é lido pela ferramenta", statusDestino: "nao_aplicavel" };
-  if (m.linkUrl || !m.storagePath) return { ok: false, motivo: "material por link — só PDF é lido", statusDestino: "nao_suportado" };
-  if (m.mime !== "application/pdf") return { ok: false, motivo: "só PDF é lido nesta etapa", statusDestino: "nao_suportado" };
+  if (m.linkUrl || !m.storagePath) return { ok: false, motivo: "material por link — só arquivo é lido", statusDestino: "nao_suportado" };
+  if (!formatoSuportado(m.tipo, m.mime)) return { ok: false, motivo: motivoFormato(m.tipo), statusDestino: "nao_suportado" };
   if (m.leituraStatus === "lendo") {
     if (claimObsoleto) return { ok: true }; // leitura anterior morreu: pode retomar
     return { ok: false, motivo: "leitura já em andamento" };

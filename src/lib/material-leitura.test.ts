@@ -17,11 +17,15 @@ function mat(over: Partial<Parameters<typeof podeLer>[0]> = {}) {
   };
 }
 
-test("L1 status inicial: price list PDF entra na fila; imagem/link nao suportados; outro tipo nao aplicavel", () => {
+test("L1 status inicial: price list so PDF; brochura PDF ou imagem; link/outros nao suportados; foto nao aplicavel", () => {
   assert.equal(statusLeituraInicial("price_list", "application/pdf", null), "pendente");
-  assert.equal(statusLeituraInicial("price_list", "image/png", null), "nao_suportado");
+  assert.equal(statusLeituraInicial("price_list", "image/png", null), "nao_suportado"); // tabela em imagem: fora
   assert.equal(statusLeituraInicial("price_list", null, "https://x/y"), "nao_suportado");
-  assert.equal(statusLeituraInicial("brochura", "application/pdf", null), "nao_aplicavel");
+  assert.equal(statusLeituraInicial("brochura", "application/pdf", null), "pendente"); // F3.2
+  assert.equal(statusLeituraInicial("brochura", "image/jpeg", null), "pendente"); // F3.2: imagem tambem
+  assert.equal(statusLeituraInicial("brochura", "image/gif", null), "nao_suportado");
+  assert.equal(statusLeituraInicial("brochura", null, "https://x/y"), "nao_suportado");
+  assert.equal(statusLeituraInicial("foto", "image/png", null), "nao_aplicavel");
 });
 
 test("L2 podeLer: pendente le; ja processado so com forcar; 'lendo' nunca", () => {
