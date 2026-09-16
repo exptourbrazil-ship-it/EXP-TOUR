@@ -11,6 +11,7 @@ import {
   checarSeguroAusenteAntesEmbarque,
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
+  checarRequisitosConsulado,
   checarPassagemDatasIncompativeis,
   checarPassagemCompraAntesVisto,
   checarPassagemVoltaAntesDoFim,
@@ -645,6 +646,66 @@ test("cobertura: minimo zero/invalido -> sem achado (nada a exigir)", () => {
 
 test("cobertura: snapshot sem o array nao quebra", () => {
   const a = checarSeguroCoberturaAbaixoMinimo({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarRequisitosConsulado ----------------------------------------------
+
+function req(over: Partial<{
+  contratoId: string; pais: string; exigidos: string[]; presentes: string[];
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    pais: over.pais ?? "estados unidos",
+    exigidos: over.exigidos ?? ["passaporte", "visto_eua"],
+    presentes: over.presentes ?? ["passaporte", "visto_eua"],
+  };
+}
+
+test("consulado: requisito faltando -> achado medio", () => {
+  const a = checarRequisitosConsulado({
+    parcelas: [], pagamentos: [], requisitosConsulado: [req({ presentes: ["passaporte"] })],
+  });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "requisitos_consulado_incompletos");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].chave, "retaguarda:requisitos_consulado:c1");
+  assert.match(a[0].resumo, /visto_eua/);
+});
+
+test("consulado: todos os exigidos presentes -> sem achado", () => {
+  const a = checarRequisitosConsulado({
+    parcelas: [], pagamentos: [], requisitosConsulado: [req()],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("consulado: presentes com extras nao flagra", () => {
+  const a = checarRequisitosConsulado({
+    parcelas: [], pagamentos: [], requisitosConsulado: [req({ presentes: ["passaporte", "visto_eua", "seguro_saude"] })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("consulado: nenhum documento presente -> flagra todos", () => {
+  const a = checarRequisitosConsulado({
+    parcelas: [], pagamentos: [], requisitosConsulado: [req({ presentes: [] })],
+  });
+  assert.equal(a.length, 1);
+  assert.match(a[0].resumo, /passaporte/);
+  assert.match(a[0].resumo, /visto_eua/);
+});
+
+test("consulado: sem exigidos -> sem achado", () => {
+  const a = checarRequisitosConsulado({
+    parcelas: [], pagamentos: [], requisitosConsulado: [req({ exigidos: [] })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("consulado: snapshot sem o array nao quebra", () => {
+  const a = checarRequisitosConsulado({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });
 
