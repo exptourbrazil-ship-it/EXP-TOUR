@@ -9,9 +9,18 @@ import {
   rejeitarMaterialAdmin,
   arquivarMaterialAdmin,
 } from "@/lib/material-service";
+import { lerMaterial } from "@/lib/material-leitura-service";
+import { checarELimitar } from "@/lib/rate-limit";
+
+// Teto de leituras por IA sob demanda por admin (custo).
+const JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
+const MAX_LER = Number(process.env.RATE_LIMIT_LER_MATERIAL || "30");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A acao 'ler' chama a IA com um PDF (segundos): teto explicito para nao ser
+// encerrada no meio e deixar o claim de leitura preso.
+export const maxDuration = 60;
 
 const BUCKET = "documentos-fornecedor";
 
@@ -77,6 +86,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
       const r = await arquivarMaterialAdmin(supabase, tenantId, id, g.usuario, g.ip);
       return r.ok ? okData({ id }) : bad(r.erro, "arquivar", 400);
+    }
+
+    // F3.1: "Ler com IA" — le o material (price list PDF) e gera a proposta de preco
+    // PENDENTE na fila. O material tem que ser deste fornecedor. Rate-limit (IA custa).
+    if (acao === "ler") {
+      const id = String(body?.id || "");
+      if (!isUuid(id)) return bad("Material inválido.");
+      if (!(await checarELimitar(supabase, `admin-ler-material:${g.usuario}`, MAX_LER, JANELA_SEG))) {
+        return bad("Muitas leituras em pouco tempo. Aguarde alguns minutos.", "rate_limit", 429);
+      }
+      const { data: dono } = await supabase
+        .from("material")
+        .select("id")
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .eq("supplier_id", supplierId)
+        .maybeSingle();
+      if (!dono) return bad("Material não encontrado para este fornecedor.", "nao_encontrado", 404);
+      const campusId = typeof body?.campusId === "string" && isUuid(body.campusId) ? body.campusId : null;
+      const r = await lerMaterial(supabase, { tenantId, materialId: id, actor: g.usuario, ip: g.ip, campusId, forcar: body?.forcar === true });
+      return okData(r);
     }
 
     if (acao === "criar_link") {

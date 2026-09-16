@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EntradaMaterial } from "@/lib/material-helpers";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { statusLeituraInicial } from "@/lib/material-leitura";
 
 export type Material = {
   id: string;
@@ -28,6 +29,10 @@ export type Material = {
   // Versao do registro (updated_at): o admin publica/recusa a versao que VIU
   // (guarda otimista) — se o fornecedor editar no meio, a acao falha fechada.
   atualizadoEm: string | null;
+  // Leitura por IA (F3.1): ver STATUS_LEITURA em material-leitura.ts.
+  leituraStatus: string;
+  leituraEm: string | null;
+  leituraErro: string | null;
 };
 
 function mapRow(r: any): Material {
@@ -47,11 +52,14 @@ function mapRow(r: any): Material {
     motivoRejeicao: r.motivo_rejeicao ?? null,
     submittedBy: r.submitted_by ?? null,
     atualizadoEm: r.updated_at ?? null,
+    leituraStatus: r.leitura_status ?? "nao_aplicavel",
+    leituraEm: r.leitura_em ?? null,
+    leituraErro: r.leitura_erro ?? null,
   };
 }
 
 const COLS =
-  "id, tipo, titulo, idioma, programa, validade, permissao, nome_arquivo, link_url, storage_path, created_at, status, motivo_rejeicao, submitted_by, updated_at";
+  "id, tipo, titulo, idioma, programa, validade, permissao, nome_arquivo, link_url, storage_path, created_at, status, motivo_rejeicao, submitted_by, updated_at, leitura_status, leitura_em, leitura_erro";
 
 // Lista os materiais ATIVOS (não arquivados) do fornecedor — todos os status, para
 // a escola acompanhar o que está pendente/recusado.
@@ -109,6 +117,8 @@ export async function criarMaterial(
       status: aprovadoDireto ? "aprovado" : "pendente",
       aprovado_por: aprovadoDireto ? args.createdBy : null,
       aprovado_em: aprovadoDireto ? agora : null,
+      // F3.1: price list em PDF ja nasce na fila de leitura por IA.
+      leitura_status: statusLeituraInicial(entrada.tipo, arquivo?.mime ?? null, arquivo ? null : entrada.linkUrl),
     })
     .select("id")
     .single();

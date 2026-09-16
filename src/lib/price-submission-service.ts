@@ -44,6 +44,11 @@ export async function criarSubmission(
     extracted: PriceListExtraido;
     extractStatus: string;
     createdBy: string;
+    // F3.1 (leitura de material por IA): nasce direto na fila do admin e aponta o
+    // material de origem. Ausentes = fluxo do portal (rascunho da escola).
+    status?: "draft" | "pending_admin";
+    sourceMaterialId?: string | null;
+    submittedBy?: string | null;
   }
 ): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
   const { data, error } = await supabase
@@ -58,7 +63,9 @@ export async function criarSubmission(
       extracted: entrada.extracted,
       extract_status: entrada.extractStatus,
       created_by: entrada.createdBy,
-      status: "draft",
+      status: entrada.status ?? "draft",
+      source_material_id: entrada.sourceMaterialId ?? null,
+      submitted_by: entrada.submittedBy ?? null,
     })
     .select("id")
     .single();

@@ -34,7 +34,10 @@ export async function listarPendentesAdmin(supabase: SupabaseClient, tenantId: s
     .select("id, supplier_id, status, currency, extracted, source_filename, submitted_by, created_at, supplier:supplier(display_name)")
     .eq("tenant_id", tenantId)
     .eq("status", "pending_admin")
-    .order("supplier_approved_at", { ascending: true });
+    // Propostas vindas da leitura por IA (F3.1) nao tem supplier_approved_at: ordem
+    // estavel por data de criacao, sem ficarem "soltas" no fim.
+    .order("supplier_approved_at", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
   return (data ?? []).map((r: any) => {
     const ext = normalizarPriceListExtraido(r.extracted);
     const sup = Array.isArray(r.supplier) ? r.supplier[0] : r.supplier;

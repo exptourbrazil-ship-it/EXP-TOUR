@@ -62,6 +62,7 @@ const ARQUIVOS = [
   "src/lib/quote-issue-service.ts",
   "src/lib/catalog-route.ts",
   "src/lib/campus-admin-service.ts",
+  "src/lib/material-leitura-service.ts",
   // NB: retaguarda-service.ts NAO entra aqui de proposito. Ele grava em
   // retaguarda_achado SEMPRE com filtro de tenant_id (verificado na revisao),
   // mas tambem LE parcelas/pagamentos, que sao escopadas por contrato_id

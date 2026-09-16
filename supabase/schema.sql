@@ -2847,6 +2847,19 @@ do $$ begin
   end if;
 end $$;
 
+-- F3.1: LEITURA por IA (migracao-material-leitura-ia.sql, aplicada em prod 16/09/2026).
+-- material.leitura_status: nao_aplicavel (tipo nao legivel) | pendente (na fila) | lendo
+-- (claim) | lida (proposta gerada) | sem_ia | erro | precisa_campus | nao_suportado (so PDF).
+-- price_submission.source_material_id liga a proposta ao material que a gerou.
+alter table if exists material add column if not exists leitura_status text not null default 'nao_aplicavel'
+  check (leitura_status in ('nao_aplicavel','pendente','lendo','lida','sem_ia','erro','precisa_campus','nao_suportado'));
+alter table if exists material add column if not exists leitura_em timestamptz;
+alter table if exists material add column if not exists leitura_erro text;
+alter table if exists material add column if not exists leitura_tentativas int not null default 0;
+create index if not exists idx_material_leitura on material(tenant_id, leitura_status) where archived_at is null;
+alter table if exists price_submission add column if not exists source_material_id uuid references material(id) on delete set null;
+create index if not exists idx_price_submission_source_material on price_submission(source_material_id);
+
 -- Substituicao ATOMICA das regras de elegibilidade de um produto (compliance-
 -- sensivel: is_blocking impede a emissao da cotacao). delete+insert numa unica
 -- transacao, sob advisory lock por produto — sem fail-open em falha parcial nem

@@ -42,7 +42,14 @@ export default async function AdminPrecosPage() {
             <tbody className="text-neutral-700">
               {pendentes.map((s) => (
                 <tr key={s.id} className="border-t border-neutral-100">
-                  <td className="px-4 py-2 text-brand">{s.supplierNome || "—"}</td>
+                  <td className="px-4 py-2 text-brand">
+                    {s.supplierNome || "—"}
+                    {s.submittedBy?.startsWith("leitura-ia:") ? (
+                      <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700" title="Proposta gerada pela leitura do price list por IA — revise com atenção antes de publicar">
+                        lido por IA
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2">{s.itens}{s.currency ? ` · ${s.currency}` : ""}</td>
                   <td className="px-4 py-2">{s.sourceFilename || "—"}</td>
                   <td className="px-4 py-2 text-right">

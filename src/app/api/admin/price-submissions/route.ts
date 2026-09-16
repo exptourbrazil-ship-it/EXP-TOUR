@@ -14,12 +14,21 @@ export const dynamic = "force-dynamic";
 // Aprovacao/rejeicao de price list pelo Admin (alerta 7). Capacidade
 // fornecedores.gerir (falha fechada). Aprovar MATERIALIZA o rascunho em catalogo
 // (preco vivo). Avisa a escola por e-mail (best-effort).
+// Proposta gerada pela LEITURA POR IA de um material (F3.1): a escola nao "enviou"
+// um price list — nao ha rascunho dela para revisar. A devolucao entao NAO manda
+// e-mail (o admin acerta o PDF/relê no hub); a publicacao avisa com texto proprio.
+function vindoDaLeituraIA(submittedBy: string | null | undefined): boolean {
+  return typeof submittedBy === "string" && submittedBy.startsWith("leitura-ia:");
+}
+
 async function avisarEscola(
   supabase: SupabaseClient,
   supplierId: string,
   aprovado: boolean,
-  motivo?: string
+  motivo?: string,
+  viaIA = false,
 ) {
+  if (!aprovado && viaIA) return; // nada a "revisar" no portal: a proposta era da IA
   const base = (process.env.NEXT_PUBLIC_APP_URL || "https://exp-tour.com").trim().replace(/\/$/, "");
   const destinatarios = await destinatariosDoFornecedor(supabase, supplierId);
   for (const d of destinatarios) {
@@ -28,9 +37,13 @@ async function avisarEscola(
       ? {
           subject: en ? "Your price list is live" : "Seu price list foi publicado",
           titulo: en ? "Price list published" : "Price list publicado",
-          contexto: en
-            ? "Your price list was approved and is now available in EXP Tour's catalog."
-            : "Seu price list foi aprovado e já está disponível no catálogo da EXP Tour.",
+          contexto: viaIA
+            ? en
+              ? "We published prices in EXP Tour's catalog based on the price list you shared with us."
+              : "Publicamos os preços no catálogo da EXP Tour a partir do price list que você compartilhou conosco."
+            : en
+              ? "Your price list was approved and is now available in EXP Tour's catalog."
+              : "Seu price list foi aprovado e já está disponível no catálogo da EXP Tour.",
           botaoLabel: en ? "See catalog" : "Ver catálogo publicado",
         }
       : {
@@ -82,7 +95,7 @@ export async function POST(request: Request) {
       detalhe: { supplier_id: r.supplierId, ...r.resumo },
       ip,
     });
-    await avisarEscola(supabase, r.supplierId, true);
+    await avisarEscola(supabase, r.supplierId, true, undefined, vindoDaLeituraIA(r.submittedBy));
     return NextResponse.json({ ok: true, resumo: r.resumo });
   }
 
@@ -98,7 +111,7 @@ export async function POST(request: Request) {
       detalhe: { supplier_id: r.supplierId, motivo },
       ip,
     });
-    await avisarEscola(supabase, r.supplierId, false, motivo);
+    await avisarEscola(supabase, r.supplierId, false, motivo, vindoDaLeituraIA(r.submittedBy));
     return NextResponse.json({ ok: true });
   }
 
