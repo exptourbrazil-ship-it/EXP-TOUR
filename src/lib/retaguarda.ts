@@ -183,6 +183,19 @@ export type SeguroCoberturaSnapshot = {
   moeda: string;
 };
 
+// Datas do bilhete vs. início do programa, para o agente de Passagens (§7-F.1,
+// "datas do bilhete compatíveis com as do Programa"). `vooIdaISO` = a ida MAIS
+// PRÓXIMA do início entre os bilhetes do titular (a camada de dados escolhe a
+// melhor). A janela aceitável [`limiteAntesISO`, `limiteDepoisISO`] = início ±
+// tolerância. Fora dela, a ida é incompatível (chegou tarde demais para começar,
+// ou cedo/errada demais — provável data trocada).
+export type PassagemSnapshot = {
+  contratoId: string;
+  vooIdaISO: string;
+  limiteAntesISO: string;
+  limiteDepoisISO: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -196,6 +209,7 @@ export type SnapshotRetaguarda = {
   segurosContrato?: SeguroContratoSnapshot[];
   segurosVigencia?: SeguroVigenciaSnapshot[];
   segurosCobertura?: SeguroCoberturaSnapshot[];
+  passagens?: PassagemSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -542,6 +556,34 @@ export function checarSeguroCoberturaAbaixoMinimo(snap: SnapshotRetaguarda): Ach
   return achados;
 }
 
+/**
+ * Data de IDA do bilhete INCOMPATÍVEL com o início do programa.
+ *
+ * Agente de Passagens (§7-F.1, "datas do bilhete compatíveis com as do
+ * Programa"): a camada de dados escolhe, entre os bilhetes do titular, a ida mais
+ * próxima do início e traz a janela aceitável (início ± tolerância). Se a ida cai
+ * FORA da janela — depois do início (chegou tarde para começar) ou cedo/errada
+ * demais — a passagem não bate com o programa. MÉDIO (resolve ao corrigir o
+ * bilhete/data). Só compara datas YYYY-MM-DD; a janela é da camada de dados.
+ */
+export function checarPassagemDatasIncompativeis(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const p of snap.passagens ?? []) {
+    if (!p.vooIdaISO || !p.limiteAntesISO || !p.limiteDepoisISO) continue;
+    if (p.vooIdaISO < p.limiteAntesISO || p.vooIdaISO > p.limiteDepoisISO) {
+      achados.push({
+        chave: `retaguarda:passagem_datas_incompativeis:${p.contratoId}`,
+        categoria: "passagem_datas_incompativeis",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: p.contratoId },
+        contratoId: p.contratoId,
+        resumo: `Contrato ${p.contratoId}: data de ida do bilhete (${p.vooIdaISO}) fora da janela compatível com o início do programa (${p.limiteAntesISO} a ${p.limiteDepoisISO}) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -555,6 +597,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarSeguroAusenteAntesEmbarque,
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
+  checarPassagemDatasIncompativeis,
 ];
 
 /**

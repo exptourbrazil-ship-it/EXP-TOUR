@@ -4,6 +4,7 @@ import {
   ehTipoDocumentoValido,
   tipoTemValidade,
   tipoTemCobertura,
+  tipoTemVoo,
   categorizarNomeArquivo,
   labelDoTipoDocumento,
   TIPOS_DOCUMENTO,
@@ -28,6 +29,12 @@ test("tipoTemCobertura: só a apólice de seguro carrega valor de cobertura", ()
   assert.equal(tipoTemCobertura("seguro_saude"), true);
   assert.equal(tipoTemCobertura("passaporte"), false);
   assert.equal(tipoTemCobertura("carta_recusa_visto"), false);
+});
+
+test("tipoTemVoo: só a passagem aérea carrega datas de voo", () => {
+  assert.equal(tipoTemVoo("passagem_aerea"), true);
+  assert.equal(tipoTemVoo("seguro_saude"), false);
+  assert.equal(tipoTemVoo("passaporte"), false);
 });
 
 test("carta de recusa: novo tipo é categorizável pelo nome do arquivo", () => {

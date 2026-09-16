@@ -78,6 +78,12 @@ export function tipoTemCobertura(valor: string): boolean {
   return valor === "seguro_saude";
 }
 
+// Tipos que carregam DATAS DE VOO (agente de Passagens: ida/volta vs. programa).
+// Hoje só a passagem aérea.
+export function tipoTemVoo(valor: string): boolean {
+  return valor === "passagem_aerea";
+}
+
 export function ehTipoDocumentoValido(valor: string): boolean {
   return TIPOS_DOCUMENTO.some((t) => t.valor === valor);
 }

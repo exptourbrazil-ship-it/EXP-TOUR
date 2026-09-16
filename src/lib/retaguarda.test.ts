@@ -11,6 +11,7 @@ import {
   checarSeguroAusenteAntesEmbarque,
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
+  checarPassagemDatasIncompativeis,
   adicionarMesesISO,
   adicionarDiasISO,
   detectarRetaguarda,
@@ -642,5 +643,62 @@ test("cobertura: minimo zero/invalido -> sem achado (nada a exigir)", () => {
 
 test("cobertura: snapshot sem o array nao quebra", () => {
   const a = checarSeguroCoberturaAbaixoMinimo({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarPassagemDatasIncompativeis ---------------------------------------
+
+function pass(over: Partial<{
+  contratoId: string; vooIdaISO: string; limiteAntesISO: string; limiteDepoisISO: string;
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    vooIdaISO: over.vooIdaISO ?? "2026-08-01",
+    limiteAntesISO: over.limiteAntesISO ?? "2026-08-01",
+    limiteDepoisISO: over.limiteDepoisISO ?? "2026-09-03",
+  };
+}
+
+test("passagem: ida DEPOIS da janela -> achado medio", () => {
+  const a = checarPassagemDatasIncompativeis({
+    parcelas: [], pagamentos: [], passagens: [pass({ vooIdaISO: "2026-09-10" })],
+  });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "passagem_datas_incompativeis");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].chave, "retaguarda:passagem_datas_incompativeis:c1");
+});
+
+test("passagem: ida ANTES da janela -> achado", () => {
+  const a = checarPassagemDatasIncompativeis({
+    parcelas: [], pagamentos: [], passagens: [pass({ vooIdaISO: "2026-06-01", limiteAntesISO: "2026-08-01" })],
+  });
+  assert.equal(a.length, 1);
+});
+
+test("passagem: ida dentro da janela (borda antes) -> sem achado", () => {
+  const a = checarPassagemDatasIncompativeis({
+    parcelas: [], pagamentos: [], passagens: [pass({ vooIdaISO: "2026-08-01" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("passagem: ida dentro da janela (borda depois) -> sem achado", () => {
+  const a = checarPassagemDatasIncompativeis({
+    parcelas: [], pagamentos: [], passagens: [pass({ vooIdaISO: "2026-09-03" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("passagem: campos vazios nao quebram nem flagram", () => {
+  const a = checarPassagemDatasIncompativeis({
+    parcelas: [], pagamentos: [], passagens: [pass({ vooIdaISO: "" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("passagem: snapshot sem o array nao quebra", () => {
+  const a = checarPassagemDatasIncompativeis({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

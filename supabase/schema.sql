@@ -3041,3 +3041,12 @@ alter table if exists tenant_config add column if not exists visto_validade_min_
 alter table if exists documentos add column if not exists cobertura_valor numeric;
 alter table if exists documentos add column if not exists cobertura_moeda text;
 alter table if exists tenant_config add column if not exists seguro_cobertura_minima jsonb;
+
+-- ============================================================================
+-- Agente de Passagens (retaguarda §7-F.1): datas do bilhete vs. programa
+-- ============================================================================
+-- Data de ida (embarque) e volta do bilhete, no documento passagem_aerea. A ida
+-- deve ser compatível com o início do programa; a volta cobrir o fim (checagem
+-- futura). Aplicar tambem no SQL Editor de producao (ver CLAUDE.md).
+alter table if exists documentos add column if not exists passagem_data_ida date;
+alter table if exists documentos add column if not exists passagem_data_volta date;
