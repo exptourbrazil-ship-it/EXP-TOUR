@@ -2253,6 +2253,10 @@ alter table if exists quote_option              enable row level security;
 alter table if exists quote_item                enable row level security;
 alter table if exists quote_item_fee            enable row level security;
 alter table if exists quote_discount            enable row level security;
+-- F5: prazo da promoção congelado na linha de desconto (= promotion.booking_until ao
+-- cotar; linhas antigas null = sem prazo). Aplicado em prod 16/09/2026
+-- (migracao-quote-discount-valid-until.sql).
+alter table if exists quote_discount add column if not exists valid_until date;
 alter table if exists quote_payment_plan        enable row level security;
 alter table if exists quote_payment_installment enable row level security;
 alter table if exists quote_event               enable row level security;

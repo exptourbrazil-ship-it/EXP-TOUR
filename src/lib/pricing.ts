@@ -170,7 +170,16 @@ export type PromoBases = {
 };
 
 /** Linha de desconto calculada (rastro auditavel). */
-export type DiscountLine = { name: string; amount: number; appliesTo: string };
+export type DiscountLine = {
+  name: string;
+  amount: number;
+  appliesTo: string;
+  // Identidade e PRAZO da promocao que gerou a linha (secao 4.5), para a cotacao
+  // congelar e exibir "valida ate". Ausentes em descontos que nao vem de promocao
+  // (ex.: semanas gratis por faixa).
+  promotionId?: string;
+  validUntil?: string; // = promotion.bookingUntil (ISO 'YYYY-MM-DD')
+};
 
 /** Semantica das unidades gratuitas embutidas na requisicao. */
 export type PriceRequestFreeUnits = { semantics: FreeUnitSemantics; units: number };
@@ -714,7 +723,13 @@ export function applyPromotions(
 
     if (amount <= 0) continue; // sem base valida (ex.: specific_*) nao gera linha
 
-    discounts.push({ name: promo.name, amount, appliesTo: promo.appliesTo });
+    discounts.push({
+      name: promo.name,
+      amount,
+      appliesTo: promo.appliesTo,
+      ...(promo.id ? { promotionId: promo.id } : {}),
+      ...(promo.bookingUntil ? { validUntil: promo.bookingUntil } : {}),
+    });
     applied.push(promo);
   }
 

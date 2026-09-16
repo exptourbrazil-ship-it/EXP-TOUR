@@ -90,11 +90,22 @@ type PlanoPagamento = {
   parcelas: ParcelaPlano[];
 } | null;
 
+// Linha de desconto detalhada (F5): promocao com PRAZO congelado ("valida ate") ou
+// desconto manual do consultor. `validoAte` = quote_discount.valid_until.
+export type DescontoLinha = {
+  nome: string;
+  amount: number;
+  currency: string;
+  validoAte: string | null; // ISO 'YYYY-MM-DD'
+  promocao: boolean; // veio de promotion (promotion_id) vs. manual
+};
+
 type TotaisOpcao = {
   option: OptionRow;
   currency: string;
   bruto: number;
   descontos: number;
+  descontosDetalhados: DescontoLinha[];
   taxas: number;
   liquido: number;
   itens: Array<{
@@ -162,10 +173,23 @@ async function carregarTotaisPorOpcao(
     // Descontos e taxas da opcao.
     const { data: discounts } = await supabase
       .from("quote_discount")
-      .select("amount")
+      .select("name, amount, currency, promotion_id, valid_until, is_manual, created_at")
       .eq("tenant_id", tenantId)
-      .eq("quote_option_id", option.id);
+      .eq("quote_option_id", option.id)
+      .order("created_at", { ascending: true });
     const descontos = (discounts ?? []).reduce((s, d) => s + toNum(d.amount), 0);
+    // Linha a linha (F5): promocao com prazo congelado, ou desconto manual.
+    // Desconto MANUAL: `name` e o `reason` do consultor — justificativa de AUDITORIA
+    // (ex.: "gestor liberou 12%"), nao texto para o cliente. Sai com rotulo generico.
+    const descontosDetalhados: DescontoLinha[] = (discounts ?? []).map((d) => ({
+      nome: d.is_manual ? "Desconto comercial" : ((d.name as string) ?? "Desconto"),
+      amount: round2(toNum(d.amount)),
+      currency: (d.currency as string) || currency || "BRL",
+      validoAte: (d.valid_until as string | null) ?? null,
+      // So e "Promocao" o que veio de uma promotion de verdade. Automaticos sem
+      // vinculo (legado antes do F5, ou semanas gratis por faixa) sao "Desconto".
+      promocao: !!d.promotion_id,
+    }));
 
     const { data: itemIdsRows } = await supabase
       .from("quote_item")
@@ -228,6 +252,7 @@ async function carregarTotaisPorOpcao(
       currency: currency || "BRL",
       bruto: round2(bruto),
       descontos: round2(descontos),
+      descontosDetalhados,
       taxas: round2(taxas),
       liquido,
       itens,
@@ -688,6 +713,10 @@ export type PublicQuote = {
     currency: string;
     bruto: number;
     descontos: number;
+    // F5: cada promocao com o PRAZO congelado ("valida ate") + descontos manuais
+    // (rotulo generico). Cotacoes anteriores ao F5 tem as linhas SEM prazo
+    // (validoAte null, promocao=false) — aparecem como "Desconto: <nome>".
+    descontosDetalhados: DescontoLinha[];
     taxas: number;
     liquido: number;
     liquidoConvertido: number | null;
@@ -871,6 +900,7 @@ export async function getPublicQuote(
       currency: t.currency,
       bruto: t.bruto,
       descontos: t.descontos,
+      descontosDetalhados: t.descontosDetalhados,
       taxas: t.taxas,
       liquido: t.liquido,
       liquidoConvertido,

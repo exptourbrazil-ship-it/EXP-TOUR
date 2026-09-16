@@ -566,14 +566,16 @@ export async function addQuoteItem(
   }
 
   // Descontos (priced.discounts) — automaticos (is_manual=false). DiscountLine
-  // traz apenas valor absoluto; discount_type='fixed'. TODO: propagar
-  // promotion_id/discount_type do motor de preco.
+  // traz valor absoluto (discount_type='fixed') e, quando vem de PROMOCAO, o
+  // promotion_id e o PRAZO (validUntil = booking_until), congelados aqui para o
+  // orcamento exibir "valida ate" mesmo que a promocao mude depois (F5).
   for (const disc of priced.discounts) {
     await supabase.from("quote_discount").insert({
       tenant_id: args.tenantId,
       quote_option_id: args.optionId,
       quote_item_id: itemId,
-      promotion_id: null,
+      promotion_id: disc.promotionId ?? null,
+      valid_until: disc.validUntil ?? null,
       name: disc.name,
       discount_type: "fixed",
       value: disc.amount,

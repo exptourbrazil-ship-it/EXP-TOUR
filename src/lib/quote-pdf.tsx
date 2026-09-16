@@ -50,6 +50,16 @@ function fmtMoeda(valor: number, moeda: string): string {
   }
   return `${c || "?"} ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 }
+// F5: prazo da promocao (congelado na cotacao). Passado o prazo, sinaliza em vez
+// de sumir — o valor cotado continua o mesmo (fotografia), so a leitura muda.
+function rotuloPrazo(validoAte: string | null): string {
+  if (!validoAte) return "";
+  const hoje = new Date().toISOString().slice(0, 10);
+  return validoAte < hoje
+    ? `  prazo da promoção encerrado em ${fmtData(validoAte)}`
+    : `  válida até ${fmtData(validoAte)}`;
+}
+
 function fmtData(iso: string | null): string {
   if (!iso || iso.length < 10) return "—";
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -270,12 +280,19 @@ function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles
             </View>
           )
           : null}
-      {op.descontos > 0 ? (
-        <View style={s.sumRow}>
-          <Text style={s.sumRot}>Descontos</Text>
-          <Text>- {fmtMoeda(op.descontos, op.currency)}</Text>
+      {/* Descontos linha a linha (F5): promocao com PRAZO congelado ("valida ate" /
+          "prazo encerrado"); manuais saem como "Desconto comercial". A soma das
+          linhas E o agregado `op.descontos` (mesmas linhas). */}
+      {op.descontosDetalhados.map((d, i) => (
+        <View key={i} style={s.sumRow} wrap={false}>
+          <Text style={s.sumRot}>
+            {d.promocao ? "Promoção: " : "Desconto: "}
+            {d.nome}
+            {d.validoAte ? <Text style={s.sumTag}>{rotuloPrazo(d.validoAte)}</Text> : null}
+          </Text>
+          <Text>- {fmtMoeda(d.amount, d.currency)}</Text>
         </View>
-      ) : null}
+      ))}
       <View style={s.sumTotalRow} wrap={false}>
         <Text style={s.sumTotal}>Total</Text>
         <View style={{ alignItems: "flex-end" }}>

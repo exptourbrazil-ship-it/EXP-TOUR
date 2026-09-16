@@ -25,6 +25,16 @@ function fmtMoeda(valor: number, moeda: string): string {
   }
   return `${c || "?"} ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 }
+// F5: prazo da promocao (congelado na cotacao). Passado o prazo, sinaliza em vez
+// de sumir — o valor cotado continua o mesmo (fotografia), so a leitura muda.
+function rotuloPrazo(validoAte: string | null): string {
+  if (!validoAte) return "";
+  const hoje = new Date().toISOString().slice(0, 10);
+  return validoAte < hoje
+    ? ` · prazo da promoção encerrado em ${fmtData(validoAte)}`
+    : ` · válida até ${fmtData(validoAte)}`;
+}
+
 function fmtData(iso: string | null): string {
   if (!iso || iso.length < 10) return "—";
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -383,12 +393,20 @@ function Overview({
                   <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(it.grossAmount, it.currency)}</span>
                 </li>
               ))}
-              {op.descontos > 0 ? (
-                <li className="flex items-baseline justify-between gap-3 text-[color:var(--p-success)]">
-                  <span>Descontos</span>
-                  <span className="whitespace-nowrap">- {fmtMoeda(op.descontos, op.currency)}</span>
+              {/* F5: cada promocao com o PRAZO congelado ("valida ate" / "prazo
+                  encerrado"); manuais saem como "Desconto comercial". */}
+              {op.descontosDetalhados.map((d, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3 text-[color:var(--p-success)]">
+                  <span>
+                    {d.promocao ? "Promoção: " : "Desconto: "}
+                    {d.nome}
+                    {d.validoAte ? (
+                      <span className="ml-1 text-xs text-[color:var(--p-muted)]">{rotuloPrazo(d.validoAte)}</span>
+                    ) : null}
+                  </span>
+                  <span className="whitespace-nowrap">- {fmtMoeda(d.amount, d.currency)}</span>
                 </li>
-              ) : null}
+              ))}
             </ul>
 
             <div className="mt-4 border-t border-[color:var(--p-line)] pt-3">
@@ -756,7 +774,13 @@ function DetalheOpcao({
             : op.taxas > 0
             ? <ResumoLinha rot="Taxas" val={fmtMoeda(op.taxas, op.currency)} />
             : null}
-          {op.descontos > 0 ? <ResumoLinha rot="Descontos" val={`- ${fmtMoeda(op.descontos, op.currency)}`} /> : null}
+          {op.descontosDetalhados.map((d, i) => (
+            <ResumoLinha
+              key={i}
+              rot={`${d.promocao ? "Promoção" : "Desconto"}: ${d.nome}${rotuloPrazo(d.validoAte)}`}
+              val={`- ${fmtMoeda(d.amount, d.currency)}`}
+            />
+          ))}
           <ResumoLinha rot="Total" val={totalNaMoeda} destaque />
           {totalConvertido ? <ResumoLinha rot={`Total em ${fx.presentmentCurrency}`} val={totalConvertido} /> : null}
           {op.depositAmount != null ? (

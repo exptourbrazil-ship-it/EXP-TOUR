@@ -453,6 +453,21 @@ test("applyPromotions: 30% sobre tuition confere com T7 (19760 -> 5928)", () => 
   assert.equal(r.totalDiscount, 5928);
 });
 
+test("applyPromotions: a linha carrega id e PRAZO (bookingUntil) da promocao — F5 'valida ate' no orcamento", () => {
+  const promo: Promotion = { ...PROMO_BASE, id: "promo-br-30" };
+  const r = applyPromotions([promo], PROMO_BASES, PROMO_CTX);
+  assert.equal(r.discounts.length, 1);
+  assert.equal(r.discounts[0].promotionId, "promo-br-30");
+  assert.equal(r.discounts[0].validUntil, "2026-12-31"); // = bookingUntil
+  // Promo sem id/bookingUntil nao inventa campos (linha continua valida).
+  const { id: _id, bookingUntil: _bu, ...semPrazo } = PROMO_BASE;
+  void _id; void _bu;
+  const r2 = applyPromotions([semPrazo as Promotion], PROMO_BASES, PROMO_CTX);
+  assert.equal(r2.discounts.length, 1);
+  assert.equal(r2.discounts[0].promotionId, undefined);
+  assert.equal(r2.discounts[0].validUntil, undefined);
+});
+
 test("applyPromotions: duas nao-empilhaveis, so a de menor priority e aplicada", () => {
   const p1: Promotion = { ...PROMO_BASE, name: "P1 prioridade 10", priority: 10, isStackable: false };
   const p2: Promotion = {
