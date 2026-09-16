@@ -78,11 +78,16 @@ export function tipoTemCobertura(valor: string): boolean {
   return valor === "seguro_saude";
 }
 
-// Tipos que carregam DATAS DE VOO (agente de Passagens: ida/volta vs. programa).
-// Hoje só a passagem aérea.
+// Tipos que carregam DATAS DE VOO (agente de Passagens: ida/volta/compra vs.
+// programa). Hoje só a passagem aérea.
 export function tipoTemVoo(valor: string): boolean {
   return valor === "passagem_aerea";
 }
+
+// Tipos de documento que representam um VISTO concedido (agente de Passagens:
+// compra do bilhete posterior ao visto). Qualquer um deles no acervo do titular
+// marca "visto em mãos".
+export const TIPOS_VISTO = new Set<string>(["visto", "visto_2", "visto_eua"]);
 
 export function ehTipoDocumentoValido(valor: string): boolean {
   return TIPOS_DOCUMENTO.some((t) => t.valor === valor);

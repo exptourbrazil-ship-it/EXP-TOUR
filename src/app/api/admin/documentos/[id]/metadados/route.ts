@@ -45,7 +45,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const temCoberturaMoeda = Object.prototype.hasOwnProperty.call(body, "coberturaMoeda");
   const temVooIda = Object.prototype.hasOwnProperty.call(body, "vooIda");
   const temVooVolta = Object.prototype.hasOwnProperty.call(body, "vooVolta");
-  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda && !temVooIda && !temVooVolta) {
+  const temVooCompra = Object.prototype.hasOwnProperty.call(body, "vooCompra");
+  if (!temValidade && !temTipo && !temCoberturaValor && !temCoberturaMoeda && !temVooIda && !temVooVolta && !temVooCompra) {
     return NextResponse.json(
       { ok: false, error: "Informe ao menos um campo de metadados." },
       { status: 400 },
@@ -111,6 +112,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   for (const [flag, campo, valor] of [
     [temVooIda, "passagem_data_ida", body.vooIda],
     [temVooVolta, "passagem_data_volta", body.vooVolta],
+    [temVooCompra, "passagem_data_compra", body.vooCompra],
   ] as const) {
     if (!flag) continue;
     if (valor === null || valor === "") {
@@ -136,7 +138,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
   const { data: doc } = await supabase
     .from("documentos")
-    .select("id, titular_id, tipo_documento, validade, cobertura_valor, cobertura_moeda, passagem_data_ida, passagem_data_volta")
+    .select("id, titular_id, tipo_documento, validade, cobertura_valor, cobertura_moeda, passagem_data_ida, passagem_data_volta, passagem_data_compra")
     .eq("id", id)
     .maybeSingle();
   if (!doc) {
@@ -157,7 +159,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
   // Datas de voo só na passagem aérea (mesma lógica da cobertura). Limpar (null)
   // é livre; gravar data em outro tipo é recusado.
-  const gravaVoo = patch.passagem_data_ida != null || patch.passagem_data_volta != null;
+  const gravaVoo = patch.passagem_data_ida != null || patch.passagem_data_volta != null || patch.passagem_data_compra != null;
   if (gravaVoo && !tipoTemVoo(tipoEfetivo)) {
     return NextResponse.json(
       { ok: false, error: "Datas de voo só se aplicam à passagem aérea." },
@@ -195,6 +197,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         : {}),
       ...(temVooVolta
         ? { voo_volta_anterior: (doc as { passagem_data_volta?: string | null }).passagem_data_volta ?? null, voo_volta_novo: patch.passagem_data_volta }
+        : {}),
+      ...(temVooCompra
+        ? { voo_compra_anterior: (doc as { passagem_data_compra?: string | null }).passagem_data_compra ?? null, voo_compra_novo: patch.passagem_data_compra }
         : {}),
     },
     ip: obterIp(request),

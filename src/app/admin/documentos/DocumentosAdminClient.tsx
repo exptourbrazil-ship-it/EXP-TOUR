@@ -100,7 +100,7 @@ export default function DocumentosAdminClient() {
   // erro (mantém a linha consistente com o servidor). Envia só o(s) campo(s) tocado(s).
   async function salvarMetadados(
     id: string,
-    patch: { tipoDocumento?: string; validade?: string | null; coberturaValor?: number | null; coberturaMoeda?: string | null; vooIda?: string | null; vooVolta?: string | null },
+    patch: { tipoDocumento?: string; validade?: string | null; coberturaValor?: number | null; coberturaMoeda?: string | null; vooIda?: string | null; vooVolta?: string | null; vooCompra?: string | null },
   ) {
     const anterior = documentos.find((d) => d.id === id);
     setAtualizandoId(id);
@@ -116,6 +116,7 @@ export default function DocumentosAdminClient() {
               ...(patch.coberturaMoeda !== undefined ? { cobertura_moeda: patch.coberturaMoeda } : {}),
               ...(patch.vooIda !== undefined ? { passagem_data_ida: patch.vooIda } : {}),
               ...(patch.vooVolta !== undefined ? { passagem_data_volta: patch.vooVolta } : {}),
+              ...(patch.vooCompra !== undefined ? { passagem_data_compra: patch.vooCompra } : {}),
             }
           : d,
       ),
@@ -375,6 +376,20 @@ export default function DocumentosAdminClient() {
                           const novo = e.target.value || null;
                           const atual = (doc.passagem_data_volta || "").slice(0, 10) || null;
                           if (novo !== atual) salvarMetadados(doc.id, { vooVolta: novo });
+                        }}
+                        className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-neutral-500">
+                      Compra
+                      <input
+                        type="date"
+                        value={(doc.passagem_data_compra || "").slice(0, 10)}
+                        disabled={atualizandoId === doc.id}
+                        onChange={(e) => {
+                          const novo = e.target.value || null;
+                          const atual = (doc.passagem_data_compra || "").slice(0, 10) || null;
+                          if (novo !== atual) salvarMetadados(doc.id, { vooCompra: novo });
                         }}
                         className="rounded-lg border border-neutral-300 px-2 py-1 text-sm text-brand"
                       />

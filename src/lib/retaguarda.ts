@@ -196,6 +196,18 @@ export type PassagemSnapshot = {
   limiteDepoisISO: string;
 };
 
+// Compra do bilhete vs. visto, para o agente de Passagens (§7-F.1, "compra
+// posterior à confirmação e ao visto"). `compraISO` = data de compra mais ANTIGA
+// entre os bilhetes do titular; `vistoISO` = data (created_at) do documento de
+// visto mais ANTIGO do titular — o marco a partir do qual comprar é seguro.
+// Comprar antes de ter o visto em mãos arrisca o valor do bilhete se o visto for
+// negado. A camada de dados só monta o snapshot quando AMBOS existem.
+export type PassagemCompraSnapshot = {
+  contratoId: string;
+  compraISO: string;
+  vistoISO: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -210,6 +222,7 @@ export type SnapshotRetaguarda = {
   segurosVigencia?: SeguroVigenciaSnapshot[];
   segurosCobertura?: SeguroCoberturaSnapshot[];
   passagens?: PassagemSnapshot[];
+  passagensCompra?: PassagemCompraSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -584,6 +597,34 @@ export function checarPassagemDatasIncompativeis(snap: SnapshotRetaguarda): Acha
   return achados;
 }
 
+/**
+ * Bilhete COMPRADO antes de o visto estar no acervo (§7-F.1, "compra posterior à
+ * confirmação e ao visto").
+ *
+ * A camada de dados só monta o snapshot quando o titular TEM documento de visto
+ * (com data) E bilhete com data de compra. Se a compra (mais antiga) é ANTERIOR à
+ * data do visto (mais antigo), o bilhete foi comprado sem o visto em mãos — risco
+ * de perder o valor se o visto for negado. MÉDIO (alerta; resolve com verificação
+ * humana / remarcação). Só compara datas YYYY-MM-DD.
+ */
+export function checarPassagemCompraAntesVisto(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const p of snap.passagensCompra ?? []) {
+    if (!p.compraISO || !p.vistoISO) continue;
+    if (p.compraISO < p.vistoISO) {
+      achados.push({
+        chave: `retaguarda:passagem_compra_antes_visto:${p.contratoId}`,
+        categoria: "passagem_compra_antes_visto",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: p.contratoId },
+        contratoId: p.contratoId,
+        resumo: `Contrato ${p.contratoId}: bilhete comprado (${p.compraISO}) antes de o visto estar no acervo (${p.vistoISO}) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -598,6 +639,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
   checarPassagemDatasIncompativeis,
+  checarPassagemCompraAntesVisto,
 ];
 
 /**
