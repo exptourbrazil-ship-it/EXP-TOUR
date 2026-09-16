@@ -445,23 +445,29 @@ async function carregarSnapshot(
         }
       }
 
-      // Passagens: entre os bilhetes do titular, escolhe a ida MAIS PRÓXIMA do
-      // início (se qualquer bilhete for compatível, é este que vale — sem
-      // falso-positivo). Janela = início − antes .. início + depois.
+      // Passagens: janela = início − antes .. início + depois (ASSIMÉTRICA).
+      // PREFERE qualquer bilhete DENTRO da janela — se algum for compatível, é o
+      // que vale (não flaga). Só quando NENHUM está na janela é que escolhe o mais
+      // próximo (para a mensagem) e o motor sinaliza. Antes, "mais próximo por
+      // distância" podia escolher um bilhete fora e ignorar outro compatível
+      // (falso-positivo com janela assimétrica — achado da revisão).
       const idas = c.titular_id ? idasPorTitular.get(c.titular_id) : undefined;
-      if (idas && idas.length > 0) {
-        const inicioMs = Date.parse(inicio + "T00:00:00Z");
-        let vooIdaISO = idas[0];
-        let melhorDist = Number.POSITIVE_INFINITY;
-        for (const ida of idas) {
-          const dist = Math.abs(Date.parse(ida + "T00:00:00Z") - inicioMs);
-          if (Number.isFinite(dist) && dist < melhorDist) { melhorDist = dist; vooIdaISO = ida; }
+      const limiteAntesISO = adicionarDiasISO(inicio, -janelaPassAntes);
+      const limiteDepoisISO = adicionarDiasISO(inicio, janelaPassDepois);
+      if (idas && idas.length > 0 && limiteAntesISO && limiteDepoisISO) {
+        const dentro = idas.find((x) => x >= limiteAntesISO && x <= limiteDepoisISO);
+        let vooIdaISO = dentro;
+        if (!vooIdaISO) {
+          // Nenhum compatível: escolhe o mais próximo só para a mensagem do achado.
+          const inicioMs = Date.parse(inicio + "T00:00:00Z");
+          let melhorDist = Number.POSITIVE_INFINITY;
+          vooIdaISO = idas[0];
+          for (const ida of idas) {
+            const dist = Math.abs(Date.parse(ida + "T00:00:00Z") - inicioMs);
+            if (Number.isFinite(dist) && dist < melhorDist) { melhorDist = dist; vooIdaISO = ida; }
+          }
         }
-        const limiteAntesISO = adicionarDiasISO(inicio, -janelaPassAntes);
-        const limiteDepoisISO = adicionarDiasISO(inicio, janelaPassDepois);
-        if (limiteAntesISO && limiteDepoisISO) {
-          passagens.push({ contratoId: c.id, vooIdaISO, limiteAntesISO, limiteDepoisISO });
-        }
+        passagens.push({ contratoId: c.id, vooIdaISO, limiteAntesISO, limiteDepoisISO });
       }
     }
   }
