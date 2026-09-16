@@ -32,6 +32,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   seguro_vigencia_insuficiente: "Apólice de seguro não cobre o período",
   seguro_cobertura_abaixo_minimo: "Cobertura do seguro abaixo do mínimo do destino",
   requisitos_consulado_incompletos: "Documentos exigidos pelo consulado ausentes",
+  documentacao_inconsistente: "Identidade divergente entre os documentos",
   passagem_datas_incompativeis: "Data do bilhete incompatível com o programa",
   passagem_compra_antes_visto: "Bilhete comprado antes do visto",
   passagem_volta_antes_fim: "Volta do bilhete anterior ao fim do programa",

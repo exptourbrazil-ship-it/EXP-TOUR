@@ -197,6 +197,20 @@ export type RequisitoConsuladoSnapshot = {
   presentes: string[];
 };
 
+// Consistência de identidade entre os documentos do titular, para o agente de
+// Documentação (§7-F.1, "consistência de nome, data de nascimento e passaporte
+// entre todos os documentos"). Cada array traz os valores BRUTOS de um campo
+// coletados dos documentos do titular MAIS a âncora canônica (nome do titular;
+// data de nascimento do contrato). O motor normaliza e conta valores distintos
+// não-vazios por campo; 2+ distintos = divergência. O resumo cita só o NOME do
+// campo divergente — nunca o valor (é PII).
+export type DocumentacaoIdentidadeSnapshot = {
+  contratoId: string;
+  nomes: string[];
+  nascimentos: string[];
+  passaportes: string[];
+};
+
 // Datas do bilhete vs. início do programa, para o agente de Passagens (§7-F.1,
 // "datas do bilhete compatíveis com as do Programa"). `vooIdaISO` = a ida MAIS
 // PRÓXIMA do início entre os bilhetes do titular (a camada de dados escolhe a
@@ -251,6 +265,7 @@ export type SnapshotRetaguarda = {
   segurosVigencia?: SeguroVigenciaSnapshot[];
   segurosCobertura?: SeguroCoberturaSnapshot[];
   requisitosConsulado?: RequisitoConsuladoSnapshot[];
+  documentacaoIdentidade?: DocumentacaoIdentidadeSnapshot[];
   passagens?: PassagemSnapshot[];
   passagensCompra?: PassagemCompraSnapshot[];
   passagensVolta?: PassagemVoltaSnapshot[];
@@ -610,6 +625,62 @@ export function checarSeguroCoberturaAbaixoMinimo(snap: SnapshotRetaguarda): Ach
  * demais — a passagem não bate com o programa. MÉDIO (resolve ao corrigir o
  * bilhete/data). Só compara datas YYYY-MM-DD; a janela é da camada de dados.
  */
+// Normalizadores puros para a comparação de identidade (agente de Documentação).
+// Nome: sem acento, maiúsculo, espaços colapsados — "José  da Silva" == "JOSE DA
+// SILVA". Passaporte: maiúsculo, só alfanumérico — "fd-123.456" == "FD123456".
+// Data: já ISO, só o dia. Vazio some (não conta como valor).
+function normalizarNome(s: string): string {
+  return (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function normalizarPassaporte(s: string): string {
+  return (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function distintosNaoVazios(valores: string[], norm: (s: string) => string): number {
+  const set = new Set<string>();
+  for (const v of valores ?? []) {
+    const n = norm(v ?? "");
+    if (n) set.add(n);
+  }
+  return set.size;
+}
+
+/**
+ * Inconsistência de identidade entre os documentos do titular (§7-F.1, agente de
+ * Documentação, "consistência de nome, data de nascimento e passaporte entre
+ * todos os documentos").
+ *
+ * A camada de dados traz, por contrato, os valores de cada campo coletados dos
+ * documentos do titular mais a âncora canônica. O motor normaliza e conta valores
+ * distintos por campo; 2+ distintos = os documentos discordam naquele campo.
+ * MÉDIO (resolve com verificação humana / correção do documento). O resumo cita
+ * só o NOME do campo divergente — nunca o valor (PII).
+ */
+export function checarDocumentacaoInconsistente(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const d of snap.documentacaoIdentidade ?? []) {
+    const campos: string[] = [];
+    if (distintosNaoVazios(d.nomes, normalizarNome) > 1) campos.push("nome");
+    if (distintosNaoVazios(d.nascimentos, (s) => (s ?? "").slice(0, 10)) > 1) campos.push("data de nascimento");
+    if (distintosNaoVazios(d.passaportes, normalizarPassaporte) > 1) campos.push("passaporte");
+    if (campos.length > 0) {
+      achados.push({
+        chave: `retaguarda:documentacao_inconsistente:${d.contratoId}`,
+        categoria: "documentacao_inconsistente",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: d.contratoId },
+        contratoId: d.contratoId,
+        resumo: `Contrato ${d.contratoId}: divergência entre os documentos em ${campos.join(", ")} — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 /**
  * Requisitos publicados do consulado não atendidos (§7-F.1, agente de Vistos,
  * "Requisitos publicados do consulado").
@@ -729,6 +800,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarSeguroVigenciaInsuficiente,
   checarSeguroCoberturaAbaixoMinimo,
   checarRequisitosConsulado,
+  checarDocumentacaoInconsistente,
   checarPassagemDatasIncompativeis,
   checarPassagemCompraAntesVisto,
   checarPassagemVoltaAntesDoFim,

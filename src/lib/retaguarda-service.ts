@@ -29,6 +29,7 @@ import {
   type PassagemCompraSnapshot,
   type PassagemVoltaSnapshot,
   type RequisitoConsuladoSnapshot,
+  type DocumentacaoIdentidadeSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -214,6 +215,7 @@ async function carregarSnapshot(
   passagensCompra: PassagemCompraSnapshot[];
   passagensVolta: PassagemVoltaSnapshot[];
   requisitosConsulado: RequisitoConsuladoSnapshot[];
+  documentacaoIdentidade: DocumentacaoIdentidadeSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -229,6 +231,7 @@ async function carregarSnapshot(
   const passagensCompra: PassagemCompraSnapshot[] = [];
   const passagensVolta: PassagemVoltaSnapshot[] = [];
   const requisitosConsulado: RequisitoConsuladoSnapshot[] = [];
+  const documentacaoIdentidade: DocumentacaoIdentidadeSnapshot[] = [];
   const janelaPassAntes = janelaPassagemAntesDias();
   const janelaPassDepois = janelaPassagemDepoisDias();
   const janelaVoltaAntes = janelaPassagemVoltaAntesDias();
@@ -406,12 +409,12 @@ async function carregarSnapshot(
     // sentido cobrar seguro de uma viagem que não vai acontecer.
     const { data: contratos, error: e8 } = await supabase
       .from("contratos")
-      .select("id, titular_id, data_inicio, data_fim, cancelado_em, pais_destino")
+      .select("id, titular_id, data_inicio, data_fim, cancelado_em, pais_destino, estudante_data_nascimento")
       .in("id", lote)
       .is("cancelado_em", null)
       .not("data_inicio", "is", null);
     if (e8) throw new Error("Falha ao ler contratos p/ seguro da retaguarda: " + e8.message);
-    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null; data_fim: string | null; pais_destino: string | null }>;
+    const linhasContrato = (contratos ?? []) as Array<{ id: string; titular_id: string | null; data_inicio: string | null; data_fim: string | null; pais_destino: string | null; estudante_data_nascimento: string | null }>;
     const titularIds = Array.from(
       new Set(linhasContrato.map((c) => c.titular_id).filter((t): t is string => !!t)),
     );
@@ -544,6 +547,48 @@ async function carregarSnapshot(
       }
     }
 
+    // Identidade por documento (agente de Documentação): nome, nascimento e
+    // passaporte de CADA documento do titular. É nível-titular (todos os docs do
+    // titular devem concordar). Guarda as listas brutas por titular; o motor
+    // normaliza e conta divergências. PII: nunca logamos os valores.
+    const identidadePorTitular = new Map<string, { nomes: string[]; nascimentos: string[]; passaportes: string[] }>();
+    for (const loteTit of emLotes(titularIds, LOTE_IN)) {
+      const { data: docsId, error: e13 } = await supabase
+        .from("documentos")
+        .select("titular_id, doc_nome, doc_data_nascimento, doc_passaporte")
+        .in("titular_id", loteTit);
+      if (e13) throw new Error("Falha ao ler identidade de documentos da retaguarda: " + e13.message);
+      for (const d of docsId ?? []) {
+        const t = (d as { titular_id?: string }).titular_id;
+        if (!t) continue;
+        const nome = (d as { doc_nome?: string | null }).doc_nome ?? "";
+        const nasc = ((d as { doc_data_nascimento?: string | null }).doc_data_nascimento ?? "").slice(0, 10);
+        const pass = (d as { doc_passaporte?: string | null }).doc_passaporte ?? "";
+        if (!nome && !nasc && !pass) continue;
+        const e = identidadePorTitular.get(t) ?? { nomes: [], nascimentos: [], passaportes: [] };
+        if (nome) e.nomes.push(nome);
+        if (nasc) e.nascimentos.push(nasc);
+        if (pass) e.passaportes.push(pass);
+        identidadePorTitular.set(t, e);
+      }
+    }
+
+    // Nome canônico do titular (âncora da comparação de identidade): um único doc
+    // divergente do cadastro já é pego, sem depender de haver 2 documentos.
+    const nomePorTitular = new Map<string, string>();
+    for (const loteTit of emLotes(titularIds, LOTE_IN)) {
+      const { data: tits, error: e14 } = await supabase
+        .from("titulares")
+        .select("id, nome_completo")
+        .in("id", loteTit);
+      if (e14) throw new Error("Falha ao ler titulares da retaguarda: " + e14.message);
+      for (const t of tits ?? []) {
+        const id = (t as { id?: string }).id;
+        const nome = (t as { nome_completo?: string | null }).nome_completo ?? "";
+        if (id && nome) nomePorTitular.set(id, nome);
+      }
+    }
+
     for (const c of linhasContrato) {
       const inicio = (c.data_inicio ?? "").slice(0, 10);
       if (!inicio) continue;
@@ -595,6 +640,24 @@ async function carregarSnapshot(
       if (exigidos && inicio >= hojeISO) {
         const presentes = c.titular_id ? Array.from(tiposPorTitular.get(c.titular_id) ?? []) : [];
         requisitosConsulado.push({ contratoId: c.id, pais, exigidos, presentes });
+      }
+
+      // Documentação: consistência de identidade entre os documentos do titular.
+      // Só quando o titular TEM documentos com identidade preenchida (senão não há
+      // o que comparar). Junta os valores dos documentos com as âncoras canônicas
+      // (nome do titular; nascimento do contrato) — assim um único doc divergente
+      // do cadastro já é pego. O motor normaliza e conta divergências (sem expor
+      // valor). É nível-titular como o consulado (o acervo é do titular).
+      const identidade = c.titular_id ? identidadePorTitular.get(c.titular_id) : undefined;
+      if (identidade) {
+        const nomeCanonico = c.titular_id ? nomePorTitular.get(c.titular_id) : undefined;
+        const nascCanonico = (c.estudante_data_nascimento ?? "").slice(0, 10);
+        documentacaoIdentidade.push({
+          contratoId: c.id,
+          nomes: nomeCanonico ? [...identidade.nomes, nomeCanonico] : identidade.nomes,
+          nascimentos: nascCanonico ? [...identidade.nascimentos, nascCanonico] : identidade.nascimentos,
+          passaportes: identidade.passaportes,
+        });
       }
 
       // Passagens: janela = início − antes .. início + depois (ASSIMÉTRICA).
@@ -653,7 +716,7 @@ async function carregarSnapshot(
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra, passagensVolta, requisitosConsulado };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra, passagensVolta, requisitosConsulado, documentacaoIdentidade };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
