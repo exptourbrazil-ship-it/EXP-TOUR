@@ -53,7 +53,8 @@ export async function obterConteudoCampusDetalheAdmin(supabase: SupabaseClient, 
 }
 
 async function campusDoTenant(supabase: SupabaseClient, tenantId: string, campusId: string): Promise<boolean> {
-  const { data } = await supabase.from("campus").select("id, tenant_id").eq("id", campusId).maybeSingle();
+  // Campus arquivado nao recebe conteudo novo.
+  const { data } = await supabase.from("campus").select("id, tenant_id").eq("id", campusId).is("archived_at", null).maybeSingle();
   return !!data && (data as any).tenant_id === tenantId;
 }
 

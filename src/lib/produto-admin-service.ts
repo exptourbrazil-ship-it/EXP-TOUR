@@ -137,10 +137,12 @@ export async function salvarProdutoAdmin(
   const { core, detalhe, campus_id } = r.valor;
 
   // Posse do campus: sempre do tenant; e, no fluxo do hub, do fornecedor esperado.
+  // Campus ARQUIVADO nao e alvo valido (nada novo nasce sob campus morto).
   const { data: campusAlvo } = await supabase
     .from("campus")
     .select("id, tenant_id, supplier_id")
     .eq("id", campus_id)
+    .is("archived_at", null)
     .maybeSingle();
   if (!campusAlvo || (campusAlvo as { tenant_id?: string }).tenant_id !== tenantId) {
     throw new ProdutoAdminErro("campus_invalido");

@@ -27,9 +27,16 @@ export default async function FornecedorEscolasPage({ params }: { params: Promis
   const tenantId = await tenantIdAtual(supabase);
   const campus = await listarCampusDoFornecedor(supabase, tenantId, id);
 
+  const base = `/admin/fornecedores/${id}`;
+
   return (
     <div>
-      <h2 className="mb-1 font-serif text-lg text-brand">Meus Campi</h2>
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="font-serif text-lg text-brand">Meus Campi</h2>
+        <Link href={`${base}/campus/novo`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+          + Novo campus
+        </Link>
+      </div>
       <p className="mb-4 text-sm text-neutral-600">
         Unidades deste fornecedor. A política de cada campus (Anexo III: taxas obrigatórias, exigência de
         antecipação, reembolso) fica em{" "}
@@ -43,13 +50,14 @@ export default async function FornecedorEscolasPage({ params }: { params: Promis
         <p className="text-sm text-neutral-500">Nenhum campus cadastrado para este fornecedor.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
-          <table className="w-full min-w-[520px] text-left text-sm">
+          <table className="w-full min-w-[560px] text-left text-sm">
             <thead className="text-xs text-neutral-400">
               <tr>
                 <th className="px-4 py-2">Campus</th>
                 <th className="px-4 py-2">Cidade</th>
                 <th className="px-4 py-2">País</th>
                 <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="text-neutral-700">
@@ -62,6 +70,11 @@ export default async function FornecedorEscolasPage({ params }: { params: Promis
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[c.status] ?? "bg-neutral-100 text-neutral-600"}`}>
                       {STATUS_LABEL[c.status] ?? c.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <Link href={`${base}/campus/${c.id}`} className="font-medium text-brand-golddark hover:underline">
+                      Editar →
+                    </Link>
                   </td>
                 </tr>
               ))}

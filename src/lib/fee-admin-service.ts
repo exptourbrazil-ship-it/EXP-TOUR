@@ -33,7 +33,8 @@ export class TaxaAdminErro extends Error {
 }
 
 async function campusDoTenant(supabase: SupabaseClient, tenantId: string, campusId: string): Promise<boolean> {
-  const { data } = await supabase.from("campus").select("id, tenant_id").eq("id", campusId).maybeSingle();
+  // Campus arquivado nao e alvo valido para taxa nova/editada.
+  const { data } = await supabase.from("campus").select("id, tenant_id").eq("id", campusId).is("archived_at", null).maybeSingle();
   return !!data && (data as { tenant_id?: string }).tenant_id === tenantId;
 }
 

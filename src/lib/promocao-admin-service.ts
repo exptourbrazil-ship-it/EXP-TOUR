@@ -39,10 +39,12 @@ async function campusDoTenantESupplier(
   supplierId: string,
   campusId: string,
 ): Promise<boolean> {
+  // Campus arquivado nao e alvo valido para promocao nova/editada.
   const { data } = await supabase
     .from("campus")
     .select("id, tenant_id, supplier_id")
     .eq("id", campusId)
+    .is("archived_at", null)
     .maybeSingle();
   return (
     !!data &&

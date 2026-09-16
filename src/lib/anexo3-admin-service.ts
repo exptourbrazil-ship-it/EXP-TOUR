@@ -216,7 +216,12 @@ export async function salvarCampusPolitica(
 // Campi no escopo do admin (para o seletor da tela). Só id/nome/país/moeda.
 export async function listarCamposDoEscopo(supabase: SupabaseClient): Promise<ResultadoAdmin> {
   const escopo = await escopoTenantAdmin(supabase);
-  let q = supabase.from("campus").select("id, name, city, country_code, base_currency").order("name", { ascending: true });
+  // Campi arquivados ficam fora do seletor (nao se configura politica em campus morto).
+  let q = supabase
+    .from("campus")
+    .select("id, name, city, country_code, base_currency")
+    .is("archived_at", null)
+    .order("name", { ascending: true });
   if (!escopo.global) q = q.eq("tenant_id", escopo.tenantId);
   const { data, error } = await q;
   if (error) return { ok: false, status: 500, erro: "Falha ao listar os campi." };
