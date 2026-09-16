@@ -1067,7 +1067,7 @@ export type DadosConversao = {
   currency: string; // moeda de origem da opcao (o contrato nasce nela)
   liquido: number; // total da opcao na moeda de origem
   entrada: number; // deposit na MESMA moeda (0 se moeda difere/ausente)
-  dataInicio: string | null; // menor start_date dos itens da opcao
+  dataInicio: string | null; // início do CURSO (item program); canônica p/ prazos (Cláusula 1.1.b)
   studentId: string | null; // o nome completo e resolvido no servico de checkout
   paisDestino: string | null;
   supplierId: string | null;
@@ -1108,9 +1108,13 @@ export async function dadosConversaoCotacao(
   // Entrada so entra na MESMA moeda da opcao (senao viraria mistura de moedas).
   const entrada = deposit > 0 && (!depositCur || depositCur === currency) ? deposit : 0;
 
-  // Data de inicio: menor start_date entre os itens (define a janela de parcelas).
+  // Data de inicio CANONICA (Clausula 1.1.b): a data de inicio do CURSO (item
+  // 'program'), ainda que a acomodacao comece antes. Todos os prazos (quitacao
+  // D-30, arrependimento, janela de parcelas) derivam dela. Fallback ao menor
+  // start_date de todos os itens so quando nao ha item de programa com data.
+  const inicioCurso = t.itens.find((i) => i.grupo === "program" && i.startDate)?.startDate ?? null;
   const datas = t.itens.map((i) => i.startDate).filter(Boolean) as string[];
-  const dataInicio = datas.length ? datas.slice().sort()[0] : null;
+  const dataInicio = inicioCurso ?? (datas.length ? datas.slice().sort()[0] : null);
 
   // Nome do contrato: nome do item de programa; senao 1o item; senao referencia.
   const progItem = t.itens.find((i) => i.grupo === "program") ?? t.itens[0];
