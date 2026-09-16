@@ -377,6 +377,15 @@ async function carregarSnapshot(
     const titularIds = Array.from(
       new Set(linhasContrato.map((c) => c.titular_id).filter((t): t is string => !!t)),
     );
+    // Nº de contratos (programas) por titular no escopo. A checagem de VOLTA vs.
+    // fim do programa só é confiável quando o titular tem UM único programa: os
+    // bilhetes são nível-titular (sem vínculo a contrato), então com vários
+    // programas a volta de um mascara ou é atribuída erroneamente a outro (achado
+    // da revisão). Nesse caso a checagem é omitida (advisory, não trava).
+    const contratosPorTitular = new Map<string, number>();
+    for (const c of linhasContrato) {
+      if (c.titular_id) contratosPorTitular.set(c.titular_id, (contratosPorTitular.get(c.titular_id) ?? 0) + 1);
+    }
     // Titulares que TÊM ao menos uma apólice de seguro no acervo, e a MELHOR
     // (maior) validade entre as apólices de cada titular — insumo da vigência.
     const titularesComSeguro = new Set<string>();
@@ -549,13 +558,17 @@ async function carregarSnapshot(
       }
 
       // Volta vs. fim do programa: só quando o contrato TEM fim (data_fim) E há
-      // bilhete com data de volta. Escolhe a volta MAIS TARDIA (candidata mais
-      // favorável) e o limite mínimo aceitável = fim − tolerância. O motor sinaliza
-      // se nem a volta mais tardia alcança o limite (aluno iria embora antes de
-      // terminar). O fail-safe do fim (data_fim >= data_inicio) é garantido na
-      // rota; aqui usamos o fim tal como gravado.
+      // bilhete com data de volta E o titular tem UM único programa no escopo
+      // (senão a volta agregada por titular mascara/atribui erro entre programas —
+      // achado da revisão). Escolhe a volta MAIS TARDIA (candidata mais favorável)
+      // e o limite mínimo aceitável = fim − tolerância. O motor sinaliza se nem a
+      // volta mais tardia alcança o limite (aluno iria embora antes de terminar).
+      // Fail-safe (igual à vigência acima): só usa o fim quando POSTERIOR ao início
+      // — um data_fim < data_inicio (typo não barrado) não pode rebaixar o limite e
+      // engolir/inventar um alerta.
       const fimPrograma = (c.data_fim ?? "").slice(0, 10);
-      if (fimPrograma && c.titular_id) {
+      const titularUnicoPrograma = !!c.titular_id && contratosPorTitular.get(c.titular_id) === 1;
+      if (fimPrograma && fimPrograma > inicio && titularUnicoPrograma && c.titular_id) {
         const vooVoltaISO = maxVoltaPorTitular.get(c.titular_id);
         const limiteVoltaISO = adicionarDiasISO(fimPrograma, -janelaVoltaAntes);
         if (vooVoltaISO && limiteVoltaISO) {
