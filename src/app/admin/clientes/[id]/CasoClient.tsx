@@ -261,6 +261,11 @@ export default function CasoClient({
                       {fmtMoeda(Number(c.valor_total), c.moeda || "BRL")}
                     </div>
                   ) : null}
+                  <div>
+                    <span className="text-neutral-400">Início:</span>{" "}
+                    {c.data_inicio ? fmtData(c.data_inicio) : "—"}
+                  </div>
+                  <DataFimContrato contrato={c} />
                   {c.estudante_email ? (
                     <div>
                       <span className="text-neutral-400">E-mail do estudante:</span> {c.estudante_email}
@@ -1887,6 +1892,54 @@ function FormContatoTitular({ caso }: { caso: Caso }) {
 }
 
 // Dados do estudante de UM contrato. Capacidade casos.gerir.
+// Editor compacto da data de TÉRMINO do programa (contratos.data_fim). Alimenta
+// as verificações de retaguarda de Seguro (vigência) e Passagens (volta). O
+// servidor (casos.gerir) é a fonte de verdade da autorização.
+function DataFimContrato({ contrato }: { contrato: CasoContrato }) {
+  const router = useRouter();
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const atual = (contrato.data_fim || "").slice(0, 10);
+
+  async function salvar(valor: string) {
+    const novo = valor || null;
+    if ((novo || "") === atual) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/admin/contratos/${contrato.id}/data-fim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataFim: novo }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErro(data?.error || "Falha ao salvar.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setErro("Falha de rede.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-neutral-400">Término:</span>
+      <input
+        type="date"
+        defaultValue={atual}
+        disabled={salvando}
+        onChange={(e) => salvar(e.target.value)}
+        className="rounded border border-neutral-300 px-1 py-0.5 text-xs text-neutral-700"
+      />
+      {erro ? <span className="text-[11px] text-red-600">{erro}</span> : null}
+    </div>
+  );
+}
+
 function FormEstudanteContrato({ caso, contrato }: { caso: Caso; contrato: CasoContrato }) {
   const router = useRouter();
   const [nome, setNome] = useState(contrato.estudante_nome || "");
