@@ -13,6 +13,7 @@ import {
   checarSeguroCoberturaAbaixoMinimo,
   checarPassagemDatasIncompativeis,
   checarPassagemCompraAntesVisto,
+  checarPassagemVoltaAntesDoFim,
   adicionarMesesISO,
   adicionarDiasISO,
   detectarRetaguarda,
@@ -746,5 +747,62 @@ test("compra: campos vazios nao quebram nem flagram", () => {
 
 test("compra: snapshot sem o array nao quebra", () => {
   const a = checarPassagemCompraAntesVisto({ parcelas: [], pagamentos: [] });
+  assert.deepEqual(a, []);
+});
+
+// ---- checarPassagemVoltaAntesDoFim ------------------------------------------
+
+function volta(over: Partial<{
+  contratoId: string; vooVoltaISO: string; limiteVoltaISO: string; fimProgramaISO: string;
+}> = {}) {
+  return {
+    contratoId: over.contratoId ?? "c1",
+    vooVoltaISO: over.vooVoltaISO ?? "2026-12-20",
+    limiteVoltaISO: over.limiteVoltaISO ?? "2026-12-13",
+    fimProgramaISO: over.fimProgramaISO ?? "2026-12-15",
+  };
+}
+
+test("volta: bilhete de volta ANTES do limite -> achado medio", () => {
+  const a = checarPassagemVoltaAntesDoFim({
+    parcelas: [], pagamentos: [], passagensVolta: [volta({ vooVoltaISO: "2026-12-01" })],
+  });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].categoria, "passagem_volta_antes_fim");
+  assert.equal(a[0].severidade, "medio");
+  assert.equal(a[0].entidade.tipo, "contrato");
+  assert.equal(a[0].chave, "retaguarda:passagem_volta_antes_fim:c1");
+});
+
+test("volta: bilhete de volta DEPOIS do fim -> sem achado", () => {
+  const a = checarPassagemVoltaAntesDoFim({
+    parcelas: [], pagamentos: [], passagensVolta: [volta({ vooVoltaISO: "2026-12-20" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("volta: bilhete de volta no limite (borda) -> sem achado", () => {
+  const a = checarPassagemVoltaAntesDoFim({
+    parcelas: [], pagamentos: [], passagensVolta: [volta({ vooVoltaISO: "2026-12-13" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("volta: volta um dia antes do limite (dentro da tolerância nao, fora) -> achado", () => {
+  const a = checarPassagemVoltaAntesDoFim({
+    parcelas: [], pagamentos: [], passagensVolta: [volta({ vooVoltaISO: "2026-12-12" })],
+  });
+  assert.equal(a.length, 1);
+});
+
+test("volta: campos vazios nao quebram nem flagram", () => {
+  const a = checarPassagemVoltaAntesDoFim({
+    parcelas: [], pagamentos: [], passagensVolta: [volta({ vooVoltaISO: "" })],
+  });
+  assert.deepEqual(a, []);
+});
+
+test("volta: snapshot sem o array nao quebra", () => {
+  const a = checarPassagemVoltaAntesDoFim({ parcelas: [], pagamentos: [] });
   assert.deepEqual(a, []);
 });

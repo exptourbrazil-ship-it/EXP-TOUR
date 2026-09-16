@@ -33,6 +33,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   seguro_cobertura_abaixo_minimo: "Cobertura do seguro abaixo do mínimo do destino",
   passagem_datas_incompativeis: "Data do bilhete incompatível com o programa",
   passagem_compra_antes_visto: "Bilhete comprado antes do visto",
+  passagem_volta_antes_fim: "Volta do bilhete anterior ao fim do programa",
 };
 
 function fmtData(iso: string | null): string {

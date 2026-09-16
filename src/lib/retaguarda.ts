@@ -208,6 +208,21 @@ export type PassagemCompraSnapshot = {
   vistoISO: string;
 };
 
+// Data de VOLTA do bilhete vs. fim do programa, para o agente de Passagens
+// (§7-F.1, "datas do bilhete compatíveis com as do Programa" — o lado da volta).
+// `vooVoltaISO` = a volta MAIS TARDIA entre os bilhetes do titular (a candidata
+// mais favorável: se nem ela cobre o fim, nenhuma cobre). `limiteVoltaISO` = a
+// data mínima aceitável de volta = fim do programa − tolerância. Uma volta
+// anterior a esse limite leva o estudante embora antes de terminar o programa
+// (provável data trocada). A camada de dados só monta o snapshot quando o
+// contrato TEM fim (data_fim) E há bilhete com data de volta.
+export type PassagemVoltaSnapshot = {
+  contratoId: string;
+  vooVoltaISO: string;
+  limiteVoltaISO: string;
+  fimProgramaISO: string;
+};
+
 export type SnapshotRetaguarda = {
   parcelas: ParcelaSnapshot[];
   pagamentos: PagamentoSnapshot[];
@@ -223,6 +238,7 @@ export type SnapshotRetaguarda = {
   segurosCobertura?: SeguroCoberturaSnapshot[];
   passagens?: PassagemSnapshot[];
   passagensCompra?: PassagemCompraSnapshot[];
+  passagensVolta?: PassagemVoltaSnapshot[];
 };
 
 function parcelaEstaPaga(p: ParcelaSnapshot): boolean {
@@ -625,6 +641,35 @@ export function checarPassagemCompraAntesVisto(snap: SnapshotRetaguarda): Achado
   return achados;
 }
 
+/**
+ * Bilhete de VOLTA anterior ao fim do programa (§7-F.1, "datas do bilhete
+ * compatíveis com as do Programa" — o lado da volta).
+ *
+ * A camada de dados escolhe a volta MAIS TARDIA do titular e traz o limite
+ * mínimo aceitável (fim do programa − tolerância). Se nem a volta mais tardia
+ * alcança esse limite, TODAS as voltas são anteriores ao fim — o estudante iria
+ * embora antes de terminar o programa (provável data trocada). MÉDIO (resolve ao
+ * corrigir o bilhete/data). Só compara datas YYYY-MM-DD; o limite é da camada de
+ * dados.
+ */
+export function checarPassagemVoltaAntesDoFim(snap: SnapshotRetaguarda): Achado[] {
+  const achados: Achado[] = [];
+  for (const p of snap.passagensVolta ?? []) {
+    if (!p.vooVoltaISO || !p.limiteVoltaISO) continue;
+    if (p.vooVoltaISO < p.limiteVoltaISO) {
+      achados.push({
+        chave: `retaguarda:passagem_volta_antes_fim:${p.contratoId}`,
+        categoria: "passagem_volta_antes_fim",
+        severidade: "medio",
+        entidade: { tipo: "contrato", id: p.contratoId },
+        contratoId: p.contratoId,
+        resumo: `Contrato ${p.contratoId}: data de volta do bilhete (${p.vooVoltaISO}) anterior ao fim do programa (${p.fimProgramaISO}) — verificar.`,
+      });
+    }
+  }
+  return achados;
+}
+
 // Catálogo de verificações. Novas verificações entram aqui (uma função pura por
 // invariante) e o runner as executa todas.
 export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado[]> = [
@@ -640,6 +685,7 @@ export const VERIFICACOES_RETAGUARDA: Array<(snap: SnapshotRetaguarda) => Achado
   checarSeguroCoberturaAbaixoMinimo,
   checarPassagemDatasIncompativeis,
   checarPassagemCompraAntesVisto,
+  checarPassagemVoltaAntesDoFim,
 ];
 
 /**

@@ -27,6 +27,7 @@ import {
   type SeguroCoberturaSnapshot,
   type PassagemSnapshot,
   type PassagemCompraSnapshot,
+  type PassagemVoltaSnapshot,
   type SeveridadeAchado,
   adicionarMesesISO,
   adicionarDiasISO,
@@ -92,6 +93,14 @@ function janelaPassagemAntesDias(): number {
 function janelaPassagemDepoisDias(): number {
   const env = Number(process.env.PASSAGEM_JANELA_DEPOIS_DIAS);
   return Number.isFinite(env) && env >= 0 ? Math.round(env) : PASSAGEM_JANELA_DEPOIS_DIAS_PADRAO;
+}
+// Volta vs. fim do programa: a volta pode ser até N dias ANTES do fim (aluno que
+// encerra as aulas na sexta e viaja no fim de semana). Antes disso, provável data
+// trocada — o aluno iria embora antes de terminar o programa.
+const PASSAGEM_VOLTA_ANTES_DIAS_PADRAO = 2;
+function janelaPassagemVoltaAntesDias(): number {
+  const env = Number(process.env.PASSAGEM_VOLTA_ANTES_DIAS);
+  return Number.isFinite(env) && env >= 0 ? Math.round(env) : PASSAGEM_VOLTA_ANTES_DIAS_PADRAO;
 }
 
 // Mínimos de cobertura de seguro por país (destino), do config do tenant. Forma
@@ -167,6 +176,7 @@ async function carregarSnapshot(
   segurosCobertura: SeguroCoberturaSnapshot[];
   passagens: PassagemSnapshot[];
   passagensCompra: PassagemCompraSnapshot[];
+  passagensVolta: PassagemVoltaSnapshot[];
 }> {
   const parcelas: ParcelaSnapshot[] = [];
   const pagamentos: PagamentoSnapshot[] = [];
@@ -180,8 +190,10 @@ async function carregarSnapshot(
   const segurosCobertura: SeguroCoberturaSnapshot[] = [];
   const passagens: PassagemSnapshot[] = [];
   const passagensCompra: PassagemCompraSnapshot[] = [];
+  const passagensVolta: PassagemVoltaSnapshot[] = [];
   const janelaPassAntes = janelaPassagemAntesDias();
   const janelaPassDepois = janelaPassagemDepoisDias();
+  const janelaVoltaAntes = janelaPassagemVoltaAntesDias();
   // Dia de referência do repasse (dias úteis Brasil — a operação repassa daqui).
   const hojeBR = hojeBrasilISO();
   // Dia de hoje (granularidade de dia; UTC basta para o filtro "programa futuro").
@@ -402,14 +414,16 @@ async function carregarSnapshot(
     }
 
     // Bilhetes aéreos do titular (agente de Passagens): datas de ida (para a
-    // compatibilidade com o programa) e a compra MAIS ANTIGA (para "compra
-    // posterior ao visto"). Lista de idas por titular; menor compra por titular.
+    // compatibilidade com o início), a compra MAIS ANTIGA (para "compra posterior
+    // ao visto") e a volta MAIS TARDIA (para "volta vs. fim do programa"). Lista
+    // de idas por titular; menor compra; maior volta.
     const idasPorTitular = new Map<string, string[]>();
     const minCompraPorTitular = new Map<string, string>();
+    const maxVoltaPorTitular = new Map<string, string>();
     for (const loteTit of emLotes(titularIds, LOTE_IN)) {
       const { data: pass, error: e10 } = await supabase
         .from("documentos")
-        .select("titular_id, passagem_data_ida, passagem_data_compra")
+        .select("titular_id, passagem_data_ida, passagem_data_compra, passagem_data_volta")
         .in("titular_id", loteTit)
         .eq("tipo_documento", "passagem_aerea");
       if (e10) throw new Error("Falha ao ler passagens da retaguarda: " + e10.message);
@@ -425,6 +439,11 @@ async function carregarSnapshot(
         if (compra) {
           const atual = minCompraPorTitular.get(t);
           if (!atual || compra < atual) minCompraPorTitular.set(t, compra);
+        }
+        const voltaData = ((p as { passagem_data_volta?: string | null }).passagem_data_volta ?? "").slice(0, 10);
+        if (voltaData) {
+          const atual = maxVoltaPorTitular.get(t);
+          if (!atual || voltaData > atual) maxVoltaPorTitular.set(t, voltaData);
         }
       }
     }
@@ -528,10 +547,25 @@ async function carregarSnapshot(
           passagensCompra.push({ contratoId: c.id, compraISO, vistoISO });
         }
       }
+
+      // Volta vs. fim do programa: só quando o contrato TEM fim (data_fim) E há
+      // bilhete com data de volta. Escolhe a volta MAIS TARDIA (candidata mais
+      // favorável) e o limite mínimo aceitável = fim − tolerância. O motor sinaliza
+      // se nem a volta mais tardia alcança o limite (aluno iria embora antes de
+      // terminar). O fail-safe do fim (data_fim >= data_inicio) é garantido na
+      // rota; aqui usamos o fim tal como gravado.
+      const fimPrograma = (c.data_fim ?? "").slice(0, 10);
+      if (fimPrograma && c.titular_id) {
+        const vooVoltaISO = maxVoltaPorTitular.get(c.titular_id);
+        const limiteVoltaISO = adicionarDiasISO(fimPrograma, -janelaVoltaAntes);
+        if (vooVoltaISO && limiteVoltaISO) {
+          passagensVolta.push({ contratoId: c.id, vooVoltaISO, limiteVoltaISO, fimProgramaISO: fimPrograma });
+        }
+      }
     }
   }
 
-  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra };
+  return { parcelas, pagamentos, docsCompartilhados, alteracoes, repactuacoes, docsValidade, cartasRecusa, segurosContrato, segurosVigencia, segurosCobertura, passagens, passagensCompra, passagensVolta };
 }
 
 // Aplica o plano de reconciliação em `retaguarda_achado`. Escreve SEMPRE com
