@@ -2822,6 +2822,27 @@ create index if not exists idx_material_supplier on material(supplier_id, archiv
 create index if not exists idx_material_tenant_perm on material(tenant_id, permissao, archived_at);
 alter table if exists material enable row level security;
 
+-- APROVAÇÃO de material (F2 Fornecedores; migracao-material-aprovacao.sql, aplicada
+-- em prod 16/09/2026): fornecedor sobe -> 'pendente' -> admin publica/recusa; admin
+-- sobe -> 'aprovado'. Só 'aprovado' alcança cliente/cotação. Default 'aprovado'
+-- mantém os materiais pré-existentes publicados.
+alter table if exists material add column if not exists status text not null default 'aprovado'
+  check (status in ('pendente','aprovado','rejeitado'));
+alter table if exists material add column if not exists submitted_by text;
+alter table if exists material add column if not exists aprovado_por text;
+alter table if exists material add column if not exists aprovado_em timestamptz;
+alter table if exists material add column if not exists rejeitado_por text;
+alter table if exists material add column if not exists rejeitado_em timestamptz;
+alter table if exists material add column if not exists motivo_rejeicao text;
+create index if not exists idx_material_tenant_status on material(tenant_id, status, archived_at);
+-- Teto do motivo da recusa (a rota limita a 1000; a constraint fecha para writers futuros).
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'material_motivo_rejeicao_len') then
+    alter table material add constraint material_motivo_rejeicao_len
+      check (motivo_rejeicao is null or length(motivo_rejeicao) <= 1000);
+  end if;
+end $$;
+
 -- Substituicao ATOMICA das regras de elegibilidade de um produto (compliance-
 -- sensivel: is_blocking impede a emissao da cotacao). delete+insert numa unica
 -- transacao, sob advisory lock por produto — sem fail-open em falha parcial nem

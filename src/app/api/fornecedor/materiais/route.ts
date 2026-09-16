@@ -47,14 +47,15 @@ export async function POST(request: Request) {
       if (!id) return NextResponse.json({ ok: false, erro: "Material ausente." }, { status: 400 });
       const norm = normalizarEntradaMaterial(body, { exigirLink: false });
       if (!norm.ok) return NextResponse.json({ ok: false, erro: norm.erro }, { status: 400 });
-      const r = await atualizarMaterial(supabase, sessao.supplierId, id, norm.dados);
+      // Edicao pelo fornecedor devolve o material a 'pendente' (volta ao crivo do admin).
+      const r = await atualizarMaterial(supabase, sessao.supplierId, id, norm.dados, sessao.email);
       return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 400 });
     }
 
     if (acao === "criar_link") {
       const norm = normalizarEntradaMaterial(body, { exigirLink: true });
       if (!norm.ok) return NextResponse.json({ ok: false, erro: norm.erro }, { status: 400 });
-      const r = await criarMaterial(supabase, { supplierId: sessao.supplierId, createdBy: sessao.email, entrada: norm.dados });
+      const r = await criarMaterial(supabase, { supplierId: sessao.supplierId, createdBy: sessao.email, origem: "fornecedor", entrada: norm.dados });
       return r.ok ? NextResponse.json({ ok: true, id: r.id }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 500 });
     }
 
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
     const r = await criarMaterial(supabase, {
       supplierId: sessao.supplierId,
       createdBy: sessao.email,
+      origem: "fornecedor", // nasce PENDENTE: o admin publica
       entrada: norm.dados,
       arquivo: { storagePath: caminho, nomeArquivo: sanitizarNomeExibicao(arquivo.name), mime: validacao.mime },
     });

@@ -101,5 +101,24 @@ test("M11 resumoMateriais conta visibilidade e validade", () => {
 });
 
 test("M11 resumoMateriais lista vazia zera tudo", () => {
-  assert.deepEqual(resumoMateriais([], "2026-08-28"), { total: 0, cliente: 0, interno: 0, vencidos: 0, vencendo: 0 });
+  assert.deepEqual(resumoMateriais([], "2026-08-28"), { total: 0, cliente: 0, interno: 0, vencidos: 0, vencendo: 0, pendentes: 0 });
+});
+
+test("M12 resumoMateriais conta os pendentes de aprovação (status ausente = legado publicado)", () => {
+  const r = resumoMateriais(
+    [
+      { permissao: "cliente", validade: null, vencido: false, status: "pendente" },
+      { permissao: "interno", validade: null, vencido: false, status: "pendente" },
+      { permissao: "cliente", validade: null, vencido: false, status: "aprovado" },
+      { permissao: "cliente", validade: null, vencido: false, status: "rejeitado" },
+      { permissao: "cliente", validade: null, vencido: false }, // legado sem status
+    ],
+    "2026-08-28",
+  );
+  assert.equal(r.total, 5);
+  assert.equal(r.pendentes, 2);
+  // "Para o cliente" so conta o que ALCANCA o cliente: aprovado + legado (sem status).
+  // O pendente e o rejeitado marcados 'cliente' NAO entram.
+  assert.equal(r.cliente, 2);
+  assert.equal(r.interno, 1);
 });

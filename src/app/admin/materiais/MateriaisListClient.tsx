@@ -3,10 +3,23 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { MaterialAdmin } from "@/lib/material-service";
-import { resumoMateriais, somarDiasISO, dataIsoValida, TIPO_MATERIAL_LABEL, type TipoMaterial } from "@/lib/material-helpers";
+import {
+  resumoMateriais,
+  somarDiasISO,
+  dataIsoValida,
+  TIPO_MATERIAL_LABEL,
+  STATUS_MATERIAL_LABEL,
+  type TipoMaterial,
+  type StatusMaterial,
+} from "@/lib/material-helpers";
 import { normalizarBusca } from "@/lib/clientes";
 
 const IDIOMA_LABEL: Record<string, string> = { en: "EN", pt: "PT", es: "ES" };
+// Badge de status de aprovação (F2). 'aprovado' não ganha badge (é o normal).
+const STATUS_BADGE: Record<string, string> = {
+  pendente: "bg-amber-50 text-amber-700",
+  rejeitado: "bg-red-50 text-red-600",
+};
 
 const FILTROS = [
   { k: "", label: "Todos" },
@@ -17,7 +30,16 @@ const FILTROS = [
 // Lista de materiais: indicadores de topo (total/cliente/vencendo/vencidos),
 // filtro por validade, busca sem acento (título/escola/programa) e badges.
 // Client-side sobre a lista já carregada e filtrada por escola no servidor.
-export default function MateriaisListClient({ materiais, hoje }: { materiais: MaterialAdmin[]; hoje: string }) {
+export default function MateriaisListClient({
+  materiais,
+  hoje,
+  onArquivar,
+}: {
+  materiais: MaterialAdmin[];
+  hoje: string;
+  // Hub do fornecedor (F2): acao de arquivar pelo admin. Ausente = so leitura.
+  onArquivar?: (id: string) => void;
+}) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("");
 
@@ -95,6 +117,14 @@ export default function MateriaisListClient({ materiais, hoje }: { materiais: Ma
                 <tr key={m.id} className="border-t border-neutral-100">
                   <td className="px-4 py-2 font-medium text-brand">
                     {m.titulo}
+                    {m.status && m.status !== "aprovado" ? (
+                      <span
+                        className={`ml-2 rounded px-1.5 py-0.5 text-xs ${STATUS_BADGE[m.status] ?? "bg-neutral-100 text-neutral-600"}`}
+                        title={m.status === "rejeitado" && m.motivoRejeicao ? `Motivo: ${m.motivoRejeicao}` : undefined}
+                      >
+                        {STATUS_MATERIAL_LABEL[m.status as StatusMaterial] ?? m.status}
+                      </span>
+                    ) : null}
                     {m.vencido ? (
                       <span className="ml-2 rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-600">vencido</span>
                     ) : vencendo(m) ? (
@@ -120,6 +150,15 @@ export default function MateriaisListClient({ materiais, hoje }: { materiais: Ma
                       <Link href={m.linkUrl} target="_blank" rel="noopener noreferrer" className="text-brand-golddark hover:underline">
                         Abrir link
                       </Link>
+                    ) : null}
+                    {onArquivar ? (
+                      <button
+                        type="button"
+                        onClick={() => onArquivar(m.id)}
+                        className="ml-3 text-xs text-neutral-400 hover:text-red-600"
+                      >
+                        Arquivar
+                      </button>
                     ) : null}
                   </td>
                 </tr>

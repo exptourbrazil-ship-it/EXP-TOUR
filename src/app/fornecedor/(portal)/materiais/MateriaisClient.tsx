@@ -24,9 +24,16 @@ type Material = {
   linkUrl: string | null;
   temArquivo: boolean;
   criadoEm: string | null;
+  status: string; // pendente | aprovado | rejeitado (F2: o admin publica)
+  motivoRejeicao: string | null;
 };
 
 const IDIOMA_LABEL: Record<string, string> = { en: "EN", pt: "PT", es: "ES" };
+// Status de aprovacao (F2). 'aprovado' = publicado (sem badge).
+const STATUS_BADGE: Record<string, { label: string; bg: string; fg: string }> = {
+  pendente: { label: "aguardando aprovação", bg: "#fef3c7", fg: "#92400e" },
+  rejeitado: { label: "recusado", bg: "#fde8e8", fg: "#b91c1c" },
+};
 const HOJE_ISO = new Date().toISOString().slice(0, 10);
 
 const card: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16 };
@@ -156,6 +163,10 @@ export default function MateriaisClient({ materiais }: { materiais: Material[] }
           )}
         </div>
 
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--p-muted)" }}>
+          Novos materiais (e edições) entram como <strong>aguardando aprovação</strong> e só ficam visíveis ao
+          cliente depois que a equipe publicar.
+        </div>
         {erro ? <div style={{ marginTop: 10, color: "#b91c1c", fontSize: 13 }}>{erro}</div> : null}
         <div style={{ marginTop: 12 }}>
           <button
@@ -179,10 +190,20 @@ export default function MateriaisClient({ materiais }: { materiais: Material[] }
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600, color: "var(--p-ink)" }}>
                   {m.titulo}
+                  {m.status && STATUS_BADGE[m.status] ? (
+                    <span style={{ marginLeft: 8, background: STATUS_BADGE[m.status].bg, color: STATUS_BADGE[m.status].fg, borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 600 }}>
+                      {STATUS_BADGE[m.status].label}
+                    </span>
+                  ) : null}
                   {m.validade && m.validade < HOJE_ISO ? (
                     <span style={{ marginLeft: 8, background: "#fde8e8", color: "#b91c1c", borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 600 }}>vencido</span>
                   ) : null}
                 </div>
+                {m.status === "rejeitado" && m.motivoRejeicao ? (
+                  <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 4 }}>
+                    <strong>Motivo da recusa:</strong> {m.motivoRejeicao} — ajuste e envie novamente.
+                  </div>
+                ) : null}
                 <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 2 }}>
                   {TIPO_MATERIAL_LABEL[m.tipo as TipoMaterial] || m.tipo} · {IDIOMA_LABEL[m.idioma] || m.idioma}
                   {m.programa ? ` · ${m.programa}` : ""}

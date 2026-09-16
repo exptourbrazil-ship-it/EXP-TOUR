@@ -27,6 +27,17 @@ export const PERMISSAO_LABEL: Record<PermissaoMaterial, string> = {
   cliente: "Pode ser exposto ao cliente",
 };
 
+// Status de aprovação (F2): fornecedor sobe -> 'pendente'; admin publica ('aprovado')
+// ou recusa ('rejeitado' + motivo); admin sobe -> já 'aprovado'. Só 'aprovado'
+// alcança cliente/cotação. Espelha o check do schema.
+export const STATUS_MATERIAL = ["pendente", "aprovado", "rejeitado"] as const;
+export type StatusMaterial = (typeof STATUS_MATERIAL)[number];
+export const STATUS_MATERIAL_LABEL: Record<StatusMaterial, string> = {
+  pendente: "Aguardando aprovação",
+  aprovado: "Publicado",
+  rejeitado: "Recusado",
+};
+
 export type EntradaMaterial = {
   tipo: TipoMaterial;
   titulo: string;
@@ -120,10 +131,10 @@ export function somarDiasISO(iso: string, dias: number): string {
 // (cliente vs. interno) e validade (vencidos e "vencendo" na janela de alerta).
 // `vencido` já vem calculado pelo serviço; "vencendo" é derivado da validade
 // dentro de [hoje, hoje+diasAlerta]. Puro.
-export type ResumoMateriais = { total: number; cliente: number; interno: number; vencidos: number; vencendo: number };
+export type ResumoMateriais = { total: number; cliente: number; interno: number; vencidos: number; vencendo: number; pendentes: number };
 
 export function resumoMateriais(
-  materiais: Array<{ permissao: string; validade: string | null; vencido: boolean }>,
+  materiais: Array<{ permissao: string; validade: string | null; vencido: boolean; status?: string }>,
   hojeISO: string,
   diasAlerta = 30,
 ): ResumoMateriais {
@@ -132,9 +143,15 @@ export function resumoMateriais(
   let interno = 0;
   let vencidos = 0;
   let vencendo = 0;
+  let pendentes = 0;
   for (const m of materiais) {
-    if (m.permissao === "cliente") cliente += 1;
-    else interno += 1;
+    if (m.status === "pendente") pendentes += 1;
+    // "Para o cliente" = so o que de fato ALCANCA o cliente: permissao 'cliente' E
+    // publicado (status 'aprovado', ou ausente = legado). Pendente/recusado nao contam.
+    const publicado = !m.status || m.status === "aprovado";
+    if (m.permissao === "cliente") {
+      if (publicado) cliente += 1;
+    } else interno += 1;
     if (m.vencido) {
       vencidos += 1;
       continue;
@@ -143,5 +160,5 @@ export function resumoMateriais(
       vencendo += 1;
     }
   }
-  return { total: materiais.length, cliente, interno, vencidos, vencendo };
+  return { total: materiais.length, cliente, interno, vencidos, vencendo, pendentes };
 }
