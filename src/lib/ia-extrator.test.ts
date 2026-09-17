@@ -2,7 +2,7 @@
 // classificacao de erros HTTP). `npm test` (node --test), sem rede.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { provedorIA, iaConfigurada, schemaGemini, classificarHttp, provedorParaSensivel } from "./ia-extrator.ts";
+import { provedorIA, iaConfigurada, schemaGemini, classificarHttp, provedorParaSensivel, escolherModeloGemini } from "./ia-extrator.ts";
 
 function comEnv(vars: Record<string, string | undefined>, fn: () => void) {
   const antes: Record<string, string | undefined> = {};
@@ -98,4 +98,13 @@ test("I4 sensivel: Gemini gratuito NAO recebe documento com dado pessoal; Anthro
   comEnv({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: undefined, GEMINI_TIER: undefined, IA_PROVIDER: undefined }, () => assert.equal(provedorParaSensivel(), null));
   comEnv({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: "a", GEMINI_TIER: undefined, IA_PROVIDER: undefined }, () => assert.equal(provedorParaSensivel(), "anthropic"));
   comEnv({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: undefined, GEMINI_TIER: "paid", IA_PROVIDER: undefined }, () => assert.equal(provedorParaSensivel(), "gemini"));
+});
+
+test("I5 escolherModeloGemini: preferido so se existir; senao ordem de preferencia; senao qualquer flash; ignora image/tts/live", () => {
+  const conta = ["models/gemini-3.8-flash", "models/gemini-3.5-flash-lite", "models/gemini-3.1-flash-image", "models/gemini-3.8-live", "models/gemini-embedding-2-preview"];
+  assert.equal(escolherModeloGemini(conta, "gemini-2.5-flash"), "gemini-3.8-flash"); // preferido ausente -> 1o da preferencia presente
+  assert.equal(escolherModeloGemini(conta, "gemini-3.5-flash-lite"), "gemini-3.5-flash-lite"); // preferido presente vence
+  assert.equal(escolherModeloGemini(["models/gemini-9.1-flash", "models/gemini-9.1-flash-image"], null), "gemini-9.1-flash"); // familia desconhecida: regex de flash
+  assert.equal(escolherModeloGemini(["models/gemini-3.1-flash-image", "models/gemini-3.8-live"], null), null); // nada que gere texto
+  assert.equal(escolherModeloGemini([], "gemini-x"), "gemini-x"); // lista vazia: tenta o preferido mesmo assim
 });

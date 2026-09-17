@@ -89,11 +89,68 @@ export function schemaGemini(s: unknown): Record<string, unknown> {
   return out;
 }
 
+// Modelo Gemini: a lista de modelos servidos varia por conta e muda com o tempo (o
+// primeiro teste em producao deu 404 em gemini-2.5-flash). Em vez de chutar um nome,
+// perguntamos ao ListModels quais suportam generateContent e escolhemos pela ordem
+// de preferencia (GEMINI_MODEL primeiro, se existir na lista). Cache por processo.
+const PREFERENCIA_GEMINI = [
+  "gemini-2.5-flash",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
+  "gemini-2.5-pro",
+];
+// Puro (testado): escolhe o modelo dado o que a conta oferece.
+export function escolherModeloGemini(disponiveis: string[], preferido?: string | null): string | null {
+  const nomes = disponiveis.map((n) => n.replace(/^models\//, ""));
+  const pref = (preferido || "").trim();
+  if (pref && nomes.includes(pref)) return pref;
+  for (const p of PREFERENCIA_GEMINI) if (nomes.includes(p)) return p;
+  // Qualquer flash que gere conteudo (exclui image/tts/live/embedding/audio).
+  const flash = nomes.find((n) => /^gemini-[\d.]+-flash(-lite)?$/.test(n));
+  if (flash) return flash;
+  const gemini = nomes.find((n) => /^gemini-[\d.]+-/.test(n) && !/image|tts|live|embedding|audio|transcribe|robotics|computer-use/.test(n));
+  return gemini ?? (pref || null);
+}
+let cacheModelo: { nome: string; em: number } | null = null;
+const CACHE_MODELO_MS = 60 * 60_000;
+async function resolverModeloGemini(apiKey: string): Promise<{ ok: true; model: string } | { ok: false; resultado: ResultadoChamadaIA }> {
+  const preferido = (process.env.GEMINI_MODEL || "").trim() || null;
+  if (cacheModelo && Date.now() - cacheModelo.em < CACHE_MODELO_MS) return { ok: true, model: cacheModelo.nome };
+  let resp: Response;
+  try {
+    resp = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": apiKey } });
+  } catch (err) {
+    // Sem lista (rede): tenta o preferido ou o primeiro da preferencia.
+    return { ok: true, model: preferido ?? PREFERENCIA_GEMINI[0] };
+  }
+  if (!resp.ok) return { ok: false, resultado: { ok: false, status: "erro", ...classificarHttp(resp.status, await corpoErro(resp)) } };
+  try {
+    const data = await resp.json();
+    const lista: string[] = (Array.isArray(data?.models) ? data.models : [])
+      .filter((m: any) => !Array.isArray(m?.supportedGenerationMethods) || m.supportedGenerationMethods.includes("generateContent"))
+      .map((m: any) => String(m?.name ?? ""))
+      .filter(Boolean);
+    const escolhido = escolherModeloGemini(lista, preferido);
+    if (!escolhido) return { ok: false, resultado: { ok: false, status: "erro", erro: "Nenhum modelo Gemini com generateContent disponível para esta chave.", codigo: "config" } };
+    if (preferido && preferido !== escolhido) console.warn(`[ia-extrator] GEMINI_MODEL=${preferido} nao disponivel; usando ${escolhido}`);
+    cacheModelo = { nome: escolhido, em: Date.now() };
+    return { ok: true, model: escolhido };
+  } catch {
+    return { ok: true, model: preferido ?? PREFERENCIA_GEMINI[0] };
+  }
+}
+
 async function chamarGemini(args: { tool: ToolIA; prompt: string; arquivo: ArquivoIA; maxTokens: number }): Promise<ResultadoChamadaIA> {
   const apiKey = process.env.GEMINI_API_KEY as string;
-  // Default: gemini-2.5-flash (estavel, plano gratuito, parametros conhecidos —
-  // thinking_budget). GEMINI_MODEL sobrescreve (ex.: gemini-3.8-flash).
-  const model = (process.env.GEMINI_MODEL || "gemini-2.5-flash").trim();
+  const modelo = await resolverModeloGemini(apiKey);
+  if (!modelo.ok) return modelo.resultado;
+  const model = modelo.model;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   // Extracao mecanica: sem "pensamento" na familia 2.x (thinking_budget 0). Em outras
   // familias o knob difere — nao mandamos thinking_config e damos folga de tokens,
@@ -128,7 +185,10 @@ async function chamarGemini(args: { tool: ToolIA; prompt: string; arquivo: Arqui
   } catch (err) {
     return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha de rede na extracao." };
   }
-  if (!resp.ok) return { ok: false, status: "erro", ...classificarHttp(resp.status, await corpoErro(resp)) };
+  if (!resp.ok) {
+    if (resp.status === 404) cacheModelo = null; // modelo sumiu: re-resolve na proxima
+    return { ok: false, status: "erro", ...classificarHttp(resp.status, await corpoErro(resp)) };
+  }
   try {
     const data = await resp.json();
     const cand = data?.candidates?.[0];
