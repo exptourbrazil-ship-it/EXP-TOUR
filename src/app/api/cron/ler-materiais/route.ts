@@ -4,6 +4,7 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { materiaisParaLer, lerMaterial } from "@/lib/material-leitura-service";
 import { liberarProcessingObsoleto as liberarPromocoes } from "@/lib/promocao-proposta-service";
 import { liberarProcessingObsoleto as liberarDisponibilidade } from "@/lib/disponibilidade-proposta-service";
+import { iaConfigurada } from "@/lib/ia-extrator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ const MAX_POR_RUN = Number(process.env.CRON_LER_MATERIAIS_MAX || "4");
 // Cron da LEITURA de material por IA (F3.1). Uma vez por dia: pega os materiais na
 // fila ('pendente', ou 'lendo' com claim obsoleto) — price lists em PDF ja APROVADOS
 // pelo admin — le cada um e gera a proposta de preco PENDENTE na fila de aprovacao.
-// Falha FECHADA: sem CRON_SECRET, recusa; sem ANTHROPIC_API_KEY, nao toca em nada.
+// Falha FECHADA: sem CRON_SECRET, recusa; sem chave de IA (GEMINI/ANTHROPIC), nao toca em nada.
 // Bounded por MAX_POR_RUN (o resto entra no proximo ciclo / botao "Ler com IA").
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
   const fila = await materiaisParaLer(supabase, tenantId, MAX_POR_RUN);
 
   // Sem chave de IA: nao adianta reclamar materiais — ficam na fila intactos.
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!iaConfigurada()) {
     return NextResponse.json({ ok: true, fila: fila.length, sem_ia: true, lidos: 0 });
   }
 

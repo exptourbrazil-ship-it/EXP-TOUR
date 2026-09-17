@@ -153,10 +153,10 @@ export function contarItens(p: PriceListExtraido): number {
   return p.programs.length + p.accommodations.length + p.fees.length;
 }
 
-// ── Chamada ao Claude (impura) ──────────────────────────────────────────────
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+// ── Chamada a IA (impura; provedor em src/lib/ia-extrator.ts) ────────────────
 
-// Schema do tool que forca a saida estruturada.
+// Schema do tool que forca a saida estruturada (formato JSON Schema; o ia-extrator
+// converte para o provedor).
 const TOOL_SCHEMA = {
   name: "registrar_price_list",
   description: "Registra a lista de precos extraida do documento da escola.",
@@ -301,64 +301,15 @@ const PROMPT_EXTRACAO =
 // normalizarPromocoesExtraidas — este modulo nao importa nada (testado sem bundler).
 export type ResultadoExtracao =
   | { ok: true; dados: PriceListExtraido; status: "ok"; promocoesBrutas?: unknown; disponibilidadeBruta?: unknown }
-  | { ok: false; status: "sem_ia" | "erro"; erro: string };
+  | { ok: false; status: "sem_ia" | "erro"; erro: string; definitivo?: boolean; codigo?: "config" | "quota" | "arquivo" | "leitura" };
 
-// Extrai o price list de um PDF (base64) via Claude. Falha FECHADA: sem a chave,
+// Extrai o price list de um PDF (base64) via IA (Gemini ou Anthropic — ia-extrator). Falha FECHADA: sem a chave,
 // devolve status 'sem_ia' (a escola preenche/edita o rascunho a mao). Erros de
 // rede/parse devolvem 'erro'. NUNCA lanca (o chamador segue com rascunho vazio).
 export async function extrairPriceListPdf(pdfBase64: string): Promise<ResultadoExtracao> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return { ok: false, status: "sem_ia", erro: "Extracao por IA nao configurada (sem ANTHROPIC_API_KEY)." };
-  }
-  // Default opus-5 (guia do claude-api); PRICE_EXTRACT_MODEL sobrescreve.
-  const model = (process.env.PRICE_EXTRACT_MODEL || "claude-opus-5").trim();
-
-  let resp: Response;
-  try {
-    resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 8192,
-        // Extracao mecanica: esforco baixo e sem "thinking" — thinking e
-        // incompativel com tool_choice forcado; a saida vem direto no tool_use.
-        thinking: { type: "disabled" },
-        output_config: { effort: "low" },
-        tools: [TOOL_SCHEMA],
-        tool_choice: { type: "tool", name: "registrar_price_list" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
-              { type: "text", text: PROMPT_EXTRACAO },
-            ],
-          },
-        ],
-      }),
-    });
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha de rede na extracao." };
-  }
-
-  if (!resp.ok) {
-    return { ok: false, status: "erro", erro: `Extracao falhou (status ${resp.status}).` };
-  }
-
-  try {
-    const data = await resp.json();
-    const bloco = Array.isArray(data?.content)
-      ? data.content.find((c: any) => c?.type === "tool_use" && c?.name === "registrar_price_list")
-      : null;
-    if (!bloco?.input) return { ok: false, status: "erro", erro: "A IA nao retornou dados estruturados." };
-    return { ok: true, dados: normalizarPriceListExtraido(bloco.input), status: "ok", promocoesBrutas: bloco.input?.promocoes, disponibilidadeBruta: bloco.input?.disponibilidade };
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha ao ler a resposta da IA." };
-  }
+  // Import dinamico: este modulo e puro/testado sem bundler; a camada de IA so carrega em runtime.
+  const { extrairEstruturado } = await import("@/lib/ia-extrator");
+  const r = await extrairEstruturado({ tool: TOOL_SCHEMA, prompt: PROMPT_EXTRACAO, arquivo: { base64: pdfBase64, mime: "application/pdf", ehImagem: false }, maxTokens: 8192 });
+  if (!r.ok) return r;
+  return { ok: true, dados: normalizarPriceListExtraido(r.input), status: "ok", promocoesBrutas: r.input.promocoes, disponibilidadeBruta: r.input.disponibilidade };
 }

@@ -8,7 +8,7 @@ export const STATUS_LEITURA = [
   "pendente", // na fila: o cron ou o botao "Ler com IA" vai processar
   "lendo", // claim em curso (evita leitura dupla)
   "lida", // proposta gerada (price_submission pendente na fila do admin)
-  "sem_ia", // ANTHROPIC_API_KEY ausente — falha fechada, nada publicado
+  "sem_ia", // chave de IA ausente (GEMINI/ANTHROPIC) — falha fechada, nada publicado
   "erro", // rede/parse/sem itens — ver leitura_erro
   "precisa_campus", // fornecedor com 0 ou >1 campi: o admin escolhe no botao
   "nao_suportado", // so PDF e lido nesta fatia (imagem/link ficam para F3.2)

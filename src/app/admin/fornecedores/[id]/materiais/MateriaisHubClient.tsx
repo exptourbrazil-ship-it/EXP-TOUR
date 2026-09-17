@@ -124,7 +124,7 @@ export default function MateriaisHubClient({
     const detalhe = r.erro ? String(r.erro) : "";
     if (st === "lida") setAviso(r.resumo ? `Lido. ${String(r.resumo)} — revise e publique.` : `Proposta gerada (${String(r.itens ?? 0)} itens) — revise e publique.`);
     else if (st === "ja_lida") setAviso("Já existe uma proposta aberta deste material — revise-a, ou use \"Ler de novo\" para substituí-la.");
-    else if (st === "sem_ia") setErro("A IA não está configurada neste ambiente (ANTHROPIC_API_KEY). O material segue na fila; nada foi gerado.");
+    else if (st === "sem_ia") setErro("A IA não está configurada neste ambiente (GEMINI_API_KEY ou ANTHROPIC_API_KEY). O material segue na fila; nada foi gerado.");
     else if (st === "precisa_campus") setErro(detalhe || "Escolha o campus da proposta.");
     else if (st === "em_leitura") setAviso("Leitura já em andamento — aguarde e atualize a página.");
     else if (st === "pendente") setAviso(`Falha temporária (${detalhe}) — o material voltou à fila e será relido.`);

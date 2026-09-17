@@ -339,7 +339,13 @@ export async function lerMaterial(
   if (!claim || claim.length === 0) return { ...base, status: "em_leitura", erro: "leitura já em andamento" };
 
   const tentativas = Number(mat.leitura_tentativas ?? 0);
-  const falhaTransitoria = async (msg: string): Promise<ResultadoLeitura> => {
+  // `contaTentativa=false` para falha de CONFIGURACAO/QUOTA da IA: nao e culpa do
+  // material — volta a fila sem gastar as 3 tentativas.
+  const falhaTransitoria = async (msg: string, contaTentativa = true): Promise<ResultadoLeitura> => {
+    if (!contaTentativa) {
+      await marcar(supabase, tenantId, materialId, "pendente", `${msg} — permanece na fila`, "lendo");
+      return { ...base, status: "pendente", erro: msg };
+    }
     const n = tentativas + 1;
     if (n < MAX_TENTATIVAS) {
       await marcar(supabase, tenantId, materialId, "pendente", `${msg} (tentativa ${n}/${MAX_TENTATIVAS} — volta à fila)`, "lendo", n);
@@ -352,9 +358,19 @@ export async function lerMaterial(
     await marcar(supabase, tenantId, materialId, "erro", msg, "lendo");
     return { ...base, status: "erro", erro: curto };
   };
-  const semIA = async (): Promise<ResultadoLeitura> => {
-    await marcar(supabase, tenantId, materialId, "pendente", "IA não configurada (ANTHROPIC_API_KEY) — permanece na fila", "lendo");
+  const semIA = async (msg?: string): Promise<ResultadoLeitura> => {
+    await marcar(supabase, tenantId, materialId, "pendente", `${msg ?? "IA não configurada (GEMINI_API_KEY ou ANTHROPIC_API_KEY)"} — permanece na fila`, "lendo");
     return { ...base, status: "sem_ia", erro: "sem_ia" };
+  };
+  // Falha do extrator -> destino do material, pelo codigo da camada de IA:
+  // sem_ia (fica na fila) | arquivo (definitivo, com o motivo) | config/quota (fila,
+  // sem gastar tentativa) | leitura (transitorio, gasta tentativa). Sempre com ex.erro.
+  type FalhaIA = { status: "sem_ia" | "erro"; erro: string; definitivo?: boolean; codigo?: "config" | "quota" | "arquivo" | "leitura" };
+  const falhaIA = async (ex: FalhaIA, contexto: string): Promise<ResultadoLeitura> => {
+    if (ex.status === "sem_ia") return semIA(ex.erro);
+    if (ex.definitivo) return erroDefinitivo(`${contexto}: ${ex.erro}`, "arquivo rejeitado");
+    if (ex.codigo === "config" || ex.codigo === "quota") return falhaTransitoria(`${contexto}: ${ex.erro}`, false);
+    return falhaTransitoria(`${contexto}: ${ex.erro}`);
   };
 
   try {
@@ -426,7 +442,7 @@ export async function lerMaterial(
     // ── PRICE LIST → proposta de preco ─────────────────────────────────────
     if (mat.tipo === "price_list") {
       const ex = await comTimeout<ResultadoExtracao>(extrairPriceListPdf(base64), { ok: false, status: "erro", erro: "timeout" });
-      if (!ex.ok) return ex.status === "sem_ia" ? semIA() : falhaTransitoria("a IA não conseguiu ler o PDF");
+      if (!ex.ok) return falhaIA(ex, "price list");
       if (!ex.dados.currency) {
         return erroDefinitivo("moeda não identificada no PDF (ex.: CAD, EUR) — o PDF precisa indicar a moeda dos preços", "sem moeda");
       }
@@ -473,11 +489,7 @@ export async function lerMaterial(
     // ── PROMOCAO (flyer) → propostas de promocao ───────────────────────────
     if (mat.tipo === "promocao") {
       const exp = await comTimeout(extrairPromocoes(base64, mat.mime ?? "", ehImagem), { ok: false as const, status: "erro" as const, erro: "timeout" });
-      if (!exp.ok) {
-        if (exp.status === "sem_ia") return semIA();
-        if (exp.definitivo) return erroDefinitivo("a IA rejeitou o arquivo (formato, tamanho ou número de páginas) — envie um PDF menor ou uma imagem até 5 MB", "arquivo rejeitado");
-        return falhaTransitoria("a IA não conseguiu ler o material de promoção");
-      }
+      if (!exp.ok) return falhaIA(exp, "promoção");
       if (exp.dados.length === 0) return erroDefinitivo("a IA não encontrou promoções/ofertas com condição ou prazo neste material", "sem promoções");
       const promo = await gerarPromocoes(exp.dados);
       const resumoP = resumoPromo(promo);
@@ -502,11 +514,7 @@ export async function lerMaterial(
     // ── CALENDARIO → proposta de disponibilidade ───────────────────────────
     if (mat.tipo === "calendario") {
       const exd = await comTimeout(extrairDisponibilidade(base64, mat.mime ?? "", ehImagem), { ok: false as const, status: "erro" as const, erro: "timeout" });
-      if (!exd.ok) {
-        if (exd.status === "sem_ia") return semIA();
-        if (exd.definitivo) return erroDefinitivo("a IA rejeitou o arquivo (formato, tamanho ou número de páginas) — envie um PDF menor ou uma imagem até 5 MB", "arquivo rejeitado");
-        return falhaTransitoria("a IA não conseguiu ler o calendário");
-      }
+      if (!exd.ok) return falhaIA(exd, "calendário");
       if (exd.dados.intakes.length === 0 && exd.dados.periodos.length === 0) return erroDefinitivo("a IA não encontrou datas de início nem janelas de acomodação neste material", "sem datas");
       const disp = await gerarDisponibilidade(exd.dados);
       const detalheD = { tipo: "calendario", supplier_id: mat.supplier_id, disponibilidade: disp, forcar: !!args.forcar };
@@ -526,11 +534,7 @@ export async function lerMaterial(
 
     // ── BROCHURA → propostas de conteudo (curso/acomodacao/escola) ─────────
     const ex = await comTimeout<ResultadoExtracaoBrochura>(extrairBrochura(base64, mat.mime ?? "", ehImagem), { ok: false, status: "erro", erro: "timeout" });
-    if (!ex.ok) {
-      if (ex.status === "sem_ia") return semIA();
-      if (ex.definitivo) return erroDefinitivo("a IA rejeitou o arquivo (formato, tamanho ou número de páginas) — envie um PDF menor ou uma imagem até 5 MB", "arquivo rejeitado");
-      return falhaTransitoria("a IA não conseguiu ler a brochura");
-    }
+    if (!ex.ok) return falhaIA(ex, "brochura");
     if (contarSecoes(ex.dados) === 0) return erroDefinitivo("a IA não encontrou texto de programas nem da escola na brochura", "sem seções");
 
     const locale = localeDoIdioma(ex.dados.idioma);

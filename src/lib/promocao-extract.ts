@@ -156,8 +156,7 @@ export function avisosDaPromocao(p: PromocaoExtraida, hoje: string, extras: stri
   return [...avisos, ...extras.filter((e) => !e.startsWith("alvo:"))];
 }
 
-// ── Chamada ao Claude (impura) — flyer de promocao (tipo 'promocao') ──────────
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+// ── Chamada a IA (impura; provedor em src/lib/ia-extrator.ts) — flyer de promocao ──
 
 // Fragmento de schema compartilhado (copiado em price-list-extract e brochura-extract,
 // que nao importam nada por serem testados sem bundler). Fonte de verdade: aqui.
@@ -204,46 +203,11 @@ const PROMPT_EXTRACAO =
 
 export type ResultadoExtracaoPromocoes =
   | { ok: true; dados: PromocaoExtraida[]; status: "ok" }
-  | { ok: false; status: "sem_ia" | "erro"; erro: string; definitivo?: boolean };
+  | { ok: false; status: "sem_ia" | "erro"; erro: string; definitivo?: boolean; codigo?: "config" | "quota" | "arquivo" | "leitura" };
 
 export async function extrairPromocoes(base64: string, mime: string, ehImagem: boolean): Promise<ResultadoExtracaoPromocoes> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { ok: false, status: "sem_ia", erro: "Extracao por IA nao configurada (sem ANTHROPIC_API_KEY)." };
-  const model = (process.env.PRICE_EXTRACT_MODEL || "claude-opus-5").trim();
-  const blocoArquivo = ehImagem
-    ? { type: "image", source: { type: "base64", media_type: mime, data: base64 } }
-    : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
-
-  let resp: Response;
-  try {
-    resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        thinking: { type: "disabled" },
-        output_config: { effort: "low" },
-        tools: [TOOL_SCHEMA],
-        tool_choice: { type: "tool", name: "registrar_promocoes" },
-        messages: [{ role: "user", content: [blocoArquivo, { type: "text", text: PROMPT_EXTRACAO }] }],
-      }),
-    });
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha de rede na extracao." };
-  }
-  if (!resp.ok) {
-    const definitivo = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
-    return { ok: false, status: "erro", erro: `Extracao falhou (status ${resp.status}).`, definitivo };
-  }
-  try {
-    const data = await resp.json();
-    const bloco = Array.isArray(data?.content)
-      ? data.content.find((c: any) => c?.type === "tool_use" && c?.name === "registrar_promocoes")
-      : null;
-    if (!bloco?.input) return { ok: false, status: "erro", erro: "A IA nao retornou dados estruturados." };
-    return { ok: true, dados: normalizarPromocoesExtraidas(bloco.input.promocoes), status: "ok" };
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha ao ler a resposta da IA." };
-  }
+  const { extrairEstruturado } = await import("@/lib/ia-extrator");
+  const r = await extrairEstruturado({ tool: TOOL_SCHEMA, prompt: PROMPT_EXTRACAO, arquivo: { base64, mime, ehImagem }, maxTokens: 4096 });
+  if (!r.ok) return r;
+  return { ok: true, dados: normalizarPromocoesExtraidas(r.input.promocoes), status: "ok" };
 }

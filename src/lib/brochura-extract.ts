@@ -176,8 +176,7 @@ export function casarProdutos(secoes: SecaoExtraida[], produtos: ProdutoCandidat
   return melhores.map((c) => (c.productId && porProduto.get(c.productId) !== c ? { ...c, productId: null, productName: null } : c));
 }
 
-// ── Chamada ao Claude (impura) ──────────────────────────────────────────────
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+// ── Chamada a IA (impura; provedor em src/lib/ia-extrator.ts) ────────────────
 
 const TOOL_SCHEMA = {
   name: "registrar_brochura",
@@ -290,51 +289,14 @@ const PROMPT_EXTRACAO =
 // repetir nao adianta — o chamador nao deve tratar como falha transitoria.
 export type ResultadoExtracaoBrochura =
   | { ok: true; dados: BrochuraExtraida; status: "ok"; promocoesBrutas?: unknown; disponibilidadeBruta?: unknown }
-  | { ok: false; status: "sem_ia" | "erro"; erro: string; definitivo?: boolean };
+  | { ok: false; status: "sem_ia" | "erro"; erro: string; definitivo?: boolean; codigo?: "config" | "quota" | "arquivo" | "leitura" };
 
 // Extrai a brochura (PDF ou imagem, base64) via Claude. `ehImagem` vem do chamador
 // (mime ja validado por magic bytes no upload). Falha FECHADA: sem chave -> 'sem_ia';
 // rede/parse -> 'erro'. NUNCA lanca.
 export async function extrairBrochura(base64: string, mime: string, ehImagem: boolean): Promise<ResultadoExtracaoBrochura> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { ok: false, status: "sem_ia", erro: "Extracao por IA nao configurada (sem ANTHROPIC_API_KEY)." };
-  const model = (process.env.PRICE_EXTRACT_MODEL || "claude-opus-5").trim();
-
-  const blocoArquivo = ehImagem
-    ? { type: "image", source: { type: "base64", media_type: mime, data: base64 } }
-    : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
-
-  let resp: Response;
-  try {
-    resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        max_tokens: 8192,
-        thinking: { type: "disabled" },
-        output_config: { effort: "low" },
-        tools: [TOOL_SCHEMA],
-        tool_choice: { type: "tool", name: "registrar_brochura" },
-        messages: [{ role: "user", content: [blocoArquivo, { type: "text", text: PROMPT_EXTRACAO }] }],
-      }),
-    });
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha de rede na extracao." };
-  }
-  if (!resp.ok) {
-    const definitivo = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
-    return { ok: false, status: "erro", erro: `Extracao falhou (status ${resp.status}).`, definitivo };
-  }
-
-  try {
-    const data = await resp.json();
-    const bloco = Array.isArray(data?.content)
-      ? data.content.find((c: any) => c?.type === "tool_use" && c?.name === "registrar_brochura")
-      : null;
-    if (!bloco?.input) return { ok: false, status: "erro", erro: "A IA nao retornou dados estruturados." };
-    return { ok: true, dados: normalizarBrochuraExtraida(bloco.input), status: "ok", promocoesBrutas: bloco.input?.promocoes, disponibilidadeBruta: bloco.input?.disponibilidade };
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha ao ler a resposta da IA." };
-  }
+  const { extrairEstruturado } = await import("@/lib/ia-extrator");
+  const r = await extrairEstruturado({ tool: TOOL_SCHEMA, prompt: PROMPT_EXTRACAO, arquivo: { base64, mime, ehImagem }, maxTokens: 8192 });
+  if (!r.ok) return r;
+  return { ok: true, dados: normalizarBrochuraExtraida(r.input), status: "ok", promocoesBrutas: r.input.promocoes, disponibilidadeBruta: r.input.disponibilidade };
 }

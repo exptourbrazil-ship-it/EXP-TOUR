@@ -58,8 +58,7 @@ export function normalizarFaturaExtraida(raw: unknown): FaturaExtraida {
   };
 }
 
-// ── Chamada ao Claude (impura) ──────────────────────────────────────────────
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+// ── Chamada a IA (impura; provedor em src/lib/ia-extrator.ts) ────────────────
 
 const TOOL_SCHEMA = {
   name: "registrar_fatura",
@@ -87,52 +86,13 @@ const PROMPT =
 
 export type ResultadoFatura =
   | { ok: true; dados: FaturaExtraida; status: "ok" }
-  | { ok: false; status: "sem_ia" | "erro"; erro: string };
+  | { ok: false; status: "sem_ia" | "erro"; erro: string; definitivo?: boolean; codigo?: "config" | "quota" | "arquivo" | "leitura" };
 
-// Extrai a fatura de um PDF (base64) via Claude. Falha FECHADA: sem a chave,
+// Extrai a fatura de um PDF (base64) via IA (Gemini ou Anthropic — ia-extrator). Falha FECHADA: sem a chave,
 // devolve 'sem_ia' (a conferencia fica pendente para o humano). NUNCA lanca.
 export async function extrairFaturaPdf(pdfBase64: string): Promise<ResultadoFatura> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { ok: false, status: "sem_ia", erro: "Extracao por IA nao configurada (sem ANTHROPIC_API_KEY)." };
-  const model = (process.env.PRICE_EXTRACT_MODEL || "claude-opus-5").trim();
-
-  let resp: Response;
-  try {
-    resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2048,
-        thinking: { type: "disabled" },
-        output_config: { effort: "low" },
-        tools: [TOOL_SCHEMA],
-        tool_choice: { type: "tool", name: "registrar_fatura" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
-              { type: "text", text: PROMPT },
-            ],
-          },
-        ],
-      }),
-    });
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha de rede na extracao." };
-  }
-
-  if (!resp.ok) return { ok: false, status: "erro", erro: `Extracao falhou (status ${resp.status}).` };
-
-  try {
-    const data = await resp.json();
-    const bloco = Array.isArray(data?.content)
-      ? data.content.find((c: any) => c?.type === "tool_use" && c?.name === "registrar_fatura")
-      : null;
-    if (!bloco?.input) return { ok: false, status: "erro", erro: "A IA nao retornou dados estruturados." };
-    return { ok: true, dados: normalizarFaturaExtraida(bloco.input), status: "ok" };
-  } catch (err) {
-    return { ok: false, status: "erro", erro: err instanceof Error ? err.message : "Falha ao ler a resposta da IA." };
-  }
+  const { extrairEstruturado } = await import("@/lib/ia-extrator");
+  const r = await extrairEstruturado({ tool: TOOL_SCHEMA, prompt: PROMPT, arquivo: { base64: pdfBase64, mime: "application/pdf", ehImagem: false }, maxTokens: 2048, sensivel: true });
+  if (!r.ok) return r;
+  return { ok: true, dados: normalizarFaturaExtraida(r.input), status: "ok" };
 }
