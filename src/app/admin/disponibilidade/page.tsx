@@ -4,6 +4,9 @@ import { listarProgramasComIntakes, listarAcomodacoesComPeriodos } from "@/lib/c
 import DisponibilidadeClient from "@/components/DisponibilidadeClient";
 import AcomodacaoClient from "@/components/AcomodacaoClient";
 import FornecedorPicker from "./FornecedorPicker";
+import PropostasDisponibilidadeBloco from "./PropostasDisponibilidadeBloco";
+import { listarPropostasDisponibilidade } from "@/lib/disponibilidade-proposta-service";
+import { tenantIdAtual } from "@/lib/catalog-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +31,8 @@ export default async function AdminDisponibilidadePage({
     .select("id, display_name")
     .order("display_name");
 
+  const tenantId = await tenantIdAtual(supabase);
+  const propostas = await listarPropostasDisponibilidade(supabase, tenantId, { status: "pending_admin" });
   const escolhido = (suppliers ?? []).find((s) => s.id === supplierId) ?? null;
   const [programas, acomodacoes] = escolhido
     ? await Promise.all([
@@ -44,6 +49,7 @@ export default async function AdminDisponibilidadePage({
         valem na hora — o mesmo que a escola vê no portal.
       </p>
 
+      <PropostasDisponibilidadeBloco propostas={propostas} />
       <FornecedorPicker suppliers={suppliers ?? []} value={escolhido?.id ?? null} />
 
       {escolhido ? (

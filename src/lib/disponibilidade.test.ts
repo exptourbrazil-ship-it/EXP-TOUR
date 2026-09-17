@@ -94,3 +94,12 @@ test("validarPeriodo: inicio valido; fim opcional e nao anterior; status validad
   assert.equal(validarPeriodo({ periodStart: "2026-07-10", periodEnd: "2026-07-01" }).ok, false); // fim antes do inicio
   assert.equal(validarPeriodo({ periodStart: "2026-07-01", status: "talvez" }).ok, false);
 });
+
+test("validarIntake: capacidade NUMERICA (vinda de service) e preservada, nao descartada", () => {
+  const r = validarIntake({ startDate: "2026-03-02", status: "limited", capacity: 10 });
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(r.dados.capacity, 10);
+  const zero = validarIntake({ startDate: "2026-03-02", capacity: 0 });
+  assert.ok(zero.ok);
+  if (zero.ok) assert.equal(zero.dados.capacity, 0);
+});

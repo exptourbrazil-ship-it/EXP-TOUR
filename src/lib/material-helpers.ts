@@ -2,13 +2,14 @@
 // validam/normalizam a entrada (o que a escola digita ou o metadado do upload).
 // Testado em material-helpers.test.ts.
 
-export const TIPOS_MATERIAL = ["brochura", "price_list", "promocao", "foto", "video", "apresentacao", "midia_kit", "logotipo", "termos", "outro"] as const;
+export const TIPOS_MATERIAL = ["brochura", "price_list", "promocao", "calendario", "foto", "video", "apresentacao", "midia_kit", "logotipo", "termos", "outro"] as const;
 export type TipoMaterial = (typeof TIPOS_MATERIAL)[number];
 
 export const TIPO_MATERIAL_LABEL: Record<TipoMaterial, string> = {
   brochura: "Brochura",
   price_list: "Price list (PDF)",
   promocao: "Promoção / flyer de oferta",
+  calendario: "Calendário de datas de início",
   foto: "Foto",
   video: "Vídeo",
   apresentacao: "Apresentação",

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { materiaisParaLer, lerMaterial } from "@/lib/material-leitura-service";
+import { liberarProcessingObsoleto as liberarPromocoes } from "@/lib/promocao-proposta-service";
+import { liberarProcessingObsoleto as liberarDisponibilidade } from "@/lib/disponibilidade-proposta-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +37,9 @@ export async function GET(request: Request) {
     console.error("[cron/ler-materiais] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
     return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
   }
+
+  // Propostas presas em 'processing' (aprovacao que morreu no meio) voltam a fila.
+  await Promise.all([liberarPromocoes(supabase, tenantId), liberarDisponibilidade(supabase, tenantId)]);
 
   const fila = await materiaisParaLer(supabase, tenantId, MAX_POR_RUN);
 

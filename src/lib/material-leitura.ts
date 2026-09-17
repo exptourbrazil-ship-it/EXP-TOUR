@@ -27,19 +27,19 @@ export const STATUS_LEITURA_LABEL: Record<StatusLeitura, string> = {
 };
 
 // Tipos de material que a ferramenta le: price list (F3.1, so PDF), brochura
-// (F3.2, PDF ou imagem — o modelo le imagem nativamente) e promocao/flyer (F3.3,
-// PDF ou imagem).
-export const TIPOS_LEGIVEIS = ["price_list", "brochura", "promocao"] as const;
+// (F3.2, PDF ou imagem — o modelo le imagem nativamente), promocao/flyer (F3.3) e
+// calendario de datas de inicio (F3.4), ambos PDF ou imagem.
+export const TIPOS_LEGIVEIS = ["price_list", "brochura", "promocao", "calendario"] as const;
 export const MIMES_IMAGEM = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export function tipoLegivel(tipo: string): boolean {
   return (TIPOS_LEGIVEIS as readonly string[]).includes(tipo);
 }
 
-// Formato aceito por tipo: price list exige PDF (tabelas); brochura e promocao aceitam PDF ou imagem.
+// Formato aceito por tipo: price list exige PDF (tabelas); os demais legiveis aceitam PDF ou imagem.
 export function formatoSuportado(tipo: string, mime: string | null): boolean {
   if (mime === "application/pdf") return tipoLegivel(tipo);
-  if (tipo === "brochura" || tipo === "promocao") return !!mime && (MIMES_IMAGEM as readonly string[]).includes(mime);
+  if (tipoLegivel(tipo) && tipo !== "price_list") return !!mime && (MIMES_IMAGEM as readonly string[]).includes(mime);
   return false;
 }
 

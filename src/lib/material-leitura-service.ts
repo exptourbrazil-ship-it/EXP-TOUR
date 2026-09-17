@@ -1,4 +1,4 @@
-// LEITURA DE MATERIAL POR IA (F3.1 price list; F3.2 brochura; F3.3 promocao) — parte impura.
+// LEITURA DE MATERIAL POR IA (F3.1 price list; F3.2 brochura; F3.3 promocao; F3.4 disponibilidade) — parte impura.
 // SERVER-ONLY (service role): rotas (cron / admin) criam o cliente e o passam.
 // Fluxo: claim atomico do material -> baixa o arquivo do Storage -> extrator por
 // tipo -> cria SUBMISSIONS PENDENTES vinculadas ao material -> marca 'lida'.
@@ -43,6 +43,8 @@ import {
 import type { CampusContentPayload } from "@/lib/campus-conteudo";
 import { extrairPromocoes, normalizarPromocoesExtraidas, type PromocaoExtraida } from "@/lib/promocao-extract";
 import { criarPropostasPromocao } from "@/lib/promocao-proposta-service";
+import { extrairDisponibilidade, normalizarDisponibilidadeExtraida, type DisponibilidadeExtraida } from "@/lib/disponibilidade-extract";
+import { criarPropostaDisponibilidade } from "@/lib/disponibilidade-proposta-service";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { podeLer, resolverCampusParaLeitura, MIMES_IMAGEM, type StatusLeitura } from "@/lib/material-leitura";
 
@@ -66,7 +68,7 @@ export type ResultadoLeitura = {
   resumo?: string; // texto curto para a UI (ex.: casamentos da brochura)
 };
 
-export type PropostaDoMaterial = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola" | "promocao"; href: string };
+export type PropostaDoMaterial = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola" | "promocao" | "disponibilidade"; href: string };
 
 type MaterialRow = {
   id: string;
@@ -110,7 +112,7 @@ export async function propostasPorMaterial(
   tenantId: string,
   supplierId: string,
 ): Promise<Record<string, PropostaDoMaterial[]>> {
-  const [preco, conteudo, escola, promo] = await Promise.all([
+  const [preco, conteudo, escola, promo, disp] = await Promise.all([
     supabase
       .from("price_submission")
       .select("id, status, source_material_id, created_at")
@@ -139,6 +141,13 @@ export async function propostasPorMaterial(
       .eq("supplier_id", supplierId)
       .not("source_material_id", "is", null)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("availability_submission")
+      .select("id, status, source_material_id, created_at")
+      .eq("tenant_id", tenantId)
+      .eq("supplier_id", supplierId)
+      .not("source_material_id", "is", null)
+      .order("created_at", { ascending: false }),
   ]);
   const out: Record<string, PropostaDoMaterial[]> = {};
   const add = (mid: string, p: PropostaDoMaterial) => {
@@ -156,6 +165,9 @@ export async function propostasPorMaterial(
   }
   for (const r of (promo.data ?? []) as Array<{ id: string; status: string; source_material_id: string }>) {
     add(r.source_material_id, { id: r.id, status: r.status, tipo: "promocao", href: `/admin/precos/promocoes/propostas/${r.id}` });
+  }
+  for (const r of (disp.data ?? []) as Array<{ id: string; status: string; source_material_id: string }>) {
+    add(r.source_material_id, { id: r.id, status: r.status, tipo: "disponibilidade", href: `/admin/disponibilidade/propostas/${r.id}` });
   }
   return out;
 }
@@ -297,12 +309,13 @@ export async function lerMaterial(
     abertaIds = (abertas ?? []).map((r: { id: string }) => r.id);
     if (abertaIds.length > 0 && !args.forcar) return { ...base, status: "ja_lida", submissionId: abertaIds[0] };
   } else if (!args.forcar) {
-    const [c, e, pr] = await Promise.all([
+    const [c, e, pr, dp] = await Promise.all([
       supabase.from("content_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
       supabase.from("campus_content_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
       supabase.from("promotion_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
+      supabase.from("availability_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
     ]);
-    if ((c.data?.length ?? 0) + (e.data?.length ?? 0) + (pr.data?.length ?? 0) > 0) {
+    if ((c.data?.length ?? 0) + (e.data?.length ?? 0) + (pr.data?.length ?? 0) + (dp.data?.length ?? 0) > 0) {
       return { ...base, status: "ja_lida", resumo: "Já há propostas deste material aguardando aprovação." };
     }
   }
@@ -395,6 +408,20 @@ export async function lerMaterial(
       if (r.falhas.length) partes.push(`${r.falhas.length} promoção(ões) falharam ao gravar: ${r.falhas.slice(0, 3).join(", ")}`);
       return partes.join(" · ");
     };
+    // F3.4: datas de inicio / janelas viram UMA proposta de disponibilidade (plano
+    // comparado ao publicado). Falha aqui nao derruba a leitura principal.
+    const gerarDisponibilidade = async (dados: DisponibilidadeExtraida) => {
+      const vazio = { id: null as string | null, itens: 0, criar: 0, alterar: 0, substituidas: 0, motivo: null as string | null };
+      if (dados.intakes.length === 0 && dados.periodos.length === 0) return vazio;
+      try {
+        return await criarPropostaDisponibilidade(supabase, { tenantId, supplierId: mat.supplier_id, materialId, filename: mat.nome_arquivo, dados, actor, forcar: !!args.forcar, hoje });
+      } catch (err) {
+        console.error("[material-leitura] disponibilidade:", err instanceof Error ? err.message : "erro");
+        return { ...vazio, motivo: "falha ao gerar a proposta de disponibilidade" };
+      }
+    };
+    const resumoDisp = (r: Awaited<ReturnType<typeof gerarDisponibilidade>>) =>
+      r.id ? `proposta de datas com ${r.itens} item(ns) (${r.criar} nova(s), ${r.alterar} alteração(ões))` : r.motivo ? `datas: ${r.motivo}` : "";
 
     // ── PRICE LIST → proposta de preco ─────────────────────────────────────
     if (mat.tipo === "price_list") {
@@ -430,16 +457,17 @@ export async function lerMaterial(
       });
       if (!sub.ok) return falhaTransitoria(sub.erro);
       const promo = await gerarPromocoes(normalizarPromocoesExtraidas(ex.promocoesBrutas));
+      const disp = await gerarDisponibilidade(normalizarDisponibilidadeExtraida(ex.disponibilidadeBruta));
 
       await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
       await registrarAuditoriaAdmin(supabase, {
         usuario: actor,
         acao: "fornecedores.material.ler",
         alvo: materialId,
-        detalhe: { tipo: "price_list", supplier_id: mat.supplier_id, campus_id: campusId, submission_id: sub.id, itens, forcar: !!args.forcar, substituidas: abertaIds.length, promocoes: promo },
+        detalhe: { tipo: "price_list", supplier_id: mat.supplier_id, campus_id: campusId, submission_id: sub.id, itens, forcar: !!args.forcar, substituidas: abertaIds.length, promocoes: promo, disponibilidade: disp },
         ip: args.ip ?? null,
       });
-      return { ...base, status: "lida", submissionId: sub.id, itens, resumo: [`Proposta de preço com ${itens} itens.`, resumoPromo(promo)].filter(Boolean).join(" · ") };
+      return { ...base, status: "lida", submissionId: sub.id, itens, resumo: [`Proposta de preço com ${itens} itens.`, resumoPromo(promo), resumoDisp(disp)].filter(Boolean).join(" · ") };
     }
 
     // ── PROMOCAO (flyer) → propostas de promocao ───────────────────────────
@@ -469,6 +497,31 @@ export async function lerMaterial(
       await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
       await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: detalheP, ip: args.ip ?? null });
       return { ...base, status: "lida", itens: promo.criadas.length, resumo: resumoP };
+    }
+
+    // ── CALENDARIO → proposta de disponibilidade ───────────────────────────
+    if (mat.tipo === "calendario") {
+      const exd = await comTimeout(extrairDisponibilidade(base64, mat.mime ?? "", ehImagem), { ok: false as const, status: "erro" as const, erro: "timeout" });
+      if (!exd.ok) {
+        if (exd.status === "sem_ia") return semIA();
+        if (exd.definitivo) return erroDefinitivo("a IA rejeitou o arquivo (formato, tamanho ou número de páginas) — envie um PDF menor ou uma imagem até 5 MB", "arquivo rejeitado");
+        return falhaTransitoria("a IA não conseguiu ler o calendário");
+      }
+      if (exd.dados.intakes.length === 0 && exd.dados.periodos.length === 0) return erroDefinitivo("a IA não encontrou datas de início nem janelas de acomodação neste material", "sem datas");
+      const disp = await gerarDisponibilidade(exd.dados);
+      const detalheD = { tipo: "calendario", supplier_id: mat.supplier_id, disponibilidade: disp, forcar: !!args.forcar };
+      if (!disp.id) {
+        if (disp.motivo?.startsWith("já há proposta")) {
+          await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
+          await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: detalheD, ip: args.ip ?? null });
+          return { ...base, status: "ja_lida", resumo: resumoDisp(disp) };
+        }
+        if (disp.motivo === "falha ao gravar a proposta" || disp.motivo === "falha ao gerar a proposta de disponibilidade") return falhaTransitoria(disp.motivo);
+        return erroDefinitivo(`nada gerado — ${disp.motivo ?? "sem itens"}`, "sem propostas");
+      }
+      await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
+      await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: detalheD, ip: args.ip ?? null });
+      return { ...base, status: "lida", itens: disp.itens, resumo: resumoDisp(disp) };
     }
 
     // ── BROCHURA → propostas de conteudo (curso/acomodacao/escola) ─────────
@@ -569,9 +622,11 @@ export async function lerMaterial(
     }
 
     const promo = await gerarPromocoes(normalizarPromocoesExtraidas(ex.promocoesBrutas));
+    const disp = await gerarDisponibilidade(normalizarDisponibilidadeExtraida(ex.disponibilidadeBruta));
 
     const partes: string[] = [];
     if (promo.criadas.length) partes.push(resumoPromo(promo));
+    if (disp.id) partes.push(resumoDisp(disp));
     if (criadas.length) {
       const detalhe = criadas
         .filter((c) => c.tipo !== "escola")
@@ -600,12 +655,13 @@ export async function lerMaterial(
       nao_processadas: naoProcessadas,
       notas: ex.dados.notas,
       promocoes: promo,
+      disponibilidade: disp,
       forcar: !!args.forcar,
     };
 
-    if (criadas.length === 0 && promo.criadas.length === 0) {
+    if (criadas.length === 0 && promo.criadas.length === 0 && !disp.id) {
       // Tudo ja estava em aprovacao/edicao: nao e falha — e "ja lido".
-      if (pulados.length > 0 || escolaPulada || promo.puladas.length > 0) {
+      if (pulados.length > 0 || escolaPulada || promo.puladas.length > 0 || disp.motivo?.startsWith("já há proposta")) {
         await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
         await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: auditDetalhe, ip: args.ip ?? null });
         return { ...base, status: "ja_lida", resumo };
@@ -615,7 +671,7 @@ export async function lerMaterial(
 
     await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
     await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: auditDetalhe, ip: args.ip ?? null });
-    return { ...base, status: "lida", itens: criadas.length + promo.criadas.length, resumo };
+    return { ...base, status: "lida", itens: criadas.length + promo.criadas.length + (disp.id ? 1 : 0), resumo };
   } catch (err) {
     console.error("[material-leitura] falha inesperada:", err instanceof Error ? err.message : "erro");
     return falhaTransitoria("falha inesperada na leitura");

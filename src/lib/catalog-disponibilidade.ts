@@ -119,6 +119,7 @@ async function productDoFornecedor(
     .from("product")
     .select("id, campus_id, campus:campus(supplier_id)")
     .eq("id", productId)
+    .is("archived_at", null) // produto arquivado nao recebe disponibilidade nova
     .maybeSingle();
   if (!data) return null;
   const campus = (data as any).campus;

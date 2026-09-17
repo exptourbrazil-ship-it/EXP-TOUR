@@ -28,6 +28,8 @@ test("L1 status inicial: price list so PDF; brochura PDF ou imagem; link/outros 
   assert.equal(statusLeituraInicial("promocao", "application/pdf", null), "pendente"); // F3.3
   assert.equal(statusLeituraInicial("promocao", "image/png", null), "pendente"); // F3.3: flyer em imagem
   assert.equal(statusLeituraInicial("promocao", "image/gif", null), "nao_suportado");
+  assert.equal(statusLeituraInicial("calendario", "image/webp", null), "pendente"); // F3.4
+  assert.equal(statusLeituraInicial("calendario", null, "https://x/y"), "nao_suportado");
   assert.equal(statusLeituraInicial("foto", "image/png", null), "nao_aplicavel");
 });
 

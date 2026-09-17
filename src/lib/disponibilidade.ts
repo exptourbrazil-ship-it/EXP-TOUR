@@ -56,7 +56,9 @@ export function validarIntake(e: IntakeEntrada): ResultadoIntake {
   }
 
   let capacity: number | null = null;
-  if (e.capacity !== null && e.capacity !== undefined && texto(e.capacity) !== "") {
+  // Aceita numero (services) ou string (formularios). Antes, numero virava "" no
+  // texto() e a capacidade era descartada em silencio (achado A1 da revisao F3.4).
+  if (e.capacity !== null && e.capacity !== undefined && (typeof e.capacity === "number" || texto(e.capacity) !== "")) {
     const n = Number(e.capacity);
     if (!Number.isInteger(n) || n < 0 || n > 100000) {
       return { ok: false, erro: "Capacidade deve ser um inteiro entre 0 e 100000." };

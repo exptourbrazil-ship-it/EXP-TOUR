@@ -6,6 +6,8 @@ import { listarProgramasComIntakes, listarAcomodacoesComPeriodos } from "@/lib/c
 import DisponibilidadeClient from "@/components/DisponibilidadeClient";
 import AcomodacaoClient from "@/components/AcomodacaoClient";
 import { notFound } from "next/navigation";
+import PropostasDisponibilidadeBloco from "@/app/admin/disponibilidade/PropostasDisponibilidadeBloco";
+import { listarPropostasDisponibilidade } from "@/lib/disponibilidade-proposta-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,9 +26,10 @@ export default async function FornecedorDisponibilidadePage({ params }: { params
   const fornecedor = await carregarFornecedorDoTenant(supabase, tenantId, id);
   if (!fornecedor) notFound();
 
-  const [programas, acomodacoes] = await Promise.all([
+  const [programas, acomodacoes, propostas] = await Promise.all([
     listarProgramasComIntakes(supabase, id),
     listarAcomodacoesComPeriodos(supabase, id),
+    listarPropostasDisponibilidade(supabase, tenantId, { supplierId: id, status: "pending_admin" }),
   ]);
 
   return (
@@ -37,6 +40,7 @@ export default async function FornecedorDisponibilidadePage({ params }: { params
         hora — o mesmo que a escola vê no portal.
       </p>
 
+      <PropostasDisponibilidadeBloco propostas={propostas} mostrarFornecedor={false} />
       <h3 className="mb-2 font-serif text-base text-brand">Programas</h3>
       <DisponibilidadeClient endpoint="/api/admin/disponibilidade" supplierId={id} programas={programas} />
 

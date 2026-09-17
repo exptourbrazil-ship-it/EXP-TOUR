@@ -29,6 +29,7 @@ export default function PropostasPromocaoBloco({ propostas, mostrarFornecedor = 
             <div className="min-w-0">
               <div className="font-medium text-brand">
                 {p.nome}
+                {p.status === "processing" ? <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500">em processamento</span> : null}
                 {p.avisos.length > 0 ? (
                   <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800" title={p.avisos.join(" · ")}>
                     {p.avisos.length} aviso{p.avisos.length > 1 ? "s" : ""}

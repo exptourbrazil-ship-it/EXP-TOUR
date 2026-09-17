@@ -37,8 +37,8 @@ const PROPOSTA_LABEL: Record<string, string> = {
   rejected: "recusada",
 };
 
-type Proposta = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola" | "promocao"; href: string };
-const TIPO_PROPOSTA_LABEL: Record<Proposta["tipo"], string> = { preco: "preço", curso: "curso", acomodacao: "acomodação", escola: "escola", promocao: "promoção" };
+type Proposta = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola" | "promocao" | "disponibilidade"; href: string };
+const TIPO_PROPOSTA_LABEL: Record<Proposta["tipo"], string> = { preco: "preço", curso: "curso", acomodacao: "acomodação", escola: "escola", promocao: "promoção", disponibilidade: "datas" };
 
 // Aba Material do hub (F2 + F3.1): (1) fila "Aguardando aprovação" com Publicar/Recusar
 // (motivo obrigatório); (2) "Price lists — leitura por IA" (botão Ler, badge, link para a
@@ -241,12 +241,13 @@ export default function MateriaisHubClient({
 
       {/* 2) Leitura por IA (F3.1): price lists -> proposta de preco pendente */}
       <section>
-        <h3 className="mb-1 font-serif text-base text-brand">Leitura por IA — price lists, brochuras e promoções</h3>
+        <h3 className="mb-1 font-serif text-base text-brand">Leitura por IA — price lists, brochuras, promoções e datas</h3>
         <p className="mb-3 text-xs text-neutral-500">
           <strong>Price list (PDF)</strong> vira uma proposta de <strong>preço</strong> (programas, acomodações, taxas);
           <strong> brochura (PDF ou imagem)</strong> vira propostas de <strong>conteúdo</strong> dos cursos/acomodações que
           ela descreve e do bloco da escola; <strong>promoção/flyer (PDF ou imagem)</strong> — e ofertas citadas em price lists e
-          brochuras — viram propostas de <strong>promoção</strong> com prazo. Tudo fica aguardando <strong>sua aprovação</strong> — nada chega à cotação
+          brochuras — viram propostas de <strong>promoção</strong> com prazo; <strong>calendário (PDF ou imagem)</strong> — e datas
+          citadas nos demais — vira uma proposta de <strong>datas de início</strong> comparada ao publicado. Tudo fica aguardando <strong>sua aprovação</strong> — nada chega à cotação
           sem você publicar. A fila é lida automaticamente uma vez por dia; use o botão para ler agora.
         </p>
         {legiveis.length === 0 ? (

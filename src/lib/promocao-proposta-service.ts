@@ -179,7 +179,8 @@ export async function criarPropostasPromocao(
 }
 
 // Destrava propostas presas em 'processing' (claim obsoleto). Escopo tenant (+ id).
-async function liberarProcessingObsoleto(supabase: SupabaseClient, tenantId: string, id?: string): Promise<void> {
+// Chamado na aprovacao/recusa (por id) e pelo cron (tenant inteiro) — nunca em render.
+export async function liberarProcessingObsoleto(supabase: SupabaseClient, tenantId: string, id?: string): Promise<void> {
   const limite = new Date(Date.now() - PROCESSING_OBSOLETO_MIN * 60_000).toISOString();
   let q = supabase
     .from("promotion_submission")
@@ -196,10 +197,10 @@ export async function listarPropostasPromocao(
   tenantId: string,
   filtro?: { supplierId?: string; status?: string },
 ): Promise<PropostaPromocaoResumo[]> {
-  if (filtro?.status === "pending_admin") await liberarProcessingObsoleto(supabase, tenantId);
   let q = supabase.from("promotion_submission").select(SEL).eq("tenant_id", tenantId).order("created_at", { ascending: true });
   if (filtro?.supplierId) q = q.eq("supplier_id", filtro.supplierId);
-  if (filtro?.status) q = q.eq("status", filtro.status);
+  if (filtro?.status === "pending_admin") q = q.in("status", ["pending_admin", "processing"]);
+  else if (filtro?.status) q = q.eq("status", filtro.status);
   const { data } = await q;
   return (data ?? []).map(mapResumo);
 }
