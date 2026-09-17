@@ -26,24 +26,26 @@ export const STATUS_LEITURA_LABEL: Record<StatusLeitura, string> = {
   nao_suportado: "formato não suportado",
 };
 
-// Tipos de material que a ferramenta le: price list (F3.1, so PDF) e brochura
-// (F3.2, PDF ou imagem — o modelo le imagem nativamente).
-export const TIPOS_LEGIVEIS = ["price_list", "brochura"] as const;
+// Tipos de material que a ferramenta le: price list (F3.1, so PDF), brochura
+// (F3.2, PDF ou imagem — o modelo le imagem nativamente) e promocao/flyer (F3.3,
+// PDF ou imagem).
+export const TIPOS_LEGIVEIS = ["price_list", "brochura", "promocao"] as const;
 export const MIMES_IMAGEM = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export function tipoLegivel(tipo: string): boolean {
   return (TIPOS_LEGIVEIS as readonly string[]).includes(tipo);
 }
 
-// Formato aceito por tipo: price list exige PDF (tabelas); brochura aceita PDF ou imagem.
+// Formato aceito por tipo: price list exige PDF (tabelas); brochura e promocao aceitam PDF ou imagem.
 export function formatoSuportado(tipo: string, mime: string | null): boolean {
   if (mime === "application/pdf") return tipoLegivel(tipo);
-  if (tipo === "brochura") return !!mime && (MIMES_IMAGEM as readonly string[]).includes(mime);
+  if (tipo === "brochura" || tipo === "promocao") return !!mime && (MIMES_IMAGEM as readonly string[]).includes(mime);
   return false;
 }
 
 export function motivoFormato(tipo: string): string {
-  return tipo === "brochura" ? "brochura: só PDF ou imagem (JPG/PNG/WEBP) é lida" : "price list: só PDF é lido";
+  if (tipo === "price_list") return "price list: só PDF é lido";
+  return `${tipo}: só PDF ou imagem (JPG/PNG/WEBP) é lida`;
 }
 
 // Status inicial de um material recem-criado: entra na fila so se for de tipo

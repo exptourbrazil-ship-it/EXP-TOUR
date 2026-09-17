@@ -4,6 +4,8 @@ import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarPromocoesAdmin } from "@/lib/promocao-admin-service";
 import PromocoesListClient from "./PromocoesListClient";
+import PropostasPromocaoBloco from "./PropostasPromocaoBloco";
+import { listarPropostasPromocao } from "@/lib/promocao-proposta-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +20,10 @@ export default async function AdminPromocoesPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
   const tenantId = await tenantIdAtual(supabase);
-  const promocoes = await listarPromocoesAdmin(supabase, tenantId);
+  const [promocoes, propostas] = await Promise.all([
+    listarPromocoesAdmin(supabase, tenantId),
+    listarPropostasPromocao(supabase, tenantId, { status: "pending_admin" }),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -31,6 +36,7 @@ export default async function AdminPromocoesPage() {
         de reserva/viagem e a segmentação.
       </p>
 
+      <PropostasPromocaoBloco propostas={propostas} />
       <PromocoesListClient promocoes={promocoes} />
     </div>
   );

@@ -4,6 +4,8 @@ import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarPromocoesDoFornecedor } from "@/lib/fornecedor-hub-service";
 import PromocoesListClient from "@/app/admin/precos/promocoes/PromocoesListClient";
+import PropostasPromocaoBloco from "@/app/admin/precos/promocoes/PropostasPromocaoBloco";
+import { listarPropostasPromocao } from "@/lib/promocao-proposta-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +20,10 @@ export default async function FornecedorPromocoesPage({ params }: { params: Prom
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
   const tenantId = await tenantIdAtual(supabase);
-  const promocoes = await listarPromocoesDoFornecedor(supabase, tenantId, id);
+  const [promocoes, propostas] = await Promise.all([
+    listarPromocoesDoFornecedor(supabase, tenantId, id),
+    listarPropostasPromocao(supabase, tenantId, { supplierId: id, status: "pending_admin" }),
+  ]);
 
   return (
     <div>
@@ -28,6 +33,7 @@ export default async function FornecedorPromocoesPage({ params }: { params: Prom
           + Nova promoção
         </Link>
       </div>
+      <PropostasPromocaoBloco propostas={propostas} mostrarFornecedor={false} />
       <PromocoesListClient promocoes={promocoes} editHrefBase={`/admin/fornecedores/${id}/promocao`} />
     </div>
   );

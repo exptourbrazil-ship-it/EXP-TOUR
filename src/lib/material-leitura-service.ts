@@ -1,4 +1,4 @@
-// LEITURA DE MATERIAL POR IA (F3.1 price list; F3.2 brochura) — parte impura.
+// LEITURA DE MATERIAL POR IA (F3.1 price list; F3.2 brochura; F3.3 promocao) — parte impura.
 // SERVER-ONLY (service role): rotas (cron / admin) criam o cliente e o passam.
 // Fluxo: claim atomico do material -> baixa o arquivo do Storage -> extrator por
 // tipo -> cria SUBMISSIONS PENDENTES vinculadas ao material -> marca 'lida'.
@@ -41,6 +41,8 @@ import {
   enviarConteudoCampusParaAdmin,
 } from "@/lib/campus-content-submission-service";
 import type { CampusContentPayload } from "@/lib/campus-conteudo";
+import { extrairPromocoes, normalizarPromocoesExtraidas, type PromocaoExtraida } from "@/lib/promocao-extract";
+import { criarPropostasPromocao } from "@/lib/promocao-proposta-service";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { podeLer, resolverCampusParaLeitura, MIMES_IMAGEM, type StatusLeitura } from "@/lib/material-leitura";
 
@@ -64,7 +66,7 @@ export type ResultadoLeitura = {
   resumo?: string; // texto curto para a UI (ex.: casamentos da brochura)
 };
 
-export type PropostaDoMaterial = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola"; href: string };
+export type PropostaDoMaterial = { id: string; status: string; tipo: "preco" | "curso" | "acomodacao" | "escola" | "promocao"; href: string };
 
 type MaterialRow = {
   id: string;
@@ -108,7 +110,7 @@ export async function propostasPorMaterial(
   tenantId: string,
   supplierId: string,
 ): Promise<Record<string, PropostaDoMaterial[]>> {
-  const [preco, conteudo, escola] = await Promise.all([
+  const [preco, conteudo, escola, promo] = await Promise.all([
     supabase
       .from("price_submission")
       .select("id, status, source_material_id, created_at")
@@ -130,6 +132,13 @@ export async function propostasPorMaterial(
       .eq("supplier_id", supplierId)
       .not("source_material_id", "is", null)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("promotion_submission")
+      .select("id, status, source_material_id, created_at")
+      .eq("tenant_id", tenantId)
+      .eq("supplier_id", supplierId)
+      .not("source_material_id", "is", null)
+      .order("created_at", { ascending: false }),
   ]);
   const out: Record<string, PropostaDoMaterial[]> = {};
   const add = (mid: string, p: PropostaDoMaterial) => {
@@ -144,6 +153,9 @@ export async function propostasPorMaterial(
   }
   for (const r of (escola.data ?? []) as Array<{ id: string; status: string; source_material_id: string }>) {
     add(r.source_material_id, { id: r.id, status: r.status, tipo: "escola", href: `/admin/conteudo-escolas/${r.id}` });
+  }
+  for (const r of (promo.data ?? []) as Array<{ id: string; status: string; source_material_id: string }>) {
+    add(r.source_material_id, { id: r.id, status: r.status, tipo: "promocao", href: `/admin/precos/promocoes/propostas/${r.id}` });
   }
   return out;
 }
@@ -285,12 +297,13 @@ export async function lerMaterial(
     abertaIds = (abertas ?? []).map((r: { id: string }) => r.id);
     if (abertaIds.length > 0 && !args.forcar) return { ...base, status: "ja_lida", submissionId: abertaIds[0] };
   } else if (!args.forcar) {
-    const [c, e] = await Promise.all([
+    const [c, e, pr] = await Promise.all([
       supabase.from("content_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
       supabase.from("campus_content_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
+      supabase.from("promotion_submission").select("id").eq("tenant_id", tenantId).eq("source_material_id", materialId).eq("status", "pending_admin").limit(1),
     ]);
-    if ((c.data?.length ?? 0) + (e.data?.length ?? 0) > 0) {
-      return { ...base, status: "ja_lida", resumo: "Já há propostas de conteúdo desta brochura aguardando aprovação." };
+    if ((c.data?.length ?? 0) + (e.data?.length ?? 0) + (pr.data?.length ?? 0) > 0) {
+      return { ...base, status: "ja_lida", resumo: "Já há propostas deste material aguardando aprovação." };
     }
   }
 
@@ -342,6 +355,46 @@ export async function lerMaterial(
       if (blob.size > PDF_MAX_BYTES) return erroDefinitivo("arquivo acima do limite de leitura", "arquivo grande");
     }
     const base64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
+    const hoje = new Date().toISOString().slice(0, 10);
+
+    // F3.3: promocoes lidas (do flyer, ou mencionadas no price list / brochura) viram
+    // propostas PENDENTES em promotion_submission. Falha aqui NAO derruba a leitura
+    // principal — vira contagem em `falhas`.
+    const produtosPromo = async () => {
+      const [pg, ac] = await Promise.all([
+        listarProdutosDoFornecedorPorKind(supabase, mat.supplier_id, "program"),
+        listarProdutosDoFornecedorPorKind(supabase, mat.supplier_id, "accommodation"),
+      ]);
+      return [...pg, ...ac];
+    };
+    const gerarPromocoes = async (lista: PromocaoExtraida[]) => {
+      if (lista.length === 0) return { criadas: [], puladas: [], substituidas: 0, falhas: [] as string[] };
+      try {
+        return await criarPropostasPromocao(supabase, {
+          tenantId,
+          supplierId: mat.supplier_id,
+          campusId: campus.ok ? campus.campusId : null,
+          materialId,
+          filename: mat.nome_arquivo,
+          promocoes: lista,
+          produtos: await produtosPromo(),
+          actor,
+          forcar: !!args.forcar,
+          hoje,
+        });
+      } catch (err) {
+        console.error("[material-leitura] promocoes:", err instanceof Error ? err.message : "erro");
+        return { criadas: [], puladas: [], substituidas: 0, falhas: lista.map((p) => p.nome) };
+      }
+    };
+    const resumoPromo = (r: Awaited<ReturnType<typeof gerarPromocoes>>) => {
+      const partes: string[] = [];
+      if (r.criadas.length) partes.push(`${r.criadas.length} promoção(ões) proposta(s): ${r.criadas.slice(0, 4).map((c) => c.nome).join(", ")}`);
+      if (r.puladas.length) partes.push(`${r.puladas.length} promoção(ões) já em aprovação`);
+      if (r.substituidas) partes.push(`${r.substituidas} proposta(s) de promoção substituída(s)`);
+      if (r.falhas.length) partes.push(`${r.falhas.length} promoção(ões) falharam ao gravar: ${r.falhas.slice(0, 3).join(", ")}`);
+      return partes.join(" · ");
+    };
 
     // ── PRICE LIST → proposta de preco ─────────────────────────────────────
     if (mat.tipo === "price_list") {
@@ -376,16 +429,46 @@ export async function lerMaterial(
         submittedBy: autorIA,
       });
       if (!sub.ok) return falhaTransitoria(sub.erro);
+      const promo = await gerarPromocoes(normalizarPromocoesExtraidas(ex.promocoesBrutas));
 
       await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
       await registrarAuditoriaAdmin(supabase, {
         usuario: actor,
         acao: "fornecedores.material.ler",
         alvo: materialId,
-        detalhe: { tipo: "price_list", supplier_id: mat.supplier_id, campus_id: campusId, submission_id: sub.id, itens, forcar: !!args.forcar, substituidas: abertaIds.length },
+        detalhe: { tipo: "price_list", supplier_id: mat.supplier_id, campus_id: campusId, submission_id: sub.id, itens, forcar: !!args.forcar, substituidas: abertaIds.length, promocoes: promo },
         ip: args.ip ?? null,
       });
-      return { ...base, status: "lida", submissionId: sub.id, itens, resumo: `Proposta de preço com ${itens} itens.` };
+      return { ...base, status: "lida", submissionId: sub.id, itens, resumo: [`Proposta de preço com ${itens} itens.`, resumoPromo(promo)].filter(Boolean).join(" · ") };
+    }
+
+    // ── PROMOCAO (flyer) → propostas de promocao ───────────────────────────
+    if (mat.tipo === "promocao") {
+      const exp = await comTimeout(extrairPromocoes(base64, mat.mime ?? "", ehImagem), { ok: false as const, status: "erro" as const, erro: "timeout" });
+      if (!exp.ok) {
+        if (exp.status === "sem_ia") return semIA();
+        if (exp.definitivo) return erroDefinitivo("a IA rejeitou o arquivo (formato, tamanho ou número de páginas) — envie um PDF menor ou uma imagem até 5 MB", "arquivo rejeitado");
+        return falhaTransitoria("a IA não conseguiu ler o material de promoção");
+      }
+      if (exp.dados.length === 0) return erroDefinitivo("a IA não encontrou promoções/ofertas com condição ou prazo neste material", "sem promoções");
+      const promo = await gerarPromocoes(exp.dados);
+      const resumoP = resumoPromo(promo);
+      // So falhas de gravacao (banco): transitorio — volta a fila, nao e erro definitivo.
+      if (promo.criadas.length === 0 && promo.puladas.length === 0 && promo.falhas.length > 0) {
+        return falhaTransitoria("as promoções lidas não puderam ser gravadas");
+      }
+      const detalheP = { tipo: "promocao", supplier_id: mat.supplier_id, campus_id: campus.ok ? campus.campusId : null, promocoes: promo, forcar: !!args.forcar };
+      if (promo.criadas.length === 0) {
+        if (promo.puladas.length > 0) {
+          await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
+          await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: detalheP, ip: args.ip ?? null });
+          return { ...base, status: "ja_lida", resumo: resumoP };
+        }
+        return erroDefinitivo(`nada gerado — ${resumoP || "as promoções lidas não puderam ser gravadas"}`, "sem propostas");
+      }
+      await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
+      await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: detalheP, ip: args.ip ?? null });
+      return { ...base, status: "lida", itens: promo.criadas.length, resumo: resumoP };
     }
 
     // ── BROCHURA → propostas de conteudo (curso/acomodacao/escola) ─────────
@@ -485,7 +568,10 @@ export async function lerMaterial(
       }
     }
 
+    const promo = await gerarPromocoes(normalizarPromocoesExtraidas(ex.promocoesBrutas));
+
     const partes: string[] = [];
+    if (promo.criadas.length) partes.push(resumoPromo(promo));
     if (criadas.length) {
       const detalhe = criadas
         .filter((c) => c.tipo !== "escola")
@@ -513,12 +599,13 @@ export async function lerMaterial(
       sem_produto: semProduto,
       nao_processadas: naoProcessadas,
       notas: ex.dados.notas,
+      promocoes: promo,
       forcar: !!args.forcar,
     };
 
-    if (criadas.length === 0) {
+    if (criadas.length === 0 && promo.criadas.length === 0) {
       // Tudo ja estava em aprovacao/edicao: nao e falha — e "ja lido".
-      if (pulados.length > 0 || escolaPulada) {
+      if (pulados.length > 0 || escolaPulada || promo.puladas.length > 0) {
         await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
         await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: auditDetalhe, ip: args.ip ?? null });
         return { ...base, status: "ja_lida", resumo };
@@ -528,7 +615,7 @@ export async function lerMaterial(
 
     await marcar(supabase, tenantId, materialId, "lida", null, "lendo", 0);
     await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "fornecedores.material.ler", alvo: materialId, detalhe: auditDetalhe, ip: args.ip ?? null });
-    return { ...base, status: "lida", itens: criadas.length, resumo };
+    return { ...base, status: "lida", itens: criadas.length + promo.criadas.length, resumo };
   } catch (err) {
     console.error("[material-leitura] falha inesperada:", err instanceof Error ? err.message : "erro");
     return falhaTransitoria("falha inesperada na leitura");

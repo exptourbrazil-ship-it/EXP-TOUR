@@ -2067,7 +2067,9 @@ create table if not exists promotion (
   is_stackable boolean not null default false, priority int not null default 100,
   booking_from date, booking_until date, travel_from date, travel_until date,
   status text not null default 'draft' check (status in ('draft','active','expired')),
-  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
+  created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz,
+  -- F3.3: promocao publicada a partir de uma proposta lida por IA (promotion_submission).
+  source_submission_id uuid
 );
 create index if not exists idx_promotion_supplier on promotion(tenant_id, supplier_id, status);
 create table if not exists promotion_target (
@@ -2635,6 +2637,40 @@ create table if not exists price_submission (
   created_at timestamptz not null default now(),
   updated_at timestamptz
 );
+
+-- F3.3 — PROMOCAO lida por IA -> proposta PENDENTE (uma linha por promocao extraida
+-- de um material). `entrada` = proposta no formato de validarPromocao, editavel pelo
+-- admin; `avisos` = auditoria da IA. So a aprovacao cria a promotion viva.
+-- Migracao: supabase/migracao-promotion-submission.sql (aplicada em prod 2026-09-16).
+create table if not exists promotion_submission (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  campus_id uuid references campus(id) on delete set null,
+  source_material_id uuid references material(id) on delete set null,
+  source_filename text,
+  extracted jsonb not null default '{}'::jsonb,
+  entrada jsonb not null default '{}'::jsonb,
+  avisos jsonb not null default '[]'::jsonb,
+  status text not null default 'pending_admin'
+    check (status in ('pending_admin','processing','approved','rejected')),
+  promotion_id uuid references promotion(id) on delete set null,
+  created_by text, submitted_by text,
+  admin_approved_by text, admin_approved_at timestamptz,
+  rejected_by text, rejected_at timestamptz, reject_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+create index if not exists promotion_submission_tenant_status_idx on promotion_submission(tenant_id, status);
+create index if not exists promotion_submission_material_idx on promotion_submission(source_material_id);
+alter table if exists promotion_submission enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'promotion_source_submission_fk') then
+    alter table promotion add constraint promotion_source_submission_fk
+      foreign key (source_submission_id) references promotion_submission(id) on delete set null;
+  end if;
+end $$;
+
 create index if not exists idx_price_submission_supplier on price_submission(supplier_id, status);
 create index if not exists idx_price_submission_status on price_submission(tenant_id, status);
 alter table if exists price_submission enable row level security;
@@ -2803,7 +2839,7 @@ create table if not exists material (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),
   supplier_id uuid not null references supplier(id) on delete cascade,
-  tipo text not null check (tipo in ('brochura','price_list','foto','video','apresentacao','midia_kit','logotipo','termos','outro')),
+  tipo text not null check (tipo in ('brochura','price_list','promocao','foto','video','apresentacao','midia_kit','logotipo','termos','outro')),
   titulo text not null,
   idioma char(2) not null default 'en' check (idioma in ('en','pt','es')),
   programa text,                 -- programa relacionado (texto livre, opcional)
