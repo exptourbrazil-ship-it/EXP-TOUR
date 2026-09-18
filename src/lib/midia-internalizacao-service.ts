@@ -119,14 +119,15 @@ export async function baixarImagem(url: string, fetchImpl: typeof fetch): Promis
 
 /**
  * Processa ate `max` linhas de campus_media do tenant cujo `url` ainda e externo e
- * que nao estouraram o teto de tentativas. Para cada uma: baixa, grava no bucket,
+ * que nao estouraram o teto de tentativas. `campusIds` restringe aos campi de UM
+ * fornecedor (botao do hub); sem ele, roda no tenant inteiro (cron). Para cada uma: baixa, grava no bucket,
  * troca `url` (guardando `source_url`) e propaga para campus.cover_image_url quando a
  * capa era a mesma URL. Falha em uma linha nao derruba as outras.
  */
 export async function internalizarMidias(
   supabase: SupabaseClient,
   tenantId: string,
-  opts: { max?: number; orcamentoMs?: number; fetchImpl?: typeof fetch } = {},
+  opts: { max?: number; orcamentoMs?: number; fetchImpl?: typeof fetch; campusIds?: string[] } = {},
 ): Promise<ResultadoInternalizacao> {
   const max = opts.max ?? 30;
   // Orcamento conservador: a checagem e por linha e um download pode levar TIMEOUT_MS.
@@ -141,7 +142,9 @@ export async function internalizarMidias(
   // com curinga: o padrao passa por URL/PostgREST e um escape errado zeraria a fila em
   // silencio. `ehUrlInterna` abaixo continua sendo a rede de protecao no resultado.
   // Ordena pelas menos tentadas para uma URL quebrada nao monopolizar a execucao.
-  const { data, error } = await supabase
+  // Escopo opcional por fornecedor: lista vazia = nenhum campus, nao "todos".
+  if (opts.campusIds && opts.campusIds.length === 0) return r;
+  let q = supabase
     .from("campus_media")
     .select("id, campus_id, url, internalize_attempts")
     .eq("tenant_id", tenantId)
@@ -151,6 +154,8 @@ export async function internalizarMidias(
     .order("internalize_attempts", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(max);
+  if (opts.campusIds) q = q.in("campus_id", opts.campusIds);
+  const { data, error } = await q;
   if (error) throw new Error(`campus_media: ${error.message}`);
   const linhas = ((data ?? []) as Linha[]).filter((l) => !ehUrlInterna(l.url, supabaseUrl));
   r.candidatas = linhas.length;
@@ -167,7 +172,7 @@ export async function internalizarMidias(
     // senao um bucket fora do ar esgotaria as 5 tentativas de toda a fila em 5 dias.
     const registrarFalha = async (erro: string) => {
       r.falhas++;
-      r.erros.push(erro);
+      r.erros.push(resumirErro(erro));
       await supabase
         .from("campus_media")
         .update({ internalize_attempts: linha.internalize_attempts + 1, internalize_error: resumirErro(erro) })
@@ -224,4 +229,39 @@ export async function internalizarMidias(
   }
 
   return r;
+}
+
+/**
+ * Quantas fotos ainda estao hospedadas fora (mesma regra da fila). Usado pelo hub
+ * para mostrar o que falta e habilitar/desabilitar o botao. `campusIds` vazio = 0.
+ */
+export async function contarMidiaPendente(
+  supabase: SupabaseClient,
+  tenantId: string,
+  campusIds?: string[],
+): Promise<{ pendentes: number; esgotadas: number }> {
+  if (campusIds && campusIds.length === 0) return { pendentes: 0, esgotadas: 0 };
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  let q = supabase
+    .from("campus_media")
+    .select("url, internalize_attempts")
+    .eq("tenant_id", tenantId)
+    .eq("kind", "photo")
+    .is("source_url", null);
+  if (campusIds) q = q.in("campus_id", campusIds);
+  const { data, error } = await q;
+  if (error) throw new Error(`campus_media: ${error.message}`);
+
+  // MESMA regra da fila: `source_url is null` sozinho nao basta. A aprovacao de
+  // conteudo da escola reinsere as midias do campus e perde o source_url, entao ha
+  // linhas ja hospedadas no nosso Storage com source_url nulo — elas NAO sao
+  // pendentes, e conta-las mostraria um aviso falso e um botao que nao faz nada.
+  let pendentes = 0;
+  let esgotadas = 0;
+  for (const linha of (data ?? []) as { url: string; internalize_attempts: number }[]) {
+    if (ehUrlInterna(linha.url, supabaseUrl)) continue;
+    if (linha.internalize_attempts >= MIDIA_MAX_TENTATIVAS) esgotadas++;
+    else pendentes++;
+  }
+  return { pendentes, esgotadas };
 }

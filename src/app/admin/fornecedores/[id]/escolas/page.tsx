@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarCampusDoFornecedor } from "@/lib/fornecedor-hub-service";
+import { contarMidiaPendente } from "@/lib/midia-internalizacao-service";
+import MidiaCampusBloco from "./MidiaCampusBloco";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +28,14 @@ export default async function FornecedorEscolasPage({ params }: { params: Promis
   );
   const tenantId = await tenantIdAtual(supabase);
   const campus = await listarCampusDoFornecedor(supabase, tenantId, id);
+  // Fotos destes campi ainda hospedadas no site da escola (nao renderizam no portal).
+  // Uma falha na contagem nao pode derrubar a aba: o bloco some e o motivo vai ao log.
+  let midia = { pendentes: 0, esgotadas: 0 };
+  try {
+    midia = await contarMidiaPendente(supabase, tenantId, campus.map((c) => c.id));
+  } catch (err) {
+    console.error("[hub/escolas] falha ao contar midia pendente:", err instanceof Error ? err.message : "erro");
+  }
 
   const base = `/admin/fornecedores/${id}`;
 
@@ -45,6 +55,8 @@ export default async function FornecedorEscolasPage({ params }: { params: Promis
         </Link>
         .
       </p>
+
+      <MidiaCampusBloco supplierId={id} pendentes={midia.pendentes} esgotadas={midia.esgotadas} />
 
       {campus.length === 0 ? (
         <p className="text-sm text-neutral-500">Nenhum campus cadastrado para este fornecedor.</p>
