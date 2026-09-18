@@ -136,14 +136,17 @@ export async function internalizarMidias(
   const inicio = Date.now();
   const r: ResultadoInternalizacao = { candidatas: 0, internalizadas: 0, capas_atualizadas: 0, falhas: 0, adiadas: 0, interrompida: null, erros: [] };
 
-  // Externas = tudo que NAO comeca com o prefixo do nosso Storage. Ordena pelas
-  // menos tentadas para uma URL quebrada nao monopolizar a execucao.
+  // Fila = ainda NAO internalizada, marcada por `source_url is null` (a internalizacao
+  // grava url + source_url na mesma operacao). Comparacao por igualdade, nao por LIKE
+  // com curinga: o padrao passa por URL/PostgREST e um escape errado zeraria a fila em
+  // silencio. `ehUrlInterna` abaixo continua sendo a rede de protecao no resultado.
+  // Ordena pelas menos tentadas para uma URL quebrada nao monopolizar a execucao.
   const { data, error } = await supabase
     .from("campus_media")
     .select("id, campus_id, url, internalize_attempts")
     .eq("tenant_id", tenantId)
     .eq("kind", "photo") // video/brochura nao sao imagens: nao entram na fila
-    .not("url", "like", `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/%`)
+    .is("source_url", null)
     .lt("internalize_attempts", MIDIA_MAX_TENTATIVAS)
     .order("internalize_attempts", { ascending: true })
     .order("created_at", { ascending: true })
