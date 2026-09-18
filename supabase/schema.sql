@@ -1677,8 +1677,12 @@ create table if not exists campus_media (
   campus_id uuid not null references campus(id) on delete cascade,
   url text not null, kind text check (kind in ('photo','video','brochure')),
   sort int not null default 0, caption text,
+  -- Internalizacao (migracao-midia-internalizacao.sql): `url` passa a apontar para o
+  -- Storage (bucket publico midia-catalogo); `source_url` guarda o hotlink original.
+  source_url text, internalize_attempts int not null default 0, internalize_error text,
   created_at timestamptz not null default now()
 );
+create index if not exists idx_campus_media_tenant_campus on campus_media(tenant_id, campus_id);
 
 create table if not exists campus_document (
   id uuid primary key default gen_random_uuid(),
