@@ -22,6 +22,8 @@ import {
   type PromotionTarget,
   type TransitionStrategy,
   type PromoContext,
+  type SeasonalAdjustment,
+  type SeasonalProration,
 } from "@/lib/pricing";
 import {
   resolveMarket,
@@ -362,6 +364,67 @@ export async function loadPricingInputs(
     educationType = pd?.education_type ?? undefined;
   }
 
+  // 8b) Ajuste sazonal da acomodacao (alta/baixa temporada) -----------------
+  // So faz sentido em estadia contada por semana. Filtra pela DURACAO aqui (e nao
+  // no motor): algumas escolas publicam valores diferentes por faixa — a GSE cobra
+  // 45/sem ate 7 semanas, 26 de 8 a 23 e 11 acima disso.
+  let seasonalAdjustments: SeasonalAdjustment[] = [];
+  const avisosSazonais: string[] = [];
+  if (unit === "week") {
+    // product_id NULO = ajuste do campus inteiro (vale para todas as acomodacoes);
+    // preenchido = so daquele produto. Sem o campus-wide, um ajuste cadastrado uma
+    // vez para a escola nunca seria cobrado e a cotacao sairia barata em silencio.
+    const { data: sazonais, error: sazErr } = await supabase
+      .from("seasonal_adjustment")
+      .select("name, amount_per_week, currency, from_month, from_day, from_year, to_month, to_day, to_year, min_weeks, max_weeks, product_id")
+      .eq("tenant_id", tenantId)
+      .eq("campus_id", campus.id)
+      .eq("status", "active")
+      .or(`product_id.is.null,product_id.eq.${productId}`);
+    // Falha FECHADA: engolir o erro aqui emitiria (e congelaria) uma cotacao sem o
+    // suplemento de temporada — dinheiro a menos, sem ninguem perceber.
+    if (sazErr) throw new Error(`Falha ao carregar ajuste sazonal: ${sazErr.message}`);
+
+    const naFaixa = (sazonais ?? []).filter(
+      (a: any) => (a.min_weeks == null || quantity >= a.min_weeks) && (a.max_weeks == null || quantity <= a.max_weeks),
+    );
+
+    // Moeda diferente da do item nao pode ser somada (40 EUR virariam 40 GBP).
+    const moedaOk = naFaixa.filter((a: any) => {
+      if (!a.currency || a.currency === sourceCurrency) return true;
+      avisosSazonais.push(
+        `Ajuste de temporada "${a.name}" esta em ${a.currency} e o item e em ${sourceCurrency}: nao aplicado.`,
+      );
+      return false;
+    });
+
+    // Faixas de duracao sobrepostas cobrariam duas vezes o mesmo periodo. Mantem a
+    // MAIS ESPECIFICA (menor intervalo de semanas) por ajuste+periodo e avisa.
+    const porChave = new Map<string, any>();
+    for (const a of moedaOk) {
+      const chave = `${a.name}|${a.from_month}-${a.from_day}|${a.to_month}-${a.to_day}|${a.from_year ?? ""}|${a.to_year ?? ""}`;
+      const atual = porChave.get(chave);
+      if (!atual) {
+        porChave.set(chave, a);
+        continue;
+      }
+      const largura = (x: any) => (x.max_weeks ?? 9999) - (x.min_weeks ?? 0);
+      avisosSazonais.push(
+        `Mais de uma faixa de duracao cadastrada para "${a.name}": aplicada a mais especifica.`,
+      );
+      if (largura(a) < largura(atual)) porChave.set(chave, a);
+    }
+
+    seasonalAdjustments = [...porChave.values()].map((a: any) => ({
+      name: a.name as string,
+      amountPerWeek: Number(a.amount_per_week),
+      from: { month: a.from_month, day: a.from_day, ...(a.from_year != null ? { year: a.from_year } : {}) },
+      to: { month: a.to_month, day: a.to_day, ...(a.to_year != null ? { year: a.to_year } : {}) },
+    }));
+  }
+  const seasonalProration: SeasonalProration =
+    process.env.AJUSTE_SAZONAL_RATEIO === "full_week" ? "full_week" : "nightly";
+
   // 9) Monta o PriceRequest ------------------------------------------------
   const context: PromoContext = {
     quoteDate,
@@ -393,7 +456,14 @@ export async function loadPricingInputs(
     feeContext: { multiCourseRule },
     promotions,
     context,
+    ...(seasonalAdjustments.length > 0 ? { seasonalAdjustments, seasonalProration } : {}),
   };
+
+  // Avisos do carregamento (moeda divergente, faixas sobrepostas) viajam junto
+  // para o item precificado — o admin precisa ver, nao so os logs.
+  if (avisosSazonais.length > 0) {
+    (request as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais = avisosSazonais;
+  }
 
   return request;
 }
@@ -417,6 +487,9 @@ export async function priceProductFromDb(
 ): Promise<PricedItem> {
   const request = await loadPricingInputs(supabase, args);
   const priced = priceProduct(request);
+
+  const avisosSazonais = (request as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais;
+  if (avisosSazonais) priced.warnings.push(...avisosSazonais);
 
   // Elegibilidade (spec 3.5): carrega regras do produto e avalia o contexto.
   const { data: ruleRows } = await supabase

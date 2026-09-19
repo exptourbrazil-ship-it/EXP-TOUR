@@ -192,6 +192,36 @@ export type PriceRequestFx = {
   presentmentCurrency: string;
 };
 
+/** Como ratear o ajuste sazonal: por noite ou semana cheia. */
+export type SeasonalProration = "nightly" | "full_week";
+
+/**
+ * Ponto de um periodo sazonal. Sem `year` = RECORRENTE (vale todo ano, como as
+ * escolas publicam: "alta temporada 14/jun a 23/ago"); com `year` vale so
+ * naquele ano ("26/jun a 30/ago/2026"). Mesma forma de `PeriodoPonto` em
+ * sazonalidade.ts (o parser do texto do fornecedor), por compatibilidade
+ * estrutural — pricing.ts nao importa nada local de proposito.
+ */
+export type SeasonalPeriod = { month: number; day: number; year?: number };
+
+/** Ajuste sazonal de acomodacao por semana (positivo = suplemento, negativo = desconto). */
+export type SeasonalAdjustment = {
+  name: string;
+  amountPerWeek: number;
+  from: SeasonalPeriod;
+  to: SeasonalPeriod; // INCLUSIVO: a noite de `to` conta
+};
+
+/** Linha de ajuste sazonal (rastro auditavel; nunca embutida na acomodacao). */
+export type SeasonalLine = {
+  name: string;
+  amount: number;
+  nights: number;
+  weeksCharged?: number; // so em full_week: blocos de 7 noites cobrados
+  from: string; // data ISO da primeira noite efetivamente aplicada
+  to: string; // data ISO da ultima noite efetivamente aplicada
+};
+
 /** Requisicao de precificacao de um item (secao 4.1). Tudo ja carregado (puro). */
 export type PriceRequest = {
   product: {
@@ -215,6 +245,8 @@ export type PriceRequest = {
   context: PromoContext; // PromoContext ja inclui quoteDate
   bookingDate?: string; // exigido por use_booking_date_price
   fx?: PriceRequestFx;
+  seasonalAdjustments?: SeasonalAdjustment[]; // ajustes de temporada da acomodacao
+  seasonalProration?: SeasonalProration; // default "nightly"
 };
 
 /** Item precificado (saida do motor, secao 4.1). breakdown = rastro (secao 4.7). */
@@ -227,6 +259,7 @@ export type PricedItem = {
   currency: string;
   fees: FeeLine[];
   discounts: DiscountLine[];
+  seasonal?: SeasonalLine[]; // linhas de temporada (ausente quando nao ha ajuste)
   netAmount: number;
   breakdown: unknown;
   warnings: string[];
@@ -781,6 +814,159 @@ export function convertFx(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Ajuste sazonal de acomodacao — linha SEPARADA na cotacao
+// ---------------------------------------------------------------------------
+
+const MS_POR_DIA = 86400000;
+
+/** Data ISO 'YYYY-MM-DD' -> dia absoluto (UTC), para aritmetica sem fuso. */
+function toEpochDay(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, m - 1, d) / MS_POR_DIA;
+}
+
+/** Dia absoluto -> data ISO 'YYYY-MM-DD'. */
+function fromEpochDay(day: number): string {
+  return new Date(day * MS_POR_DIA).toISOString().slice(0, 10);
+}
+
+/** Ultimo dia do mes (28/29 em fevereiro conforme o ano). */
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * Dia absoluto de (ano, mes, dia) com o dia LIMITADO ao ultimo do mes: um
+ * periodo publicado ate "29/fev" num ano nao bissexto vira 28/fev, sem quebrar.
+ */
+function clampedEpochDay(year: number, month: number, day: number): number {
+  const safeDay = Math.min(day, lastDayOfMonth(year, month));
+  return Date.UTC(year, month - 1, safeDay) / MS_POR_DIA;
+}
+
+/** (mes, dia) de `to` vem antes de `from`? Entao o periodo cruza a virada do ano. */
+function crossesYearEnd(a: SeasonalAdjustment): boolean {
+  return a.to.month < a.from.month || (a.to.month === a.from.month && a.to.day < a.from.day);
+}
+
+/**
+ * Ocorrencias concretas [inicio, fim] (dias absolutos, fim INCLUSIVO) de um
+ * ajuste que podem tocar a estadia.
+ * - Sem ano em `from` e `to`: RECORRENTE; gera uma ocorrencia por ano candidato
+ *   (do ano anterior ao inicio ate o ano seguinte ao fim da estadia), porque um
+ *   periodo curto pode ser tocado DUAS vezes por uma estadia longa.
+ * - Com ano em qualquer ponta: periodo FIXO, uma unica ocorrencia. O ano que
+ *   faltar e inferido da outra ponta (+1 quando o periodo cruza o ano novo).
+ */
+function seasonalOccurrences(
+  adjustment: SeasonalAdjustment,
+  stayFirstNight: number,
+  stayLastNight: number
+): Array<{ start: number; end: number }> {
+  const cross = crossesYearEnd(adjustment);
+  const occurrences: Array<{ start: number; end: number }> = [];
+
+  const buildFor = (fromYear: number, toYear: number) => {
+    const start = clampedEpochDay(fromYear, adjustment.from.month, adjustment.from.day);
+    const end = clampedEpochDay(toYear, adjustment.to.month, adjustment.to.day);
+    if (end >= start) occurrences.push({ start, end });
+  };
+
+  if (adjustment.from.year != null || adjustment.to.year != null) {
+    const fromYear = adjustment.from.year ?? (adjustment.to.year as number) - (cross ? 1 : 0);
+    const toYear = adjustment.to.year ?? fromYear + (cross ? 1 : 0);
+    buildFor(fromYear, toYear);
+    return occurrences;
+  }
+
+  const firstYear = Number(fromEpochDay(stayFirstNight).slice(0, 4)) - 1;
+  const lastYear = Number(fromEpochDay(stayLastNight).slice(0, 4)) + 1;
+  for (let y = firstYear; y <= lastYear; y++) {
+    buildFor(y, cross ? y + 1 : y);
+  }
+  return occurrences;
+}
+
+/**
+ * Aplica os ajustes de temporada sobre a estadia (secao 4.2: o ajuste compoe o
+ * valor da acomodacao ANTES das promocoes, mas sai como LINHA SEPARADA na
+ * cotacao — nunca embutido no valor da acomodacao).
+ *
+ * A estadia ocupa `weeks * 7` NOITES a partir de `startDate`: a noite de
+ * startDate conta e a data de saida NAO.
+ * - nightly:   amount = round2(amountPerWeek x noitesSobrepostas / 7).
+ * - full_week: a estadia e dividida em blocos de 7 noites a partir de
+ *   startDate; todo bloco com ao menos UMA noite dentro do periodo cobra a
+ *   semana inteira (`weeksCharged` = blocos cobrados).
+ *
+ * Um ajuste que nao toca a estadia NAO gera linha. Varias ocorrencias do mesmo
+ * ajuste viram UMA linha (noites somadas; `from`/`to` = primeira e ultima noite
+ * efetivamente aplicadas). O total e a soma das linhas ja arredondadas.
+ */
+export function applySeasonalAdjustments(params: {
+  startDate: string;
+  weeks: number;
+  adjustments: SeasonalAdjustment[];
+  proration: SeasonalProration;
+}): { lines: SeasonalLine[]; total: number } {
+  const { startDate, weeks, adjustments, proration } = params;
+  const nights = Math.round(weeks * 7);
+  if (nights <= 0 || adjustments.length === 0) return { lines: [], total: 0 };
+
+  const firstNight = toEpochDay(startDate);
+  const lastNight = firstNight + nights - 1;
+  const lines: SeasonalLine[] = [];
+
+  for (const adjustment of adjustments) {
+    let overlappingNights = 0;
+    let firstApplied: number | null = null;
+    let lastApplied: number | null = null;
+    // Blocos de 7 noites (indice do bloco) tocados pelo ajuste, sem repetir
+    // quando duas ocorrencias caem no mesmo bloco.
+    const chargedBlocks = new Set<number>();
+
+    for (const occ of seasonalOccurrences(adjustment, firstNight, lastNight)) {
+      const start = Math.max(occ.start, firstNight);
+      const end = Math.min(occ.end, lastNight);
+      if (end < start) continue; // ocorrencia fora da estadia
+
+      overlappingNights += end - start + 1;
+      if (firstApplied === null || start < firstApplied) firstApplied = start;
+      if (lastApplied === null || end > lastApplied) lastApplied = end;
+
+      const firstBlock = Math.floor((start - firstNight) / 7);
+      const lastBlock = Math.floor((end - firstNight) / 7);
+      for (let b = firstBlock; b <= lastBlock; b++) chargedBlocks.add(b);
+    }
+
+    if (overlappingNights === 0 || firstApplied === null || lastApplied === null) {
+      continue; // ajuste nao toca a estadia: sem linha
+    }
+
+    const weeksCharged = chargedBlocks.size;
+    // full_week arredonda a semana inteira PARA CIMA. Isso so pode favorecer a
+    // escola num SUPLEMENTO; num desconto de baixa temporada devolveria ao aluno
+    // mais do que a escola concede (uma noite tocada viraria semana cheia de
+    // desconto). Valor negativo, portanto, e sempre proporcional as noites.
+    const porSemanaCheia = proration === "full_week" && adjustment.amountPerWeek > 0;
+    const amount = porSemanaCheia
+      ? round2(adjustment.amountPerWeek * weeksCharged)
+      : round2((adjustment.amountPerWeek * overlappingNights) / 7);
+
+    lines.push({
+      name: adjustment.name,
+      amount,
+      nights: overlappingNights,
+      ...(porSemanaCheia ? { weeksCharged } : {}),
+      from: fromEpochDay(firstApplied),
+      to: fromEpochDay(lastApplied),
+    });
+  }
+
+  return { lines, total: sumMoney(lines.map((l) => l.amount)) };
+}
+
+// ---------------------------------------------------------------------------
 // Orquestracao de topo — secao 4.1/4.2
 // ---------------------------------------------------------------------------
 
@@ -912,13 +1098,38 @@ export function priceProduct(request: PriceRequest): PricedItem {
   };
   const feesResult = applyFees(fees, feeContext);
 
-  // 5) Promocoes. Base tuition = bruto do curso; fees = soma das taxas.
+  // 4b) Ajuste sazonal da acomodacao. Sai como LINHA SEPARADA (decisao do
+  // negocio: nunca embutido no valor da acomodacao) e entra no liquido pela
+  // soma ALGEBRICA (suplemento aumenta, baixa temporada reduz). So faz sentido
+  // em estadias contadas em semanas; a estadia usa a quantidade ENTREGUE
+  // (deliveredQuantity), que e o periodo realmente ocupado.
+  const seasonalAdjustments = request.seasonalAdjustments ?? [];
+  const seasonalResult =
+    seasonalAdjustments.length > 0 && unit === "week"
+      ? applySeasonalAdjustments({
+          startDate,
+          weeks: deliveredQuantity,
+          adjustments: seasonalAdjustments,
+          proration: request.seasonalProration ?? "nightly",
+        })
+      : { lines: [] as SeasonalLine[], total: 0 };
+
+  // 5) Promocoes.
+  // DECISAO (ver docs/decisions.md, ADR "Ajuste sazonal e base de promocoes"):
+  // o ajuste sazonal compoe o valor da ACOMODACAO antes das promocoes, entao
+  // entra em bases.accommodation e em bases.total — mas NUNCA em bases.tuition,
+  // que e curso. Assim uma promocao sobre acomodacao incide sobre o valor com
+  // temporada, e uma promocao sobre curso ignora a temporada.
+  const ehAcomodacao = product.kind === "accommodation";
   const bases: PromoBases = {
     tuition: grossAmount,
-    accommodation: 0,
+    // Base de acomodacao = bruto do proprio item (quando ele E acomodacao) + o
+    // sazonal. So o sazonal, como estava, fazia uma promocao "sobre acomodacao"
+    // incidir apenas sobre o suplemento — um desconto de poucos euros, enganoso.
+    accommodation: ehAcomodacao ? round2(grossAmount + seasonalResult.total) : seasonalResult.total,
     insurance: 0,
     fees: feesResult.total,
-    total: round2(grossAmount + feesResult.total),
+    total: round2(grossAmount + feesResult.total + seasonalResult.total),
   };
   const promoResult = applyPromotions(promotions, bases, context);
   // Descontos de unidades gratuitas somam aos descontos de promocao.
@@ -928,8 +1139,18 @@ export function priceProduct(request: PriceRequest): PricedItem {
   // 6) Media por unidade cobravel (secao 14.1: media ANTES do desconto).
   const avgUnitPrice = averageUnitPrice(grossAmount, billableQuantity);
 
-  // 7) Liquido = bruto + taxas - descontos.
-  const netAmount = round2(grossAmount + feesResult.total - totalDiscounts);
+  // Cadastro errado (desconto de temporada maior que a diaria) zeraria ou
+  // inverteria o item: avisa em vez de emitir um orcamento negativo em silencio.
+  if (seasonalResult.total < 0 && Math.abs(seasonalResult.total) > grossAmount) {
+    warnings.push(
+      `Warning bloqueante: desconto de temporada (${Math.abs(seasonalResult.total)}) maior que o valor da acomodacao (${grossAmount}).`
+    );
+  }
+
+  // 7) Liquido = bruto + taxas + sazonal (algebrico) - descontos.
+  const netAmount = round2(
+    grossAmount + feesResult.total + seasonalResult.total - totalDiscounts
+  );
 
   const result: PricedItem = {
     billableQuantity,
@@ -940,11 +1161,16 @@ export function priceProduct(request: PriceRequest): PricedItem {
     currency,
     fees: feesResult.fees,
     discounts,
+    // Sem ajuste sazonal o campo nem aparece (item identico ao de antes).
+    ...(seasonalResult.lines.length > 0 ? { seasonal: seasonalResult.lines } : {}),
     netAmount,
     breakdown: {
       ...(breakdown as object),
       fees: feesResult.fees,
       discounts,
+      ...(seasonalResult.lines.length > 0
+        ? { seasonal: seasonalResult.lines, seasonalTotal: seasonalResult.total }
+        : {}),
       bases,
     },
     warnings,

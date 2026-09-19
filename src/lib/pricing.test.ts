@@ -19,6 +19,7 @@ import {
   applyFees,
   isPromotionApplicable,
   applyPromotions,
+  applySeasonalAdjustments,
   priceProduct,
   type Tier,
   type Template,
@@ -27,6 +28,7 @@ import {
   type Promotion,
   type PromoContext,
   type PriceRequest,
+  type SeasonalAdjustment,
 } from "./pricing.ts";
 
 // Tiers base usados em T1-T5 (moeda de referencia CAD).
@@ -693,4 +695,244 @@ test("priceProduct: disponibilidade fora da janela gera warning nao bloqueante",
   // Nao bloqueia: calcula normalmente e apenas alerta.
   assert.equal(r.grossAmount, 5750);
   assert.equal(r.warnings.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Ajuste sazonal de acomodacao (S1-S11)
+// A estadia ocupa weeks*7 NOITES a partir de startDate (a noite de startDate
+// conta, a data de saida nao). Periodo sem ano = recorrente todo ano.
+// ---------------------------------------------------------------------------
+
+// Alta temporada real da carga: 14/jun a 23/ago, +EUR 40/semana (recorrente).
+const ALTA: SeasonalAdjustment = {
+  name: "Alta temporada",
+  amountPerWeek: 40,
+  from: { month: 6, day: 14 },
+  to: { month: 8, day: 23 },
+};
+
+test("S1: estadia inteira fora do periodo nao gera linha", () => {
+  const r = applySeasonalAdjustments({
+    startDate: "2026-03-02",
+    weeks: 4,
+    adjustments: [ALTA],
+    proration: "nightly",
+  });
+  assert.deepEqual(r.lines, []);
+  assert.equal(r.total, 0);
+});
+
+test("S2: estadia inteira dentro do periodo cobra weeks x amountPerWeek", () => {
+  const r = applySeasonalAdjustments({
+    startDate: "2026-06-14",
+    weeks: 2,
+    adjustments: [ALTA],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0].nights, 14);
+  assert.equal(r.lines[0].amount, 80); // 2 x 40
+  assert.equal(r.lines[0].from, "2026-06-14");
+  assert.equal(r.lines[0].to, "2026-06-27");
+  assert.equal(r.total, 80);
+});
+
+test("S3: sobreposicao parcial no inicio e no fim (71 noites)", () => {
+  // Estadia: 10/jun/2026 + 84 noites => 10/jun a 01/set (ultima noite).
+  // Sobreposicao com 14/jun-23/ago: 14/jun (idx 4) a 23/ago (idx 74) = 71 noites.
+  const r = applySeasonalAdjustments({
+    startDate: "2026-06-10",
+    weeks: 12,
+    adjustments: [ALTA],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0].nights, 71);
+  assert.equal(r.lines[0].from, "2026-06-14");
+  assert.equal(r.lines[0].to, "2026-08-23");
+  assert.equal(r.lines[0].amount, 405.71); // 40 x 71 / 7 = 405.714...
+  assert.equal(r.total, 405.71);
+});
+
+test("S4: periodo recorrente (sem ano) aplica no ano seguinte", () => {
+  const r = applySeasonalAdjustments({
+    startDate: "2027-06-20",
+    weeks: 1,
+    adjustments: [ALTA],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0].nights, 7);
+  assert.equal(r.lines[0].amount, 40);
+  assert.equal(r.lines[0].from, "2027-06-20");
+});
+
+test("S5: periodo com ano explicito nao aplica em outro ano", () => {
+  const comAno: SeasonalAdjustment = {
+    name: "Alta temporada 2026",
+    amountPerWeek: 115,
+    from: { month: 6, day: 26, year: 2026 },
+    to: { month: 8, day: 30, year: 2026 },
+  };
+  const foraDoAno = applySeasonalAdjustments({
+    startDate: "2027-07-01",
+    weeks: 4,
+    adjustments: [comAno],
+    proration: "nightly",
+  });
+  assert.deepEqual(foraDoAno.lines, []);
+  assert.equal(foraDoAno.total, 0);
+
+  // No ano correto, aplica normalmente.
+  const noAno = applySeasonalAdjustments({
+    startDate: "2026-07-01",
+    weeks: 2,
+    adjustments: [comAno],
+    proration: "nightly",
+  });
+  assert.equal(noAno.lines.length, 1);
+  assert.equal(noAno.total, 230); // 2 x 115
+});
+
+test("S6: periodo que cruza a virada do ano (15/dez a 10/jan)", () => {
+  const virada: SeasonalAdjustment = {
+    name: "Natal/Ano Novo",
+    amountPerWeek: 50,
+    from: { month: 12, day: 15 },
+    to: { month: 1, day: 10 },
+  };
+  // Estadia 28/dez/2026 + 21 noites => 28/dez a 17/jan/2027.
+  // Sobreposicao: 28..31/dez (4) + 01..10/jan (10) = 14 noites.
+  const r = applySeasonalAdjustments({
+    startDate: "2026-12-28",
+    weeks: 3,
+    adjustments: [virada],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0].nights, 14);
+  assert.equal(r.lines[0].from, "2026-12-28");
+  assert.equal(r.lines[0].to, "2027-01-10");
+  assert.equal(r.total, 100); // 50 x 14 / 7
+});
+
+test("S7: full_week cobra semana cheia (11 blocos) vs nightly proporcional", () => {
+  const params = {
+    startDate: "2026-06-10",
+    weeks: 12,
+    adjustments: [ALTA],
+  };
+  const nightly = applySeasonalAdjustments({ ...params, proration: "nightly" as const });
+  const fullWeek = applySeasonalAdjustments({ ...params, proration: "full_week" as const });
+
+  assert.equal(nightly.total, 405.71);
+  // Blocos de 7 noites a partir do inicio: 12 blocos (0..11). As noites do
+  // periodo vao do indice 4 ao 74, entao os blocos 0..10 sao cobrados.
+  assert.equal(fullWeek.lines[0].weeksCharged, 11);
+  assert.equal(fullWeek.lines[0].nights, 71);
+  assert.equal(fullWeek.total, 440); // 11 x 40
+});
+
+test("S8: alta e baixa na mesma estadia geram duas linhas com sinais opostos", () => {
+  const baixa: SeasonalAdjustment = {
+    name: "Baixa temporada",
+    amountPerWeek: -30,
+    from: { month: 9, day: 1 },
+    to: { month: 9, day: 30 },
+  };
+  // Estadia 17/ago/2026 + 28 noites => 17/ago a 13/set.
+  // Alta: 17..23/ago = 7 noites => +40. Baixa: 01..13/set = 13 noites => -55.71.
+  const r = applySeasonalAdjustments({
+    startDate: "2026-08-17",
+    weeks: 4,
+    adjustments: [ALTA, baixa],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 2);
+  assert.equal(r.lines[0].name, "Alta temporada");
+  assert.equal(r.lines[0].nights, 7);
+  assert.equal(r.lines[0].amount, 40);
+  assert.equal(r.lines[1].name, "Baixa temporada");
+  assert.equal(r.lines[1].nights, 13);
+  assert.equal(r.lines[1].amount, -55.71); // -30 x 13 / 7
+  assert.equal(r.total, -15.71);
+});
+
+test("S9: periodo terminando em 29/fev em ano nao bissexto vira 28/fev", () => {
+  const fev: SeasonalAdjustment = {
+    name: "Inverno",
+    amountPerWeek: 40,
+    from: { month: 2, day: 1 },
+    to: { month: 2, day: 29 },
+  };
+  // 2027 nao e bissexto: estadia 20/fev + 14 noites => 20/fev a 05/mar.
+  // Sobreposicao: 20..28/fev = 9 noites.
+  const r = applySeasonalAdjustments({
+    startDate: "2027-02-20",
+    weeks: 2,
+    adjustments: [fev],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0].nights, 9);
+  assert.equal(r.lines[0].to, "2027-02-28");
+  assert.equal(r.lines[0].amount, 51.43); // 40 x 9 / 7 = 51.428...
+});
+
+test("S11: duas ocorrencias do mesmo ajuste somam numa linha so", () => {
+  const curto: SeasonalAdjustment = {
+    name: "Carnaval",
+    amountPerWeek: 70,
+    from: { month: 3, day: 1 },
+    to: { month: 3, day: 3 },
+  };
+  // Estadia de 53 semanas a partir de 27/fev/2026 cobre mar/2026 e mar/2027.
+  const r = applySeasonalAdjustments({
+    startDate: "2026-02-27",
+    weeks: 53,
+    adjustments: [curto],
+    proration: "nightly",
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0].nights, 6); // 3 + 3
+  assert.equal(r.lines[0].from, "2026-03-01");
+  assert.equal(r.lines[0].to, "2027-03-03");
+  assert.equal(r.lines[0].amount, 60); // 70 x 6 / 7
+});
+
+test("S10: priceProduct com e sem ajuste sazonal", () => {
+  const base: PriceRequest = {
+    product: { currency: "CAD", kind: "accommodation" },
+    startDate: "2026-09-07",
+    quantity: 10,
+    unit: "week",
+    templates: [OPEN_TEMPLATE],
+    transitionRule: "split_by_period",
+    fees: [],
+    promotions: [],
+    context: PP_CONTEXT,
+  };
+  const semSazonal = priceProduct(base);
+  assert.equal(semSazonal.grossAmount, 5750);
+  assert.equal(semSazonal.netAmount, 5750);
+  assert.equal(semSazonal.seasonal, undefined);
+
+  const baixa: SeasonalAdjustment = {
+    name: "Baixa temporada",
+    amountPerWeek: -30,
+    from: { month: 9, day: 1 },
+    to: { month: 9, day: 30 },
+  };
+  // 70 noites de 07/set a 15/nov; sobreposicao 07..30/set = 24 noites.
+  // -30 x 24 / 7 = -102.857... => -102.86.
+  const comSazonal = priceProduct({ ...base, seasonalAdjustments: [baixa] });
+  assert.equal(comSazonal.grossAmount, 5750);
+  assert.equal(comSazonal.seasonal?.length, 1);
+  assert.equal(comSazonal.seasonal?.[0].nights, 24);
+  assert.equal(comSazonal.seasonal?.[0].amount, -102.86);
+  assert.equal(comSazonal.netAmount, round2(5750 - 102.86));
+  assert.equal(comSazonal.netAmount, 5647.14);
+  // O item sem ajuste continua identico em tudo o mais.
+  assert.equal(comSazonal.averageUnitPrice, semSazonal.averageUnitPrice);
+  assert.equal(comSazonal.endDate, semSazonal.endDate);
 });

@@ -416,6 +416,53 @@ export type AddQuoteItemArgs = {
 };
 
 /**
+ * Grava as linhas de AJUSTE SAZONAL do item (alta/baixa temporada). Decisao do
+ * usuario: linha SEPARADA, nunca embutida no valor da acomodacao. Suplemento
+ * (positivo) vira linha de taxa; desconto de baixa temporada (negativo) vira
+ * desconto — as duas tabelas que o portal e o PDF ja somam. O nome carrega o
+ * periodo ("Alta temporada (14/jun a 23/ago)") para o aluno entender a diferenca.
+ */
+async function gravarLinhasSazonais(
+  supabase: SupabaseClient,
+  args: {
+    tenantId: string;
+    optionId: string;
+    itemId: string;
+    priced: { seasonal?: { name: string; amount: number }[]; currency: string };
+  },
+): Promise<void> {
+  for (const linha of args.priced.seasonal ?? []) {
+    if (linha.amount > 0) {
+      await supabase.from("quote_item_fee").insert({
+        tenant_id: args.tenantId,
+        quote_item_id: args.itemId,
+        fee_id: null,
+        name: linha.name,
+        amount: linha.amount,
+        currency: args.priced.currency,
+        is_refundable: false,
+        basis: "seasonal",
+      });
+    } else if (linha.amount < 0) {
+      await supabase.from("quote_discount").insert({
+        tenant_id: args.tenantId,
+        quote_option_id: args.optionId,
+        quote_item_id: args.itemId,
+        promotion_id: null,
+        valid_until: null,
+        name: linha.name,
+        discount_type: "fixed",
+        value: Math.abs(linha.amount),
+        applies_to: "accommodation",
+        amount: Math.abs(linha.amount),
+        currency: args.priced.currency,
+        is_manual: false,
+      });
+    }
+  }
+}
+
+/**
  * Precifica um produto (via priceProductFromDb) e grava o item da cotacao com
  * snapshot congelado do produto, breakdown do calculo, taxas e descontos.
  * TODO: mover o conjunto item+taxas+descontos para RPC/funcao Postgres.
@@ -586,6 +633,13 @@ export async function addQuoteItem(
     });
   }
 
+  await gravarLinhasSazonais(supabase, {
+    tenantId: args.tenantId,
+    optionId: args.optionId,
+    itemId,
+    priced,
+  });
+
   await registrarAuditoriaAdmin(supabase, {
     usuario: actor.usuario,
     acao: "quote.item.added",
@@ -595,6 +649,7 @@ export async function addQuoteItem(
       productId: args.productId,
       grossAmount: priced.grossAmount,
       currency: priced.currency,
+      sazonal: (priced.seasonal ?? []).length,
     },
     ip: actor.ip ?? null,
   });
@@ -1055,6 +1110,31 @@ export async function recalculateQuote(
         })
         .eq("tenant_id", args.tenantId)
         .eq("id", item.id);
+
+      // Linhas sazonais tambem sao refeitas: sem isso, corrigir o cadastro da
+      // temporada e recalcular deixava a linha COBRADA velha (ou um ajuste ja
+      // arquivado seguia cobrado), divergindo do rastro em price_breakdown.
+      // So rascunho chega aqui, entao nao fere o congelamento da cotacao emitida.
+      await supabase
+        .from("quote_item_fee")
+        .delete()
+        .eq("tenant_id", args.tenantId)
+        .eq("quote_item_id", item.id)
+        .eq("basis", "seasonal");
+      await supabase
+        .from("quote_discount")
+        .delete()
+        .eq("tenant_id", args.tenantId)
+        .eq("quote_item_id", item.id)
+        .eq("applies_to", "accommodation")
+        .eq("is_manual", false)
+        .is("promotion_id", null);
+      await gravarLinhasSazonais(supabase, {
+        tenantId: args.tenantId,
+        optionId: option.id,
+        itemId: item.id as string,
+        priced,
+      });
 
       total += priced.grossAmount;
       currency = priced.currency;
