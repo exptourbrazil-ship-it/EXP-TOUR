@@ -134,16 +134,16 @@ export default function SecaoSazonal({
             cotação como linha separada, proporcional às noites.
           </p>
         </div>
-        {!form ? (
-          <button
-            type="button"
-            onClick={abrirNovo}
-            aria-expanded={form !== null}
-            className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream"
-          >
-            + Novo ajuste
-          </button>
-        ) : null}
+        {/* O botao CONTINUA visivel com o formulario aberto: e ele que mostra, pelo
+            realce, qual acao abriu a janela — e clicar de novo fecha. */}
+        <button
+          type="button"
+          onClick={() => (form ? setForm(null) : abrirNovo())}
+          aria-expanded={form !== null}
+          className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream"
+        >
+          {form ? "Fechar" : "+ Novo ajuste"}
+        </button>
       </div>
 
       {ajustes.some((a) => a.sourceText?.startsWith("ESTIMATIVA")) ? (
