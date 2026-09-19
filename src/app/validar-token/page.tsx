@@ -109,7 +109,7 @@ const caixaSucesso = resultado.status === "valido"
 const botao = resultado.status === "valido"
   ? createElement(
     "a",
-    { href: "/", className: "inline-block w-full rounded-md bg-cta px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition" },
+    { href: "/", className: "inline-block w-full rounded-md bg-cta px-4 py-2 text-sm font-medium text-white transition" },
     "Acessar a Área do Cliente"
     )
   : createElement(

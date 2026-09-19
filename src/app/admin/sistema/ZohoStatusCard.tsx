@@ -105,7 +105,7 @@ export default function ZohoStatusCard() {
                   return (
                     <span
                       key={chave}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         presente ? "bg-brand/10 text-brand" : "bg-neutral-100 text-neutral-500"
                       }`}
                       title={presente ? "configurada" : "ausente"}

@@ -72,7 +72,7 @@ export default async function AdminConteudoRevisaoPage({
             <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
               {prog.quickInfo.map((l, i) => (
                 <div key={i}>
-                  <dt className="text-[10px] uppercase tracking-wide text-neutral-400">{l.rotulo}</dt>
+                  <dt className="text-[11px] uppercase tracking-wide text-neutral-400">{l.rotulo}</dt>
                   <dd className="text-neutral-800">{l.valor}</dd>
                 </div>
               ))}

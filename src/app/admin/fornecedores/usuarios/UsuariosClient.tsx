@@ -172,11 +172,11 @@ export default function UsuariosClient({ suppliers }: { suppliers: SupplierComUs
                       <p className="truncate text-sm text-neutral-800">
                         {u.email}
                         {!u.active ? (
-                          <span className="ml-2 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-600">
+                          <span className="ml-2 rounded bg-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-600">
                             inativo
                           </span>
                         ) : null}
-                        <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">
+                        <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-500">
                           {u.origem === "zoho" ? "Zoho" : "manual"}
                         </span>
                       </p>

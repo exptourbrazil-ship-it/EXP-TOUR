@@ -201,7 +201,7 @@ export default function LeadCasoClient({ lead }: { lead: LeadDetalhe }) {
               type="button"
               onClick={converter}
               disabled={convertendo}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-60"
             >
               {convertendo ? "Gerando cotação…" : lead.quoteId ? "Abrir cotação" : "Converter em cotação"}
             </button>
@@ -253,7 +253,7 @@ function Campo({ rotulo, valor }: { rotulo: string; valor: string }) {
 function MiniCampo({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-neutral-400">{rotulo}</p>
+      <p className="text-[11px] uppercase tracking-wide text-neutral-400">{rotulo}</p>
       <p className="text-sm font-medium text-brand">{valor}</p>
     </div>
   );

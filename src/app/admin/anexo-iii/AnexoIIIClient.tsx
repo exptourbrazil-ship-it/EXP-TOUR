@@ -172,7 +172,7 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
             {emissao?.emitidoEm ? `Emitido em ${new Date(emissao.emitidoEm).toLocaleString("pt-BR")}. ` : ""}
             Este anexo foi congelado e não pode mais ser alterado. É o que vale para o cliente.
           </div>
-          {emissao?.hash ? <div className="mt-1 break-all font-mono text-[10px] text-emerald-600">hash: {emissao.hash}</div> : null}
+          {emissao?.hash ? <div className="mt-1 break-all font-mono text-[11px] text-emerald-600">hash: {emissao.hash}</div> : null}
         </div>
       ) : null}
 
@@ -214,7 +214,7 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
               Fonte e data da informação
               <input type="text" value={form.fonte} onChange={set("fonte")} placeholder="Ex.: invoice de 12/2026" className={inputClasse} />
             </label>
-            <button type="submit" disabled={salvando} className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60">
+            <button type="submit" disabled={salvando} className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60">
               {salvando ? "Salvando…" : "Adicionar item"}
             </button>
           </form>
@@ -258,7 +258,7 @@ export default function AnexoIIIClient({ contratos }: { contratos: ContratoOpcao
                 Ao emitir, o anexo é congelado com um hash de integridade e passa a ser o que vale
                 para o cliente. Depois disto não é possível adicionar nem remover itens.
               </p>
-              <button type="button" onClick={emitir} disabled={emitindo} className="mt-3 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+              <button type="button" onClick={emitir} disabled={emitindo} className="mt-3 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-60">
                 {emitindo ? "Emitindo…" : "Emitir e congelar"}
               </button>
             </div>

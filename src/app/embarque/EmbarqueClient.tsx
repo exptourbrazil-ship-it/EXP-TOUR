@@ -116,7 +116,7 @@ export default function EmbarqueClient(props: EmbarqueClientProps) {
             const badge = (
               <span
                 title={isTarefa ? "Você marca este item" : "Marcado automaticamente a partir dos seus documentos"}
-                className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500"
+                className="mt-0.5 shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
               >
                 {isTarefa ? "você" : "auto"}
               </span>

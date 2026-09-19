@@ -139,7 +139,7 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
         <button
           type="button"
           onClick={() => setAbrindo((v) => !v)}
-          className="rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90"
+          className="rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition"
         >
           {abrindo ? "Fechar" : "Nova cotação"}
         </button>
@@ -224,7 +224,7 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
           <button
             type="submit"
             disabled={salvando}
-            className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60"
+            className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60"
           >
             {salvando ? "Criando…" : "Criar e abrir construtor"}
           </button>
@@ -272,7 +272,7 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-serif text-lg text-brand">#{q.reference}</span>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
                       STATUS_BADGE[q.status] || "bg-neutral-100 text-neutral-600"
                     }`}
                   >

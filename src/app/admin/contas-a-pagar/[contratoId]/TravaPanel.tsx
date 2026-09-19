@@ -56,7 +56,7 @@ export default function TravaPanel({
         type="button"
         onClick={marcarImediato}
         disabled={salvando}
-        className="mt-3 rounded-lg bg-amber-700 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+        className="mt-3 rounded-lg bg-amber-700 px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
       >
         {salvando ? "Liberando…" : "Marcar processamento imediato e liberar"}
       </button>

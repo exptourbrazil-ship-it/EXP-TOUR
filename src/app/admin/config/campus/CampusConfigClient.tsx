@@ -245,7 +245,7 @@ export default function CampusConfigClient({ campi }: { campi: CampusOpcao[] }) 
               <Campo label="URL da política (se site)"><input className={inputCls} value={pol.politicaUrl || ""} onChange={(e) => setPol({ ...pol, politicaUrl: e.target.value })} /></Campo>
               <Campo label="Versão / data da política"><input className={inputCls} placeholder="versão" value={pol.politicaVersao || ""} onChange={(e) => setPol({ ...pol, politicaVersao: e.target.value })} /></Campo>
             </div>
-            <button onClick={salvarPolitica} disabled={salvandoPol} className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+            <button onClick={salvarPolitica} disabled={salvandoPol} className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
               {salvandoPol ? "Salvando…" : "Salvar política"}
             </button>
           </section>

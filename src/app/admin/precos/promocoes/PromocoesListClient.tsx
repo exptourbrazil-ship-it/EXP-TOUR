@@ -126,7 +126,7 @@ export default function PromocoesListClient({
                     {p.name}
                     {p.isStackable ? <span className="ml-2 text-xs text-neutral-400">(empilhável)</span> : null}
                     {p.segmentos > 0 ? (
-                      <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
+                      <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-neutral-500">
                         {p.segmentos} seg.
                       </span>
                     ) : null}

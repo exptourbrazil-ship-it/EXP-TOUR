@@ -122,7 +122,7 @@ export default function AcertoPropostaClient({ proposta }: { proposta: Proposta 
             type="button"
             onClick={aceitar}
             disabled={aceitando}
-            className="rounded-lg bg-[#042f1b] px-5 py-2.5 text-sm font-medium text-[#c9a35e] hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-[#042f1b] px-5 py-2.5 text-sm font-medium text-[#c9a35e] disabled:opacity-50"
           >
             {aceitando ? "Registrando…" : "Aceitar o acerto"}
           </button>

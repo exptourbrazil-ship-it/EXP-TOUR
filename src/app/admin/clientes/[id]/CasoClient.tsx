@@ -391,7 +391,7 @@ export default function CasoClient({
                   title={badge.rotulo}
                   aria-label={badge.rotulo}
                   className={
-                    "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold " +
+                    "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold " +
                     (badge.tom === "alerta"
                       ? "bg-red-100 text-red-700"
                       : "bg-brand-gold/20 text-brand-golddark")
@@ -478,7 +478,7 @@ function AbaJornada({ caso }: { caso: Caso }) {
                           <span className="font-medium text-brand">
                             {t.de ? `${t.de} → ${t.para}` : t.para}
                           </span>
-                          {t.override ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800">override</span> : null}
+                          {t.override ? <span className="ml-1 rounded bg-amber-100 px-1 text-[11px] text-amber-800">override</span> : null}
                           <span className="text-neutral-400"> · {t.origem}{t.autor ? ` (${t.autor})` : ""}</span>
                           {t.motivo ? <span className="text-neutral-500"> — {t.motivo}</span> : null}
                         </li>
@@ -882,7 +882,7 @@ function PagamentoManualParcela({
               <button onClick={() => setAberto(false)} disabled={salvando} className="rounded-xl px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 disabled:opacity-50">
                 Cancelar
               </button>
-              <button onClick={registrar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50">
+              <button onClick={registrar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream transition disabled:opacity-50">
                 {salvando ? "Registrando..." : "Registrar pagamento"}
               </button>
             </div>
@@ -953,7 +953,7 @@ function AbaFinanceiro({ caso, podeEditarParcelas }: { caso: Caso; podeEditarPar
                       <tr key={p.id} className="border-b border-neutral-100 last:border-0">
                         <td className="px-3 py-2 text-neutral-500">
                           {p.numero}
-                          {p.is_entrada ? <span className="ml-1 text-[10px] text-brand-golddark">entrada</span> : null}
+                          {p.is_entrada ? <span className="ml-1 text-[11px] text-brand-golddark">entrada</span> : null}
                         </td>
                         <td className="px-3 py-2 text-neutral-600">{p.descricao || "—"}</td>
                         <td className="px-3 py-2 text-neutral-600">{p.vencimento ? fmtData(p.vencimento) : "—"}</td>
@@ -1345,7 +1345,7 @@ function AbaComunicacao({ caso }: { caso: Caso }) {
             <li key={i} className="flex flex-wrap items-center justify-between gap-2 py-2">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                     {m.canal === "email" ? "E-mail" : "WhatsApp"}
                   </span>
                   <span className="text-sm text-brand">{m.tipo_mensagem || "—"}</span>
@@ -1399,7 +1399,7 @@ function AbaEventos({ caso }: { caso: Caso }) {
 // admin; vermelho fica para estados de erro.
 function SeloSensivel({ texto = "Ação sensível" }: { texto?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-brand-gold/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-golddark">
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand-gold/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-golddark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
         <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
         <path d="M9.5 12l2 2 3.5-4" />
@@ -1483,7 +1483,7 @@ function AbaAcoes({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso
               type="button"
               onClick={reenviarAcesso}
               disabled={enviando || !titular.email}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Enviando…" : "Reenviar código de acesso"}
             </button>
@@ -1877,7 +1877,7 @@ function FormContatoTitular({ caso }: { caso: Caso }) {
           type="button"
           onClick={salvar}
           disabled={enviando}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {enviando ? "Salvando…" : "Salvar contato"}
         </button>
@@ -2030,7 +2030,7 @@ function FormEstudanteContrato({ caso, contrato }: { caso: Caso; contrato: CasoC
           type="button"
           onClick={salvar}
           disabled={enviando}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {enviando ? "Salvando…" : "Salvar estudante"}
         </button>
@@ -2116,7 +2116,7 @@ function FormCpfTitular({ caso }: { caso: Caso }) {
           type="button"
           onClick={salvar}
           disabled={enviando}
-          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {enviando ? "Salvando…" : "Salvar CPF"}
         </button>
@@ -2268,7 +2268,7 @@ function SecaoVisto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
           onClick={registrar}
           disabled={enviando || caso.contratos.length === 0}
           className={
-            "rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 " +
+            "rounded-lg px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 " +
             (status === "negado" ? "bg-red-600" : "bg-brand")
           }
         >
@@ -2364,7 +2364,7 @@ function SecaoCancelamento({ caso, podeGerir }: { caso: Caso; podeGerir: boolean
               type="button"
               onClick={registrar}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Registrando…" : "Registrar pedido de cancelamento"}
             </button>
@@ -2467,7 +2467,7 @@ function SecaoCancelamentoEscola({ caso, podeGerir }: { caso: Caso; podeGerir: b
               type="button"
               onClick={registrar}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Registrando…" : "Registrar cancelamento pela escola"}
             </button>
@@ -2672,7 +2672,7 @@ function SecaoIncontactavel({ caso, podeGerir }: { caso: Caso; podeGerir: boolea
               type="button"
               onClick={marcar}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Marcando…" : "Marcar incontactável"}
             </button>
@@ -2808,7 +2808,7 @@ function SecaoExcecaoRotulada({
               type="button"
               onClick={registrar}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Registrando…" : rotuloBotao}
             </button>
@@ -2926,7 +2926,7 @@ function SecaoDeferral({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) 
               type="button"
               onClick={registrar}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Registrando…" : "Registrar pedido de adiamento"}
             </button>
@@ -3025,7 +3025,7 @@ function BotaoAplicarAlteracao({
         <button
           type="button"
           onClick={() => setConfirmando(true)}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
         >
           Aplicar plano
         </button>
@@ -3039,7 +3039,7 @@ function BotaoAplicarAlteracao({
             type="button"
             onClick={aplicar}
             disabled={enviando}
-            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {enviando ? "Aplicando…" : "Confirmar aplicação"}
           </button>
@@ -3112,7 +3112,7 @@ function BotaoAcertoCredito({
         type="button"
         onClick={gerar}
         disabled={enviando}
-        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
         {enviando ? "Gerando…" : "Gerar rascunho de acerto (crédito)"}
       </button>
@@ -3294,7 +3294,7 @@ function SecaoAlteracao({
               type="button"
               onClick={calcular}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Calculando…" : "Calcular plano proposto"}
             </button>
@@ -3631,7 +3631,7 @@ function SecaoAlteracaoEscopo({
               type="button"
               onClick={calcular}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Calculando…" : "Calcular delta e plano"}
             </button>
@@ -3724,7 +3724,7 @@ function BotaoProporAcerto({
         type="button"
         onClick={propor}
         disabled={enviando}
-        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
         {enviando ? "Propondo…" : "Propor ao cliente"}
       </button>
@@ -3928,7 +3928,7 @@ function BotaoExecutarAcerto({
             type="button"
             onClick={confirmarManual}
             disabled={enviando}
-            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {enviando ? "Confirmando…" : "Confirmar devolução manual"}
           </button>
@@ -3943,7 +3943,7 @@ function BotaoExecutarAcerto({
             type="button"
             onClick={executar}
             disabled={enviando}
-            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {enviando ? "Executando…" : "Confirmar execução"}
           </button>
@@ -3960,7 +3960,7 @@ function BotaoExecutarAcerto({
         <button
           type="button"
           onClick={() => setFase("confirmando")}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
         >
           Executar estorno
         </button>
@@ -4238,7 +4238,7 @@ function SecaoSolicitacoesCancelamento({ caso }: { caso: Caso }) {
                   type="button"
                   disabled={processando === s.id}
                   onClick={() => mudarStatus(s.contrato_id, s.id, "concluido")}
-                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-brand-cream hover:opacity-90 disabled:opacity-50"
+                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-brand-cream disabled:opacity-50"
                 >
                   Marcar concluída
                 </button>
@@ -4330,7 +4330,7 @@ function SecaoReembolsoUnificado({ caso }: { caso: Caso }) {
         type="button"
         onClick={calcular}
         disabled={carregando || !contratoId}
-        className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60"
+        className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60"
       >
         {carregando ? "Calculando…" : "Calcular prévia"}
       </button>
@@ -4450,7 +4450,7 @@ function SecaoAcerto({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) {
               type="button"
               onClick={calcular}
               disabled={enviando || caso.contratos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Calculando…" : "Calcular acerto"}
             </button>
@@ -4577,7 +4577,7 @@ function SecaoExcecoes({ caso, podeGerir }: { caso: Caso; podeGerir: boolean }) 
               type="button"
               onClick={abrir}
               disabled={abrindo || contratosAtivos.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {abrindo ? "Abrindo…" : "Abrir exceção"}
             </button>

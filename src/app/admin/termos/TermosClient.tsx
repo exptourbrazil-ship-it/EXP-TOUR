@@ -125,7 +125,7 @@ export default function TermosClient() {
         <button
           type="submit"
           disabled={salvando}
-          className="mt-3 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60"
+          className="mt-3 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60"
         >
           {salvando ? "Salvando..." : "Salvar e tornar vigente"}
         </button>
@@ -148,11 +148,11 @@ export default function TermosClient() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-brand">{t.versao}</span>
                   {t.ativo ? (
-                    <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-brand">
+                    <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-brand">
                       vigente
                     </span>
                   ) : (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                       inativa
                     </span>
                   )}

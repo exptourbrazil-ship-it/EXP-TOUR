@@ -7,7 +7,26 @@ const config: Config = {
         ],
     theme: {
           extend: {
+                  // LEGIBILIDADE: os cinzas claros do Tailwind reprovavam no contraste
+                  // (neutral-400 dava 2,5:1 no branco e 2,1:1 sobre o creme da marca,
+                  // contra os 4,5:1 exigidos). Como 400/500 so eram usados em TEXTO
+                  // (nenhum bg-neutral-400/500 no projeto), escurecemos a escala nesses
+                  // tons: 704 usos passam a cumprir AA sem tocar em nenhuma tela.
+                  // As bordas (200/300) ficam como estavam, para nao pesar o desenho.
+                  fontSize: {
+                            // 12px era pequeno demais para texto de apoio, que e o grosso
+                            // do portal (734 usos de text-xs). Sobe um ponto e ganha
+                            // entrelinha; o mesmo para text-sm, o tamanho mais comum.
+                            xs: ["0.8125rem", { lineHeight: "1.45" }],   // 13px
+                            sm: ["0.9375rem", { lineHeight: "1.5" }],    // 15px
+                            base: ["1rem", { lineHeight: "1.6" }],       // 16px
+                  },
                   colors: {
+                            neutral: {
+                                        400: "#696969", // 5,4:1 no branco | 4,6:1 no creme
+                                        500: "#585858", // 7,0:1 | 5,9:1
+                                        600: "#464646", // 9,2:1 | 7,8:1
+                            },
                             // Tokens de marca por TENANT: os valores vem de variaveis CSS
                             // (triplas RGB, p/ suportar opacidade tipo bg-brand/40). Os
                             // defaults ficam em globals.css (:root = EXP Tour); o portal do

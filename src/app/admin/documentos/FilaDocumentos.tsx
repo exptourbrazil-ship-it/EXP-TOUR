@@ -156,7 +156,7 @@ export default function FilaDocumentos() {
                         <span className="text-xs text-neutral-400">{d.titular_cpf}</span>
                       ) : null}
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
                           CAT_BADGE[categoria] || "bg-neutral-100 text-neutral-600"
                         }`}
                       >
@@ -204,7 +204,7 @@ export default function FilaDocumentos() {
                       type="button"
                       onClick={() => decidir(d.id, "aprovado")}
                       disabled={agindo}
-                      className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-60"
+                      className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition disabled:opacity-60"
                     >
                       {agindo && rejeitandoId !== d.id ? "…" : "Aprovar"}
                     </button>

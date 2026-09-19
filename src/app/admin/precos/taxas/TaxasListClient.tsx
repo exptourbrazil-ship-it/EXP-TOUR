@@ -106,7 +106,7 @@ export default function TaxasListClient({ taxas }: { taxas: TaxaLista[] }) {
                   <td className="px-4 py-2 font-medium text-brand">
                     {t.name}
                     {t.gerida ? (
-                      <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
+                      <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-neutral-500">
                         price list
                       </span>
                     ) : null}

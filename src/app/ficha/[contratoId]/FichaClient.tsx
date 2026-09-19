@@ -171,7 +171,7 @@ export default function FichaClient({ estado, contratoId }: { estado: FichaEstad
               <button
                 onClick={assinar}
                 disabled={enviando}
-                className="mt-4 rounded-full bg-cta px-6 py-2.5 text-sm font-medium text-brand-cream shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                className="mt-4 rounded-full bg-cta px-6 py-2.5 text-sm font-medium text-brand-cream shadow-sm transition disabled:opacity-50"
               >
                 {enviando ? t(UI.assinando) : t(UI.assinar)}
               </button>

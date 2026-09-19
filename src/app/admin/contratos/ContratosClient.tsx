@@ -413,7 +413,7 @@ export default function ContratosClient({
                             type="button"
                             onClick={() => confirmarCancelamento(c.id)}
                             disabled={salvando || motivo.trim().length < 3}
-                            className="rounded-xl bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                            className="rounded-xl bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
                           >
                             {salvando ? "Cancelando…" : "Confirmar"}
                           </button>
@@ -434,7 +434,7 @@ export default function ContratosClient({
                             onClick={() => enviar(c.id)}
                             disabled={!templateConfigurado || !c.titular_email || enviandoId === c.id}
                             title={!c.titular_email ? "Titular sem e-mail" : undefined}
-                            className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50"
+                            className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition disabled:opacity-50"
                           >
                             {enviandoId === c.id ? "Enviando…" : jaEnviado ? "Reenviar" : "Enviar p/ assinatura"}
                           </button>

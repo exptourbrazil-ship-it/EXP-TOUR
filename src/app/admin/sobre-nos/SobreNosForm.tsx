@@ -67,7 +67,7 @@ export default function SobreNosForm({ inicial }: { inicial: ConfigMarca }) {
       </div>
 
       <button type="button" onClick={salvar} disabled={salvando}
-        className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-brand-cream transition hover:opacity-90 disabled:opacity-60">
+        className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-brand-cream transition disabled:opacity-60">
         {salvando ? "Salvando…" : "Salvar"}
       </button>
     </div>

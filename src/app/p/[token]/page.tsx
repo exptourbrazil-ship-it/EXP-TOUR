@@ -120,7 +120,7 @@ export default async function PortalEstudantePage({
             </p>
             <a
               href="/"
-              className="mt-6 inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-6 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+              className="mt-6 inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-6 py-3 text-sm font-medium text-[color:var(--p-cta-fg)]"
             >
               Ir para a Área do Cliente
             </a>

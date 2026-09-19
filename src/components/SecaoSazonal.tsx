@@ -135,7 +135,12 @@ export default function SecaoSazonal({
           </p>
         </div>
         {!form ? (
-          <button type="button" onClick={abrirNovo} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+          <button
+            type="button"
+            onClick={abrirNovo}
+            aria-expanded={form !== null}
+            className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream"
+          >
             + Novo ajuste
           </button>
         ) : null}
@@ -180,17 +185,17 @@ export default function SecaoSazonal({
                   <td className="px-4 py-2">
                     <span className="font-medium text-brand">{a.name}</span>
                     {a.doCampus ? (
-                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-amber-800">
                         todo o campus
                       </span>
                     ) : null}
-                    <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
+                    <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-neutral-500">
                       {KIND_LABEL[a.kind] ?? a.kind}
                     </span>
                     {a.sourceText?.startsWith("ESTIMATIVA") ? (
                       // Periodo projetado por nos, nao publicado pela escola: precisa
                       // saltar aos olhos de quem cota, senao vira preco inventado.
-                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-amber-800">
                         estimado
                       </span>
                     ) : null}

@@ -194,7 +194,7 @@ export default function DocumentosAdminClient() {
         <button
           type="submit"
           disabled={carregando}
-          className="mt-2 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60"
+          className="mt-2 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60"
         >
           {carregando ? "Enviando..." : "Enviar documento"}
         </button>

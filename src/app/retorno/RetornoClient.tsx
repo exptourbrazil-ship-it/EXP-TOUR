@@ -171,7 +171,7 @@ export default function RetornoClient(props: RetornoClientProps) {
               <button
                 onClick={enviarNps}
                 disabled={enviando}
-                className="mt-4 block w-full rounded-xl bg-cta py-3 text-center text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-60"
+                className="mt-4 block w-full rounded-xl bg-cta py-3 text-center text-sm font-medium text-brand-cream transition disabled:opacity-60"
               >
                 {enviando ? "Enviando..." : "Enviar avaliação"}
               </button>
@@ -193,7 +193,7 @@ export default function RetornoClient(props: RetornoClientProps) {
               href={props.googleReviewUrl}
               target="_blank"
               rel="noreferrer"
-              className="mt-5 block rounded-xl bg-cta py-3 text-center text-sm font-medium text-brand-cream transition hover:opacity-90"
+              className="mt-5 block rounded-xl bg-cta py-3 text-center text-sm font-medium text-brand-cream transition"
             >
               Avaliar no Google
             </a>

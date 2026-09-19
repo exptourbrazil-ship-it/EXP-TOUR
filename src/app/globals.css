@@ -70,6 +70,59 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * BOTOES: resposta visual ao cursor e estado "painel aberto".
+ *
+ * O portal tem ~64 telas com botao `bg-brand` e a maioria nao declarava hover
+ * (as que declaravam usavam `hover:opacity-`, que desbota o texto junto e piora
+ * a leitura). Em vez de editar cada tela, o realce vive aqui e vale para todo
+ * botao: um filtro de brilho escurece a cor que o botao ja tem, qualquer que
+ * seja ela, e a transicao faz a mudanca acontecer no tempo do olho.
+ *
+ * Estado ABERTO: quando o botao controla um painel/menu/formulario, marque-o
+ * com `aria-expanded="true"` (ou `data-aberto="true"`). Ele passa a exibir um
+ * anel dourado da marca e fica levemente rebaixado — assim da para saber qual
+ * botao abriu a janela que esta na tela. O `aria-expanded` tambem e o que o
+ * leitor de tela anuncia, entao a pista visual e a acessivel sao a mesma.
+ * ------------------------------------------------------------------------- */
+@layer base {
+  button,
+  [role="button"],
+  a[class*="bg-"],
+  a[class*="border"] {
+    transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease,
+      box-shadow 0.16s ease, filter 0.16s ease, transform 0.12s ease;
+  }
+
+  /* Cursor em cima: a cor do botao escurece (fundo claro) sem mexer no texto. */
+  button:hover:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:hover:not([aria-disabled="true"]),
+  a[class*="bg-"]:hover {
+    filter: brightness(0.9) saturate(1.05);
+  }
+
+  /* Pressionado: afunda 1px, para o clique ter resposta tatil. */
+  button:active:not(:disabled),
+  [role="button"]:active {
+    transform: translateY(1px);
+  }
+
+  /* Botao que ABRIU um painel fica destacado enquanto a janela estiver aberta. */
+  button[aria-expanded="true"],
+  [role="button"][aria-expanded="true"],
+  button[data-aberto="true"],
+  [data-aberto="true"][role="button"] {
+    box-shadow: 0 0 0 2px rgb(var(--brand-gold) / 0.85), 0 1px 2px rgb(0 0 0 / 0.08);
+    filter: brightness(0.94);
+  }
+
+  /* Desabilitado nao reage ao cursor. */
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
 /* Respeita quem prefere menos movimento. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -78,5 +131,11 @@
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+  /* Sem movimento, mas o realce de cor e o anel de "aberto" continuam: sao
+     informacao, nao enfeite. */
+  button:active:not(:disabled),
+  [role="button"]:active {
+    transform: none;
   }
 }

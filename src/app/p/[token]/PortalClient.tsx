@@ -200,10 +200,10 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
             ) : null}
           </div>
           <div className="flex gap-2 print:hidden">
-            <button onClick={compartilhar} className="min-h-[40px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-3 py-2 text-sm text-[color:var(--p-ink)] hover:opacity-90">
+            <button onClick={compartilhar} className="min-h-[40px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-3 py-2 text-sm text-[color:var(--p-ink)]">
               Compartilhar
             </button>
-            <button onClick={imprimir} className="min-h-[40px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-3 py-2 text-sm text-[color:var(--p-ink)] hover:opacity-90">
+            <button onClick={imprimir} className="min-h-[40px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-3 py-2 text-sm text-[color:var(--p-ink)]">
               Imprimir
             </button>
           </div>
@@ -300,10 +300,10 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
 
       {/* Acoes globais */}
       <div className="mt-6 flex flex-wrap gap-3 print:hidden">
-        <button onClick={baixarPDF} className="min-h-[44px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-4 py-3 text-sm text-[color:var(--p-ink)] hover:opacity-90">
+        <button onClick={baixarPDF} className="min-h-[44px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-4 py-3 text-sm text-[color:var(--p-ink)]">
           Baixar PDF
         </button>
-        <button onClick={compartilhar} className="min-h-[44px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-4 py-3 text-sm text-[color:var(--p-ink)] hover:opacity-90">
+        <button onClick={compartilhar} className="min-h-[44px] rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-4 py-3 text-sm text-[color:var(--p-ink)]">
           Compartilhar
         </button>
       </div>
@@ -429,14 +429,14 @@ function Overview({
             <div className="mt-4 flex flex-wrap gap-2 print:hidden">
               <button
                 onClick={() => onVerDetalhes(op.index)}
-                className="min-h-[44px] flex-1 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-4 py-2.5 text-sm text-[color:var(--p-ink)] hover:opacity-90"
+                className="min-h-[44px] flex-1 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-4 py-2.5 text-sm text-[color:var(--p-ink)]"
               >
                 Ver detalhes
               </button>
               {selectedIndex == null ? (
                 <button
                   onClick={() => onEscolher(op.index)}
-                  className="min-h-[44px] flex-1 rounded-xl bg-[color:var(--p-cta)] px-4 py-2.5 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+                  className="min-h-[44px] flex-1 rounded-xl bg-[color:var(--p-cta)] px-4 py-2.5 text-sm font-medium text-[color:var(--p-cta-fg)]"
                 >
                   Escolher
                 </button>
@@ -550,7 +550,7 @@ function QuickInfoGrid({ linhas }: { linhas: { rotulo: string; valor: string }[]
     <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
       {linhas.map((l, i) => (
         <div key={i}>
-          <dt className="text-[10px] uppercase tracking-wide text-[color:var(--p-muted)]">{l.rotulo}</dt>
+          <dt className="text-[11px] uppercase tracking-wide text-[color:var(--p-muted)]">{l.rotulo}</dt>
           <dd className="text-[color:var(--p-ink)]">{l.valor}</dd>
         </div>
       ))}
@@ -848,7 +848,7 @@ function DetalheOpcao({
         ) : (
           <button
             onClick={onQueroEscolher}
-            className="min-h-[44px] w-full rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90 sm:w-auto"
+            className="min-h-[44px] w-full rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] sm:w-auto"
           >
             Escolher esta opção
           </button>
@@ -898,7 +898,7 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
               href={a.chatUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+              className="inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)]"
             >
               Falar com o Altus AI
             </a>
@@ -908,7 +908,7 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
               href={waUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-5 py-3 text-sm font-medium text-[color:var(--p-ink)] hover:opacity-90"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] px-5 py-3 text-sm font-medium text-[color:var(--p-ink)]"
             >
               WhatsApp
             </a>
@@ -1138,7 +1138,7 @@ function Checkout({
       <button
         onClick={enviar}
         disabled={!podeEnviar}
-        className="mt-4 min-h-[44px] w-full rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90 disabled:opacity-50 sm:w-auto"
+        className="mt-4 min-h-[44px] w-full rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] disabled:opacity-50 sm:w-auto"
       >
         {enviando ? "Concluindo…" : "Aceitar e concluir"}
       </button>
@@ -1167,7 +1167,7 @@ function Sucesso({ brand }: { brand: string }) {
       </p>
       <a
         href="/"
-        className="mt-6 inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-6 py-3 text-sm font-medium text-[color:var(--p-cta-fg)] hover:opacity-90"
+        className="mt-6 inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-6 py-3 text-sm font-medium text-[color:var(--p-cta-fg)]"
       >
         Ir para a Área do Cliente
       </a>

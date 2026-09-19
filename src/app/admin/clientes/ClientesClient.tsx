@@ -104,7 +104,7 @@ export default function ClientesClient({
               {podeGerir ? (
                 <button
                   onClick={() => setNovoAberto(true)}
-                  className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90"
+                  className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream transition"
                 >
                   + Novo cliente
                 </button>
@@ -199,7 +199,7 @@ export default function ClientesClient({
                       <span
                         title={`${c.processosAtivos} processo(s) de exceção ativo(s)`}
                         aria-label={`${c.processosAtivos} processo(s) de exceção ativo(s)`}
-                        className="inline-flex items-center gap-1 rounded-full bg-brand-gold/20 px-2 py-0.5 text-[10px] font-semibold text-brand-golddark"
+                        className="inline-flex items-center gap-1 rounded-full bg-brand-gold/20 px-2 py-0.5 text-[11px] font-semibold text-brand-golddark"
                       >
                         <span aria-hidden>⚑</span> processo
                       </span>
@@ -415,7 +415,7 @@ function NovoClienteModal({ onFechar }: { onFechar: () => void }) {
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <button onClick={onFechar} disabled={salvando} className="rounded-xl px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 disabled:opacity-50">Cancelar</button>
-          <button onClick={salvar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50">
+          <button onClick={salvar} disabled={salvando} className="rounded-xl bg-brand px-5 py-2 text-sm font-medium text-brand-cream transition disabled:opacity-50">
             {salvando ? "Criando..." : "Criar cliente"}
           </button>
         </div>

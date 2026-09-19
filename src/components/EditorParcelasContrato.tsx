@@ -167,7 +167,7 @@ export default function EditorParcelasContrato({
               className="w-28 rounded border border-neutral-200 p-1.5 text-right text-sm disabled:bg-neutral-100"
             />
             {l.travada ? (
-              <span className="text-[10px] font-medium uppercase tracking-wide text-brand-golddark">travada</span>
+              <span className="text-[11px] font-medium uppercase tracking-wide text-brand-golddark">travada</span>
             ) : (
               <button type="button" onClick={() => remover(i)} className="text-xs text-red-600 hover:underline">
                 Remover

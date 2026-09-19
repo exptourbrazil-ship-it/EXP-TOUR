@@ -158,7 +158,7 @@ export default function DataInicioClient({
                   <button
                     type="submit"
                     disabled={salvando}
-                    className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-50"
+                    className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-brand-cream transition disabled:opacity-50"
                   >
                     {salvando ? "Salvando…" : "Salvar data de início"}
                   </button>

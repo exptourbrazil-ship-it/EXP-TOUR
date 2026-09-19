@@ -72,7 +72,7 @@ export default function AdminNav({ papel }: { papel?: PapelAdmin }) {
               <li
                 key={`grupo-${entrada.grupo}`}
                 aria-hidden="true"
-                className="hidden px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 lg:block"
+                className="hidden px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 lg:block"
               >
                 {entrada.grupo}
               </li>
@@ -96,7 +96,7 @@ export default function AdminNav({ papel }: { papel?: PapelAdmin }) {
               </svg>
               <span className="whitespace-nowrap">{item.label}</span>
               {item.emBreve ? (
-                <span className="ml-auto hidden rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 lg:inline">
+                <span className="ml-auto hidden rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500 lg:inline">
                   em breve
                 </span>
               ) : null}

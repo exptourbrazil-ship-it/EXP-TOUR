@@ -178,7 +178,7 @@ export default function AntecipacoesClient({ contratos }: { contratos: ContratoO
           <input type="url" value={comprovanteUrl} onChange={(e) => setComprovanteUrl(e.target.value)} placeholder="https://…" className={inputClasse} />
         </label>
 
-        <button type="submit" disabled={salvando} className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60">
+        <button type="submit" disabled={salvando} className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60">
           {salvando ? "Registrando…" : "Registrar antecipação"}
         </button>
       </form>
@@ -196,7 +196,7 @@ export default function AntecipacoesClient({ contratos }: { contratos: ContratoO
               <li key={a.id} className="rounded-xl border border-neutral-200 bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium text-brand">{cliente}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATUS_BADGE[a.status] || "bg-neutral-100 text-neutral-600"}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${STATUS_BADGE[a.status] || "bg-neutral-100 text-neutral-600"}`}>
                     {STATUS_LABEL[a.status] || a.status}
                   </span>
                 </div>
@@ -211,7 +211,7 @@ export default function AntecipacoesClient({ contratos }: { contratos: ContratoO
                 ) : null}
                 {a.status === "pendente" ? (
                   <div className="mt-2 flex gap-2">
-                    <button type="button" onClick={() => mudarStatus(a.id, "atendida")} disabled={agindoId === a.id} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-60">
+                    <button type="button" onClick={() => mudarStatus(a.id, "atendida")} disabled={agindoId === a.id} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-brand-cream transition disabled:opacity-60">
                       Marcar atendida
                     </button>
                     <button type="button" onClick={() => mudarStatus(a.id, "cancelada")} disabled={agindoId === a.id} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-brand transition hover:bg-brand-cream/60 disabled:opacity-60">

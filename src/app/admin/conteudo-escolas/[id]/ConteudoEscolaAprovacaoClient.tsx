@@ -36,7 +36,7 @@ export default function ConteudoEscolaAprovacaoClient({ id }: { id: string }) {
       {!rejeitando ? (
         <div className="flex flex-wrap gap-3">
           <button type="button" onClick={() => agir("aprovar")} disabled={busy}
-            className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
+            className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50">
             {busy ? "…" : "Aprovar e publicar"}
           </button>
           <button type="button" onClick={() => setRejeitando(true)} disabled={busy}
@@ -50,7 +50,7 @@ export default function ConteudoEscolaAprovacaoClient({ id }: { id: string }) {
           <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={() => agir("rejeitar")} disabled={busy || !motivo.trim()}
-              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
+              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50">
               {busy ? "…" : "Devolver"}
             </button>
             <button type="button" onClick={() => setRejeitando(false)} disabled={busy}

@@ -131,7 +131,7 @@ export default function EventosProblematicos() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
                       STATUS_BADGE[ev.status] || "bg-neutral-100 text-neutral-600"
                     }`}
                   >
@@ -157,7 +157,7 @@ export default function EventosProblematicos() {
                     type="button"
                     onClick={() => reprocessar(ev)}
                     disabled={reprocessandoId === ev.id}
-                    className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90 disabled:opacity-60"
+                    className="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-brand-cream transition disabled:opacity-60"
                   >
                     {reprocessandoId === ev.id ? "Reprocessando…" : "Reprocessar"}
                   </button>

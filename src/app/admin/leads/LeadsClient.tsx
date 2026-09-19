@@ -109,7 +109,7 @@ export default function LeadsClient({ leads }: { leads: LeadLista[] }) {
                     {l.temTitular ? (
                       <span
                         title="CPF já tem conta na Área do Cliente"
-                        className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200"
+                        className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200"
                       >
                         cliente
                       </span>

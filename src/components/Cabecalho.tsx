@@ -42,7 +42,7 @@ export default function Cabecalho({ nome, subtitulo }: { nome: string | null; su
         aria-haspopup="menu"
         aria-expanded={aberto}
         aria-label="Abrir menu da conta"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-cream text-sm font-medium text-brand ring-1 ring-white/20 transition hover:opacity-90"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-cream text-sm font-medium text-brand ring-1 ring-white/20 transition"
       >
         {inicial ? (
           inicial

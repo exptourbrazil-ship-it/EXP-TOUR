@@ -20,7 +20,7 @@ export default function SuporteRodape({ contexto }: { contexto?: string }) {
             href={montarLinkSuporteWhatsApp(brand.supportWhatsApp)}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-xl bg-cta px-4 py-2 text-sm font-medium text-brand-cream transition hover:opacity-90"
+            className="rounded-xl bg-cta px-4 py-2 text-sm font-medium text-brand-cream transition"
           >
             WhatsApp {brand.supportWhatsApp}
           </a>

@@ -82,7 +82,7 @@ export default function IofVigenciaClient() {
         <input className={inputCls} type="date" value={novo.vigenteDesde} onChange={(e) => setNovo({ ...novo, vigenteDesde: e.target.value })} />
         <input className={inputCls} placeholder="Observação (opcional)" value={novo.observacao} onChange={(e) => setNovo({ ...novo, observacao: e.target.value })} />
       </div>
-      <button onClick={adicionar} className="mt-3 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90">Adicionar vigência</button>
+      <button onClick={adicionar} className="mt-3 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Adicionar vigência</button>
     </div>
   );
 }

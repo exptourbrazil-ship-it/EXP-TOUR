@@ -153,7 +153,7 @@ export default function PropostasClient() {
           <label className="text-sm font-medium text-brand">Moeda de referência<input type="text" value={form.moeda} onChange={(e) => setForm((f) => ({ ...f, moeda: e.target.value.toUpperCase() }))} required placeholder="CAD / USD / ..." className={inputClasse} /></label>
           <label className="text-sm font-medium text-brand">Custo do programa (na moeda)<input type="number" step="0.01" value={form.custoPrograma} onChange={set("custoPrograma")} required className={inputClasse} /></label>
         </div>
-        <button type="submit" disabled={salvando} className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60">
+        <button type="submit" disabled={salvando} className="mt-4 rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-60">
           {salvando ? "Criando…" : "Criar proposta"}
         </button>
       </form>
@@ -169,7 +169,7 @@ export default function PropostasClient() {
             <li key={p.id} className="rounded-xl border border-neutral-200 bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium text-brand">{p.nome_completo || "(sem nome)"}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATUS_BADGE[p.status] || "bg-neutral-100 text-neutral-600"}`}>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${STATUS_BADGE[p.status] || "bg-neutral-100 text-neutral-600"}`}>
                   {p.status}
                 </span>
               </div>

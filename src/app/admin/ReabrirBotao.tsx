@@ -39,7 +39,7 @@ export default function ReabrirBotao({ chaveDedupe }: { chaveDedupe: string }) {
       >
         {ocupado ? "…" : "Reabrir"}
       </button>
-      {erro ? <span className="text-[10px] text-red-600">erro</span> : null}
+      {erro ? <span className="text-[11px] text-red-600">erro</span> : null}
     </div>
   );
 }

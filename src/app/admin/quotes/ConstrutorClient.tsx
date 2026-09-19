@@ -282,7 +282,7 @@ export default function ConstrutorClient({
           <p className="mt-1 text-sm text-neutral-600">
             {header.studentName}
             <span className="mx-2 text-neutral-300">•</span>
-            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-brand">
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-brand">
               {STATUS_LABEL[header.status] || header.status}
             </span>
           </p>
@@ -301,7 +301,7 @@ export default function ConstrutorClient({
             type="button"
             onClick={() => addOption()}
             disabled={busy || !isDraft}
-            className="rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-50"
+            className="rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition disabled:opacity-50"
           >
             Adicionar opção
           </button>
@@ -310,7 +310,7 @@ export default function ConstrutorClient({
               type="button"
               onClick={emitir}
               disabled={busy || !temItens}
-              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
               title={temItens ? "Congela o câmbio e gera o link do estudante" : "Adicione ao menos uma opção com item antes de emitir"}
             >
               {busy ? "…" : "Emitir"}
@@ -419,7 +419,7 @@ export default function ConstrutorClient({
                       <li key={it.id} className="rounded-lg border border-neutral-100 bg-brand-cream/20 p-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-medium text-brand">{it.name}</span>
-                          <span className="text-[10px] uppercase tracking-wide text-neutral-400">
+                          <span className="text-[11px] uppercase tracking-wide text-neutral-400">
                             {it.group}
                           </span>
                         </div>
@@ -503,6 +503,7 @@ export default function ConstrutorClient({
                       resetPanel();
                       setAddingTo(opt.id);
                     }}
+                    aria-expanded={addingTo === opt.id}
                     className="mt-3 w-full rounded-lg border border-brand-gold/50 px-3 py-2 text-sm font-medium text-brand-golddark transition hover:bg-brand-cream/60"
                   >
                     + Adicionar item
@@ -548,7 +549,7 @@ export default function ConstrutorClient({
                 type="button"
                 onClick={buscar}
                 disabled={buscando}
-                className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-brand-cream transition hover:opacity-90 disabled:opacity-60"
+                className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-brand-cream transition disabled:opacity-60"
               >
                 {buscando ? "…" : "Buscar"}
               </button>
@@ -567,7 +568,7 @@ export default function ConstrutorClient({
                       className="w-full rounded-lg border border-neutral-200 p-2 text-left transition hover:border-brand-gold/60 hover:bg-brand-cream/40"
                     >
                       <span className="text-sm font-medium text-brand">{r.name}</span>
-                      <span className="ml-2 text-[10px] uppercase tracking-wide text-neutral-400">
+                      <span className="ml-2 text-[11px] uppercase tracking-wide text-neutral-400">
                         {r.kind}
                       </span>
                     </button>
@@ -686,7 +687,7 @@ export default function ConstrutorClient({
                       type="button"
                       onClick={adicionarItem}
                       disabled={busy}
-                      className="mt-3 w-full rounded-lg bg-brand-gold px-3 py-2 text-sm font-semibold text-brand transition hover:opacity-90 disabled:opacity-60"
+                      className="mt-3 w-full rounded-lg bg-brand-gold px-3 py-2 text-sm font-semibold text-brand transition disabled:opacity-60"
                     >
                       {busy ? "Adicionando…" : "Adicionar à opção"}
                     </button>
@@ -770,7 +771,7 @@ function NotesEditor({
           type="button"
           onClick={salvar}
           disabled={salvando || !alterado}
-          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
         >
           {salvando ? "Salvando…" : salvo && !alterado ? "Salvo ✓" : "Salvar observações"}
         </button>

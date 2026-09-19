@@ -183,7 +183,7 @@ export default function InicioClient(props: InicioClientProps) {
           </p>
           <Link
             href={cta.href}
-            className="mt-5 block rounded-xl bg-cta py-3 text-center text-sm font-medium text-brand-cream transition hover:opacity-90"
+            className="mt-5 block rounded-xl bg-cta py-3 text-center text-sm font-medium text-brand-cream transition"
           >
             {cta.rotulo}
           </Link>

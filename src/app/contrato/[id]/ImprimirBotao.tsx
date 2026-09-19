@@ -8,7 +8,7 @@ export default function ImprimirBotao() {
     <button
       type="button"
       onClick={() => window.print()}
-      className="print:hidden inline-flex items-center gap-2 rounded-full bg-brand-gold px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+      className="print:hidden inline-flex items-center gap-2 rounded-full bg-brand-gold px-5 py-2.5 text-sm font-medium text-white shadow-sm transition"
     >
       <span aria-hidden>🖨️</span> Imprimir / Salvar em PDF
     </button>

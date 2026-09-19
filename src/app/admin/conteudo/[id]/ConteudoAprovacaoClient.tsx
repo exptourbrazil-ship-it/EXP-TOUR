@@ -39,7 +39,7 @@ export default function ConteudoAprovacaoClient({ id }: { id: string }) {
             type="button"
             onClick={() => agir("aprovar")}
             disabled={busy}
-            className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
           >
             {busy ? "…" : "Aprovar e publicar"}
           </button>
@@ -61,7 +61,7 @@ export default function ConteudoAprovacaoClient({ id }: { id: string }) {
               type="button"
               onClick={() => agir("rejeitar")}
               disabled={busy || !motivo.trim()}
-              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
             >
               {busy ? "…" : "Devolver"}
             </button>
