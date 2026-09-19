@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { getSupabase, guardCatalogWrite, bad, okData, isUuid, fail } from "@/lib/catalog-route";
-import { internalizarMidias } from "@/lib/midia-internalizacao-service";
+import { internalizarMidias, contarMidiaPendente } from "@/lib/midia-internalizacao-service";
 import { numeroEnv } from "@/lib/midia-internalizacao";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { checarELimitar } from "@/lib/rate-limit";
@@ -51,8 +51,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return bad("Muitos lotes em pouco tempo. Aguarde alguns minutos.", "rate_limit", 429);
     }
     // Um lote por fornecedor de cada vez: duas abas abertas selecionariam as MESMAS
-    // fotos e martelariam o site da escola com downloads repetidos.
-    if (!(await checarELimitar(supabase, `admin-internalizar-midia-lock:${supplierId}`, 1, LOCK_SEG, Date.now(), true))) {
+    // fotos e martelariam o site da escola com downloads repetidos. A trava e
+    // LIBERADA no fim do lote (abaixo) — sem isso o proximo clique legitimo, para
+    // seguir com as fotos que faltaram, esbarraria na janela e o operador acharia
+    // que a escola ja estava completa.
+    const chaveTrava = `admin-internalizar-midia-lock:${supplierId}`;
+    if (!(await checarELimitar(supabase, chaveTrava, 1, LOCK_SEG, Date.now(), true))) {
       return bad("Já existe um lote em andamento para este fornecedor. Aguarde terminar.", "lote_em_andamento", 409);
     }
 
@@ -65,11 +69,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .is("archived_at", null); // campus arquivado nao aparece em cotacao: nao vale o download
     const campusIds = (campi ?? []).map((c) => c.id as string);
 
-    const r = await internalizarMidias(supabase, tenantId, {
-      campusIds,
-      max: numeroEnv(process.env.ADMIN_MIDIA_MAX, 30),
-      orcamentoMs: numeroEnv(process.env.ADMIN_MIDIA_ORCAMENTO_MS, 40_000),
-    });
+    let r;
+    try {
+      r = await internalizarMidias(supabase, tenantId, {
+        campusIds,
+        max: numeroEnv(process.env.ADMIN_MIDIA_MAX, 30),
+        orcamentoMs: numeroEnv(process.env.ADMIN_MIDIA_ORCAMENTO_MS, 40_000),
+      });
+    } finally {
+      // Solta a trava assim que o lote termina (inclusive em erro). A limpeza NUNCA
+      // propaga: uma excecao aqui substituiria o erro real do lote. Se falhar, a
+      // janela de LOCK_SEG expira sozinha — a trava nao fica presa.
+      try {
+        const { error: limpErr } = await supabase.from("rate_limit_hits").delete().eq("chave", chaveTrava);
+        if (limpErr) console.error("[midia] falha ao soltar a trava do fornecedor:", limpErr.message);
+      } catch (limpEx) {
+        console.error("[midia] falha ao soltar a trava do fornecedor:", limpEx instanceof Error ? limpEx.message : "erro");
+      }
+    }
+
+    // Quantas ainda faltam DEPOIS deste lote: e o que o hub usa para seguir sozinho
+    // ate a escola zerar, em vez de depender de o operador clicar de novo.
+    const restante = await contarMidiaPendente(supabase, tenantId, campusIds).catch(() => null);
 
     await registrarAuditoriaAdmin(supabase, {
       usuario: g.usuario,
@@ -79,7 +100,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ip: g.ip,
     });
 
-    return okData({ ...r, erros: r.erros.slice(0, 5) });
+    return okData({
+      ...r,
+      pendentes_restantes: restante?.pendentes ?? null,
+      esgotadas: restante?.esgotadas ?? null,
+      erros: r.erros.slice(0, 5),
+    });
   } catch (err) {
     return fail(err);
   }

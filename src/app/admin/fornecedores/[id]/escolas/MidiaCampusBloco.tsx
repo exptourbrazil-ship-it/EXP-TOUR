@@ -10,8 +10,17 @@ type Resultado = {
   falhas: number;
   adiadas: number;
   interrompida: string | null;
+  /** Quantas ainda faltam depois deste lote (o servidor reconta). */
+  pendentes_restantes: number | null;
   erros: string[];
 };
+
+// Cada chamada copia um lote (teto do servidor). Como uma escola grande tem mais
+// fotos que o lote, o botao repete ate zerar — o operador clicava uma vez, via
+// "30 foto(s) copiada(s)" e ia embora achando que a escola estava completa.
+// Teto por clique. Fica ABAIXO do teto de lotes por admin na rota (20 em 10 min):
+// um clique nao pode consumir o orcamento a ponto de o proximo parar no meio.
+const MAX_LOTES_SEGUIDOS = 8;
 
 // Bloco da aba "Meus Campi": fotos dos campi ainda hospedadas no site da escola.
 // O portal so exibe imagens do nosso Storage (politica de seguranca do navegador),
@@ -37,23 +46,48 @@ export default function MidiaCampusBloco({
     setRodando(true);
     setErro(null);
     setMsg(null);
+
+    let fotos = 0;
+    let capas = 0;
+    let falhas = 0;
+    let faltam: number | null = null;
+    let interrompida: string | null = null;
+
     try {
-      const resp = await fetch(`/api/admin/suppliers/${supplierId}/midia`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      });
-      const json = await resp.json().catch(() => null);
-      if (!resp.ok) {
-        setErro(json?.error?.message ?? "Não foi possível copiar as fotos agora.");
-        return;
+      for (let lote = 0; lote < MAX_LOTES_SEGUIDOS; lote++) {
+        const resp = await fetch(`/api/admin/suppliers/${supplierId}/midia`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok) {
+          setErro(json?.error?.message ?? "Não foi possível copiar as fotos agora.");
+          if (fotos > 0) setMsg(`${fotos} foto(s) copiada(s) antes da interrupção.`);
+          router.refresh();
+          return;
+        }
+        const r = (json?.data ?? json) as Resultado;
+        fotos += r.internalizadas;
+        capas += r.capas_atualizadas;
+        falhas += r.falhas;
+        faltam = r.pendentes_restantes;
+        interrompida = r.interrompida;
+        setMsg(`${fotos} foto(s) copiada(s)${faltam ? ` · ${faltam} restante(s)…` : "…"}`);
+
+        // Para quando zerou, quando o servidor nao soube dizer, ou quando o lote
+        // nao andou (so sobraram fotos que falham) — senao seria laco infinito.
+        if (faltam === null || faltam === 0 || r.internalizadas === 0) break;
       }
-      const r = (json?.data ?? json) as Resultado;
-      const partes = [`${r.internalizadas} foto(s) copiada(s)`];
-      if (r.capas_atualizadas > 0) partes.push(`${r.capas_atualizadas} capa(s) atualizada(s)`);
-      if (r.falhas > 0) partes.push(`${r.falhas} sem sucesso`);
-      if (r.adiadas > 0) partes.push(`${r.adiadas} para o próximo lote`);
-      setMsg(`${partes.join(" · ")}${r.interrompida ? ` — interrompido: ${r.interrompida}` : ""}`);
+
+      // interrompida = falha NOSSA (Storage/banco), nao das URLs: precisa aparecer
+      // como erro, senao o operador le "0 foto(s) copiada(s)" em verde e abre chamado.
+      if (interrompida) setErro(`A cópia parou por um problema no portal: ${interrompida}`);
+      const partes = [`${fotos} foto(s) copiada(s)`];
+      if (capas > 0) partes.push(`${capas} capa(s) atualizada(s)`);
+      if (falhas > 0) partes.push(`${falhas} sem sucesso`);
+      if (faltam && faltam > 0) partes.push(`${faltam} ainda pendente(s)`);
+      setMsg(partes.join(" · "));
       router.refresh();
     } catch {
       setErro("Falha de rede ao copiar as fotos.");
@@ -88,7 +122,7 @@ export default function MidiaCampusBloco({
             disabled={rodando}
             className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream disabled:opacity-60"
           >
-            {rodando ? "Copiando…" : "Copiar fotos para o portal"}
+            {rodando ? "Copiando…" : `Copiar ${pendentes} foto(s) para o portal`}
           </button>
         ) : null}
       </div>
@@ -96,7 +130,7 @@ export default function MidiaCampusBloco({
       {erro ? <p className="mt-2 text-sm text-red-700">{erro}</p> : null}
       {msg && pendentes > 0 ? (
         <p className="mt-1 text-xs text-neutral-500">
-          Cada clique copia até 30 fotos. Clique de novo para seguir com as que faltam.
+          Ainda faltam fotos: clique de novo para continuar de onde parou.
         </p>
       ) : null}
     </div>

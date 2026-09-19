@@ -80,6 +80,17 @@ export function ipEhPrivado(ip: string): boolean {
   return false;
 }
 
+/**
+ * Quanto falta esperar para respeitar o intervalo minimo entre dois downloads do
+ * MESMO host. `ultimo` = instante do download anterior naquele host (undefined = o
+ * primeiro, nao espera). Puro para ser testavel sem timers.
+ */
+export function esperaDeHostMs(ultimo: number | undefined, agora: number, intervaloMs: number): number {
+  if (ultimo === undefined) return 0;
+  const falta = intervaloMs - (agora - ultimo);
+  return falta > 0 ? falta : 0;
+}
+
 /** Numero de env positivo e finito; senao o default (NaN desligaria os cortes). */
 export function numeroEnv(valor: string | undefined, padrao: number): number {
   const n = Number(valor);

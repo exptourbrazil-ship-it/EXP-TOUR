@@ -11,6 +11,7 @@ import {
   MIDIA_MAX_TENTATIVAS,
   caminhoStorageMidia,
   ehUrlInterna,
+  esperaDeHostMs,
   extensaoDeMime,
   ipEhPrivado,
   resumirErro,
@@ -20,6 +21,12 @@ import {
 
 const TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 3;
+// Intervalo minimo entre dois downloads do MESMO host. As fotos de uma escola vem
+// todas do mesmo dominio: sem isso, um lote (e ainda mais o botao do hub, que
+// encadeia lotes) vira uma rajada contra o site do fornecedor — que responde com
+// WAF/403 e passa a bloquear o IP da Vercel, degradando ate o cron das outras
+// escolas. ~4 requisicoes por segundo por host e um ritmo educado.
+const MIN_INTERVALO_HOST_MS = 250;
 const UA_NAVEGADOR = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 
 type Linha = { id: string; campus_id: string; url: string; internalize_attempts: number };
@@ -36,6 +43,15 @@ export type ResultadoInternalizacao = {
 };
 
 type Baixado = { bytes: Buffer; contentType: string };
+
+const dormir = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Espera o que falta para respeitar MIN_INTERVALO_HOST_MS naquele host. */
+async function aguardarVezDoHost(host: string, ultimoPorHost: Map<string, number>): Promise<void> {
+  const espera = esperaDeHostMs(ultimoPorHost.get(host), Date.now(), MIN_INTERVALO_HOST_MS);
+  if (espera > 0) await dormir(espera);
+  ultimoPorHost.set(host, Date.now());
+}
 type Falha = { ok: false; erro: string };
 
 // Resolve o host e recusa se QUALQUER endereco for privado/local (SSRF via DNS).
@@ -76,7 +92,11 @@ async function lerComTeto(resp: Response, ctrl: AbortController): Promise<Buffer
 // Baixa a imagem: valida a URL (e cada Location de redirect) pelo nome E pelo IP
 // resolvido, segue no maximo MAX_REDIRECTS saltos, aplica timeout e teto de bytes.
 // Erro = string curta (vai para internalize_error).
-export async function baixarImagem(url: string, fetchImpl: typeof fetch): Promise<{ ok: true; dados: Baixado } | Falha> {
+export async function baixarImagem(
+  url: string,
+  fetchImpl: typeof fetch,
+  ultimoPorHost?: Map<string, number>,
+): Promise<{ ok: true; dados: Baixado } | Falha> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
@@ -86,6 +106,7 @@ export async function baixarImagem(url: string, fetchImpl: typeof fetch): Promis
       if (!v.ok) return salto === 0 ? v : { ok: false, erro: `redirect recusado: ${v.erro}` };
       const dns = await hostResolvePublico(v.url.hostname);
       if (dns) return dns;
+      if (ultimoPorHost) await aguardarVezDoHost(v.url.hostname, ultimoPorHost);
 
       const resp = await fetchImpl(v.url.toString(), {
         signal: ctrl.signal,
@@ -162,6 +183,8 @@ export async function internalizarMidias(
 
   // A mesma foto aparece em mais de um campus (ex.: LSI): baixa uma vez por execucao.
   const cache = new Map<string, Awaited<ReturnType<typeof baixarImagem>>>();
+  // Ritmo por host (ver MIN_INTERVALO_HOST_MS).
+  const ultimoPorHost = new Map<string, number>();
 
   for (const linha of linhas) {
     if (r.interrompida || Date.now() - inicio > orcamentoMs) {
@@ -182,7 +205,7 @@ export async function internalizarMidias(
 
     let baixado = cache.get(linha.url);
     if (!baixado) {
-      baixado = await baixarImagem(linha.url, fetchImpl);
+      baixado = await baixarImagem(linha.url, fetchImpl, ultimoPorHost);
       cache.set(linha.url, baixado);
     }
     if (!baixado.ok) {

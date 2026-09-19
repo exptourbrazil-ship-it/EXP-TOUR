@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extensaoDeMime, ehUrlInterna, validarUrlExterna, caminhoStorageMidia, urlPublicaStorage, resumirErro, ipEhPrivado, numeroEnv } from "./midia-internalizacao.ts";
+import { extensaoDeMime, ehUrlInterna, validarUrlExterna, caminhoStorageMidia, urlPublicaStorage, resumirErro, ipEhPrivado, numeroEnv, esperaDeHostMs } from "./midia-internalizacao.ts";
 
 const SUPA = "https://lvchpskxeohfmistppxl.supabase.co";
 
@@ -64,4 +64,12 @@ test("numeroEnv: aceita positivo finito, senao default", () => {
   assert.equal(numeroEnv("abc", 5), 5);
   assert.equal(numeroEnv("-1", 5), 5);
   assert.equal(numeroEnv(undefined, 5), 5);
+});
+
+test("esperaDeHostMs: primeiro download nao espera; depois respeita o intervalo", () => {
+  assert.equal(esperaDeHostMs(undefined, 1_000, 250), 0, "primeiro do host");
+  assert.equal(esperaDeHostMs(1_000, 1_000, 250), 250, "mesmo instante: espera tudo");
+  assert.equal(esperaDeHostMs(1_000, 1_100, 250), 150, "espera so o que falta");
+  assert.equal(esperaDeHostMs(1_000, 1_250, 250), 0, "intervalo ja cumprido");
+  assert.equal(esperaDeHostMs(1_000, 9_000, 250), 0, "download demorado nao gera espera");
 });
