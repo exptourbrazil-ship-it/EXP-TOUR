@@ -16,6 +16,8 @@ import ProdutoEditor from "@/components/ProdutoEditor";
 import ElegibilidadeEditor from "@/components/ElegibilidadeEditor";
 import ConteudoEditor from "@/components/ConteudoEditor";
 import SecaoPrecosTaxas from "@/components/SecaoPrecosTaxas";
+import SecaoSazonal from "@/components/SecaoSazonal";
+import { listarAjustesSazonais } from "@/lib/sazonal-admin-service";
 import SecaoDisponibilidade from "@/components/SecaoDisponibilidade";
 import SecaoPromocoes from "@/components/SecaoPromocoes";
 import ProdutoTabs from "@/components/ProdutoTabs";
@@ -64,13 +66,35 @@ export default async function EditarProdutoCorpo({
     listarPromocoesDoProduto(supabase, tenantId, productId),
   ]);
 
+  // Alta/baixa temporada: so faz sentido em ACOMODACAO (e onde as escolas
+  // publicam suplemento por semana).
+  const ajustesSazonais: Awaited<ReturnType<typeof listarAjustesSazonais>> = [];
+
   // Fornecedor do produto (via campus) — para o link do editor de disponibilidade
   // e para a checagem de posse do hub.
   const campusId = String(produto.core.campus_id ?? "");
   const supplierId = campi.find((c) => c.id === campusId)?.supplierId ?? null;
 
-  // Posse do hub: o produto tem que ser do fornecedor esperado.
+  // Moeda base do campus: sugestao no formulario de temporada (a escola publica
+  // o suplemento na moeda dela). Consulta direta — listarCampusDoTenant nao traz.
+  let moedaDoCampus = "EUR";
+  if (kind === "accommodation" && campusId) {
+    const { data: campusMoeda } = await supabase
+      .from("campus")
+      .select("base_currency")
+      .eq("tenant_id", tenantId)
+      .eq("id", campusId)
+      .maybeSingle();
+    if (campusMoeda?.base_currency) moedaDoCampus = campusMoeda.base_currency as string;
+  }
+
+  // Posse do hub: o produto tem que ser do fornecedor esperado. Conferida ANTES de
+  // qualquer leitura extra (moeda / ajuste sazonal).
   if (supplierIdEsperado && supplierId !== supplierIdEsperado) notFound();
+
+  if (kind === "accommodation") {
+    ajustesSazonais.push(...(await listarAjustesSazonais(supabase, tenantId, productId, campusId || undefined)));
+  }
 
   return (
     <div>
@@ -99,7 +123,19 @@ export default async function EditarProdutoCorpo({
           {
             chave: "precos",
             label: "Preços & Taxas",
-            conteudo: <SecaoPrecosTaxas precos={vinculos.precos} taxas={vinculos.taxas} productId={productId} />,
+            conteudo: (
+              <div className="space-y-8">
+                <SecaoPrecosTaxas precos={vinculos.precos} taxas={vinculos.taxas} productId={productId} />
+                {kind === "accommodation" ? (
+                  <SecaoSazonal
+                    productId={productId}
+                    supplierId={supplierIdEsperado}
+                    moedaPadrao={moedaDoCampus}
+                    ajustes={ajustesSazonais}
+                  />
+                ) : null}
+              </div>
+            ),
           },
           {
             chave: "disponibilidade",

@@ -376,7 +376,7 @@ export async function loadPricingInputs(
     // vez para a escola nunca seria cobrado e a cotacao sairia barata em silencio.
     const { data: sazonais, error: sazErr } = await supabase
       .from("seasonal_adjustment")
-      .select("name, amount_per_week, currency, from_month, from_day, from_year, to_month, to_day, to_year, min_weeks, max_weeks, product_id")
+      .select("name, kind, amount_per_week, currency, from_month, from_day, from_year, to_month, to_day, to_year, min_weeks, max_weeks, product_id")
       .eq("tenant_id", tenantId)
       .eq("campus_id", campus.id)
       .eq("status", "active")
@@ -398,21 +398,26 @@ export async function loadPricingInputs(
       return false;
     });
 
-    // Faixas de duracao sobrepostas cobrariam duas vezes o mesmo periodo. Mantem a
-    // MAIS ESPECIFICA (menor intervalo de semanas) por ajuste+periodo e avisa.
+    // Faixas de duracao sobrepostas cobrariam duas vezes o mesmo periodo. Mantem
+    // UMA por tipo+periodo, com precedencia DETERMINISTICA: ajuste do proprio
+    // produto ganha do ajuste do campus inteiro; empatando, vale a faixa de
+    // duracao mais especifica. Sem isso a ordem do banco decidia o preco.
     const porChave = new Map<string, any>();
     for (const a of moedaOk) {
-      const chave = `${a.name}|${a.from_month}-${a.from_day}|${a.to_month}-${a.to_day}|${a.from_year ?? ""}|${a.to_year ?? ""}`;
+      const chave = `${a.kind}|${a.from_month}-${a.from_day}|${a.to_month}-${a.to_day}|${a.from_year ?? ""}|${a.to_year ?? ""}`;
       const atual = porChave.get(chave);
       if (!atual) {
         porChave.set(chave, a);
         continue;
       }
       const largura = (x: any) => (x.max_weeks ?? 9999) - (x.min_weeks ?? 0);
+      const doProduto = (x: any) => (x.product_id != null ? 1 : 0);
       avisosSazonais.push(
-        `Mais de uma faixa de duracao cadastrada para "${a.name}": aplicada a mais especifica.`,
+        `Mais de um ajuste de temporada no mesmo periodo ("${a.name}"): aplicado o mais especifico.`,
       );
-      if (largura(a) < largura(atual)) porChave.set(chave, a);
+      const vence =
+        doProduto(a) !== doProduto(atual) ? doProduto(a) > doProduto(atual) : largura(a) < largura(atual);
+      if (vence) porChave.set(chave, a);
     }
 
     seasonalAdjustments = [...porChave.values()].map((a: any) => ({
