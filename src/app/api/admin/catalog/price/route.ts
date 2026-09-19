@@ -1,5 +1,6 @@
 import { tenantIdAtual, priceProductFromDb } from "@/lib/catalog-service";
 import type { StudentContext } from "@/lib/catalog";
+import { validarDuracao } from "@/lib/duracao";
 import {
   getSupabase,
   guardCatalog,
@@ -36,9 +37,8 @@ export async function POST(request: Request) {
 
   if (!productId) return bad("Informe productId.");
   if (!isIsoDate(startDate)) return bad("startDate invalido (AAAA-MM-DD).");
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return bad("quantity deve ser um numero > 0.");
-  }
+  const dur = validarDuracao(quantity, b.unit);
+  if (!dur.ok) return bad(dur.erro);
   if (!unit) return bad("Informe unit.");
   if (!isIsoDate(quoteDate)) return bad("quoteDate invalido (AAAA-MM-DD).");
 

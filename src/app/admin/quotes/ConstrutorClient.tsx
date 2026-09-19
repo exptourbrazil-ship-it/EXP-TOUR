@@ -613,6 +613,11 @@ export default function ConstrutorClient({
                       onChange={(e) => setItemForm((f) => ({ ...f, quantity: e.target.value }))}
                       className={inputClasse}
                     />
+                    {itemForm.unit === "week" || itemForm.unit === "month" ? (
+                      <span className="mt-1 block text-xs font-normal text-neutral-500">
+                        Semanas fechadas de 7 dias. Noites avulsas entram como item complementar.
+                      </span>
+                    ) : null}
                   </label>
                   <label className="text-sm font-medium text-brand">
                     Unidade

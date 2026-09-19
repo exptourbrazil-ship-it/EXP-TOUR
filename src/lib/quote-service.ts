@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { priceProductFromDb } from "@/lib/catalog-service";
+import { validarDuracao } from "@/lib/duracao";
 import { sanitizarHtml } from "@/lib/produto-conteudo";
 
 /** Autor da acao (para a trilha de auditoria). */
@@ -472,6 +473,12 @@ export async function addQuoteItem(
   args: AddQuoteItemArgs,
   actor: ServiceActor,
 ): Promise<{ itemId: string; priced: Awaited<ReturnType<typeof priceProductFromDb>> }> {
+  // Semanas FECHADAS de 7 dias (decisao do usuario): a rota ja recusa, mas o
+  // servico e chamado tambem pela conversao de lead e por scripts — a regra de
+  // duracao mora aqui tambem.
+  const dur = validarDuracao(args.quantity, args.unit);
+  if (!dur.ok) throw new Error(dur.erro);
+
   // Valida posse da opcao.
   const { data: option, error: optErr } = await supabase
     .from("quote_option")

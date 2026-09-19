@@ -1,5 +1,6 @@
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { addQuoteItem, removeQuoteItem } from "@/lib/quote-service";
+import { validarDuracao } from "@/lib/duracao";
 import {
   getSupabase,
   guardCatalog,
@@ -41,10 +42,10 @@ export async function POST(
   if (!optionId) return bad("Informe optionId.");
   if (!productId) return bad("Informe productId.");
   if (!isIsoDate(startDate)) return bad("startDate invalido (AAAA-MM-DD).");
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return bad("quantity deve ser um numero > 0.");
-  }
-  if (!unit) return bad("Informe unit.");
+  // Semanas FECHADAS de 7 dias (decisao do usuario): noite avulsa entra como
+  // item complementar, nao como fracao de semana.
+  const dur = validarDuracao(quantity, unit);
+  if (!dur.ok) return bad(dur.erro);
   if (!isIsoDate(quoteDate)) return bad("quoteDate invalido (AAAA-MM-DD).");
 
   try {
