@@ -116,6 +116,23 @@
     filter: brightness(0.94);
   }
 
+  /* Botao de acao ao lado de um titulo costuma viver num flex com justify-between.
+     Com a fonte maior, varios passaram a ser espremidos pelo texto vizinho e o
+     rotulo quebrou em duas linhas ("+ Novo / ajuste"). Botao nao encolhe: mantem
+     a largura do proprio rotulo. Os de largura total (w-full) nao sao afetados,
+     porque ja tem width definida. */
+  button {
+    flex-shrink: 0;
+  }
+
+  /* SELOS (status, tipo, "estimado"...). Sao 91 no portal e vivem em <span>
+     arredondado. Com a fonte um ponto maior, varios passaram a quebrar em duas
+     linhas dentro da celula ("ALTA / TEMPORADA"), o que suja a tabela e atrapalha
+     justamente a leitura. Selo e rotulo curto: nao quebra. */
+  span[class*="rounded-full"] {
+    white-space: nowrap;
+  }
+
   /* Desabilitado nao reage ao cursor. */
   button:disabled,
   [aria-disabled="true"] {
