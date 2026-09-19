@@ -141,6 +141,14 @@ export default function SecaoSazonal({
         ) : null}
       </div>
 
+      {ajustes.some((a) => a.sourceText?.startsWith("ESTIMATIVA")) ? (
+        <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Os ajustes marcados como <strong>estimado</strong> têm o período projetado a partir do calendário
+          do ano anterior, porque a escola ainda não publicou o novo. O valor por semana é o que ela
+          praticava; as datas precisam ser conferidas antes de fechar uma venda de alta temporada.
+        </p>
+      ) : null}
+
       {ajustes.some((a) => a.doCampus) ? (
         <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
           Os ajustes marcados como <strong>todo o campus</strong> valem para todas as acomodações desta
@@ -179,8 +187,18 @@ export default function SecaoSazonal({
                     <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
                       {KIND_LABEL[a.kind] ?? a.kind}
                     </span>
+                    {a.sourceText?.startsWith("ESTIMATIVA") ? (
+                      // Periodo projetado por nos, nao publicado pela escola: precisa
+                      // saltar aos olhos de quem cota, senao vira preco inventado.
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
+                        estimado
+                      </span>
+                    ) : null}
                     {a.sourceText ? (
-                      <p className="mt-0.5 text-xs text-neutral-400">Como a escola publicou: {a.sourceText}</p>
+                      <p className="mt-0.5 text-xs text-neutral-400">
+                        {a.sourceText.startsWith("ESTIMATIVA") ? "Origem: " : "Como a escola publicou: "}
+                        {a.sourceText.replace(/^ESTIMATIVA \(a confirmar com a escola\): /, "")}
+                      </p>
                     ) : null}
                   </td>
                   <td className="px-4 py-2 text-neutral-600">
