@@ -156,3 +156,162 @@
     transform: none;
   }
 }
+
+/* ===========================================================================
+ * TEMA ESCURO DO ADMIN
+ *
+ * Por que existe: o navegador do operador estava invertendo o portal por conta
+ * propria ("auto dark mode" do Chrome). Inversao automatica nao escolhe cor —
+ * ela calcula — e era justamente o texto de apoio que saia acinzentado e
+ * ilegivel. Declarando um tema escuro NOSSO, com `color-scheme`, o navegador
+ * para de inverter e passa a usar estas cores, que tem contraste medido.
+ *
+ * Escopo: SO o admin (.admin-tenant). O portal do estudante segue claro, porque
+ * ele veste a marca da escola e e o que o aluno recebe por link.
+ *
+ * Como liga: `data-tema="escuro"` na raiz (escolha do operador, guardada no
+ * navegador) OU a preferencia do sistema quando nao houve escolha. O seletor
+ * :not([data-tema="claro"]) garante que a escolha manual vence a do sistema.
+ *
+ * Implementacao: em vez de editar 57 telas, as utilitarias de SUPERFICIE que o
+ * admin usa (bg-white, bg-neutral-50/100, border-neutral-*, text-neutral-*)
+ * sao remapeadas aqui para os tokens do tema. Uma tela nova herda o escuro sem
+ * fazer nada, desde que use essas mesmas classes.
+ * ========================================================================= */
+@layer components {
+  .admin-tenant {
+    --a-page: #12131c;      /* fundo da pagina */
+    --a-surface: #1b1d29;   /* cartao, tabela, formulario */
+    --a-raised: #232636;    /* hover, cabecalho de tabela, faixa */
+    --a-line: #2f3346;      /* borda discreta */
+    --a-line-strong: #3d4258; /* borda de campo */
+    --a-ink: #eef0f8;       /* titulo e valor (14,7:1 no cartao) */
+    --a-text: #dcdfeb;      /* texto corrente (12,6:1) */
+    --a-muted: #a9aec4;     /* apoio (7,6:1) */
+    --a-faint: #8a90a8;     /* rotulo discreto (5,3:1) */
+  }
+}
+
+/* O gatilho e um atributo so: quem decide (escolha guardada ou preferencia do
+ * sistema) e o script do layout do admin, antes da primeira pintura. Assim o
+ * bloco abaixo nao precisa ser duplicado numa media query. */
+[data-tema="escuro"] .admin-tenant {
+  color-scheme: dark;
+  background-color: var(--a-page);
+  color: var(--a-text);
+}
+/* O <body> do portal e escuro (bg-brand). Numa pagina do admin quem manda e o
+   tema: sem isto, a area de overscroll e qualquer sobra aparecem na cor da
+   marca, destoando do tema escolhido. */
+[data-tema="escuro"] body {
+  background-color: var(--a-page);
+}
+[data-tema="claro"] body {
+  background-color: var(--p-page);
+}
+
+/* --- Superficies --- */
+[data-tema="escuro"] .admin-tenant .bg-white {
+  background-color: var(--a-surface);
+}
+[data-tema="escuro"] .admin-tenant .bg-neutral-50 {
+  background-color: var(--a-raised);
+}
+[data-tema="escuro"] .admin-tenant .bg-neutral-100 {
+  background-color: var(--a-raised);
+}
+[data-tema="escuro"] .admin-tenant .bg-neutral-200 {
+  background-color: var(--a-line);
+}
+[data-tema="escuro"] .admin-tenant .bg-brand-cream, [data-tema="escuro"] .admin-tenant .bg-brand-cream\/30, [data-tema="escuro"] .admin-tenant .bg-brand-cream\/40, [data-tema="escuro"] .admin-tenant .bg-brand-cream\/50, [data-tema="escuro"] .admin-tenant .bg-brand-cream\/60 {
+  background-color: var(--a-raised);
+}
+/* --- Bordas --- */
+[data-tema="escuro"] .admin-tenant .border-neutral-100, [data-tema="escuro"] .admin-tenant .border-neutral-200 {
+  border-color: var(--a-line);
+}
+[data-tema="escuro"] .admin-tenant .border-neutral-300 {
+  border-color: var(--a-line-strong);
+}
+/* --- Texto --- */
+[data-tema="escuro"] .admin-tenant .text-neutral-400 {
+  color: var(--a-faint);
+}
+[data-tema="escuro"] .admin-tenant .text-neutral-500, [data-tema="escuro"] .admin-tenant .text-neutral-600 {
+  color: var(--a-muted);
+}
+[data-tema="escuro"] .admin-tenant .text-neutral-700 {
+  color: var(--a-text);
+}
+[data-tema="escuro"] .admin-tenant .text-neutral-800, [data-tema="escuro"] .admin-tenant .text-neutral-900 {
+  color: var(--a-ink);
+}
+/* A cor da marca no Forio e quase preta (#0f1020): tinta no claro, some no
+   escuro. Titulo e valor passam a usar a tinta clara do tema. */
+[data-tema="escuro"] .admin-tenant .text-brand {
+  color: var(--a-ink);
+}
+[data-tema="escuro"] .admin-tenant .text-brand-golddark {
+  color: rgb(var(--brand-gold));
+}
+/* --- Campos de formulario --- */
+[data-tema="escuro"] .admin-tenant input, [data-tema="escuro"] .admin-tenant select, [data-tema="escuro"] .admin-tenant textarea {
+  background-color: var(--a-raised);
+  border-color: var(--a-line-strong);
+  color: var(--a-text);
+}
+[data-tema="escuro"] .admin-tenant input::placeholder, [data-tema="escuro"] .admin-tenant textarea::placeholder {
+  color: var(--a-faint);
+}
+/* --- Botao primario ---
+   bg-brand no escuro seria botao preto sobre fundo preto: vira a superficie
+   elevada com borda, e o texto claro continua legivel. */
+[data-tema="escuro"] .admin-tenant .bg-brand:not(.bg-brand-cream) {
+  background-color: var(--a-raised);
+  box-shadow: inset 0 0 0 1px var(--a-line-strong);
+}
+[data-tema="escuro"] .admin-tenant .text-brand-cream {
+  color: var(--a-ink);
+}
+/* --- Selos de status ---
+   Fundo claro com texto escuro nao funciona aqui: inverte-se a dupla, mantendo
+   a MESMA leitura de cor (verde = ok, ambar = atencao, vermelho = problema),
+   agora com 8:1 ou mais sobre a superficie. */
+[data-tema="escuro"] .admin-tenant .bg-emerald-50, [data-tema="escuro"] .admin-tenant .bg-emerald-100, [data-tema="escuro"] .admin-tenant .bg-green-50, [data-tema="escuro"] .admin-tenant .bg-green-100 {
+  background-color: #123524;
+}
+[data-tema="escuro"] .admin-tenant .text-emerald-700, [data-tema="escuro"] .admin-tenant .text-emerald-800, [data-tema="escuro"] .admin-tenant .text-green-700, [data-tema="escuro"] .admin-tenant .text-green-800 {
+  color: #6ee7a8;
+}
+[data-tema="escuro"] .admin-tenant .bg-amber-50, [data-tema="escuro"] .admin-tenant .bg-amber-100, [data-tema="escuro"] .admin-tenant .bg-yellow-50 {
+  background-color: #3a2b10;
+}
+[data-tema="escuro"] .admin-tenant .text-amber-700, [data-tema="escuro"] .admin-tenant .text-amber-800, [data-tema="escuro"] .admin-tenant .text-amber-900 {
+  color: #fbbf6b;
+}
+[data-tema="escuro"] .admin-tenant .bg-red-50, [data-tema="escuro"] .admin-tenant .bg-red-100 {
+  background-color: #3b1a1a;
+}
+[data-tema="escuro"] .admin-tenant .text-red-600, [data-tema="escuro"] .admin-tenant .text-red-700, [data-tema="escuro"] .admin-tenant .text-red-800 {
+  color: #ff9a92;
+}
+[data-tema="escuro"] .admin-tenant .bg-blue-50, [data-tema="escuro"] .admin-tenant .bg-blue-100 {
+  background-color: #14233d;
+}
+[data-tema="escuro"] .admin-tenant .text-blue-700, [data-tema="escuro"] .admin-tenant .text-blue-800 {
+  color: #8ab8ff;
+}
+/* --- Hover --- */
+[data-tema="escuro"] .admin-tenant .hover\:bg-neutral-50:hover, [data-tema="escuro"] .admin-tenant .hover\:bg-neutral-100:hover {
+  background-color: var(--a-line);
+}
+[data-tema="escuro"] .admin-tenant .hover\:bg-white:hover {
+  background-color: var(--a-surface);
+}
+/* No escuro, escurecer o botao sob o cursor some com ele: clareia. */
+[data-tema="escuro"] .admin-tenant button:hover:not(:disabled), [data-tema="escuro"] .admin-tenant [role="button"]:hover {
+  filter: brightness(1.25) saturate(1.05);
+}
+[data-tema="escuro"] .admin-tenant button[aria-expanded="true"], [data-tema="escuro"] .admin-tenant [role="button"][aria-expanded="true"] {
+  filter: brightness(1.15);
+}

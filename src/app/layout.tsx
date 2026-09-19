@@ -14,8 +14,12 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+    // suppressHydrationWarning: o tema do admin (claro/escuro) e escrito em
+    // data-tema por um script sincrono, ANTES da hidratacao, para a tela nao
+    // piscar. O React compararia o HTML do servidor com o do cliente e acusaria
+    // a diferenca — que aqui e intencional e afeta so este atributo.
     return (
-        <html lang="pt-BR">
+        <html lang="pt-BR" suppressHydrationWarning>
             <head>
                 <link rel="preconnect" href="https://fonts.googleapis.com" />
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

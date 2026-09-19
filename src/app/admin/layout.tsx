@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import AdminNav from "@/components/AdminNav";
+import TemaAdminBotao from "@/components/TemaAdminBotao";
 import { verificarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
 import { PAPEL_LABEL } from "@/lib/admin-roles";
 import { getTenantBrand } from "@/lib/tenant-brand";
@@ -47,15 +48,32 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <style>{`.admin-tenant .font-serif{font-family:var(--p-heading)}`}</style>
   );
 
-  // Fundo da area de trabalho do admin: o EXP Tour usa branco puro (leitura mais
-  // limpa das listas/tabelas, a pedido); a Forio mantem o creme/mist sutil.
-  const fundoPagina = brand.theme === "exptour" ? "bg-white" : "bg-brand-cream/30";
+  // TEMA (claro/escuro) do admin. Precisa ser decidido ANTES da primeira pintura,
+  // senao a tela pisca claro e depois escurece. Este script roda sincrono: le a
+  // escolha guardada do operador e, na falta dela, a preferencia do sistema.
+  // Todo o CSS do tema pendura em [data-tema="escuro"] (ver globals.css).
+  const scriptTema = (
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `(function(){try{var e=localStorage.getItem("forio-admin-tema");var s=window.matchMedia("(prefers-color-scheme: dark)").matches?"escuro":"claro";document.documentElement.setAttribute("data-tema",e||s)}catch(_){}})()`,
+      }}
+    />
+  );
+
+  // Fundo da area de trabalho do admin. ATENCAO: aqui havia `bg-brand-cream/30`,
+  // que e TRANSLUCIDO — e o <body> do portal e `bg-brand` (Night #0f1020 na
+  // Forio). O resultado nao era um creme claro: era #545563, um cinza-azulado
+  // medio, sobre o qual TODO o texto reprovava no contraste (o proprio
+  // text-brand dava 2,6:1). Fundo agora e SOLIDO: --p-page, o tom de pagina que
+  // a marca ja define. O tema escuro sobrescreve com --a-page.
+  const fundoPagina = brand.theme === "exptour" ? "bg-white" : "bg-[var(--p-page)]";
 
   // Sem sessao valida (ex.: /admin/login) — sem moldura de navegacao, mas ainda
   // com a marca do tenant (para o login vestir a identidade certa).
   if (!sessao) {
     return (
       <div className="admin-tenant" style={brand.styleVars as CSSProperties}>
+        {scriptTema}
         {fonteTitulo}
         {children}
       </div>
@@ -64,6 +82,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className={`admin-tenant min-h-screen ${fundoPagina}`} style={brand.styleVars as CSSProperties}>
+      {scriptTema}
       {fonteTitulo}
       <header className="bg-brand">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
@@ -71,6 +90,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             {brand.logo === "forio" ? <LogoForioDark /> : <Logo escuro />}
           </Link>
           <div className="flex items-center gap-3">
+            <TemaAdminBotao />
             {/* Papel do operador no chrome: deixa claro "com que chapeu" ele opera. */}
             <span className="hidden rounded-full bg-brand-cream/15 px-2.5 py-1 text-xs font-medium text-brand-cream ring-1 ring-brand-cream/20 sm:inline">
               {PAPEL_LABEL[sessao.papel]}
