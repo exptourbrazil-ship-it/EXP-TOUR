@@ -557,7 +557,7 @@ export default function ParcelasClient({ parcelas, programaNome, totalPrograma, 
             <h2 className="font-serif text-2xl text-brand">Pagamentos</h2>
             {contratoId ? (
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setEditando(true)} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Repactuar pagamentos</button>
+                <button onClick={() => setEditando(true)} aria-expanded={editando} className="rounded-xl border border-brand/30 px-4 py-2.5 text-sm font-medium text-brand transition hover:bg-brand-cream/50">Repactuar pagamentos</button>
                 <button onClick={restaurarPlano} disabled={restaurando} className="rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-50">{restaurando ? "Restaurando..." : "Restaurar plano original"}</button>
               </div>
             ) : null}

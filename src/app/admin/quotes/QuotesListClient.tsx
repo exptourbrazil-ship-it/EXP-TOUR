@@ -139,6 +139,7 @@ export default function QuotesListClient({ quotes }: { quotes: QuoteRow[] }) {
         <button
           type="button"
           onClick={() => setAbrindo((v) => !v)}
+          aria-expanded={abrindo}
           className="rounded-xl bg-brand-gold px-4 py-2.5 text-sm font-semibold text-brand transition"
         >
           {abrindo ? "Fechar" : "Nova cotação"}

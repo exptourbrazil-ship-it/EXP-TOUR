@@ -787,6 +787,7 @@ function PagamentoManualParcela({
     <>
       <button
         onClick={() => setAberto(true)}
+        aria-expanded={aberto}
         className="rounded-lg border border-brand/30 px-2 py-1 text-xs font-medium text-brand transition hover:bg-brand hover:text-brand-cream"
       >
         Registrar pagamento

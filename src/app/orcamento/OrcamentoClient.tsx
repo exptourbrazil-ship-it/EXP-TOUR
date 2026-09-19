@@ -163,7 +163,7 @@ export default function OrcamentoClient({ programas, cambio, paises }: Props) {
                       <button onClick={() => toggle(p.id)} style={selecionado ? btnSelOn : btnSelOff}>
                         {selecionado ? "✓ Selecionado" : "Selecionar"}
                       </button>
-                      <button onClick={() => setExpandido((s) => ({ ...s, [p.id]: !aberto }))} style={btnLink}>
+                      <button aria-expanded={aberto} onClick={() => setExpandido((s) => ({ ...s, [p.id]: !aberto }))} style={btnLink}>
                         {aberto ? "menos" : "detalhes"}
                       </button>
                     </div>

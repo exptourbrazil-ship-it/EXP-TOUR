@@ -117,6 +117,7 @@ export default function EditorParcelasContrato({
         <button
           type="button"
           onClick={abrir}
+          aria-expanded={aberto}
           className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-brand hover:bg-neutral-50"
         >
           Editar parcelas

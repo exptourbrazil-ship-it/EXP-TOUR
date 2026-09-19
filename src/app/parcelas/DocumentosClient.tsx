@@ -327,6 +327,7 @@ export default function DocumentosClient({ documentos, afiliadoVistoUrl }: { doc
         {/* Botao: como solicitar passaporte (abre/fecha o passo a passo) */}
         <button
           onClick={() => setMostrarPassaporte((v) => !v)}
+          aria-expanded={mostrarPassaporte}
           className="block w-full rounded-xl bg-cta px-3.5 py-3 text-center text-sm font-semibold text-brand-cream"
         >
           {mostrarPassaporte ? "Ocultar passo a passo" : "Como solicitar passaporte"}

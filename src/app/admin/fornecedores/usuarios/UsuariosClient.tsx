@@ -157,6 +157,7 @@ export default function UsuariosClient({ suppliers }: { suppliers: SupplierComUs
               <button
                 type="button"
                 onClick={() => (abertoId === s.id ? setAbertoId(null) : abrirConvite(s.id))}
+                aria-expanded={abertoId === s.id}
                 disabled={ocupado}
                 className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-brand disabled:opacity-60"
               >

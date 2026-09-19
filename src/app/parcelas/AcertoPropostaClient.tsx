@@ -100,6 +100,7 @@ export default function AcertoPropostaClient({ proposta }: { proposta: Proposta 
           <button
             type="button"
             onClick={() => setVerTermo((v) => !v)}
+            aria-expanded={verTermo}
             className="text-xs text-[#042f1b] underline underline-offset-2"
           >
             {verTermo ? "Ocultar o termo" : "Ver o termo de acerto"}

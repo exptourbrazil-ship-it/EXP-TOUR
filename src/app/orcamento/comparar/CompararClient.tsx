@@ -174,7 +174,7 @@ export default function CompararClient({ programas, cambio, dataCambio, params }
               </div>
 
               {/* O que entra */}
-              <button onClick={() => setAberto((s) => ({ ...s, [p.id]: !exp }))} style={{ background: "transparent", border: "none", color: BLUE, fontSize: 12.5, fontWeight: 500, cursor: "pointer", textAlign: "left", marginTop: 10, padding: 0 }}>
+              <button aria-expanded={exp} onClick={() => setAberto((s) => ({ ...s, [p.id]: !exp }))} style={{ background: "transparent", border: "none", color: BLUE, fontSize: 12.5, fontWeight: 500, cursor: "pointer", textAlign: "left", marginTop: 10, padding: 0 }}>
                 {exp ? "▾ O que entra nesse valor" : "▸ O que entra nesse valor"}
               </button>
               {exp ? (

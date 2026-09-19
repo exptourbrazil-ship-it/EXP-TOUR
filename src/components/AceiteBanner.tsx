@@ -109,6 +109,7 @@ export default function AceiteBanner() {
             <button
               type="button"
               onClick={() => setAberto(true)}
+              aria-expanded={aberto}
               className="flex-shrink-0 rounded-lg bg-cta px-3 py-1.5 text-xs font-semibold text-brand-cream transition"
             >
               Ler e aceitar
