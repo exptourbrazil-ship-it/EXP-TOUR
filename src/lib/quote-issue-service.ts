@@ -76,6 +76,13 @@ type TaxaLinha = {
   isRefundable: boolean | null;
   /** charge_basis congelado no item: once_per_item | once_per_quote | per_unit. */
   basis: string | null;
+  /**
+   * Posicao do item a que a taxa pertence, na ordem de `itens`. Permite mostrar
+   * a taxa LOGO ABAIXO do que ela encarece (como a matricula abaixo do curso),
+   * em vez de num bolo no fim — que e o que faz o cliente perguntar "taxa de que?".
+   * null = taxa sem item identificado.
+   */
+  itemIndex: number | null;
 };
 
 type ParcelaPlano = {
@@ -144,12 +151,16 @@ async function carregarTotaisPorOpcao(
 
   const resultado: TotaisOpcao[] = [];
   for (const option of (options ?? []) as OptionRow[]) {
-    const { data: items } = await supabase
+    // Erro de leitura NAO pode virar lista vazia: os itens somem, as taxas somem
+    // junto e o cliente ve uma proposta com total errado, sem nenhum aviso.
+    const { data: items, error: itensErr } = await supabase
       .from("quote_item")
       .select("id, \"group\", product_snapshot, start_date, end_date, quantity, unit, gross_amount, currency, sort")
       .eq("tenant_id", tenantId)
       .eq("quote_option_id", option.id)
-      .order("sort", { ascending: true });
+      .order("sort", { ascending: true })
+      .order("id", { ascending: true }); // desempate estavel: `sort` repete
+    if (itensErr) throw new Error(`Falha ao carregar itens da opcao: ${itensErr.message}`);
 
     let bruto = 0;
     let currency = "";
@@ -195,20 +206,23 @@ async function carregarTotaisPorOpcao(
       promocao: !!d.promotion_id,
     }));
 
-    const { data: itemIdsRows } = await supabase
-      .from("quote_item")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("quote_option_id", option.id);
-    const itemIds = (itemIdsRows ?? []).map((r) => r.id as string);
+    // A ordem aqui e a MESMA de `itens` acima (mesma consulta, mesmo `sort`):
+    // e ela que liga cada taxa a posicao do item que ela encarece.
+    const itemIds = (items ?? []).map((r) => r.id as string);
+    const posicaoDoItem = new Map<string, number>(itemIds.map((id, idx) => [id, idx]));
     let taxas = 0;
     const taxasDetalhadas: TaxaLinha[] = [];
     if (itemIds.length > 0) {
-      const { data: fees } = await supabase
+      const { data: fees, error: feesErr } = await supabase
         .from("quote_item_fee")
-        .select("name, amount, currency, is_refundable, basis")
+        .select("name, amount, currency, is_refundable, basis, quote_item_id")
         .eq("tenant_id", tenantId)
-        .in("quote_item_id", itemIds);
+        .in("quote_item_id", itemIds)
+        // Sem ordem explicita, duas aberturas do mesmo link listam as taxas em
+        // ordens diferentes — numa proposta de preco isso gera desconfianca.
+        .order("name", { ascending: true })
+        .order("id", { ascending: true });
+      if (feesErr) throw new Error(`Falha ao carregar taxas da opcao: ${feesErr.message}`);
       for (const f of fees ?? []) {
         const amount = toNum(f.amount);
         taxas += amount;
@@ -218,6 +232,7 @@ async function carregarTotaisPorOpcao(
           currency: (f.currency as string) || currency || "BRL",
           isRefundable: f.is_refundable == null ? null : !!f.is_refundable,
           basis: (f.basis as string) ?? null,
+          itemIndex: posicaoDoItem.get(f.quote_item_id as string) ?? null,
         });
       }
     }
@@ -766,7 +781,7 @@ export type PublicQuote = {
       ficha: FichaProduto | null;
       detalhes: DetalhesSnapshot;
     }>;
-    taxasDetalhadas: Array<{ nome: string; amount: number; currency: string; isRefundable: boolean | null }>;
+    taxasDetalhadas: Array<{ nome: string; amount: number; currency: string; isRefundable: boolean | null; basis: string | null; itemIndex: number | null }>;
     planoPagamento: {
       installmentsCount: number;
       firstDueDate: string | null;

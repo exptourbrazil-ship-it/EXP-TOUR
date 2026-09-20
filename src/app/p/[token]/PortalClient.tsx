@@ -35,9 +35,11 @@ function fmtMoeda(valor: number, moeda: string): string {
 }
 // F5: prazo da promocao (congelado na cotacao). Passado o prazo, sinaliza em vez
 // de sumir — o valor cotado continua o mesmo (fotografia), so a leitura muda.
-function rotuloPrazo(validoAte: string | null): string {
+// `hojeISO` vem do servidor: `new Date()` aqui e avaliado no SSR e de novo na
+// hidratacao, e na virada do dia os dois divergem — React acusa e o texto pisca.
+function rotuloPrazo(validoAte: string | null, hojeISO: string): string {
   if (!validoAte) return "";
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = hojeISO.slice(0, 10);
   return validoAte < hoje
     ? ` · prazo da promoção encerrado em ${fmtData(validoAte)}`
     : ` · válida até ${fmtData(validoAte)}`;
@@ -455,7 +457,7 @@ function Overview({
                     {d.promocao ? "Promoção: " : "Desconto: "}
                     {d.nome}
                     {d.validoAte ? (
-                      <span className="ml-1 text-xs text-[color:var(--p-muted)]">{rotuloPrazo(d.validoAte)}</span>
+                      <span className="ml-1 text-xs text-[color:var(--p-muted)]">{rotuloPrazo(d.validoAte, hojeISO)}</span>
                     ) : null}
                   </span>
                   <span className="whitespace-nowrap">- {fmtMoeda(d.amount, d.currency)}</span>
@@ -1047,7 +1049,6 @@ function DetalheOpcao({
                       </span>
                     ) : null}
                   </span>
-                  <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(it.grossAmount, it.currency)}</span>
                 </div>
                 <DetalhesItemBloco d={it.detalhes} />
                 {it.ficha ? <FichaDetalhes ficha={it.ficha} /> : null}
@@ -1075,58 +1076,10 @@ function DetalheOpcao({
         ));
       })()}
 
-      {/* Preco */}
-      <div className="mt-6 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Preço</h3>
-        <dl className="mt-2 space-y-1 text-sm">
-          <ResumoLinha rot="Subtotal" val={fmtMoeda(op.bruto, op.currency)} />
-          {op.taxasDetalhadas.length > 0
-            ? op.taxasDetalhadas.map((t, i) => (
-                <ResumoLinha
-                  key={i}
-                  rot={`${t.nome}${t.isRefundable === false ? " (não reembolsável)" : ""}`}
-                  val={fmtMoeda(t.amount, t.currency)}
-                />
-              ))
-            : op.taxas > 0
-            ? <ResumoLinha rot="Taxas" val={fmtMoeda(op.taxas, op.currency)} />
-            : null}
-          {op.descontosDetalhados.map((d, i) => (
-            <ResumoLinha
-              key={i}
-              rot={`${d.promocao ? "Promoção" : "Desconto"}: ${d.nome}${rotuloPrazo(d.validoAte)}`}
-              val={`- ${fmtMoeda(d.amount, d.currency)}`}
-            />
-          ))}
-          <ResumoLinha rot="Total" val={totalNaMoeda} destaque />
-          {totalConvertido ? <ResumoLinha rot={`Total em ${fx.presentmentCurrency}`} val={totalConvertido} /> : null}
-          {op.depositAmount != null ? (
-            <ResumoLinha rot="Entrada" val={fmtMoeda(op.depositAmount, op.depositCurrency ?? op.currency)} />
-          ) : null}
-        </dl>
-
-        {/* Plano de pagamento */}
-        {op.planoPagamento && op.planoPagamento.parcelas.length > 0 ? (
-          <div className="mt-4">
-            <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">
-              Plano de pagamento{op.planoPagamento.method ? ` · ${op.planoPagamento.method.toUpperCase()}` : ""}
-            </h4>
-            <ul className="mt-2 space-y-1 text-sm">
-              {op.planoPagamento.parcelas.map((p) => (
-                <li key={p.sequence} className="flex items-baseline justify-between gap-3">
-                  <span className="text-[color:var(--p-muted)]">
-                    {p.description || `Parcela ${p.sequence}`} · {fmtData(p.dueDate)}
-                  </span>
-                  <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(p.amount, p.currency)}</span>
-                </li>
-              ))}
-            </ul>
-            {op.planoPagamento.notes ? (
-              <p className="mt-2 text-[11px] text-[color:var(--p-muted)]">{op.planoPagamento.notes}</p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      {/* Detalhamento do preco — cada taxa embaixo do item que ela encarece,
+          subtotal por bloco e total no fim. E como o cliente le a conta: "o
+          curso custa X, e a matricula e desse curso". */}
+      <DetalhamentoPreco op={op} fx={fx} grupos={grupos} hojeISO={hojeISO} />
 
       {/* Escolha (2 etapas) */}
       <div className="mt-5 print:hidden">
@@ -1181,6 +1134,238 @@ function DetalheOpcao({
         </button>
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detalhamento do preco (o "Price Breakdown"): por bloco (Curso / Acomodacao /
+// Servicos), cada item com as SUAS taxas logo abaixo e um subtotal do bloco.
+// Descontos em destaque, total na moeda do cliente e plano de pagamento.
+// ---------------------------------------------------------------------------
+function LinhaPreco({
+  rotulo,
+  detalhe,
+  valor,
+  tom,
+  forte,
+}: {
+  rotulo: string;
+  detalhe?: string | null;
+  valor: string;
+  tom?: "normal" | "desconto";
+  forte?: boolean;
+}) {
+  const cor = tom === "desconto" ? "text-[color:var(--p-success)]" : "text-[color:var(--p-ink)]";
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1">
+      <span className={`text-sm ${forte ? "font-semibold" : ""} text-[color:var(--p-ink)] opacity-90`}>
+        {rotulo}
+        {detalhe ? <span className="block text-[11px] text-[color:var(--p-muted)]">{detalhe}</span> : null}
+      </span>
+      <span className={`whitespace-nowrap text-sm tabular-nums ${forte ? "font-semibold" : ""} ${cor}`}>{valor}</span>
+    </div>
+  );
+}
+
+function DetalhamentoPreco({
+  op,
+  fx,
+  grupos,
+  hojeISO,
+}: {
+  op: OpcaoData;
+  fx: PublicQuote["fx"];
+  grupos: { grupo: string; itens: OpcaoData["itens"] }[];
+  hojeISO: string;
+}) {
+  const totalNaMoeda = fmtMoeda(op.liquido, op.currency);
+  const totalConvertido =
+    fx.necessario && op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
+
+  // Taxa de COTACAO INTEIRA nao e de item nenhum: no banco ela fica pendurada em
+  // um quote_item qualquer (a coluna e obrigatoria), e mostra-la sob a acomodacao
+  // faria o cliente perguntar exatamente o que esta tela quer evitar: "taxa de que?".
+  const daCotacao = (t: OpcaoData["taxasDetalhadas"][number]) =>
+    t.basis === "once_per_quote" || t.itemIndex == null || t.itemIndex >= op.itens.length;
+  const taxasDoItem = (i: number) => op.taxasDetalhadas.filter((t) => !daCotacao(t) && t.itemIndex === i);
+  const taxasSoltas = op.taxasDetalhadas.filter(daCotacao);
+
+  // Moedas presentes na opcao inteira (itens + taxas + descontos) e o total de
+  // cada uma — usados quando a opcao mistura moedas.
+  const totalPorMoeda = new Map<string, number>();
+  const somar = (m: string, v: number) => totalPorMoeda.set(m, (totalPorMoeda.get(m) ?? 0) + v);
+  for (const it of op.itens) somar(it.currency, it.grossAmount);
+  for (const t of op.taxasDetalhadas) somar(t.currency, t.amount);
+  for (const d of op.descontosDetalhados) somar(d.currency, -d.amount);
+  const moedasDaOpcao = new Set(totalPorMoeda.keys());
+
+  // Subtotal so aparece quando o bloco inteiro esta numa moeda so: somar moedas
+  // diferentes daria um numero que nao existe.
+  function subtotalDoGrupo(itens: OpcaoData["itens"]): string | null {
+    const moedas = new Set<string>();
+    let soma = 0;
+    for (const it of itens) {
+      moedas.add(it.currency);
+      soma += it.grossAmount;
+      for (const t of taxasDoItem(op.itens.indexOf(it))) {
+        moedas.add(t.currency);
+        soma += t.amount;
+      }
+    }
+    if (moedas.size !== 1) return null;
+    return fmtMoeda(soma, [...moedas][0]);
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
+      <h3 className="titulo-portal text-base text-[color:var(--p-ink)]">Detalhamento do preço</h3>
+
+      {grupos.map((g, gi) => {
+        const subtotal = subtotalDoGrupo(g.itens);
+        return (
+          <div key={g.grupo} className={gi === 0 ? "mt-3" : "mt-5"}>
+            <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">
+              {GRUPO_LABEL[g.grupo] ?? g.grupo}
+            </h4>
+            <div className="mt-1 divide-y divide-[color:var(--p-line)]/60">
+              {g.itens.map((it, i) => {
+                const idx = op.itens.indexOf(it);
+                const periodo = it.startDate
+                  ? `${fmtData(it.startDate)}${it.endDate ? ` a ${fmtData(it.endDate)}` : ""}`
+                  : null;
+                const escola = it.detalhes.escola;
+                return (
+                  <div key={i} className="py-1.5">
+                    <LinhaPreco
+                      rotulo={it.nome}
+                      detalhe={[escola?.nome, periodo].filter(Boolean).join(" · ") || null}
+                      valor={fmtMoeda(it.grossAmount, it.currency)}
+                    />
+                    {taxasDoItem(idx).map((t, k) => (
+                      <LinhaPreco
+                        key={k}
+                        rotulo={`${t.nome}${t.isRefundable === false ? " (não reembolsável)" : ""}`}
+                        valor={fmtMoeda(t.amount, t.currency)}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            {subtotal ? (
+              <div className="mt-1 border-t border-[color:var(--p-line)] pt-1">
+                <LinhaPreco rotulo="Subtotal" valor={subtotal} forte />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+
+      {taxasSoltas.length > 0 ? (
+        <div className="mt-5">
+          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">
+            Taxas da cotação
+          </h4>
+          <div className="mt-1">
+            {taxasSoltas.map((t, k) => (
+              <LinhaPreco
+                key={k}
+                rotulo={`${t.nome}${t.isRefundable === false ? " (não reembolsável)" : ""}`}
+                valor={fmtMoeda(t.amount, t.currency)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {op.descontosDetalhados.length > 0 ? (
+        <div className="mt-5">
+          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">
+            {op.descontosDetalhados.some((d) => d.promocao) ? "Promoções e descontos" : "Descontos"}
+          </h4>
+          <div className="mt-1">
+            {op.descontosDetalhados.map((d, i) => (
+              <LinhaPreco
+                key={i}
+                rotulo={`${d.promocao ? "Promoção" : "Desconto"}: ${d.nome}`}
+                detalhe={rotuloPrazo(d.validoAte, hojeISO).replace(/^ · /, "") || null}
+                valor={`− ${fmtMoeda(d.amount, d.currency)}`}
+                tom="desconto"
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Total. Se a opcao mistura moedas nao existe UM total: somar GBP com BRL
+          daria um numero que nao e dinheiro nenhum. A emissao passou a barrar a
+          mistura, mas cotacoes emitidas antes disso ainda abrem por aqui. */}
+      {moedasDaOpcao.size > 1 ? (
+        <div className="mt-5 border-t border-[color:var(--p-line)] pt-3">
+          <p className="text-sm font-semibold text-[color:var(--p-ink)]">Total por moeda</p>
+          {[...totalPorMoeda.entries()].map(([m, v]) => (
+            <LinhaPreco key={m} rotulo={`Total em ${m}`} valor={fmtMoeda(v, m)} forte />
+          ))}
+          <p className="mt-1 text-[11px] text-[color:var(--p-muted)]">
+            Os itens desta opção estão em moedas diferentes, por isso não há um valor único. Fale com
+            seu consultor para consolidar.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 flex items-baseline justify-between gap-4 border-t border-[color:var(--p-line)] pt-3">
+          <span className="titulo-portal text-base text-[color:var(--p-ink)]">Total</span>
+          <span className="text-right">
+            <span className="block titulo-portal text-xl tabular-nums text-[color:var(--p-ink)]">
+              {totalConvertido ?? totalNaMoeda}
+            </span>
+            {totalConvertido ? (
+              <span className="block text-xs tabular-nums text-[color:var(--p-muted)]">{totalNaMoeda}</span>
+            ) : null}
+          </span>
+        </div>
+      )}
+      {op.depositAmount != null ? (
+        <div className="mt-2">
+          <LinhaPreco
+            rotulo="Entrada"
+            detalhe="valor a pagar para garantir a vaga"
+            valor={fmtMoeda(op.depositAmount, op.depositCurrency ?? op.currency)}
+            forte
+          />
+        </div>
+      ) : null}
+
+      {/* Plano de pagamento — linha do tempo, uma parcela por marco. */}
+      {op.planoPagamento && op.planoPagamento.parcelas.length > 0 ? (
+        <div className="mt-5 border-t border-[color:var(--p-line)] pt-4">
+          <h4 className="titulo-portal text-base text-[color:var(--p-ink)]">
+            Plano de pagamento{op.planoPagamento.method ? ` · ${op.planoPagamento.method.toUpperCase()}` : ""}
+          </h4>
+          <ol className="mt-3 border-l border-[color:var(--p-line)] pl-4">
+            {op.planoPagamento.parcelas.map((p) => (
+              <li key={p.sequence} className="relative pb-3 last:pb-0">
+                <span
+                  aria-hidden="true"
+                  className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-[color:var(--p-muted)]"
+                />
+                <div className="flex items-baseline justify-between gap-4">
+                  <span className="text-sm font-medium text-[color:var(--p-ink)]">
+                    {p.description || `Parcela ${p.sequence}`}
+                    <span className="block text-[11px] font-normal text-[color:var(--p-muted)]">{fmtData(p.dueDate)}</span>
+                  </span>
+                  <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-[color:var(--p-ink)]">
+                    {fmtMoeda(p.amount, p.currency)}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          {op.planoPagamento.notes ? (
+            <p className="mt-2 text-[11px] text-[color:var(--p-muted)]">{op.planoPagamento.notes}</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1338,14 +1523,6 @@ function fmtDataHora(iso: string): string {
   }
 }
 
-function ResumoLinha({ rot, val, destaque }: { rot: string; val: string; destaque?: boolean }) {
-  return (
-    <div className={`flex items-baseline justify-between ${destaque ? "border-t border-[color:var(--p-line)] pt-1" : ""}`}>
-      <dt className="text-[color:var(--p-muted)]">{rot}</dt>
-      <dd className={destaque ? "font-semibold text-[color:var(--p-ink)]" : "text-[color:var(--p-ink)] opacity-90"}>{val}</dd>
-    </div>
-  );
-}
 
 // Mascara de CPF apenas para exibicao (o servidor normaliza/valida de verdade).
 function mascararCpf(v: string): string {

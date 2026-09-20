@@ -258,29 +258,44 @@ function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles
 
       {/* Price Breakdown (taxas linha a linha) */}
       <Text style={s.secTitle}>Detalhamento do preço</Text>
-      <View style={s.sumRow}>
-        <Text style={s.sumRot}>Subtotal</Text>
-        <Text>{fmtMoeda(op.bruto, op.currency)}</Text>
-      </View>
-      {op.taxasDetalhadas.length > 0
-        ? op.taxasDetalhadas.map((tx, i) => (
-            <View key={i} style={s.sumRow} wrap={false}>
-              <Text style={s.sumRot}>
-                {tx.nome}
-                {tx.isRefundable === true ? <Text style={s.sumTag}>  reembolsável</Text> : null}
-                {tx.isRefundable === false ? <Text style={s.sumTag}>  não reembolsável</Text> : null}
-              </Text>
-              <Text>{fmtMoeda(tx.amount, tx.currency)}</Text>
-            </View>
-          ))
-        : op.taxas > 0
-          ? (
+      {/* Mesma leitura da tela: cada taxa abaixo do item que ela encarece, e as
+          de cotacao inteira separadas. Divergir do link faria o cliente comparar
+          dois documentos que nao batem. */}
+      {op.itens.map((it, i) => {
+        const suas = op.taxasDetalhadas.filter(
+          (tx) => tx.basis !== "once_per_quote" && tx.itemIndex === i,
+        );
+        return (
+          <View key={i} wrap={false}>
             <View style={s.sumRow}>
-              <Text style={s.sumRot}>Taxas</Text>
-              <Text>{fmtMoeda(op.taxas, op.currency)}</Text>
+              <Text style={s.sumRot}>{it.nome}</Text>
+              <Text>{fmtMoeda(it.grossAmount, it.currency)}</Text>
             </View>
-          )
-          : null}
+            {suas.map((tx, k) => (
+              <View key={k} style={s.sumRow}>
+                <Text style={s.sumRot}>
+                  {"    "}
+                  {tx.nome}
+                  {tx.isRefundable === true ? <Text style={s.sumTag}>  reembolsável</Text> : null}
+                  {tx.isRefundable === false ? <Text style={s.sumTag}>  não reembolsável</Text> : null}
+                </Text>
+                <Text>{fmtMoeda(tx.amount, tx.currency)}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      {op.taxasDetalhadas
+        .filter((tx) => tx.basis === "once_per_quote" || tx.itemIndex == null || tx.itemIndex >= op.itens.length)
+        .map((tx, i) => (
+          <View key={`q${i}`} style={s.sumRow} wrap={false}>
+            <Text style={s.sumRot}>
+              {tx.nome}
+              {tx.isRefundable === false ? <Text style={s.sumTag}>  não reembolsável</Text> : null}
+            </Text>
+            <Text>{fmtMoeda(tx.amount, tx.currency)}</Text>
+          </View>
+        ))}
       {/* Descontos linha a linha (F5): promocao com PRAZO congelado ("valida ate" /
           "prazo encerrado"); manuais saem como "Desconto comercial". A soma das
           linhas E o agregado `op.descontos` (mesmas linhas). */}

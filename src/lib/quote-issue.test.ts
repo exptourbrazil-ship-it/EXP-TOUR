@@ -120,3 +120,35 @@ test("cambioVencidoPorData: janela de folga em dias", () => {
   assert.equal(cambioVencidoPorData(null, "2026-08-29", 4), true); // sem VET
   assert.equal(cambioVencidoPorData("2026-08-30", "2026-08-29", 4), false); // VET "do futuro"
 });
+
+test("mistura de moedas BLOQUEIA a emissao (o motivo era inalcancavel)", () => {
+  // Com mistura nao existe moeda de origem unica, entao fxNecessario e false.
+  // O teste ficava DENTRO do `if (fxNecessario)` e nunca rodava: a cotacao
+  // emitia e o portal somava GBP com BRL como se fosse a mesma unidade.
+  const r = podeEmitir({
+    numOpcoes: 1,
+    itensPorOpcao: [2],
+    temValidUntil: true,
+    fxNecessario: false,
+    fxMoedasMisturadas: true,
+    fxPresente: false,
+    fxVencido: false,
+    warningsBloqueantes: 0,
+  });
+  assert.equal(r.ok, false);
+  assert.ok(r.motivos.some((m) => m.includes("moedas diferentes")), r.motivos.join(" | "));
+});
+
+test("moeda unica igual a de apresentacao continua emitindo sem cambio", () => {
+  const r = podeEmitir({
+    numOpcoes: 1,
+    itensPorOpcao: [1],
+    temValidUntil: true,
+    fxNecessario: false,
+    fxMoedasMisturadas: false,
+    fxPresente: false,
+    fxVencido: false,
+    warningsBloqueantes: 0,
+  });
+  assert.deepEqual(r, { ok: true, motivos: [] });
+});

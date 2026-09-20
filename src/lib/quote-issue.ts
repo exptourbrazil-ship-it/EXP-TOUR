@@ -36,10 +36,15 @@ export function podeEmitir(p: PrecondicoesEmissao): { ok: boolean; motivos: stri
     motivos.push(`Ha ${opcoesVazias} opcao(oes) sem itens; cada opcao precisa de ao menos um item.`);
   }
   if (!p.temValidUntil) motivos.push("Defina a validade (valid_until) antes de emitir.");
+  // Mistura de moedas bloqueia SEMPRE, fora do `if (fxNecessario)`. Quando ha
+  // mistura, `fxNecessario` e false (nao existe moeda de origem unica) — o teste
+  // aqui dentro era inalcançavel e a cotacao emitia somando moedas diferentes
+  // como se fossem a mesma unidade.
+  if (p.fxMoedasMisturadas) {
+    motivos.push("A cotacao tem itens em moedas diferentes; nao ha taxa unica para congelar.");
+  }
   if (p.fxNecessario) {
-    if (p.fxMoedasMisturadas) {
-      motivos.push("A cotacao tem itens em moedas diferentes; nao ha taxa unica para congelar.");
-    } else if (!p.fxPresente) {
+    if (!p.fxPresente) {
       motivos.push("Nao ha taxa de cambio disponivel para congelar.");
     } else if (p.fxVencido) {
       motivos.push("A taxa de cambio disponivel esta vencida (fora de max_rate_age_hours).");
