@@ -732,7 +732,7 @@ export type PublicQuote = {
    * impediria que cotacoes ja emitidas ganhassem o link sem reemissao.
    * Mesma logica do cambio, que tambem e resolvido na abertura.
    */
-  escolas: Record<string, { website: string | null; favicon: string | null; social: LinkSocial[] }>;
+  escolas: Record<string, { nome: string | null; website: string | null; favicon: string | null; social: LinkSocial[] }>;
   fx: {
     necessario: boolean;
     rate: number | null;
@@ -982,11 +982,11 @@ export async function getPublicQuote(
         .filter((id): id is string => !!id),
     ),
   );
-  const escolas: Record<string, { website: string | null; favicon: string | null; social: LinkSocial[] }> = {};
+  const escolas: Record<string, { nome: string | null; website: string | null; favicon: string | null; social: LinkSocial[] }> = {};
   if (campusIds.length > 0) {
     const { data: campusContato } = await supabase
       .from("campus")
-      .select("id, website, supplier:supplier_id(website, favicon_url, social)")
+      .select("id, website, supplier:supplier_id(display_name, website, favicon_url, social)")
       .eq("tenant_id", tenantId)
       .in("id", campusIds)
       .is("archived_at", null);
@@ -997,6 +997,9 @@ export async function getPublicQuote(
       const bruto = ((c.website as string) || (sup?.website as string) || "").trim();
       // Defesa em profundidade no ponto de render: so http/https vai para href.
       escolas[c.id as string] = {
+        // Nome da ESCOLA, nao o do campus: o snapshot guarda "Vancouver" (a
+        // unidade), e o cliente precisa ler "VanWest College" na linha do preco.
+        nome: ((sup?.display_name as string) ?? "").trim() || null,
         website: bruto && ehUrlHttp(bruto) ? bruto : null,
         // Favicon e redes sao da ESCOLA (supplier), nao da unidade.
         favicon: urlFavicon(sup?.favicon_url),

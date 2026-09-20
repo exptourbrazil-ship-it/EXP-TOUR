@@ -1079,7 +1079,7 @@ function DetalheOpcao({
       {/* Detalhamento do preco — cada taxa embaixo do item que ela encarece,
           subtotal por bloco e total no fim. E como o cliente le a conta: "o
           curso custa X, e a matricula e desse curso". */}
-      <DetalhamentoPreco op={op} fx={fx} grupos={grupos} hojeISO={hojeISO} />
+      <DetalhamentoPreco op={op} fx={fx} grupos={grupos} hojeISO={hojeISO} escolasContato={escolasContato} />
 
       {/* Escolha (2 etapas) */}
       <div className="mt-5 print:hidden">
@@ -1172,11 +1172,13 @@ function DetalhamentoPreco({
   fx,
   grupos,
   hojeISO,
+  escolasContato,
 }: {
   op: OpcaoData;
   fx: PublicQuote["fx"];
   grupos: { grupo: string; itens: OpcaoData["itens"] }[];
   hojeISO: string;
+  escolasContato: PublicQuote["escolas"];
 }) {
   const totalNaMoeda = fmtMoeda(op.liquido, op.currency);
   const totalConvertido =
@@ -1234,11 +1236,15 @@ function DetalhamentoPreco({
                   ? `${fmtData(it.startDate)}${it.endDate ? ` a ${fmtData(it.endDate)}` : ""}`
                   : null;
                 const escola = it.detalhes.escola;
+                // Nome da ESCOLA quando conhecido; o snapshot so guarda o nome da
+                // unidade ("Vancouver"), que ao lado da cidade nao informa nada.
+                const contato = escola?.campusId ? escolasContato[escola.campusId] : null;
+                const ondeQuem = [contato?.nome ?? escola?.nome, escola?.local].filter(Boolean).join(" · ");
                 return (
                   <div key={i} className="py-1.5">
                     <LinhaPreco
                       rotulo={it.nome}
-                      detalhe={[escola?.nome, periodo].filter(Boolean).join(" · ") || null}
+                      detalhe={[ondeQuem || null, periodo].filter(Boolean).join(" · ") || null}
                       valor={fmtMoeda(it.grossAmount, it.currency)}
                     />
                     {taxasDoItem(idx).map((t, k) => (
