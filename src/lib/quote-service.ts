@@ -1048,14 +1048,11 @@ export async function setQuoteNotes(
   const limpo = (args.notesHtml || "").trim();
   const sanitized = limpo ? sanitizarHtml(limpo) : null;
 
-  const { data: quote, error: qErr } = await supabase
-    .from("quote")
-    .select("id")
-    .eq("tenant_id", args.tenantId)
-    .eq("id", args.quoteId)
-    .maybeSingle();
-  if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
-  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+  // Decisao do usuario (20/09/2026): a observacao tambem congela na emissao.
+  // Ela aparece na aba "Observacoes" do link do estudante, entao mudar depois
+  // altera o que a proposta enviada diz — mesmo sem mexer em valor. Para
+  // acrescentar um recado a uma proposta ja enviada, reemitir.
+  await exigirRascunho(supabase, args.tenantId, args.quoteId, "editar observacoes");
 
   const { error: updErr } = await supabase
     .from("quote")

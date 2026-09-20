@@ -391,7 +391,7 @@ export default function ConstrutorClient({
         </p>
       ) : null}
 
-      <NotesEditor quoteId={header.id} initialHtml={header.notesHtml} onErro={setErro} />
+      <NotesEditor quoteId={header.id} initialHtml={header.notesHtml} onErro={setErro} isDraft={isDraft} />
 
       {options.length === 0 ? (
         <p className="text-sm text-neutral-500">
@@ -762,10 +762,13 @@ function NotesEditor({
   quoteId,
   initialHtml,
   onErro,
+  isDraft,
 }: {
   quoteId: string;
   initialHtml: string | null;
   onErro: (msg: string | null) => void;
+  /** Fora do rascunho a observacao esta congelada (o servidor recusa). */
+  isDraft: boolean;
 }) {
   const router = useRouter();
   const [texto, setTexto] = useState(() => htmlParaTexto(initialHtml));
@@ -796,13 +799,15 @@ function NotesEditor({
         <div>
           <h2 className="font-serif text-lg text-brand">Observações (aba “Notes” do orçamento)</h2>
           <p className="text-xs text-neutral-500">
-            Texto livre exibido ao lead na aba Observações do link. Ex.: serviços extras, próximos passos.
+            {isDraft
+              ? "Texto livre exibido ao lead na aba Observações do link. Ex.: serviços extras, próximos passos."
+              : "Congelada: a observação faz parte da proposta enviada. Use “Reemitir” para alterá-la."}
           </p>
         </div>
         <button
           type="button"
           onClick={salvar}
-          disabled={salvando || !alterado}
+          disabled={salvando || !alterado || !isDraft}
           className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
         >
           {salvando ? "Salvando…" : salvo && !alterado ? "Salvo ✓" : "Salvar observações"}
@@ -815,6 +820,7 @@ function NotesEditor({
           setSalvo(false);
         }}
         rows={4}
+        readOnly={!isDraft}
         placeholder="Ex.: Outros serviços — eTA (Canadá) CAD 7; passagem aérea a definir."
         className="mt-3 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm text-brand outline-none focus:border-brand"
       />
