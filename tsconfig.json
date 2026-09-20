@@ -10,6 +10,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Permite `import "./x.ts"`: os modulos PUROS testados com `node --test`
+    // rodam sem bundler e precisam do caminho relativo com extensao (o alias
+    // @/ nao e resolvido ali). Exige noEmit, acima.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

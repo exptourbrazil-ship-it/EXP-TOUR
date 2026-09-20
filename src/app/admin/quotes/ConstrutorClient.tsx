@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fmtMoeda } from "@/lib/formato";
+import BuscadorCatalogo from "./BuscadorCatalogo";
 
 export type ItemView = {
   id: string;
@@ -114,7 +115,13 @@ export default function ConstrutorClient({
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  // Painel de busca/adicao de item.
+  // Buscador de catalogo (caminho principal): navega o catalogo como o
+  // /orcamento e adiciona varios itens de uma vez na opcao.
+  const [buscandoEm, setBuscandoEm] = useState<{ id: string; label: string } | null>(null);
+
+  // Painel de item avulso (caminho secundario): produto unico com unidade
+  // livre — e por aqui que entra NOITE AVULSA e outros add-ons, que o
+  // buscador (semanas fechadas) nao cobre.
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [buscando, setBuscando] = useState(false);
@@ -497,17 +504,31 @@ export default function ConstrutorClient({
                 </div>
 
                 {isDraft ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetPanel();
-                      setAddingTo(opt.id);
-                    }}
-                    aria-expanded={addingTo === opt.id}
-                    className="mt-3 w-full rounded-lg border border-brand-gold/50 px-3 py-2 text-sm font-medium text-brand-golddark transition hover:bg-brand-cream/60"
-                  >
-                    + Adicionar item
-                  </button>
+                  <div className="mt-3 flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetPanel();
+                        setBuscandoEm({ id: opt.id, label: opt.label });
+                      }}
+                      aria-expanded={buscandoEm?.id === opt.id}
+                      className="w-full rounded-lg bg-brand-gold px-3 py-2 text-sm font-semibold text-brand transition hover:opacity-90"
+                    >
+                      + Buscar no catálogo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetPanel();
+                        setAddingTo(opt.id);
+                      }}
+                      aria-expanded={addingTo === opt.id}
+                      className="w-full rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 underline transition hover:text-brand"
+                      title="Produto único com unidade livre — noite avulsa e outros add-ons"
+                    >
+                      item avulso (noite, unidade)
+                    </button>
+                  </div>
                 ) : null}
               </section>
             );
@@ -515,7 +536,18 @@ export default function ConstrutorClient({
         </div>
       )}
 
-      {/* Painel lateral de busca + prévia + adicionar */}
+      {/* Buscador de catálogo — caminho principal para adicionar itens */}
+      {buscandoEm ? (
+        <BuscadorCatalogo
+          quoteId={header.id}
+          optionId={buscandoEm.id}
+          optionLabel={buscandoEm.label}
+          onFechar={() => setBuscandoEm(null)}
+          onAdicionado={() => router.refresh()}
+        />
+      ) : null}
+
+      {/* Painel lateral de item avulso (unidade livre) + prévia + adicionar */}
       {addingTo ? (
         <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={resetPanel}>
           <div
@@ -523,7 +555,7 @@ export default function ConstrutorClient({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-serif text-2xl text-brand">Adicionar item</h3>
+              <h3 className="font-serif text-2xl text-brand">Item avulso</h3>
               <button
                 type="button"
                 onClick={resetPanel}

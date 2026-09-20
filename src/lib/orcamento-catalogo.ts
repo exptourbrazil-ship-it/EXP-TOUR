@@ -7,6 +7,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
 import type { ProgramaOrcavel, AcomodacaoPrecos } from "@/lib/orcamento";
+// Rotulos/bandeiras de pais: compartilhados com o construtor de cotacao.
+import { bandeiraPais, rotuloPais } from "@/lib/paises";
 
 function getSupabase(): SupabaseClient {
   return createClient(
@@ -15,9 +17,6 @@ function getSupabase(): SupabaseClient {
   );
 }
 
-// country_code (char2) -> rotulo usado na UI + bandeira.
-const PAIS_LABEL: Record<string, string> = { GB: "UK", MT: "Malta", US: "US", CA: "Canada", NZ: "New Zealand", IE: "Ireland" };
-const PAIS_FLAG: Record<string, string> = { GB: "🇬🇧", MT: "🇲🇹", US: "🇺🇸", CA: "🇨🇦", NZ: "🇳🇿", IE: "🇮🇪" };
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const num = (v: unknown) => (v == null ? 0 : Number(v) || 0);
@@ -148,7 +147,7 @@ export async function carregarCatalogoOrcamento(): Promise<CatalogoOrcamento> {
     const unit = tuition.get(p.id as string) ?? 0;
     const wfee = fixedFee ? round2(unit * max) : unit; // pacote fixo: reconstroi o total
     const fee = taxas.get(p.id as string) ?? { registration: 0, material: 0, entrada: 0 };
-    const pais = PAIS_LABEL[campus.country_code as string] || (campus.country_code as string);
+    const pais = rotuloPais(campus.country_code as string);
     paisesSet.add(pais);
     programas.push({
       id: p.id as string,
@@ -158,7 +157,7 @@ export async function carregarCatalogoOrcamento(): Promise<CatalogoOrcamento> {
       city: campus.city as string,
       country: pais,
       school: campus.supplier?.display_name as string,
-      flag: PAIS_FLAG[campus.country_code as string] || "",
+      flag: bandeiraPais(campus.country_code as string),
       currency: campus.base_currency as string,
       minWeeks: min,
       maxWeeks: max,
