@@ -15,6 +15,7 @@ function item(p: Partial<ItemCatalogo> & { id: string; name: string }): ItemCata
     maxQtd: 52,
     courseType: null,
     unit: "week",
+    addonDe: null,
     ...p,
   };
 }
@@ -130,4 +131,27 @@ test("labelUnidade distingue semana de noite e trata o singular", () => {
   assert.equal(labelUnidade("week", 4), "4 semanas");
   assert.equal(labelUnidade("day", 1), "1 noite");
   assert.equal(labelUnidade("day", 3), "3 noites");
+});
+
+test("noite extra so aparece para a acomodacao escolhida", () => {
+  const itens = [
+    item({ id: "seguro", name: "Seguro saude", kind: "insurance" }),
+    item({ id: "noite-a", name: "Noite extra — Apartamento", kind: "other", unit: "day", minQtd: 1, maxQtd: 14, addonDe: "acom-a" }),
+    item({ id: "noite-b", name: "Noite extra — Casa de familia", kind: "other", unit: "day", minQtd: 1, maxQtd: 14, addonDe: "acom-b" }),
+  ];
+  const so = (acomodacaoId: string | null) =>
+    filtrarItensCatalogo({ itens, termo: "", quantidade: null, acomodacaoId }).resultados.map((r) => r.id);
+
+  // Escolheu a acomodacao A: a noite extra DELA e o seguro (que nao e add-on).
+  assert.deepEqual([...so("acom-a")].sort(), ["noite-a", "seguro"]);
+  // Escolheu a B: so a noite extra da B.
+  assert.deepEqual([...so("acom-b")].sort(), ["noite-b", "seguro"]);
+  // Pulou a acomodacao: nenhuma noite extra faz sentido.
+  assert.deepEqual(so(null), ["seguro"]);
+});
+
+test("produto sem addonDe nunca e escondido pelo filtro de acomodacao", () => {
+  const itens = [item({ id: "s", name: "Seguro", kind: "insurance" })];
+  assert.equal(filtrarItensCatalogo({ itens, termo: "", quantidade: null, acomodacaoId: "qualquer" }).resultados.length, 1);
+  assert.equal(filtrarItensCatalogo({ itens, termo: "", quantidade: null, acomodacaoId: null }).resultados.length, 1);
 });

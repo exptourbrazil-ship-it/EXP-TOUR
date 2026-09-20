@@ -172,11 +172,14 @@ export default function BuscadorCatalogo({
         termo,
         kinds: KINDS_SERVICO,
         campusId: campusFiltro,
+        // Noite extra so aparece se for DA acomodacao escolhida: uma noite
+        // extra de um quarto que o aluno nao reservou nao existe como produto.
+        acomodacaoId: acom?.id ?? null,
         quantidade: null,
       });
     }
     return { resultados: [], foraDaFaixa: [] };
-  }, [passo, itens, termo, pais, semanasCurso, semanasAcom, campusFiltro]);
+  }, [passo, itens, termo, pais, semanasCurso, semanasAcom, campusFiltro, acom]);
 
   useEffect(() => {
     setVisiveis(PAGINA);
@@ -579,7 +582,12 @@ export default function BuscadorCatalogo({
                   ) : null}
 
                   {!carregando && resultados.length === 0 ? (
-                    <VazioDoPasso passo={passo} soDoCampus={soDoCampus} onVerTodos={() => setSoDoCampus(false)} />
+                    <VazioDoPasso
+                      passo={passo}
+                      soDoCampus={soDoCampus}
+                      acomEscolhida={!!acom}
+                      onVerTodos={() => setSoDoCampus(false)}
+                    />
                   ) : (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {naTela.map((item) => {
@@ -753,10 +761,12 @@ function TituloPasso({
 function VazioDoPasso({
   passo,
   soDoCampus,
+  acomEscolhida,
   onVerTodos,
 }: {
   passo: number;
   soDoCampus: boolean;
+  acomEscolhida: boolean;
   onVerTodos: () => void;
 }) {
   return (
@@ -766,7 +776,9 @@ function VazioDoPasso({
           ? "Nenhum curso encontrado. Ajuste o termo, o destino ou a duração."
           : passo === 2
             ? "Nenhuma acomodação cadastrada para este campus nessa duração."
-            : "Nenhum serviço cadastrado para este campus."}
+            : acomEscolhida
+              ? "Nenhum serviço para este campus. Noites extras aparecem só quando existem para a acomodação escolhida."
+              : "Nenhum serviço cadastrado para este campus. Sem acomodação escolhida, noites extras não se aplicam."}
       </p>
       {passo > 1 && soDoCampus ? (
         <button

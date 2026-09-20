@@ -133,6 +133,7 @@ export async function carregarIndiceCatalogo(
       // Sem tabela ativa o produto nao e cotavel na pratica; `week` e so o
       // default de exibicao — o motor recusa o item e o card mostra "sem preco".
       unit: unidades.get(p.id as string) ?? "week",
+      addonDe: (p.attributes?.addon_de as string) ?? null,
     });
   }
 

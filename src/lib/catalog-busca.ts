@@ -30,6 +30,11 @@ export type ItemCatalogo = {
   /** Maximo NA UNIDADE do produto. 0 = sem maximo; ver `faixaDe`. */
   maxQtd: number;
   courseType: string | null;
+  /**
+   * Quando o produto e um ADD-ON de outra acomodacao (hoje: "Noite extra"),
+   * o id do produto-mae. Vem de `attributes.addon_de`. null = produto proprio.
+   */
+  addonDe: string | null;
 };
 
 export type ForaDaFaixaItem = {
@@ -88,6 +93,13 @@ export function filtrarItensCatalogo(args: {
   /** restringe a um campus (usado nos passos 2 e 3 do construtor) */
   campusId?: string | null;
   /**
+   * Acomodacao escolhida no passo 2. Um ADD-ON (noite extra) so aparece quando
+   * e daquela acomodacao: uma noite extra de um quarto que o aluno nao reservou
+   * nao existe como produto vendavel. Produtos sem `addonDe` (seguro, servico)
+   * nao sao afetados. `null`/ausente = nenhum add-on passa.
+   */
+  acomodacaoId?: string | null;
+  /**
    * Quantidade pretendida, NA UNIDADE DE CADA ITEM. Passe null quando o
    * conjunto misturar unidades (ex.: seguro em semanas + noite extra em
    * diarias): ali cada extra tem a sua propria quantidade no carrinho.
@@ -106,6 +118,8 @@ export function filtrarItensCatalogo(args: {
 
   for (const item of args.itens) {
     if (args.campusId && item.campusId !== args.campusId) continue;
+    // Add-on so acompanha a propria acomodacao.
+    if (item.addonDe && item.addonDe !== (args.acomodacaoId ?? null)) continue;
     if (paisFiltro && item.country !== paisFiltro) continue;
     if (kindsFiltro && !kindsFiltro.has(item.kind)) continue;
     const score = scoreRelevancia(item, termos, coringa);
