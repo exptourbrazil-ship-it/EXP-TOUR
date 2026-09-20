@@ -701,6 +701,12 @@ export type PublicQuote = {
   };
   // Aba "Notes": observacoes do consultor por cotacao (HTML sanitizado). null = sem notas.
   notesHtml: string | null;
+  /**
+   * Notas POS-EMISSAO: recados datados, publicados sem reemitir. Aparecem na
+   * mesma aba, DEPOIS da observacao original — que fica congelada porque e
+   * parte da proposta enviada. Mais recente primeiro. Retratadas nao vem.
+   */
+  notas: Array<{ ref: string; bodyHtml: string; createdAt: string }>;
   fx: {
     necessario: boolean;
     rate: number | null;
@@ -939,6 +945,33 @@ export async function getPublicQuote(
   // Notas do consultor (aba "Notes") — HTML sanitizado; null quando vazio.
   const notesBruto = (quote.notes_html as string) ?? "";
   const notesHtml = notesBruto.trim() ? sanitizarHtml(notesBruto) || null : null;
+
+  // Notas POS-EMISSAO (recados datados, sem reemitir). Retratadas ficam fora.
+  //
+  // NAO re-sanitizar aqui: `body_html` so e escrito por `addQuoteNote`, que
+  // monta o HTML a partir de TEXTO PURO escapando uma unica vez, e o trigger
+  // `quote_note_append_only` impede que a coluna seja alterada depois. Passar
+  // por `sanitizarHtml` de novo escaparia o `&` outra vez (a funcao nao e
+  // idempotente) e o aluno leria "Taxa &amp; seguro".
+  //
+  // O teto de 50 protege a pagina publica: nada impede que uma cotacao antiga
+  // acumule notas, e todas iriam para o HTML.
+  const { data: notasRows } = await supabase
+    .from("quote_note")
+    .select("id, body_html, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("quote_id", quote.id)
+    .is("hidden_at", null)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const notas = (notasRows ?? [])
+    .map((n: any, i: number) => ({
+      // Ordinal, nao o uuid: esta pagina nao publica identificador interno.
+      ref: `n${i}`,
+      bodyHtml: ((n.body_html as string) ?? "").trim(),
+      createdAt: n.created_at as string,
+    }))
+    .filter((n) => n.bodyHtml !== "");
   // Institucional (aba "About Us") — HTML sanitizado.
   const aboutHtmlBruto = (tenant?.about_us_html as string) ?? "";
   const aboutHtml = aboutHtmlBruto.trim() ? sanitizarHtml(aboutHtmlBruto) || null : null;
@@ -964,6 +997,7 @@ export async function getPublicQuote(
       chatUrl: /^https?:\/\/[^\s]+$/i.test((tenant?.chat_url as string) ?? "") ? (tenant?.chat_url as string) : null,
     },
     notesHtml,
+    notas,
     fx: {
       necessario: fxNecessario,
       rate: rateExibida,

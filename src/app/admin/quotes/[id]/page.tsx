@@ -58,6 +58,21 @@ export default async function AdminQuoteBuilderPage({
     notesHtml: (quote as any).notes_html ?? null,
   };
 
+  // Notas pos-emissao ja publicadas (inclusive as retratadas, que o consultor
+  // precisa ver para saber que existiram).
+  const { data: notaRows } = await supabase
+    .from("quote_note")
+    .select("id, body_html, created_at, hidden_at")
+    .eq("tenant_id", tenantId)
+    .eq("quote_id", quote.id)
+    .order("created_at", { ascending: false });
+  const notas = (notaRows ?? []).map((n: any) => ({
+    id: n.id as string,
+    bodyHtml: (n.body_html as string) ?? "",
+    createdAt: n.created_at as string,
+    hidden: !!n.hidden_at,
+  }));
+
   const { data: optionRows } = await supabase
     .from("quote_option")
     .select("id, label, sort")
@@ -113,7 +128,7 @@ export default async function AdminQuoteBuilderPage({
 
   return (
     <>
-      <ConstrutorClient header={header} initialOptions={options} />
+      <ConstrutorClient header={header} initialOptions={options} notas={notas} />
       {materiais.length > 0 ? (
         <div className="mx-auto mt-6 max-w-6xl">
           <div className="rounded-2xl border border-neutral-200 bg-white p-4">

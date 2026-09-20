@@ -21,6 +21,7 @@ import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { priceProductFromDb } from "@/lib/catalog-service";
 import { validarDuracao } from "@/lib/duracao";
 import { sanitizarHtml } from "@/lib/produto-conteudo";
+import { tamanhoVisivel, textoParaHtmlSimples } from "@/lib/texto-html";
 
 /** Autor da acao (para a trilha de auditoria). */
 export type ServiceActor = { usuario: string; ip?: string | null };
@@ -1075,6 +1076,158 @@ export async function setQuoteNotes(
 // ---------------------------------------------------------------------------
 // recalculateQuote
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Notas POS-EMISSAO (quote_note)
+// ---------------------------------------------------------------------------
+
+/** `body` e TEXTO PURO: o HTML e montado aqui, escapando uma unica vez. */
+export type AddQuoteNoteArgs = { tenantId: string; quoteId: string; body: string };
+
+/** Teto do texto visivel da nota (um recado e curto). */
+export const NOTA_MAX_CARACTERES = 2000;
+
+/**
+ * Publica uma nota datada no link do estudante, SEM reemitir.
+ *
+ * Complementa `setQuoteNotes`, que congela na emissao: a observacao original e
+ * parte da proposta enviada e nao pode ser reescrita, mas acrescentar um recado
+ * ("consegui vaga em marco") nao deveria invalidar o link que o aluno ja tem.
+ * Cada nota e uma entrada nova — nunca uma edicao do que ja foi publicado.
+ *
+ * So faz sentido enquanto a proposta esta VISIVEL no portal: em rascunho o
+ * consultor edita a observacao direto, e com link revogado/expirado ninguem
+ * leria a nota.
+ */
+export async function addQuoteNote(
+  supabase: SupabaseClient,
+  args: AddQuoteNoteArgs,
+  actor: ServiceActor & { adminUserId?: string | null },
+): Promise<{ noteId: string }> {
+  const limpo = (args.body || "").trim();
+  if (!limpo) throw new Error("A nota nao pode ser vazia.");
+  if (limpo.length > NOTA_MAX_CARACTERES) {
+    throw new Error(`A nota passa de ${NOTA_MAX_CARACTERES} caracteres.`);
+  }
+  // Escape UNICO, a partir do texto cru. Nao encadear com sanitizarHtml: ele
+  // nao e idempotente e cada passagem extra escaparia o `&` de novo, fazendo
+  // "Taxa & seguro" chegar ao estudante como "Taxa &amp; seguro".
+  const corpoHtml = textoParaHtmlSimples(limpo);
+  if (!corpoHtml || tamanhoVisivel(corpoHtml) === 0) {
+    throw new Error("A nota nao pode ser vazia.");
+  }
+
+  const { data: quote, error: qErr } = await supabase
+    .from("quote")
+    .select("id, status, token_revoked_at")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.quoteId)
+    .maybeSingle();
+  if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
+  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+
+  const status = quote.status as string;
+  if (status === "draft") {
+    throw new Error("Em rascunho, edite a observacao da cotacao em vez de publicar nota.");
+  }
+  // Mesma regra do portal (visivelNoPortal): sem link vivo a nota nao chega
+  // a ninguem, e publicar daria ao consultor a falsa sensacao de ter avisado.
+  const visivel =
+    !quote.token_revoked_at &&
+    (status === "issued" || status === "viewed" || status === "option_selected");
+  if (!visivel) {
+    throw new Error("O link desta cotacao nao esta ativo: a nota nao seria exibida.");
+  }
+
+  const { data: nota, error: insErr } = await supabase
+    .from("quote_note")
+    .insert({
+      tenant_id: args.tenantId,
+      quote_id: args.quoteId,
+      body_html: corpoHtml,
+      created_by_user_id: actor.adminUserId ?? null,
+    })
+    .select("id")
+    .single();
+  if (insErr) throw new Error(`Falha ao publicar nota: ${insErr.message}`);
+  const noteId = nota.id as string;
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: actor.usuario,
+    acao: "quote.note.published",
+    alvo: args.quoteId,
+    detalhe: { noteId, tamanho: tamanhoVisivel(corpoHtml) },
+    ip: actor.ip ?? null,
+  });
+
+  // Entra na linha do tempo da cotacao, como os demais eventos. A falha aqui
+  // nao desfaz a nota (ela ja foi publicada), mas TEM de aparecer no log: ficar
+  // em silencio foi justamente o que escondeu o CHECK de `kind` que recusava
+  // 'note_published'.
+  const { error: evErr } = await supabase.from("quote_event").insert({
+    tenant_id: args.tenantId,
+    quote_id: args.quoteId,
+    kind: "note_published",
+    actor_type: "user",
+    actor_user_id: actor.adminUserId ?? null,
+    metadata: { noteId },
+  });
+  if (evErr) console.error("[quote] evento note_published nao gravado:", evErr.message);
+
+  return { noteId };
+}
+
+export type HideQuoteNoteArgs = { tenantId: string; quoteId: string; noteId: string };
+
+/**
+ * Retrata uma nota: some do portal, permanece no banco e na trilha. E o
+ * substituto do "apagar" — a nota ja foi lida por alguem, entao fingir que
+ * nunca existiu seria pior do que registrar que foi retirada.
+ */
+export async function hideQuoteNote(
+  supabase: SupabaseClient,
+  args: HideQuoteNoteArgs,
+  actor: ServiceActor & { adminUserId?: string | null },
+): Promise<{ ok: true }> {
+  // Posse: a nota tem de ser desta cotacao E deste tenant.
+  const { data: nota, error: nErr } = await supabase
+    .from("quote_note")
+    .select("id, hidden_at")
+    .eq("tenant_id", args.tenantId)
+    .eq("quote_id", args.quoteId)
+    .eq("id", args.noteId)
+    .maybeSingle();
+  if (nErr) throw new Error(`Falha ao carregar nota: ${nErr.message}`);
+  if (!nota) throw new Error("Nota nao encontrada nesta cotacao.");
+  if (nota.hidden_at) return { ok: true }; // idempotente
+
+  const { error: updErr } = await supabase
+    .from("quote_note")
+    .update({ hidden_at: new Date().toISOString(), hidden_by_user_id: actor.adminUserId ?? null })
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.noteId);
+  if (updErr) throw new Error(`Falha ao retratar nota: ${updErr.message}`);
+
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: actor.usuario,
+    acao: "quote.note.hidden",
+    alvo: args.quoteId,
+    detalhe: { noteId: args.noteId },
+    ip: actor.ip ?? null,
+  });
+
+  const { error: evErr } = await supabase.from("quote_event").insert({
+    tenant_id: args.tenantId,
+    quote_id: args.quoteId,
+    kind: "note_hidden",
+    actor_type: "user",
+    actor_user_id: actor.adminUserId ?? null,
+    metadata: { noteId: args.noteId },
+  });
+  if (evErr) console.error("[quote] evento note_hidden nao gravado:", evErr.message);
+
+  return { ok: true };
+}
 
 export type RecalculateQuoteArgs = { tenantId: string; quoteId: string };
 

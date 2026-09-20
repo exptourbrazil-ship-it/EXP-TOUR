@@ -2292,10 +2292,12 @@ alter table if exists quote add column if not exists converted_contract_id uuid 
 
 -- Novos tipos de evento na telemetria da cotacao: 'accepted' (aceite do termo)
 -- e 'converted' (contrato provisionado). Recria o CHECK para inclui-los.
+-- 20/09/2026: somados 'note_published' e 'note_hidden' (notas pos-emissao).
 alter table if exists quote_event drop constraint if exists quote_event_kind_check;
 alter table if exists quote_event add constraint quote_event_kind_check
   check (kind in ('created','issued','sent','opened','option_viewed','downloaded',
-                  'option_selected','expired','reissued','accepted','converted'));
+                  'option_selected','expired','reissued','accepted','converted',
+                  'note_published','note_hidden'));
 
 -- Funcao TRANSACIONAL da conversao (tudo-ou-nada), no molde de aplicar_alteracao.
 -- Valida sob lock -> resolve titular por CPF (contato de titular JA existente
@@ -3232,3 +3234,49 @@ create index if not exists idx_seasonal_adjustment_produto
   on seasonal_adjustment(tenant_id, product_id, status) where product_id is not null;
 
 alter table if exists seasonal_adjustment enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- quote_note — notas POS-EMISSAO da cotacao (aplicado em 20/09/2026)
+-- ---------------------------------------------------------------------------
+-- `quote.notes_html` (aba "Observacoes" do link) congela na emissao: e parte da
+-- proposta enviada e reescreve-la mudaria o que o aluno ja leu. Esta tabela e o
+-- caminho para ACRESCENTAR um recado sem reemitir — o link atual continua
+-- valendo. Append-only: nunca editar body_html; para retratar, preencher
+-- hidden_at (some do portal, o registro fica).
+create table if not exists quote_note (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  quote_id uuid not null references quote(id) on delete cascade,
+  body_html text not null,             -- HTML montado por textoParaHtmlSimples (escape unico)
+  created_at timestamptz not null default now(),
+  created_by_user_id uuid,             -- admin_users.id; nulo via segredo de ambiente
+  hidden_at timestamptz,
+  hidden_by_user_id uuid
+);
+
+create index if not exists quote_note_quote_idx
+  on quote_note (tenant_id, quote_id, created_at desc);
+
+-- APPEND-ONLY no banco, nao so por convencao: a tabela existe para preservar o
+-- que o aluno ja leu. Depois de gravada, so hidden_at/hidden_by_user_id mudam.
+create or replace function quote_note_somente_retratacao()
+returns trigger language plpgsql as $$
+begin
+  if new.body_html is distinct from old.body_html
+     or new.created_at is distinct from old.created_at
+     or new.quote_id is distinct from old.quote_id
+     or new.tenant_id is distinct from old.tenant_id
+     or new.created_by_user_id is distinct from old.created_by_user_id then
+    raise exception 'quote_note e append-only: so hidden_at/hidden_by_user_id podem ser alterados';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists quote_note_append_only on quote_note;
+create trigger quote_note_append_only
+  before update on quote_note
+  for each row execute function quote_note_somente_retratacao();
+
+-- Autorizacao em CODIGO (service role nas rotas): RLS ligado, sem policies.
+alter table quote_note enable row level security;

@@ -24,6 +24,8 @@ export type OptionTotais = {
   moedasMistas: boolean;
 };
 export type OptionView = { id: string; label: string; items: ItemView[]; totais?: OptionTotais | null };
+/** Nota pos-emissao ja publicada no link do estudante. */
+export type NotaView = { id: string; bodyHtml: string; createdAt: string; hidden: boolean };
 export type QuoteHeader = {
   id: string;
   reference: string;
@@ -56,6 +58,10 @@ type Preview = {
   discounts: { name: string; amount: number; appliesTo: string }[];
   warnings: string[];
 };
+
+// Estados em que a proposta esta VISIVEL no link do estudante — os unicos em
+// que publicar uma nota faz sentido (e os unicos que o servidor aceita).
+const PODE_NOTA = new Set(["issued", "viewed", "option_selected"]);
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Rascunho",
@@ -102,9 +108,11 @@ function totaisPorMoeda(items: ItemView[]): Record<string, number> {
 export default function ConstrutorClient({
   header,
   initialOptions,
+  notas,
 }: {
   header: QuoteHeader;
   initialOptions: OptionView[];
+  notas: NotaView[];
 }) {
   const router = useRouter();
   const options = initialOptions; // fonte = servidor; router.refresh() recarrega
@@ -392,6 +400,13 @@ export default function ConstrutorClient({
       ) : null}
 
       <NotesEditor quoteId={header.id} initialHtml={header.notesHtml} onErro={setErro} isDraft={isDraft} />
+
+      {/* Nota pos-emissao: so aparece nos estados em que o servidor aceita
+          (mesma regra de addQuoteNote/visivelNoPortal). Mostrar a caixa em
+          'converted' ou 'cancelled' prometeria o que o POST recusa. */}
+      {PODE_NOTA.has(header.status) && header.publicToken && !header.tokenRevoked ? (
+        <NotasPosEmissao quoteId={header.id} notas={notas} onErro={setErro} />
+      ) : null}
 
       {options.length === 0 ? (
         <p className="text-sm text-neutral-500">
@@ -754,6 +769,119 @@ function textoParaHtml(texto: string): string {
     .split(/\n{2,}/)
     .map((par) => `<p>${esc(par).replace(/\n/g, "<br>")}</p>`)
     .join("");
+}
+
+
+// Notas POS-EMISSAO: recado datado publicado no link que o estudante JA tem,
+// sem reemitir. E a alternativa a reabrir a observacao original, que congela na
+// emissao porque e parte da proposta enviada.
+function NotasPosEmissao({
+  quoteId,
+  notas,
+  onErro,
+}: {
+  quoteId: string;
+  notas: NotaView[];
+  onErro: (msg: string | null) => void;
+}) {
+  const router = useRouter();
+  const [texto, setTexto] = useState("");
+  const [publicando, setPublicando] = useState(false);
+  const MAX = 2000;
+  const restante = MAX - texto.length;
+
+  async function publicar() {
+    const corpo = texto.trim();
+    if (!corpo || publicando) return;
+    setPublicando(true);
+    onErro(null);
+    try {
+      // Texto PURO: o servidor monta o HTML e escapa uma unica vez. Mandar
+      // HTML daqui escapava duas vezes e o "&" chegava quebrado ao aluno.
+      await postJson(`/api/admin/quotes/${quoteId}/notas`, { body: corpo });
+      setTexto("");
+      router.refresh();
+    } catch (e: any) {
+      onErro(e?.message || "Não foi possível publicar a nota.");
+    } finally {
+      setPublicando(false);
+    }
+  }
+
+  async function retratar(noteId: string) {
+    if (typeof window !== "undefined" && !window.confirm("Retirar esta nota do link do estudante?")) {
+      return;
+    }
+    onErro(null);
+    try {
+      await deleteJson(`/api/admin/quotes/${quoteId}/notas`, { noteId });
+      router.refresh();
+    } catch (e: any) {
+      onErro(e?.message || "Não foi possível retratar a nota.");
+    }
+  }
+
+  return (
+    <div className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4">
+      <h2 className="font-serif text-lg text-brand">Atualizações para o estudante</h2>
+      <p className="text-xs text-neutral-500">
+        Publica um recado datado no link que ele já tem. Não reemite, não gera link novo e não
+        altera preço nem a observação original.
+      </p>
+
+      <textarea
+        value={texto}
+        onChange={(e) => setTexto(e.target.value.slice(0, MAX))}
+        rows={3}
+        placeholder="Ex.: Consegui vaga na turma de março. As demais condições seguem as mesmas."
+        className="mt-3 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm text-brand outline-none focus:border-brand"
+      />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] text-neutral-500">
+          {restante < 200 ? `${restante} caracteres restantes` : "Fica visível assim que publicada."}
+        </span>
+        <button
+          type="button"
+          onClick={publicar}
+          disabled={publicando || texto.trim() === ""}
+          className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+        >
+          {publicando ? "Publicando…" : "Publicar atualização"}
+        </button>
+      </div>
+
+      {notas.length > 0 ? (
+        <ul className="mt-4 flex flex-col gap-2 border-t border-neutral-100 pt-3">
+          {notas.map((n) => (
+            <li
+              key={n.id}
+              className={`rounded-xl border p-3 ${n.hidden ? "border-neutral-200 bg-neutral-50 opacity-70" : "border-neutral-100"}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <span className="text-[11px] text-neutral-500">
+                  {new Date(n.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                  {n.hidden ? " · retirada do link" : ""}
+                </span>
+                {!n.hidden ? (
+                  <button
+                    type="button"
+                    onClick={() => retratar(n.id)}
+                    className="text-[11px] text-neutral-500 underline hover:text-red-700"
+                  >
+                    retirar
+                  </button>
+                ) : null}
+              </div>
+              <div
+                className="mt-1 text-sm text-brand [&_p]:mt-1"
+                dangerouslySetInnerHTML={{ __html: n.bodyHtml }}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 // Editor de OBSERVAÇÕES do consultor (aba "Notes" do portal). Texto simples com

@@ -150,7 +150,7 @@ export default function PortalClient({
   }, [dados.options]);
   const [mesIdx, setMesIdx] = useState(() => mesInicialDaRegua(meses, inicioCurso));
   const mostrarRegua = fx.necessario;
-  const temNotes = !!dados.notesHtml;
+  const temNotes = !!dados.notesHtml || dados.notas.length > 0;
 
   // Aceite concluido: tela terminal de sucesso (o codigo de acesso foi enviado).
   if (concluido) return <Sucesso brand={dados.brand} />;
@@ -297,7 +297,7 @@ export default function PortalClient({
         ) : aba === "about" ? (
           <AboutUs dados={dados} />
         ) : aba === "notes" ? (
-          <Notes html={dados.notesHtml!} />
+          <Notes html={dados.notesHtml} notas={dados.notas} />
         ) : (
           <DetalheOpcao
             token={token}
@@ -1047,16 +1047,62 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
 // ---------------------------------------------------------------------------
 // Aba NOTES — observacoes do consultor (HTML sanitizado no servidor).
 // ---------------------------------------------------------------------------
-function Notes({ html }: { html: string }) {
+const proseNotas =
+  "space-y-3 text-sm leading-relaxed text-[color:var(--p-ink)] [&_a]:underline [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ul]:list-disc";
+
+/**
+ * Aba "Observações": a observação ORIGINAL (congelada na emissão, parte da
+ * proposta enviada) e, abaixo, as atualizações publicadas depois — cada uma
+ * datada, para o estudante ver o que mudou desde que recebeu o link.
+ */
+function Notes({
+  html,
+  notas,
+}: {
+  html: string | null;
+  notas: PublicQuote["notas"];
+}) {
   return (
     <section className="rounded-2xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] p-5">
       <h2 className="titulo-portal text-xl text-[color:var(--p-ink)]">Observações</h2>
-      <div
-        className="mt-3 space-y-3 text-sm leading-relaxed text-[color:var(--p-ink)] [&_a]:underline [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ul]:list-disc"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+
+      {html ? <div className={`mt-3 ${proseNotas}`} dangerouslySetInnerHTML={{ __html: html }} /> : null}
+
+      {notas.length > 0 ? (
+        <div className={html ? "mt-5 border-t border-[color:var(--p-line)] pt-4" : "mt-3"}>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">
+            {notas.length === 1 ? "Atualização" : "Atualizações"}
+          </h3>
+          <ol className="mt-3 space-y-4">
+            {notas.map((n) => (
+              <li key={n.ref}>
+                <p className="text-[11px] text-[color:var(--p-muted)]">{fmtDataHora(n.createdAt)}</p>
+                <div
+                  className={`mt-1 ${proseNotas}`}
+                  dangerouslySetInnerHTML={{ __html: n.bodyHtml }}
+                />
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function fmtDataHora(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
+    });
+  } catch {
+    return "";
+  }
 }
 
 function ResumoLinha({ rot, val, destaque }: { rot: string; val: string; destaque?: boolean }) {
