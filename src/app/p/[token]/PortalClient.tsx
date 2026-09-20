@@ -9,6 +9,7 @@ import {
   mesesDaRegua,
 } from "./SimuladorParcelas";
 import type { MesInicio } from "@/app/orcamento/shared";
+import { REDE_LABEL, type Rede } from "@/lib/redes-sociais";
 
 // Cliente do portal do estudante — apresentacao no formato Edvisor, em ABAS:
 // Overview (opcoes lado a lado) · Option 1..N (detalhe de cada opcao: itens +
@@ -775,13 +776,42 @@ function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
 }
 
 // "Sobre a escola" — descrição (sanitizada), destaques, fotos/vídeo do campus.
-function EscolaBloco({ escola, website }: { escola: EscolaItem; website: string | null }) {
+function EscolaBloco({
+  escola,
+  contato,
+}: {
+  escola: EscolaItem;
+  contato: PublicQuote["escolas"][string] | null;
+}) {
+  const website = contato?.website ?? null;
+  const favicon = contato?.favicon ?? null;
+  const social = contato?.social ?? [];
   return (
     <div className="mt-5 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Sobre a escola</h3>
-      <p className="mt-1 text-[color:var(--p-ink)]">
-        {escola.nome ?? "Escola"}
-        {escola.local ? <span className="text-[color:var(--p-muted)]"> · {escola.local}</span> : null}
+      <p className="mt-1 flex items-center gap-2 text-[color:var(--p-ink)]">
+        {favicon ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={favicon}
+            alt=""
+            aria-hidden="true"
+            width={16}
+            height={16}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            // Favicon quebrado some em vez de deixar o icone de imagem partida
+            // ao lado do nome da escola numa proposta que vai para o cliente.
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+            className="h-4 w-4 shrink-0 rounded-sm object-contain"
+          />
+        ) : null}
+        <span>
+          {escola.nome ?? "Escola"}
+          {escola.local ? <span className="text-[color:var(--p-muted)]"> · {escola.local}</span> : null}
+        </span>
       </p>
       {website ? (
         <a
@@ -841,9 +871,73 @@ function EscolaBloco({ escola, website }: { escola: EscolaItem; website: string 
         </div>
       ) : null}
 
+      {social.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {social.map((r) => (
+            <a
+              key={r.rede}
+              href={r.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              title={`${escola.nome ?? "Escola"} no ${REDE_LABEL[r.rede]}`}
+              aria-label={`${escola.nome ?? "Escola"} no ${REDE_LABEL[r.rede]}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--p-line)] text-[color:var(--p-ink)] transition hover:border-[color:var(--p-cta)] hover:text-[color:var(--p-cta)] print:hidden"
+            >
+              <IconeRede rede={r.rede} />
+            </a>
+          ))}
+        </div>
+      ) : null}
+
       <GaleriaMidia midias={escola.midias} />
     </div>
   );
+}
+
+// Ícones das redes, inline (sem biblioteca e sem requisição externa: são
+// poucos e assim não dependem de CDN numa página pública).
+function IconeRede({ rede }: { rede: Rede }) {
+  const base = "h-4 w-4";
+  switch (rede) {
+    case "instagram":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={base} aria-hidden="true">
+          <rect x="2" y="2" width="20" height="20" rx="5" />
+          <circle cx="12" cy="12" r="4" />
+          <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "facebook":
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" className={base} aria-hidden="true">
+          <path d="M14 9h3V6h-3c-2.2 0-4 1.8-4 4v2H8v3h2v7h3v-7h3l1-3h-4v-2c0-.6.4-1 1-1z" />
+        </svg>
+      );
+    case "youtube":
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" className={base} aria-hidden="true">
+          <path d="M22 12s0-3.2-.4-4.7a2.5 2.5 0 0 0-1.8-1.8C18.3 5 12 5 12 5s-6.3 0-7.8.5a2.5 2.5 0 0 0-1.8 1.8C2 8.8 2 12 2 12s0 3.2.4 4.7a2.5 2.5 0 0 0 1.8 1.8C5.7 19 12 19 12 19s6.3 0 7.8-.5a2.5 2.5 0 0 0 1.8-1.8C22 15.2 22 12 22 12zM10 15V9l5.2 3L10 15z" />
+        </svg>
+      );
+    case "linkedin":
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" className={base} aria-hidden="true">
+          <path d="M6.9 8.4H3.9V20h3V8.4zM5.4 3a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM20.1 20h-3v-6c0-1.5-.5-2.5-1.8-2.5-1 0-1.6.7-1.9 1.4-.1.2-.1.6-.1.9V20h-3V8.4h3v1.6c.4-.7 1.2-1.7 3-1.7 2.2 0 3.8 1.4 3.8 4.5V20z" />
+        </svg>
+      );
+    case "tiktok":
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" className={base} aria-hidden="true">
+          <path d="M16.5 3c.4 1.9 1.6 3.3 3.5 3.6v2.9c-1.3.1-2.6-.3-3.7-1v5.8c0 3.4-2.6 5.7-5.7 5.7A5.6 5.6 0 0 1 5 14.5c0-3.1 2.6-5.6 5.9-5.3v3a2.6 2.6 0 0 0-3 2.4 2.6 2.6 0 0 0 5.1.2V3h3.5z" />
+        </svg>
+      );
+    case "x":
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" className={base} aria-hidden="true">
+          <path d="M17.5 3h3l-6.6 7.5L21.8 21h-6l-4.3-5.6L6.5 21H3.4l7-8L2.6 3h6.1l3.9 5.2L17.5 3zm-1.1 16h1.7L7.7 4.8H5.9L16.4 19z" />
+        </svg>
+      );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -977,7 +1071,7 @@ function DetalheOpcao({
           escolas.push(e);
         });
         return escolas.map((e, i) => (
-          <EscolaBloco key={i} escola={e} website={(e.campusId && escolasContato[e.campusId]?.website) || null} />
+          <EscolaBloco key={i} escola={e} contato={(e.campusId && escolasContato[e.campusId]) || null} />
         ));
       })()}
 

@@ -3280,3 +3280,18 @@ create trigger quote_note_append_only
 
 -- Autorizacao em CODIGO (service role nas rotas): RLS ligado, sem policies.
 alter table quote_note enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- supplier: redes sociais e favicon (aplicado em 20/09/2026)
+-- ---------------------------------------------------------------------------
+-- Os dois viram elemento CLICAVEL na proposta publica do estudante: o favicon
+-- ao lado do nome da escola, as redes como icones com hyperlink. Ficam no
+-- SUPPLIER (e nao no campus) porque a conta e da escola: o Instagram da LSI
+-- vale para os 7 campi dela.
+--
+-- `social` e array [{rede,url}] — array, e nao objeto, para preservar a ordem.
+-- A validacao mora em src/lib/redes-sociais.ts e e por REDE: a URL tem de ser
+-- do host daquela rede. Sem isso o icone do Instagram poderia levar o estudante
+-- para qualquer lugar.
+alter table if exists supplier add column if not exists social jsonb;
+alter table if exists supplier add column if not exists favicon_url text;

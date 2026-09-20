@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, ehUrlHttp, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
+import { parseRedes, urlFavicon, type LinkSocial } from "@/lib/redes-sociais";
 import { entradaDaOpcao } from "@/lib/entrada-cotacao";
 import { inicioAlemDoIntake } from "@/lib/anexo3-entidades";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
@@ -716,7 +717,7 @@ export type PublicQuote = {
    * impediria que cotacoes ja emitidas ganhassem o link sem reemissao.
    * Mesma logica do cambio, que tambem e resolvido na abertura.
    */
-  escolas: Record<string, { website: string | null }>;
+  escolas: Record<string, { website: string | null; favicon: string | null; social: LinkSocial[] }>;
   fx: {
     necessario: boolean;
     rate: number | null;
@@ -966,11 +967,11 @@ export async function getPublicQuote(
         .filter((id): id is string => !!id),
     ),
   );
-  const escolas: Record<string, { website: string | null }> = {};
+  const escolas: Record<string, { website: string | null; favicon: string | null; social: LinkSocial[] }> = {};
   if (campusIds.length > 0) {
     const { data: campusContato } = await supabase
       .from("campus")
-      .select("id, website, supplier:supplier_id(website)")
+      .select("id, website, supplier:supplier_id(website, favicon_url, social)")
       .eq("tenant_id", tenantId)
       .in("id", campusIds)
       .is("archived_at", null);
@@ -980,7 +981,12 @@ export async function getPublicQuote(
       // sempre preenchido e e mais especifico (pagina daquela unidade).
       const bruto = ((c.website as string) || (sup?.website as string) || "").trim();
       // Defesa em profundidade no ponto de render: so http/https vai para href.
-      escolas[c.id as string] = { website: bruto && ehUrlHttp(bruto) ? bruto : null };
+      escolas[c.id as string] = {
+        website: bruto && ehUrlHttp(bruto) ? bruto : null,
+        // Favicon e redes sao da ESCOLA (supplier), nao da unidade.
+        favicon: urlFavicon(sup?.favicon_url),
+        social: parseRedes(sup?.social),
+      };
     }
   }
 

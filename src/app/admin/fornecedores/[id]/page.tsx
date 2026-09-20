@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { resumoInventarioFornecedor, contarProdutosPorTipoDoFornecedor } from "@/lib/fornecedor-hub-service";
+import { parseRedes, urlFavicon } from "@/lib/redes-sociais";
+import MarcaEditor from "./MarcaEditor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,9 +20,15 @@ export default async function FornecedorInventarioPage({ params }: { params: Pro
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
   const tenantId = await tenantIdAtual(supabase);
-  const [resumo, porTipo] = await Promise.all([
+  const [resumo, porTipo, marca] = await Promise.all([
     resumoInventarioFornecedor(supabase, tenantId, id),
     contarProdutosPorTipoDoFornecedor(supabase, tenantId, id),
+    supabase
+      .from("supplier")
+      .select("favicon_url, social")
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .maybeSingle(),
   ]);
   const base = `/admin/fornecedores/${id}`;
 
@@ -71,6 +79,14 @@ export default async function FornecedorInventarioPage({ params }: { params: Pro
           </Link>
         ))}
       </div>
+
+      <MarcaEditor
+        supplierId={id}
+        inicial={{
+          faviconUrl: urlFavicon(marca.data?.favicon_url),
+          social: parseRedes(marca.data?.social),
+        }}
+      />
 
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-neutral-400">Atalhos</p>
       <div className="flex flex-wrap gap-2">
