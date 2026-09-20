@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
+import { entradaDaOpcao } from "@/lib/entrada-cotacao";
 import { inicioAlemDoIntake } from "@/lib/anexo3-entidades";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { enviarAvisoInternoEmail } from "@/lib/email";
@@ -72,6 +73,8 @@ type TaxaLinha = {
   amount: number;
   currency: string;
   isRefundable: boolean | null;
+  /** charge_basis congelado no item: once_per_item | once_per_quote | per_unit. */
+  basis: string | null;
 };
 
 type ParcelaPlano = {
@@ -202,7 +205,7 @@ async function carregarTotaisPorOpcao(
     if (itemIds.length > 0) {
       const { data: fees } = await supabase
         .from("quote_item_fee")
-        .select("name, amount, currency, is_refundable")
+        .select("name, amount, currency, is_refundable, basis")
         .eq("tenant_id", tenantId)
         .in("quote_item_id", itemIds);
       for (const f of fees ?? []) {
@@ -213,6 +216,7 @@ async function carregarTotaisPorOpcao(
           amount: round2(amount),
           currency: (f.currency as string) || currency || "BRL",
           isRefundable: f.is_refundable == null ? null : !!f.is_refundable,
+          basis: (f.basis as string) ?? null,
         });
       }
     }
@@ -722,6 +726,17 @@ export type PublicQuote = {
     liquidoConvertido: number | null;
     depositAmount: number | null;
     depositCurrency: string | null;
+    /** Entrada na moeda da opcao (deposito do consultor, ou taxas unicas nao
+     *  reembolsaveis). Base do simulador de parcelas do portal. */
+    entrada: number;
+    /**
+     * VET usado para converter ESTA opcao (BRL por 1 unidade da moeda dela), e
+     * a data dessa cotacao. `fx.rate` no topo e so da moeda PRIMARIA da
+     * cotacao — usa-lo numa opcao de outra moeda daria um R$ errado. null
+     * quando nao ha cotacao para a moeda da opcao (nao da para simular).
+     */
+    vet: number | null;
+    vetAt: string | null;
     itens: Array<{
       grupo: string;
       nome: string;
@@ -906,6 +921,15 @@ export async function getPublicQuote(
       liquidoConvertido,
       depositAmount: t.option.deposit_amount != null ? toNum(t.option.deposit_amount) : null,
       depositCurrency: t.option.deposit_currency ?? null,
+      entrada: entradaDaOpcao({
+        moeda: t.currency,
+        deposit: t.option.deposit_amount != null ? toNum(t.option.deposit_amount) : null,
+        depositCurrency: (t.option.deposit_currency as string) ?? null,
+        taxas: t.taxasDetalhadas,
+      }),
+      // Moeda da opcao == moeda de apresentacao: nao ha conversao, VET = 1.
+      vet: t.currency === presentment ? 1 : vet,
+      vetAt: t.currency === presentment ? null : v?.data ?? null,
       itens: t.itens,
       taxasDetalhadas: t.taxasDetalhadas,
       planoPagamento: t.planoPagamento,

@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicQuote } from "@/lib/quote-issue-service";
+import {
+  ParcelaDaOpcao,
+  SimuladorParcelas,
+  mesInicialDaRegua,
+  mesesDaRegua,
+} from "./SimuladorParcelas";
+import type { MesInicio } from "@/app/orcamento/shared";
 
 // Cliente do portal do estudante — apresentacao no formato Edvisor, em ABAS:
 // Overview (opcoes lado a lado) · Option 1..N (detalhe de cada opcao: itens +
@@ -89,7 +96,15 @@ function AlertaErro({ msg }: { msg: string }) {
 
 type Aba = "overview" | "about" | "notes" | { opt: number };
 
-export default function PortalClient({ token, dados }: { token: string; dados: PublicQuote }) {
+export default function PortalClient({
+  token,
+  dados,
+  hojeISO,
+}: {
+  token: string;
+  dados: PublicQuote;
+  hojeISO: string;
+}) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(dados.selectedIndex);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -119,6 +134,22 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
 
   const jaEscolhida = selectedIndex != null;
   const fx = dados.fx;
+
+  // Regua de parcelas: um unico mes escolhido vale para todas as opcoes, para
+  // o estudante comparar sob a mesma premissa. `hoje` fica fixo na montagem —
+  // recalcular a cada render mudaria N no meio da sessao.
+  const meses = useMemo(() => mesesDaRegua(hojeISO), [hojeISO]);
+  // Data de inicio do curso da cotacao: a regua abre nesse mes, em vez de
+  // anunciar "ate 1 parcela" (o total a vista) do mes que vem.
+  const inicioCurso = useMemo(() => {
+    const datas = dados.options
+      .flatMap((o) => o.itens.map((i) => i.startDate))
+      .filter((d): d is string => !!d)
+      .sort();
+    return datas[0] ?? null;
+  }, [dados.options]);
+  const [mesIdx, setMesIdx] = useState(() => mesInicialDaRegua(meses, inicioCurso));
+  const mostrarRegua = fx.necessario;
   const temNotes = !!dados.notesHtml;
 
   // Aceite concluido: tela terminal de sucesso (o codigo de acesso foi enviado).
@@ -235,11 +266,26 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
         </div>
       ) : null}
 
+      {/* Regua de parcelas — uma so, acima das abas, como na tela publica. */}
+      {mostrarRegua ? (
+        <div className="mt-6">
+          <SimuladorParcelas
+            meses={meses}
+            mesIdx={mesIdx}
+            onMesIdx={setMesIdx}
+            fx={fx}
+            hojeISO={hojeISO}
+          />
+        </div>
+      ) : null}
+
       {/* Conteudo da aba */}
       <div className="mt-6">
         {aba === "overview" ? (
           <Overview
             dados={dados}
+            mes={mostrarRegua ? meses[mesIdx] : undefined}
+            hojeISO={hojeISO}
             selectedIndex={selectedIndex}
             onVerDetalhes={irParaOpcao}
             onEscolher={(idx) => {
@@ -257,6 +303,8 @@ export default function PortalClient({ token, dados }: { token: string; dados: P
             token={token}
             op={dados.options[abaAtivaOpt!]}
             fx={fx}
+            mes={mostrarRegua ? meses[mesIdx] : undefined}
+            hojeISO={hojeISO}
             escolhida={selectedIndex === abaAtivaOpt}
             desabilitado={jaEscolhida}
             emEscolha={pendingIndex === abaAtivaOpt}
@@ -349,11 +397,15 @@ const GRUPO_LABEL: Record<string, string> = {
 // ---------------------------------------------------------------------------
 function Overview({
   dados,
+  mes,
+  hojeISO,
   selectedIndex,
   onVerDetalhes,
   onEscolher,
 }: {
   dados: PublicQuote;
+  mes: MesInicio | undefined;
+  hojeISO: string;
   selectedIndex: number | null;
   onVerDetalhes: (index: number) => void;
   onEscolher: (index: number) => void;
@@ -419,7 +471,19 @@ function Overview({
                   {totalConvertido ? <div className="text-xs text-[color:var(--p-muted)]">{totalNaMoeda}</div> : null}
                 </div>
               </div>
-              {op.depositAmount != null ? (
+              <ParcelaDaOpcao
+                liquido={op.liquido}
+                entrada={op.entrada}
+                currency={op.currency}
+                vet={op.vet}
+                mes={mes}
+                hojeISO={hojeISO}
+                compacto
+              />
+              {/* A linha antiga de entrada so aparece quando a regua NAO esta
+                  mostrando a dela — senao o mesmo dinheiro sai duas vezes
+                  seguidas, e a leitura natural vira "entrada + entrada". */}
+              {op.depositAmount != null && !(mes && op.vet && op.entrada > 0) ? (
                 <p className="mt-1 text-right text-xs text-[color:var(--p-muted)]">
                   Entrada {fmtMoeda(op.depositAmount, op.depositCurrency ?? op.currency)}
                 </p>
@@ -656,6 +720,8 @@ function DetalheOpcao({
   token,
   op,
   fx,
+  mes,
+  hojeISO,
   escolhida,
   desabilitado,
   emEscolha,
@@ -668,6 +734,8 @@ function DetalheOpcao({
   token: string;
   op: OpcaoData;
   fx: PublicQuote["fx"];
+  mes: MesInicio | undefined;
+  hojeISO: string;
   escolhida: boolean;
   desabilitado: boolean;
   emEscolha: boolean;
@@ -714,6 +782,20 @@ function DetalheOpcao({
           {totalConvertido ? <div className="text-xs text-[color:var(--p-muted)]">{totalNaMoeda}</div> : null}
         </div>
       </div>
+
+      {/* Simulacao de parcelas. Quando o consultor definiu um plano de
+          pagamento para esta opcao, aquele plano e o combinado e aparece mais
+          abaixo — a simulacao sairia contradizendo. */}
+      {!op.planoPagamento || op.planoPagamento.parcelas.length === 0 ? (
+        <ParcelaDaOpcao
+          liquido={op.liquido}
+          entrada={op.entrada}
+          currency={op.currency}
+          vet={op.vet}
+          mes={mes}
+          hojeISO={hojeISO}
+        />
+      ) : null}
 
       {/* Itens por grupo (Curso / Acomodação / Serviços) */}
       {grupos.map((g) => (

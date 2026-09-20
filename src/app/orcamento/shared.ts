@@ -38,10 +38,16 @@ export function segundasDisponiveis(): string[] {
 // Meses de inicio para o SLIDER da tela "Seu orcamento": do proximo mes ate
 // dez/2028. label pt-BR ("julho de 2027"); fimISO = ultimo dia do mes (base do N).
 export type MesInicio = { key: string; label: string; primeiroISO: string; fimISO: string; ano: number };
-export function mesesInicioDisponiveis(): MesInicio[] {
+// `hojeISO` (AAAA-MM-DD) torna a lista DETERMINISTICA: o portal da proposta
+// passa o "hoje" de Sao Paulo vindo do servidor, para servidor e navegador
+// montarem a mesma lista (sem divergencia de hidratacao na virada do mes).
+// Sem o argumento, usa a data local — comportamento anterior das telas publicas.
+export function mesesInicioDisponiveis(hojeISO?: string): MesInicio[] {
   const out: MesInicio[] = [];
-  const hoje = new Date();
-  let d = new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + 1, 1)); // proximo mes
+  const hoje = hojeISO ? new Date(hojeISO + "T12:00:00Z") : new Date();
+  let d = hojeISO
+    ? new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() + 1, 1))
+    : new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + 1, 1)); // proximo mes
   const fim = new Date(Date.UTC(2028, 11, 1));
   while (d <= fim) {
     const yy = d.getUTCFullYear();

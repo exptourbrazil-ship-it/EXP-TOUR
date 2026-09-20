@@ -6,6 +6,7 @@ import { getPublicQuote, getQuoteConvertida } from "@/lib/quote-issue-service";
 import { getTenantBrand, type TenantBrand } from "@/lib/tenant-brand";
 import { tokenValidoFormato } from "@/lib/quote-issue";
 import PortalClient from "./PortalClient";
+import { hojeBrasilISO } from "@/lib/admin-financeiro";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,7 +145,11 @@ export default async function PortalEstudantePage({
 
   return (
     <Moldura brand={marca} logoUrl={dados.logoUrl} nome={dados.brand}>
-      <PortalClient token={token} dados={dados} />
+      {/* `hojeISO` vem do SERVIDOR, no fuso de Sao Paulo (o mesmo "hoje" que
+          resolve a cotacao do dia). Deixar o cliente calcular com new Date()
+          faria servidor e navegador montarem reguas diferentes na virada do
+          mes — divergencia de hidratacao, com a parcela mudando sozinha. */}
+      <PortalClient token={token} dados={dados} hojeISO={hojeBrasilISO()} />
     </Moldura>
   );
 }
