@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extensaoDeMime, ehUrlInterna, validarUrlExterna, caminhoStorageMidia, urlPublicaStorage, resumirErro, ipEhPrivado, numeroEnv, esperaDeHostMs } from "./midia-internalizacao.ts";
+import {
+  caminhoStorageFavicon,
+  formatoDeImagem, extensaoDeMime, ehUrlInterna, validarUrlExterna, caminhoStorageMidia, urlPublicaStorage, resumirErro, ipEhPrivado, numeroEnv, esperaDeHostMs } from "./midia-internalizacao.ts";
 
 const SUPA = "https://lvchpskxeohfmistppxl.supabase.co";
 
@@ -72,4 +74,43 @@ test("esperaDeHostMs: primeiro download nao espera; depois respeita o intervalo"
   assert.equal(esperaDeHostMs(1_000, 1_100, 250), 150, "espera so o que falta");
   assert.equal(esperaDeHostMs(1_000, 1_250, 250), 0, "intervalo ja cumprido");
   assert.equal(esperaDeHostMs(1_000, 9_000, 250), 0, "download demorado nao gera espera");
+});
+
+test("ico e aceito: e o formato do favicon da maioria dos sites", () => {
+  assert.equal(extensaoDeMime("image/x-icon"), "ico");
+  assert.equal(extensaoDeMime("image/vnd.microsoft.icon"), "ico");
+  // SVG continua fora: pode carregar script e seria republicado no nosso bucket.
+  assert.equal(extensaoDeMime("image/svg+xml"), null);
+});
+
+test("caminho do favicon muda quando o CONTEUDO muda", () => {
+  // O objeto e servido com cache de um ano. Se o caminho fosse fixo, a escola
+  // trocar de logo deixaria o icone velho na proposta por meses.
+  const a = caminhoStorageFavicon("f-1", "abc123def456", "ico");
+  assert.equal(a, "fornecedor/f-1/favicon-abc123def456.ico");
+  assert.equal(caminhoStorageFavicon("f-1", "abc123def456", "ico"), a, "mesmo conteudo -> mesmo caminho");
+  assert.notEqual(caminhoStorageFavicon("f-1", "999888777666", "ico"), a, "conteudo novo -> caminho novo");
+  assert.notEqual(caminhoStorageFavicon("f-2", "abc123def456", "ico"), a, "fornecedor nao invade o do outro");
+  // Impressao suja nao escapa do diretorio do fornecedor.
+  assert.equal(caminhoStorageFavicon("f-1", "../../etc/passwd", "png"), "fornecedor/f-1/favicon-ecad.png");
+});
+
+test("formatoDeImagem decide pelos BYTES, nao pelo header do site da escola", () => {
+  const ico = new Uint8Array([0, 0, 1, 0, 1, 0, 16, 16, 0, 0, 0, 0]);
+  assert.equal(formatoDeImagem(ico), "image/vnd.microsoft.icon");
+  assert.equal(formatoDeImagem(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])), "image/png");
+  assert.equal(formatoDeImagem(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])), "image/jpeg");
+  // HTML servido como "image/x-icon" nao vira arquivo publico no nosso dominio.
+  const html = new TextEncoder().encode("<!doctype html><script>x</script>");
+  assert.equal(formatoDeImagem(html), null);
+  // ICO sem nenhuma imagem declarada nao e ICO.
+  assert.equal(formatoDeImagem(new Uint8Array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0])), null);
+  assert.equal(formatoDeImagem(new Uint8Array([1, 2, 3])), null, "curto demais");
+});
+
+test("porta fora da padrao de https e recusada (sonda de servico interno)", () => {
+  assert.equal(validarUrlExterna("https://escola.com:22/favicon.ico").ok, false);
+  assert.equal(validarUrlExterna("https://escola.com:8080/favicon.ico").ok, false);
+  assert.equal(validarUrlExterna("https://escola.com:443/favicon.ico").ok, true);
+  assert.equal(validarUrlExterna("https://escola.com/favicon.ico").ok, true);
 });

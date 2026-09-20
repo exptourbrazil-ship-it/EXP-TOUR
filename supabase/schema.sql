@@ -3295,3 +3295,11 @@ alter table quote_note enable row level security;
 -- para qualquer lugar.
 alter table if exists supplier add column if not exists social jsonb;
 alter table if exists supplier add column if not exists favicon_url text;
+-- O CSP do portal publico restringe `img-src` a *.supabase.co, entao o favicon
+-- hospedado no site da escola NAO renderiza. `favicon_url` passa a apontar para a
+-- copia no bucket midia-catalogo e a origem fica aqui (procedencia e nova tentativa).
+alter table if exists supplier add column if not exists favicon_source_url text;
+-- Teto de tentativas, pelo mesmo motivo de campus_media: sem ele uma URL quebrada
+-- volta para a fila do cron todo dia, para sempre, batendo no site de terceiro.
+alter table if exists supplier add column if not exists favicon_internalize_attempts integer not null default 0;
+alter table if exists supplier add column if not exists favicon_internalize_error text;

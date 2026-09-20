@@ -9,7 +9,10 @@ import {
   BUCKET_MIDIA_CATALOGO,
   MIDIA_MAX_BYTES,
   MIDIA_MAX_TENTATIVAS,
+  FAVICON_MAX_BYTES,
+  caminhoStorageFavicon,
   caminhoStorageMidia,
+  formatoDeImagem,
   ehUrlInterna,
   esperaDeHostMs,
   extensaoDeMime,
@@ -287,4 +290,185 @@ export async function contarMidiaPendente(
     else pendentes++;
   }
   return { pendentes, esgotadas };
+}
+
+// ---------------------------------------------------------------------------
+// Favicon da escola
+// ---------------------------------------------------------------------------
+// Mesmo motivo das fotos: o CSP do portal publico tem `img-src` restrito a
+// *.supabase.co, entao um favicon hospedado no site da escola simplesmente NAO
+// renderiza — a proposta esconde o <img> quebrado e o icone nunca aparece. Por
+// isso o favicon tambem e copiado para o nosso bucket.
+//
+// A URL de origem fica em supplier.favicon_source_url (procedencia e retry) e as
+// tentativas em favicon_internalize_attempts, pelo mesmo motivo de campus_media:
+// sem teto, uma URL quebrada volta para a fila todo dia, para sempre, batendo no
+// site de terceiro.
+
+export const FAVICON_MAX_TENTATIVAS = 5;
+
+export type ResultadoFavicon = { ok: true; url: string; origem: string } | { ok: false; erro: string };
+
+/**
+ * Baixa o favicon de UMA escola e grava no bucket, devolvendo a URL interna.
+ * Nao escreve na tabela: quem chama decide quando gravar. URL ja interna volta
+ * como sucesso, sem baixar de novo.
+ *
+ * `tenantId` e obrigatorio e e conferido aqui: a funcao escreve num caminho
+ * derivado do supplierId, e quem chama nao deve poder passar um id de outro
+ * tenant por engano (toda autorizacao neste projeto e feita em codigo).
+ */
+export async function internalizarFavicon(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+  faviconUrl: string,
+  opts: { fetchImpl?: typeof fetch; ultimoPorHost?: Map<string, number> } = {},
+): Promise<ResultadoFavicon> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  if (ehUrlInterna(faviconUrl, supabaseUrl)) return { ok: true, url: faviconUrl, origem: faviconUrl };
+
+  const { data: dono, error: donoErr } = await supabase
+    .from("supplier")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("id", supplierId)
+    .maybeSingle();
+  if (donoErr) return { ok: false, erro: `fornecedor: ${resumirErro(donoErr.message)}` };
+  if (!dono) return { ok: false, erro: "fornecedor nao e deste tenant" };
+
+  const baixado = await baixarImagem(faviconUrl, opts.fetchImpl ?? fetch, opts.ultimoPorHost);
+  if (!baixado.ok) return baixado;
+  const bytes = baixado.dados.bytes;
+  // Arquivo de 0 byte passa pelo HTTP 200 (ja aconteceu com uma escola) e viraria
+  // um icone quebrado no lugar de nenhum icone.
+  if (bytes.length === 0) return { ok: false, erro: "arquivo vazio" };
+  if (bytes.length > FAVICON_MAX_BYTES) return { ok: false, erro: "icone acima de 512 KB" };
+
+  // O tipo vem dos BYTES, nao do header do site da escola: o arquivo passa a ser
+  // servido sob o nosso dominio, entao quem declara o que ele e somos nos.
+  const mime = formatoDeImagem(bytes);
+  if (!mime) return { ok: false, erro: "conteudo nao e uma imagem reconhecida" };
+  const ext = extensaoDeMime(mime) as string;
+
+  const { createHash } = await import("node:crypto");
+  const impressao = createHash("sha256").update(bytes).digest("hex");
+  const caminho = caminhoStorageFavicon(supplierId, impressao, ext);
+  const { error: upErr } = await supabase.storage
+    .from(BUCKET_MIDIA_CATALOGO)
+    .upload(caminho, bytes, { contentType: mime, upsert: true, cacheControl: "31536000" });
+  if (upErr) return { ok: false, erro: `storage: ${resumirErro(upErr.message)}` };
+
+  return { ok: true, url: urlPublicaStorage(supabaseUrl, BUCKET_MIDIA_CATALOGO, caminho), origem: faviconUrl };
+}
+
+/**
+ * Remove a copia anterior do favicon. Best-effort: falhar aqui so deixa um objeto
+ * orfao no bucket, nunca invalida a troca que acabou de dar certo.
+ */
+export async function apagarFaviconAntigo(supabase: SupabaseClient, urlAntiga: string | null, urlNova: string): Promise<void> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  if (!urlAntiga || urlAntiga === urlNova || !ehUrlInterna(urlAntiga, supabaseUrl)) return;
+  const marca = `/object/public/${BUCKET_MIDIA_CATALOGO}/`;
+  const i = urlAntiga.indexOf(marca);
+  if (i < 0) return;
+  const caminho = urlAntiga.slice(i + marca.length);
+  if (!caminho.startsWith("fornecedor/")) return; // so mexe em favicon
+  try {
+    await supabase.storage.from(BUCKET_MIDIA_CATALOGO).remove([caminho]);
+  } catch {
+    /* orfao no bucket e menos grave do que derrubar a troca */
+  }
+}
+
+export type ResultadoFavicons = { candidatos: number; internalizados: number; falhas: number; esgotados: number; erros: string[] };
+
+/**
+ * Passa pelos fornecedores do tenant cujo favicon ainda esta hospedado fora e
+ * troca pela copia interna. Falha em um nao derruba os outros — a escola fica
+ * sem icone (o bloco da escola ja trata a ausencia), nunca com icone quebrado.
+ *
+ * A lista de fornecedores e LIDA INTEIRA (sao dezenas) e so depois recortada: um
+ * `limit` na consulta poderia devolver so fornecedores ja internalizados e as
+ * pendencias nunca seriam processadas, em silencio.
+ */
+export async function internalizarFavicons(
+  supabase: SupabaseClient,
+  tenantId: string,
+  opts: { max?: number; orcamentoMs?: number; fetchImpl?: typeof fetch } = {},
+): Promise<ResultadoFavicons> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const max = opts.max ?? 10;
+  const orcamentoMs = opts.orcamentoMs ?? 15_000;
+  const inicio = Date.now();
+  const r: ResultadoFavicons = { candidatos: 0, internalizados: 0, falhas: 0, esgotados: 0, erros: [] };
+
+  const PAGINA = 500;
+  const linhas: { id: string; favicon_url: string; favicon_internalize_attempts: number }[] = [];
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase
+      .from("supplier")
+      .select("id, favicon_url, favicon_internalize_attempts")
+      .eq("tenant_id", tenantId)
+      .is("archived_at", null)
+      .not("favicon_url", "is", null)
+      .order("id", { ascending: true })
+      .range(de, de + PAGINA - 1);
+    if (error) throw new Error(`supplier: ${error.message}`);
+    const lote = (data ?? []) as typeof linhas;
+    linhas.push(...lote);
+    if (lote.length < PAGINA) break;
+  }
+
+  const pendentes = linhas.filter((s) => !ehUrlInterna(s.favicon_url, supabaseUrl));
+  r.esgotados = pendentes.filter((s) => (s.favicon_internalize_attempts ?? 0) >= FAVICON_MAX_TENTATIVAS).length;
+  // Menos tentados primeiro: uma URL quebrada nao monopoliza a execucao.
+  const fila = pendentes
+    .filter((s) => (s.favicon_internalize_attempts ?? 0) < FAVICON_MAX_TENTATIVAS)
+    .sort((a, b) => (a.favicon_internalize_attempts ?? 0) - (b.favicon_internalize_attempts ?? 0))
+    .slice(0, max);
+  r.candidatos = fila.length;
+
+  const ultimoPorHost = new Map<string, number>();
+  for (const s of fila) {
+    // Orcamento de tempo: a rota do cron tem maxDuration e um punhado de sites
+    // fora do ar consome 15 s cada. Estourar mataria a funcao inteira.
+    if (Date.now() - inicio > orcamentoMs) break;
+    const res = await internalizarFavicon(supabase, tenantId, s.id, s.favicon_url, {
+      fetchImpl: opts.fetchImpl,
+      ultimoPorHost,
+    });
+    if (!res.ok) {
+      r.falhas++;
+      r.erros.push(resumirErro(res.erro));
+      await supabase
+        .from("supplier")
+        .update({
+          favicon_internalize_attempts: (s.favicon_internalize_attempts ?? 0) + 1,
+          favicon_internalize_error: resumirErro(res.erro),
+        })
+        .eq("tenant_id", tenantId)
+        .eq("id", s.id);
+      continue;
+    }
+    const { data: upd, error: updErr } = await supabase
+      .from("supplier")
+      .update({
+        favicon_url: res.url,
+        favicon_source_url: res.origem,
+        favicon_internalize_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", s.id)
+      .eq("favicon_url", s.favicon_url) // nao sobrescreve troca feita no meio
+      .select("id");
+    if (updErr || !upd || upd.length === 0) {
+      r.falhas++;
+      if (updErr) r.erros.push(resumirErro(updErr.message));
+      continue;
+    }
+    r.internalizados++;
+  }
+  return r;
 }

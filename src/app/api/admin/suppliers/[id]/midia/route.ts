@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { getSupabase, guardCatalogWrite, bad, okData, isUuid, fail } from "@/lib/catalog-route";
-import { internalizarMidias, contarMidiaPendente } from "@/lib/midia-internalizacao-service";
+import { apagarFaviconAntigo, internalizarFavicon, internalizarMidias, contarMidiaPendente } from "@/lib/midia-internalizacao-service";
 import { numeroEnv } from "@/lib/midia-internalizacao";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { checarELimitar } from "@/lib/rate-limit";
@@ -88,6 +88,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
+    // O favicon da escola sofre do MESMO bloqueio de CSP que as fotos, entao o
+    // botao tambem o traz para o nosso bucket. E um download so: nao entra no
+    // orcamento do lote e a falha dele nao invalida as fotos ja copiadas.
+    let favicon: "copiado" | "ja_interno" | "sem_favicon" | "falhou" = "sem_favicon";
+    const { data: supFav } = await supabase
+      .from("supplier")
+      .select("favicon_url")
+      .eq("tenant_id", tenantId)
+      .eq("id", supplierId)
+      .maybeSingle();
+    const faviconAtual = (supFav?.favicon_url as string | null) ?? null;
+    if (faviconAtual) {
+      const res = await internalizarFavicon(supabase, tenantId, supplierId, faviconAtual);
+      if (!res.ok) favicon = "falhou";
+      else if (res.url === faviconAtual) favicon = "ja_interno";
+      else {
+        const { data: trocado, error: fErr } = await supabase
+          .from("supplier")
+          .update({
+            favicon_url: res.url,
+            favicon_source_url: res.origem,
+            favicon_internalize_attempts: 0,
+            favicon_internalize_error: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("tenant_id", tenantId)
+          .eq("id", supplierId)
+          .eq("favicon_url", faviconAtual)
+          .select("id");
+        // Sem linha alterada = outra execucao ja trocou: nao e sucesso deste lote.
+        favicon = fErr || !trocado || trocado.length === 0 ? "falhou" : "copiado";
+        if (favicon === "copiado") await apagarFaviconAntigo(supabase, faviconAtual, res.url);
+      }
+    }
+
     // Quantas ainda faltam DEPOIS deste lote: e o que o hub usa para seguir sozinho
     // ate a escola zerar, em vez de depender de o operador clicar de novo.
     const restante = await contarMidiaPendente(supabase, tenantId, campusIds).catch(() => null);
@@ -96,12 +131,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       usuario: g.usuario,
       acao: "midia.internalizar",
       alvo: supplierId,
-      detalhe: { internalizadas: r.internalizadas, falhas: r.falhas, capas: r.capas_atualizadas, interrompida: r.interrompida },
+      detalhe: { internalizadas: r.internalizadas, falhas: r.falhas, capas: r.capas_atualizadas, favicon, interrompida: r.interrompida },
       ip: g.ip,
     });
 
     return okData({
       ...r,
+      favicon,
       pendentes_restantes: restante?.pendentes ?? null,
       esgotadas: restante?.esgotadas ?? null,
       erros: r.erros.slice(0, 5),

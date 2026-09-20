@@ -6,6 +6,8 @@
 export const BUCKET_MIDIA_CATALOGO = "midia-catalogo";
 export const MIDIA_MAX_BYTES = 10 * 1024 * 1024;
 export const MIDIA_MAX_TENTATIVAS = 5;
+/** Teto proprio do favicon: e um icone. Acima disso, quase certo que nao e um. */
+export const FAVICON_MAX_BYTES = 512 * 1024;
 
 const EXT_POR_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -14,6 +16,10 @@ const EXT_POR_MIME: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
   "image/avif": "avif",
+  // .ico entra por causa do FAVICON da escola: quase todo site serve o icone nesse
+  // formato. E raster puro (nao executa nada), ao contrario do SVG.
+  "image/x-icon": "ico",
+  "image/vnd.microsoft.icon": "ico",
   // SVG fica de fora de proposito: pode carregar script e seria republicado num bucket nosso.
 };
 
@@ -52,6 +58,9 @@ export function validarUrlExterna(url: string): { ok: true; url: URL } | { ok: f
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
     return { ok: false, erro: "host local não é aceito" };
   }
+  // Porta explicita diferente da padrao nao serve imagem de site publico — serve
+  // para varrer servico interno usando a nossa rede como sonda.
+  if (u.port !== "" && u.port !== "443") return { ok: false, erro: "porta não permitida" };
   return { ok: true, url: u };
 }
 
@@ -100,6 +109,39 @@ export function numeroEnv(valor: string | undefined, padrao: number): number {
 /** Caminho no bucket: um objeto por linha de campus_media (id estavel -> upsert idempotente). */
 export function caminhoStorageMidia(campusId: string, mediaId: string, ext: string): string {
   return `campus/${campusId}/${mediaId}.${ext}`;
+}
+
+/**
+ * Formato REAL da imagem pelos bytes iniciais. O `Content-Type` que o site da
+ * escola manda e palpite dele: como o arquivo passa a ser servido sob o NOSSO
+ * dominio (o mesmo das URLs de documento), quem decide o tipo somos nos.
+ * Devolve o mime canonico ou null quando nao reconhece.
+ */
+export function formatoDeImagem(bytes: Uint8Array): string | null {
+  const b = bytes;
+  const em = (i: number, ...v: number[]) => v.every((x, k) => b[i + k] === x);
+  if (b.length < 12) return null;
+  if (em(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (em(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (em(0, 0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (em(0, 0x52, 0x49, 0x46, 0x46) && em(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  // ICO: reserved=0, type=1 (icone) e ao menos uma imagem declarada.
+  if (em(0, 0x00, 0x00, 0x01, 0x00) && (b[4] | (b[5] << 8)) > 0) return "image/vnd.microsoft.icon";
+  // AVIF: caixa ftyp com marca avif.
+  if (em(4, 0x66, 0x74, 0x79, 0x70) && em(8, 0x61, 0x76, 0x69, 0x66)) return "image/avif";
+  return null;
+}
+
+/**
+ * Caminho do FAVICON da escola no bucket. Um objeto por fornecedor (id estavel ->
+ * upsert idempotente): trocar o icone sobrescreve, nao acumula lixo.
+ */
+export function caminhoStorageFavicon(supplierId: string, impressao: string, ext: string): string {
+  // A impressao do CONTEUDO entra no caminho de proposito. O objeto e servido com
+  // cache de um ano; se o caminho fosse fixo, a escola trocar de logo deixaria o
+  // icone velho na proposta por meses, sem jeito de invalidar.
+  const chave = impressao.replace(/[^a-f0-9]/gi, "").slice(0, 16) || "0";
+  return `fornecedor/${supplierId}/favicon-${chave}.${ext}`;
 }
 
 /** URL publica de um objeto do bucket publico. */
