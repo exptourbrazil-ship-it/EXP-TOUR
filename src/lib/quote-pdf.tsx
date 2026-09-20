@@ -154,6 +154,7 @@ function makeStyles(t: PdfTheme) {
     fxBox: { marginTop: 16, borderWidth: 1, borderColor: t.line, borderRadius: 8, padding: 12 },
     fxText: { fontSize: 8, color: t.muted },
     notesText: { fontSize: 9, color: t.ink, marginTop: 4, lineHeight: 1.4 },
+    notaData: { fontSize: 7.5, color: t.muted, marginTop: 6 },
     aboutText: { fontSize: 8, color: t.muted, marginTop: 3, lineHeight: 1.4 },
     contatoLinha: { fontSize: 8, color: t.muted, marginTop: 2 },
     footer: { position: "absolute", bottom: 24, left: 40, right: 40, textAlign: "center", fontSize: 7, color: t.faint },
@@ -345,6 +346,14 @@ export async function renderQuotePdf(
   const s = makeStyles(t);
 
   const notes = htmlParaTexto(data.notesHtml, 1500);
+  // Atualizacoes pos-emissao. Entram no PDF porque o documento e baixado
+  // DEPOIS: sem elas, quem imprime apos o recado leva um papel que contradiz o
+  // link. Ordem cronologica (a leitura do portal vem da mais nova).
+  const atualizacoes = [...data.notas]
+    .reverse()
+    .map((n) => ({ quando: fmtData(n.createdAt), texto: htmlParaTexto(n.bodyHtml, 600) }))
+    .filter((n) => n.texto !== "")
+    .slice(0, 20);
   const about = htmlParaTexto(data.aboutUs.html, 1500);
   const a = data.aboutUs;
 
@@ -407,10 +416,16 @@ export async function renderQuotePdf(
             </View>
           ) : null}
 
-          {notes ? (
+          {notes || atualizacoes.length > 0 ? (
             <View style={s.card} wrap={false}>
               <Text style={s.label}>Observacoes</Text>
-              <Text style={s.notesText}>{notes}</Text>
+              {notes ? <Text style={s.notesText}>{notes}</Text> : null}
+              {atualizacoes.map((n, i) => (
+                <View key={`nota-${i}`}>
+                  <Text style={s.notaData}>Atualizacao de {n.quando}</Text>
+                  <Text style={s.notesText}>{n.texto}</Text>
+                </View>
+              ))}
             </View>
           ) : null}
 
