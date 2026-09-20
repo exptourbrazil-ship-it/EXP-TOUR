@@ -15,6 +15,10 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Teto de quantidade por unidade. Espelha /api/admin/catalog/price-batch: o que
+// o card recusa calcular, esta rota recusa gravar.
+const MAX_QUANTIDADE: Record<string, number> = { week: 104, month: 24, day: 730, unit: 1000 };
+
 // POST /api/admin/quotes/[id]/items — precifica e adiciona um item a uma opcao.
 // Body: optionId, productId, startDate, quantity, unit, quoteDate?, nationalityCode?
 export async function POST(
@@ -42,10 +46,17 @@ export async function POST(
   if (!optionId) return bad("Informe optionId.");
   if (!productId) return bad("Informe productId.");
   if (!isIsoDate(startDate)) return bad("startDate invalido (AAAA-MM-DD).");
+  // Lista FECHADA de unidades + teto por unidade, os MESMOS de
+  // /api/admin/catalog/price-batch. Sem isso a rota que GRAVA aceitaria o que a
+  // rota que so calcula recusa (ex.: quantity 1e6 em "day"), e o motor itera
+  // por unidade — um numero absurdo trava a funcao antes de gravar.
+  const teto = MAX_QUANTIDADE[unit];
+  if (teto === undefined) return bad("Unidade invalida.");
   // Semanas FECHADAS de 7 dias (decisao do usuario): noite avulsa entra como
   // item complementar, nao como fracao de semana.
   const dur = validarDuracao(quantity, unit);
   if (!dur.ok) return bad(dur.erro);
+  if (dur.quantidade > teto) return bad(`Quantidade acima do maximo (${teto} ${unit}).`);
   if (!isIsoDate(quoteDate)) return bad("quoteDate invalido (AAAA-MM-DD).");
 
   try {

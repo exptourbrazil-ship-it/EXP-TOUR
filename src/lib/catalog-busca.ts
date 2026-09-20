@@ -22,10 +22,13 @@ export type ItemCatalogo = {
   country: string; // rotulo (ver src/lib/paises.ts)
   flag: string;
   currency: string;
-  /** 0 = sem minimo declarado. */
-  minWeeks: number;
-  /** 0 = sem maximo declarado; ver `faixaDe`. */
-  maxWeeks: number;
+  /** Unidade de cobranca do produto: "week" (curso/acomodacao/seguro) ou
+   *  "day" (noite extra). Vem da tabela de preco ativa. */
+  unit: string;
+  /** Minimo NA UNIDADE do produto (semanas ou noites). 0 = sem minimo. */
+  minQtd: number;
+  /** Maximo NA UNIDADE do produto. 0 = sem maximo; ver `faixaDe`. */
+  maxQtd: number;
   courseType: string | null;
 };
 
@@ -33,8 +36,9 @@ export type ForaDaFaixaItem = {
   id: string;
   name: string;
   school: string;
-  minWeeks: number;
-  maxWeeks: number;
+  minQtd: number;
+  maxQtd: number;
+  unit: string;
 };
 
 export type ResultadoBuscaCatalogo = {
@@ -47,9 +51,9 @@ export type ResultadoBuscaCatalogo = {
  * `max_duration` nao vem, o produto e um PACOTE FIXO de `min` semanas — nao um
  * produto sem teto. Sem minimo declarado, nao ha restricao.
  */
-export function faixaDe(item: Pick<ItemCatalogo, "minWeeks" | "maxWeeks">): { min: number; max: number } | null {
-  const min = Number(item.minWeeks) || 0;
-  const max = Number(item.maxWeeks) || min;
+export function faixaDe(item: Pick<ItemCatalogo, "minQtd" | "maxQtd">): { min: number; max: number } | null {
+  const min = Number(item.minQtd) || 0;
+  const max = Number(item.maxQtd) || min;
   if (min <= 0) return null; // sem restricao declarada
   return { min, max };
 }
@@ -81,8 +85,14 @@ export function filtrarItensCatalogo(args: {
   pais?: string;
   /** kinds aceitos; vazio/undefined = todos */
   kinds?: KindCatalogo[];
-  /** semanas pretendidas; null = sem filtro de duracao */
-  weeks: number | null;
+  /** restringe a um campus (usado nos passos 2 e 3 do construtor) */
+  campusId?: string | null;
+  /**
+   * Quantidade pretendida, NA UNIDADE DE CADA ITEM. Passe null quando o
+   * conjunto misturar unidades (ex.: seguro em semanas + noite extra em
+   * diarias): ali cada extra tem a sua propria quantidade no carrinho.
+   */
+  quantidade: number | null;
 }): ResultadoBuscaCatalogo {
   const termos = expandirTermos(args.termo);
   const termoNorm = normalizar(args.termo);
@@ -95,17 +105,19 @@ export function filtrarItensCatalogo(args: {
   const fora: ForaDaFaixaItem[] = [];
 
   for (const item of args.itens) {
+    if (args.campusId && item.campusId !== args.campusId) continue;
     if (paisFiltro && item.country !== paisFiltro) continue;
     if (kindsFiltro && !kindsFiltro.has(item.kind)) continue;
     const score = scoreRelevancia(item, termos, coringa);
     if (score === null) continue;
 
     const faixa = faixaDe(item);
-    const naFaixa = args.weeks == null || faixa == null || (args.weeks >= faixa.min && args.weeks <= faixa.max);
+    const naFaixa =
+      args.quantidade == null || faixa == null || (args.quantidade >= faixa.min && args.quantidade <= faixa.max);
     if (naFaixa) {
       candidatos.push({ item, score });
     } else if (faixa) {
-      fora.push({ id: item.id, name: item.name, school: item.school, minWeeks: faixa.min, maxWeeks: faixa.max });
+      fora.push({ id: item.id, name: item.name, school: item.school, minQtd: faixa.min, maxQtd: faixa.max, unit: item.unit });
     }
   }
 
@@ -116,6 +128,17 @@ export function filtrarItensCatalogo(args: {
       a.item.name.localeCompare(b.item.name, "pt-BR"),
   );
   return { resultados: candidatos.map((c) => c.item), foraDaFaixa: fora };
+}
+
+/** Rotulo da unidade, no plural conforme a quantidade. */
+export function labelUnidade(unit: string, n: number): string {
+  const um = n === 1;
+  switch (unit) {
+    case "week": return um ? "1 semana" : `${n} semanas`;
+    case "day": return um ? "1 noite" : `${n} noites`;
+    case "month": return um ? "1 mês" : `${n} meses`;
+    default: return um ? "1 unidade" : `${n} unidades`;
+  }
 }
 
 /** Rotulo curto do tipo de produto, para o selo do card. */

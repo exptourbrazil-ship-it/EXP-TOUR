@@ -22,6 +22,46 @@ export type IndiceCatalogo = {
 };
 
 /**
+ * Unidade de cobranca por produto, lida da tabela de preco ATIVA. E o que
+ * separa "4 semanas de curso" de "4 noites extras": no catalogo, curso,
+ * acomodacao e seguro sao `week` e noite extra e `day`. Precificar tudo como
+ * semana cobraria a noite extra 7x.
+ */
+async function unidadePorProduto(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<Map<string, string>> {
+  const m = new Map<string, string>();
+  const PAGINA = 1000;
+  for (let inicio = 0; ; inicio += PAGINA) {
+    const { data, error } = await supabase
+      .from("price_template_product")
+      .select("product_id, price_template!inner(unit, status, tenant_id, market_id)")
+      .eq("price_template.tenant_id", tenantId)
+      .eq("price_template.status", "active")
+      // Ordenacao explicita: sem ela a paginacao pode repetir/pular linhas e um
+      // produto ficaria sem unidade (caindo no default `week`).
+      .order("product_id", { ascending: true })
+      .range(inicio, inicio + PAGINA - 1);
+    if (error) throw new Error(`Falha ao carregar unidades de preco: ${error.message}`);
+    const lote = (data ?? []) as any[];
+    for (const row of lote) {
+      const unit = row.price_template?.unit;
+      if (!unit) continue;
+      // Um produto pode ter mais de uma tabela ativa (generica + por mercado).
+      // Seguimos a MESMA precedencia do motor (catalog-service), que prefere a
+      // tabela com market_id — assim o rotulo do card nao descreve uma unidade
+      // diferente da que precificou.
+      const jaTem = m.has(row.product_id);
+      const ehDeMercado = row.price_template?.market_id != null;
+      if (!jaTem || ehDeMercado) m.set(row.product_id as string, unit as string);
+    }
+    if (lote.length < PAGINA) break;
+  }
+  return m;
+}
+
+/**
  * Carrega o catalogo cotavel do tenant. O recorte (status active, visibility
  * quotable/sellable, nao arquivado) e o MESMO de `searchProducts`, para que o
  * buscador do construtor mostre exatamente o que pode virar item de cotacao.
@@ -62,6 +102,8 @@ export async function carregarIndiceCatalogo(
     if (lote.length < PAGINA) break;
   }
 
+  const unidades = await unidadePorProduto(supabase, tenantId);
+
   const itens: ItemCatalogo[] = [];
   const paises = new Set<string>();
   const kinds = new Set<KindCatalogo>();
@@ -85,9 +127,12 @@ export async function carregarIndiceCatalogo(
       country: pais,
       flag: bandeiraPais(campus.country_code),
       currency: (campus.base_currency as string) ?? "",
-      minWeeks: Number(p.min_duration) || 0,
-      maxWeeks: Number(p.max_duration) || 0,
+      minQtd: Number(p.min_duration) || 0,
+      maxQtd: Number(p.max_duration) || 0,
       courseType: (p.attributes?.course_type as string) ?? null,
+      // Sem tabela ativa o produto nao e cotavel na pratica; `week` e so o
+      // default de exibicao — o motor recusa o item e o card mostra "sem preco".
+      unit: unidades.get(p.id as string) ?? "week",
     });
   }
 
