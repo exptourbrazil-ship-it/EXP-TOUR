@@ -234,12 +234,21 @@ export async function addQuoteOption(
   // Valida posse: a cotacao pertence ao tenant.
   const { data: quote, error: qErr } = await supabase
     .from("quote")
-    .select("id")
+    .select("id, status")
     .eq("tenant_id", args.tenantId)
     .eq("id", args.quoteId)
     .maybeSingle();
   if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
   if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+
+  // Dinheiro so muda em rascunho, como em addQuoteItem/removeQuoteItem. Aqui a
+  // guarda e indispensavel, e nao so simetria: com `copyFromOptionId` esta
+  // funcao COPIA os itens da opcao de origem (copyOptionContents), entao sem
+  // ela daria para criar uma opcao JA COM ITENS numa cotacao emitida — e o
+  // bloqueio de addQuoteItem seria contornavel por este caminho.
+  if (quote.status !== "draft") {
+    throw new Error("So e possivel adicionar opcao a cotacao em rascunho (draft).");
+  }
 
   // Posse da opcao de origem DENTRO da mesma cotacao: nao basta ser do tenant,
   // senao daria para copiar itens/descontos de outra cotacao do tenant.
@@ -488,6 +497,24 @@ export async function addQuoteItem(
     .maybeSingle();
   if (optErr) throw new Error(`Falha ao carregar opcao: ${optErr.message}`);
   if (!option) throw new Error("Opcao nao encontrada para este tenant.");
+
+  // Dinheiro so muda em rascunho: cotacao emitida tem valores congelados (o
+  // cambio foi travado na emissao e o link publico ja esta com o estudante).
+  // Mesma guarda de removeQuoteItem e recalculateQuote — sem ela era possivel
+  // alterar por API o conteudo de uma proposta JA ENVIADA, sem reemissao e sem
+  // trilha de versao. Para editar depois de emitida o caminho e "Reemitir",
+  // que devolve a cotacao para draft e gera um novo link.
+  const { data: quote, error: qErr } = await supabase
+    .from("quote")
+    .select("id, status")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", option.quote_id)
+    .maybeSingle();
+  if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
+  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+  if (quote.status !== "draft") {
+    throw new Error("So e possivel adicionar item a cotacao em rascunho (draft).");
+  }
 
   // Precifica.
   const priced = await priceProductFromDb(supabase, {
