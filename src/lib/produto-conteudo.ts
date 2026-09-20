@@ -80,7 +80,10 @@ function optIntNaoNeg(raw: unknown, def: number): number {
 }
 
 // URL http/https simples (sem espacos). Evita javascript:/data: e caminhos soltos.
-function ehUrlHttp(v: string): boolean {
+// Exportada: e a mesma checagem usada no portal para qualquer href/src que vem
+// do banco (site da escola, midia), e ter duas implementacoes seria uma delas
+// ficar para tras.
+export function ehUrlHttp(v: string): boolean {
   return /^https?:\/\/[^\s]+$/i.test(v);
 }
 

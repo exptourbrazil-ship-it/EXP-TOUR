@@ -17,7 +17,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
-import { fichaDoSnapshot, detalhesDoSnapshot, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
+import { fichaDoSnapshot, detalhesDoSnapshot, ehUrlHttp, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
 import { entradaDaOpcao } from "@/lib/entrada-cotacao";
 import { inicioAlemDoIntake } from "@/lib/anexo3-entidades";
@@ -707,6 +707,16 @@ export type PublicQuote = {
    * parte da proposta enviada. Mais recente primeiro. Retratadas nao vem.
    */
   notas: Array<{ ref: string; bodyHtml: string; createdAt: string }>;
+  /**
+   * Dados de CONTATO da escola por campus, lidos AO VIVO (nao do snapshot).
+   *
+   * O snapshot congela o que foi VENDIDO — preco, descricao, fotos da epoca.
+   * Um link para o site da escola nao e termo comercial, e ponteiro: congela-lo
+   * faria uma proposta antiga apontar para uma URL que a escola ja trocou, e
+   * impediria que cotacoes ja emitidas ganhassem o link sem reemissao.
+   * Mesma logica do cambio, que tambem e resolvido na abertura.
+   */
+  escolas: Record<string, { website: string | null }>;
   fx: {
     necessario: boolean;
     rate: number | null;
@@ -946,6 +956,34 @@ export async function getPublicQuote(
   const notesBruto = (quote.notes_html as string) ?? "";
   const notesHtml = notesBruto.trim() ? sanitizarHtml(notesBruto) || null : null;
 
+  // Contato da escola (site), por campus presente na cotacao. AO VIVO — ver o
+  // comentario do campo `escolas` em PublicQuote.
+  const campusIds = Array.from(
+    new Set(
+      options
+        .flatMap((o) => o.itens)
+        .map((it) => it.detalhes?.escola?.campusId)
+        .filter((id): id is string => !!id),
+    ),
+  );
+  const escolas: Record<string, { website: string | null }> = {};
+  if (campusIds.length > 0) {
+    const { data: campusContato } = await supabase
+      .from("campus")
+      .select("id, website, supplier:supplier_id(website)")
+      .eq("tenant_id", tenantId)
+      .in("id", campusIds)
+      .is("archived_at", null);
+    for (const c of (campusContato ?? []) as any[]) {
+      const sup = Array.isArray(c.supplier) ? c.supplier[0] : c.supplier;
+      // Site do campus vence o da escola: nos 23 campi do tenant ele esta
+      // sempre preenchido e e mais especifico (pagina daquela unidade).
+      const bruto = ((c.website as string) || (sup?.website as string) || "").trim();
+      // Defesa em profundidade no ponto de render: so http/https vai para href.
+      escolas[c.id as string] = { website: bruto && ehUrlHttp(bruto) ? bruto : null };
+    }
+  }
+
   // Notas POS-EMISSAO (recados datados, sem reemitir). Retratadas ficam fora.
   //
   // NAO re-sanitizar aqui: `body_html` so e escrito por `addQuoteNote`, que
@@ -998,6 +1036,7 @@ export async function getPublicQuote(
     },
     notesHtml,
     notas,
+    escolas,
     fx: {
       necessario: fxNecessario,
       rate: rateExibida,

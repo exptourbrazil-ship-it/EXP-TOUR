@@ -305,6 +305,7 @@ export default function PortalClient({
             fx={fx}
             mes={mostrarRegua ? meses[mesIdx] : undefined}
             hojeISO={hojeISO}
+            escolasContato={dados.escolas}
             escolhida={selectedIndex === abaAtivaOpt}
             desabilitado={jaEscolhida}
             emEscolha={pendingIndex === abaAtivaOpt}
@@ -536,26 +537,52 @@ function BlocoBullets({ titulo, itens }: { titulo: string; itens: string[] }) {
 }
 
 // Galeria de midia da ficha. URLs ja vem validadas (so http/https) do servidor.
+// As fotos ABREM em tela cheia: na miniatura de 112px o estudante nao consegue
+// avaliar o quarto, que e metade da decisao de acomodacao.
 function GaleriaMidia({ midias }: { midias: FichaItem["midias"] }) {
-  if (midias.length === 0) return null;
   const imagens = midias.filter((m) => m.kind === "image");
   const outros = midias.filter((m) => m.kind !== "image");
+  const [aberta, setAberta] = useState<number | null>(null);
+
+  if (midias.length === 0) return null;
   return (
     <div className="mt-3">
       {imagens.length > 0 ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {imagens.map((m, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <button
               key={i}
-              src={m.url}
-              alt={m.caption ?? "Foto do programa"}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              className="h-28 w-full rounded-lg object-cover"
-            />
+              type="button"
+              onClick={() => setAberta(i)}
+              aria-label={`Ampliar ${m.caption ?? "foto"} (${i + 1} de ${imagens.length})`}
+              className="group relative block h-28 w-full overflow-hidden rounded-lg print:pointer-events-none"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={m.url}
+                alt={m.caption ?? "Foto do programa"}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="h-full w-full cursor-zoom-in object-cover transition group-hover:brightness-90"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 print:hidden"
+              >
+                ampliar
+              </span>
+            </button>
           ))}
         </div>
+      ) : null}
+
+      {aberta != null && imagens[aberta] ? (
+        <Lightbox
+          imagens={imagens}
+          indice={aberta}
+          onFechar={() => setAberta(null)}
+          onIr={(i) => setAberta(i)}
+        />
       ) : null}
       {outros.length > 0 ? (
         <ul className="mt-2 space-y-1 text-sm">
@@ -567,6 +594,99 @@ function GaleriaMidia({ midias }: { midias: FichaItem["midias"] }) {
             </li>
           ))}
         </ul>
+      ) : null}
+    </div>
+  );
+}
+
+
+// Visualizador de foto em tela cheia. Teclado: Esc fecha, setas navegam — e o
+// que se espera de uma galeria, e o estudante pode estar no notebook decidindo
+// com a familia ao lado.
+function Lightbox({
+  imagens,
+  indice,
+  onFechar,
+  onIr,
+}: {
+  imagens: FichaItem["midias"];
+  indice: number;
+  onFechar: () => void;
+  onIr: (i: number) => void;
+}) {
+  const atual = imagens[indice];
+  const total = imagens.length;
+
+  useEffect(() => {
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") onFechar();
+      else if (e.key === "ArrowRight" && total > 1) onIr((indice + 1) % total);
+      else if (e.key === "ArrowLeft" && total > 1) onIr((indice - 1 + total) % total);
+    }
+    window.addEventListener("keydown", aoTeclar);
+    // Trava o scroll do fundo enquanto a foto esta aberta.
+    const overflowAntes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", aoTeclar);
+      document.body.style.overflow = overflowAntes;
+    };
+  }, [indice, total, onFechar, onIr]);
+
+  if (!atual) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={atual.caption ?? "Foto ampliada"}
+      onClick={onFechar}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 p-4 print:hidden"
+    >
+      <div className="flex w-full max-w-5xl items-center justify-between gap-3 pb-2 text-white">
+        <span className="text-xs text-white/70">
+          {total > 1 ? `${indice + 1} de ${total}` : ""}
+        </span>
+        <button
+          type="button"
+          onClick={onFechar}
+          className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-medium text-white/90 transition hover:bg-white/10"
+        >
+          Fechar
+        </button>
+      </div>
+
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={atual.url}
+        alt={atual.caption ?? "Foto ampliada"}
+        referrerPolicy="no-referrer"
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[78vh] w-auto max-w-full rounded-lg object-contain"
+      />
+
+      {atual.caption ? (
+        <p className="mt-2 max-w-3xl text-center text-sm text-white/85">{atual.caption}</p>
+      ) : null}
+
+      {total > 1 ? (
+        <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => onIr((indice - 1 + total) % total)}
+            aria-label="Foto anterior"
+            className="rounded-lg border border-white/25 px-4 py-2 text-sm text-white/90 transition hover:bg-white/10"
+          >
+            ‹ Anterior
+          </button>
+          <button
+            type="button"
+            onClick={() => onIr((indice + 1) % total)}
+            aria-label="Próxima foto"
+            className="rounded-lg border border-white/25 px-4 py-2 text-sm text-white/90 transition hover:bg-white/10"
+          >
+            Próxima ›
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -655,7 +775,7 @@ function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
 }
 
 // "Sobre a escola" — descrição (sanitizada), destaques, fotos/vídeo do campus.
-function EscolaBloco({ escola }: { escola: EscolaItem }) {
+function EscolaBloco({ escola, website }: { escola: EscolaItem; website: string | null }) {
   return (
     <div className="mt-5 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Sobre a escola</h3>
@@ -663,6 +783,21 @@ function EscolaBloco({ escola }: { escola: EscolaItem }) {
         {escola.nome ?? "Escola"}
         {escola.local ? <span className="text-[color:var(--p-muted)]"> · {escola.local}</span> : null}
       </p>
+      {website ? (
+        <a
+          href={website}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="mt-1 inline-flex items-center gap-1 text-sm text-[color:var(--p-nav)] underline print:no-underline"
+        >
+          Site da escola
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <path d="M15 3h6v6" />
+            <path d="M10 14 21 3" />
+          </svg>
+        </a>
+      ) : null}
       {escola.descriptionHtml ? (
         <div
           className="mt-2 space-y-2 text-sm leading-relaxed text-[color:var(--p-ink)] [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ul]:list-disc"
@@ -722,6 +857,7 @@ function DetalheOpcao({
   fx,
   mes,
   hojeISO,
+  escolasContato,
   escolhida,
   desabilitado,
   emEscolha,
@@ -736,6 +872,7 @@ function DetalheOpcao({
   fx: PublicQuote["fx"];
   mes: MesInicio | undefined;
   hojeISO: string;
+  escolasContato: PublicQuote["escolas"];
   escolhida: boolean;
   desabilitado: boolean;
   emEscolha: boolean;
@@ -839,7 +976,9 @@ function DetalheOpcao({
           vistos.add(chave);
           escolas.push(e);
         });
-        return escolas.map((e, i) => <EscolaBloco key={i} escola={e} />);
+        return escolas.map((e, i) => (
+          <EscolaBloco key={i} escola={e} website={(e.campusId && escolasContato[e.campusId]?.website) || null} />
+        ));
       })()}
 
       {/* Preco */}
