@@ -12,11 +12,11 @@ import { CONTENT_LOCALES, type Falha } from "@/lib/produto-conteudo";
 const LOCALE_LABEL: Record<string, string> = { "pt-BR": "Português", en: "English", es: "Español" };
 const inp = "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm";
 
-type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; is_machine_translated: boolean };
+type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; not_ideal_for: string; is_machine_translated: boolean };
 type MidiaForm = { url: string; kind: string; caption: string };
 
 function conteudoVazio(): ConteudoForm {
-  return { description_html: "", highlights: "", inclusions: "", exclusions: "", is_machine_translated: false };
+  return { description_html: "", highlights: "", inclusions: "", exclusions: "", not_ideal_for: "", is_machine_translated: false };
 }
 
 function paraForm(c: any): ConteudoForm {
@@ -26,6 +26,7 @@ function paraForm(c: any): ConteudoForm {
     highlights: lista(c?.highlights),
     inclusions: lista(c?.inclusions),
     exclusions: lista(c?.exclusions),
+    not_ideal_for: lista(c?.not_ideal_for),
     is_machine_translated: !!c?.is_machine_translated,
   };
 }
@@ -114,7 +115,7 @@ export default function ConteudoEditor({
           <label className="mb-1 block text-xs font-medium text-neutral-600">Descrição (HTML permitido)</label>
           <textarea value={c.description_html} onChange={(e) => setLocale(aba, { description_html: e.target.value })} rows={4} className={inp} />
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Destaques (um por linha)</label>
             <textarea value={c.highlights} onChange={(e) => setLocale(aba, { highlights: e.target.value })} rows={4} className={inp} />
@@ -126,6 +127,10 @@ export default function ConteudoEditor({
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Não inclui (um por linha)</label>
             <textarea value={c.exclusions} onChange={(e) => setLocale(aba, { exclusions: e.target.value })} rows={4} className={inp} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-600">Menos indicado para (um por linha)</label>
+            <textarea value={c.not_ideal_for} onChange={(e) => setLocale(aba, { not_ideal_for: e.target.value })} rows={4} className={inp} />
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm text-neutral-700">

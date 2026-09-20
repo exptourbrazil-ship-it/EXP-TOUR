@@ -27,7 +27,7 @@ const STATUS_LABEL: Record<string, { texto: string; cor: string }> = {
   rejected: { texto: "Devolvido", cor: "#b91c1c" },
 };
 
-type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; is_machine_translated: boolean };
+type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; not_ideal_for: string; is_machine_translated: boolean };
 type MidiaForm = { url: string; kind: string; caption: string };
 type FichaForm = { accommodation_type: string; room_type: string; bathroom_type: string; meal_plan: string; distance_to_campus_minutes: string; check_in_weekday: string; check_out_weekday: string };
 
@@ -36,7 +36,7 @@ const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-lin
 const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "var(--p-muted)", marginBottom: 4 };
 
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
-const vazio = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", is_machine_translated: false });
+const vazio = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", not_ideal_for: "", is_machine_translated: false });
 
 export default function ConteudoAcomodacaoEditor({ productId }: { productId: string }) {
   const [id, setId] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function ConteudoAcomodacaoEditor({ productId }: { productId: str
     const base: Record<string, ConteudoForm> = {};
     for (const l of LOCALES) {
       const c = (p.content ?? []).find((x: any) => x.locale === l);
-      base[l] = c ? { description_html: c.description_html ?? "", highlights: arr(c.highlights), inclusions: arr(c.inclusions), exclusions: arr(c.exclusions), is_machine_translated: !!c.is_machine_translated } : vazio();
+      base[l] = c ? { description_html: c.description_html ?? "", highlights: arr(c.highlights), inclusions: arr(c.inclusions), exclusions: arr(c.exclusions), not_ideal_for: arr(c.not_ideal_for), is_machine_translated: !!c.is_machine_translated } : vazio();
     }
     setPorLocale(base);
     setMidias((p.media ?? []).map((m: any) => ({ url: m.url ?? "", kind: m.kind ?? "image", caption: m.caption ?? "" })));
@@ -187,6 +187,7 @@ export default function ConteudoAcomodacaoEditor({ productId }: { productId: str
           <div><label style={lbl}>Destaques (um por linha)</label><textarea value={c.highlights} onChange={(e) => setLoc({ highlights: e.target.value })} rows={4} style={inp} /></div>
           <div><label style={lbl}>Inclui (um por linha)</label><textarea value={c.inclusions} onChange={(e) => setLoc({ inclusions: e.target.value })} rows={4} style={inp} /></div>
           <div><label style={lbl}>Não inclui (um por linha)</label><textarea value={c.exclusions} onChange={(e) => setLoc({ exclusions: e.target.value })} rows={4} style={inp} /></div>
+          <div><label style={lbl}>Menos indicado para (um por linha)</label><textarea value={c.not_ideal_for} onChange={(e) => setLoc({ not_ideal_for: e.target.value })} rows={4} style={inp} /></div>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, color: "var(--p-ink)" }}>
           <input type="checkbox" checked={c.is_machine_translated} onChange={(e) => setLoc({ is_machine_translated: e.target.checked })} /> Tradução automática (revisar)

@@ -516,6 +516,7 @@ function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
     ficha.highlights.length > 0 ||
     ficha.inclusions.length > 0 ||
     ficha.exclusions.length > 0 ||
+    ficha.notIdealFor.length > 0 ||
     ficha.midias.length > 0;
   if (!temAlgo) return null;
   return (
@@ -534,6 +535,7 @@ function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
         <BlocoBullets titulo="Destaques" itens={ficha.highlights} />
         <BlocoBullets titulo="Incluído" itens={ficha.inclusions} />
         <BlocoBullets titulo="Não incluído" itens={ficha.exclusions} />
+        <BlocoBullets titulo="Menos indicado para" itens={ficha.notIdealFor} />
         <GaleriaMidia midias={ficha.midias} />
       </div>
     </details>

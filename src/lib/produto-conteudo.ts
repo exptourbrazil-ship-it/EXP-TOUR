@@ -23,6 +23,9 @@ export type ConteudoLocale = {
   highlights: string[];
   inclusions: string[];
   exclusions: string[];
+  // Perfil de aluno para quem a opcao e MENOS indicada. Nao confundir com
+  // `exclusions`, que e o que NAO esta incluido no preco.
+  not_ideal_for: string[];
   is_machine_translated: boolean;
 };
 
@@ -141,8 +144,15 @@ export function validarConteudoProduto(entrada: unknown): Resultado<ConteudoNorm
     const highlights = capBullets(listaStr(c.highlights));
     const inclusions = capBullets(listaStr(c.inclusions));
     const exclusions = capBullets(listaStr(c.exclusions));
+    const notIdealFor = capBullets(listaStr(c.not_ideal_for));
     // Locale sem nenhum conteudo -> descarta (nao grava linha vazia).
-    if (!description && highlights.length === 0 && inclusions.length === 0 && exclusions.length === 0) {
+    if (
+      !description &&
+      highlights.length === 0 &&
+      inclusions.length === 0 &&
+      exclusions.length === 0 &&
+      notIdealFor.length === 0
+    ) {
       return;
     }
     if (description && description.length > MAX_DESCRICAO) {
@@ -159,6 +169,7 @@ export function validarConteudoProduto(entrada: unknown): Resultado<ConteudoNorm
       highlights,
       inclusions,
       exclusions,
+      not_ideal_for: notIdealFor,
       is_machine_translated: optBool(c.is_machine_translated, false),
     });
   });
@@ -248,6 +259,7 @@ export type FichaProduto = {
   highlights: string[];
   inclusions: string[];
   exclusions: string[];
+  notIdealFor: string[];
   midias: FichaMidia[];
   isMachineTranslated: boolean;
 };
@@ -294,9 +306,17 @@ export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR
   const highlights = escolhido ? capBullets(listaStr(escolhido.highlights)) : [];
   const inclusions = escolhido ? capBullets(listaStr(escolhido.inclusions)) : [];
   const exclusions = escolhido ? capBullets(listaStr(escolhido.exclusions)) : [];
+  const notIdealFor = escolhido ? capBullets(listaStr(escolhido.not_ideal_for)) : [];
   const midias = midiasDoSnapshot(media);
 
-  if (!descriptionHtml && highlights.length === 0 && inclusions.length === 0 && exclusions.length === 0 && midias.length === 0) {
+  if (
+    !descriptionHtml &&
+    highlights.length === 0 &&
+    inclusions.length === 0 &&
+    exclusions.length === 0 &&
+    notIdealFor.length === 0 &&
+    midias.length === 0
+  ) {
     return null;
   }
   const loc =
@@ -309,6 +329,7 @@ export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR
     highlights,
     inclusions,
     exclusions,
+    notIdealFor,
     midias,
     isMachineTranslated: escolhido ? optBool(escolhido.is_machine_translated, false) : false,
   };

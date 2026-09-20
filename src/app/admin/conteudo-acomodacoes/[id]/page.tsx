@@ -56,6 +56,7 @@ export default async function AdminConteudoAcomodacaoRevisaoPage({
         {ficha && ficha.highlights.length > 0 ? <Bloco titulo="Destaques" itens={ficha.highlights} /> : null}
         {ficha && ficha.inclusions.length > 0 ? <Bloco titulo="Inclui" itens={ficha.inclusions} /> : null}
         {ficha && ficha.exclusions.length > 0 ? <Bloco titulo="Não inclui" itens={ficha.exclusions} /> : null}
+        {ficha && ficha.notIdealFor.length > 0 ? <Bloco titulo="Menos indicado para" itens={ficha.notIdealFor} /> : null}
 
         {acom && acom.linhas.length > 0 ? (
           <div className="mt-4">

@@ -247,6 +247,9 @@ function mesclarLocaleProduto(
     highlights: secao.destaques.length ? secao.destaques : existente?.highlights ?? [],
     inclusions: secao.inclusoes.length ? secao.inclusoes : existente?.inclusions ?? [],
     exclusions: secao.exclusoes.length ? secao.exclusoes : existente?.exclusions ?? [],
+    // A IA de brochura so extrai "o que NAO esta incluido" (exclusions). O perfil
+    // de aluno menos indicado nao e extraido: preserva o que ja houver.
+    not_ideal_for: existente?.not_ideal_for ?? [],
     is_machine_translated: false,
   };
 }

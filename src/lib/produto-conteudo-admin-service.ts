@@ -28,7 +28,7 @@ async function produtoDoTenant(supabase: SupabaseClient, tenantId: string, produ
 async function snapshotConteudo(supabase: SupabaseClient, productId: string): Promise<any[]> {
   const { data } = await supabase
     .from("product_content")
-    .select("locale, description_html, highlights, inclusions, exclusions, is_machine_translated")
+    .select("locale, description_html, highlights, inclusions, exclusions, not_ideal_for, is_machine_translated")
     .eq("product_id", productId);
   return data ?? [];
 }
@@ -49,6 +49,7 @@ function linhasConteudo(productId: string, content: ConteudoLocale[]) {
     highlights: c.highlights,
     inclusions: c.inclusions,
     exclusions: c.exclusions,
+    not_ideal_for: c.not_ideal_for,
     is_machine_translated: c.is_machine_translated,
   }));
 }

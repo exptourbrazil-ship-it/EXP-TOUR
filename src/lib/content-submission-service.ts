@@ -84,7 +84,7 @@ async function produtoDoFornecedor(
 // Lê o conteúdo VIVO do produto para semear o rascunho inicial.
 async function conteudoVivo(supabase: SupabaseClient, productId: string, kind: ProductContentKind): Promise<ConteudoPayload> {
   const [{ data: content }, { data: media }] = await Promise.all([
-    supabase.from("product_content").select("locale, description_html, highlights, inclusions, exclusions, is_machine_translated").eq("product_id", productId),
+    supabase.from("product_content").select("locale, description_html, highlights, inclusions, exclusions, not_ideal_for, is_machine_translated").eq("product_id", productId),
     supabase.from("product_media").select("url, kind, sort, caption").eq("product_id", productId).order("sort"),
   ]);
   let detail: Record<string, unknown> = {};
