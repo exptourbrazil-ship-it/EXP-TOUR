@@ -226,6 +226,34 @@ export function manualDiscountCopiavel(
  * NB: quote_event nao tem kind para "opcao adicionada" (CHECK restringe os
  * kinds), entao registra-se apenas a trilha de auditoria.
  */
+/**
+ * Recusa qualquer mutacao de conteudo/dinheiro fora do rascunho.
+ *
+ * Cotacao emitida tem o link publico ja com o estudante e o preco travado na
+ * moeda do curso: mudar item, opcao, desconto ou plano por baixo trocaria o
+ * conteudo de uma proposta JA ENVIADA, sem reemissao e sem trilha de versao.
+ * O caminho para editar depois de emitida e "Reemitir", que devolve a cotacao
+ * para draft e gera um novo link.
+ */
+async function exigirRascunho(
+  supabase: SupabaseClient,
+  tenantId: string,
+  quoteId: string,
+  acao: string,
+): Promise<void> {
+  const { data: quote, error } = await supabase
+    .from("quote")
+    .select("id, status")
+    .eq("tenant_id", tenantId)
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao carregar cotacao: ${error.message}`);
+  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
+  if (quote.status !== "draft") {
+    throw new Error(`So e possivel ${acao} em cotacao em rascunho (draft).`);
+  }
+}
+
 export async function addQuoteOption(
   supabase: SupabaseClient,
   args: AddQuoteOptionArgs,
@@ -247,7 +275,7 @@ export async function addQuoteOption(
   // ela daria para criar uma opcao JA COM ITENS numa cotacao emitida — e o
   // bloqueio de addQuoteItem seria contornavel por este caminho.
   if (quote.status !== "draft") {
-    throw new Error("So e possivel adicionar opcao a cotacao em rascunho (draft).");
+    throw new Error("So e possivel adicionar opcao em cotacao em rascunho (draft).");
   }
 
   // Posse da opcao de origem DENTRO da mesma cotacao: nao basta ser do tenant,
@@ -498,23 +526,7 @@ export async function addQuoteItem(
   if (optErr) throw new Error(`Falha ao carregar opcao: ${optErr.message}`);
   if (!option) throw new Error("Opcao nao encontrada para este tenant.");
 
-  // Dinheiro so muda em rascunho: cotacao emitida tem valores congelados (o
-  // cambio foi travado na emissao e o link publico ja esta com o estudante).
-  // Mesma guarda de removeQuoteItem e recalculateQuote — sem ela era possivel
-  // alterar por API o conteudo de uma proposta JA ENVIADA, sem reemissao e sem
-  // trilha de versao. Para editar depois de emitida o caminho e "Reemitir",
-  // que devolve a cotacao para draft e gera um novo link.
-  const { data: quote, error: qErr } = await supabase
-    .from("quote")
-    .select("id, status")
-    .eq("tenant_id", args.tenantId)
-    .eq("id", option.quote_id)
-    .maybeSingle();
-  if (qErr) throw new Error(`Falha ao carregar cotacao: ${qErr.message}`);
-  if (!quote) throw new Error("Cotacao nao encontrada para este tenant.");
-  if (quote.status !== "draft") {
-    throw new Error("So e possivel adicionar item a cotacao em rascunho (draft).");
-  }
+  await exigirRascunho(supabase, args.tenantId, option.quote_id as string, "adicionar item");
 
   // Precifica.
   const priced = await priceProductFromDb(supabase, {
@@ -820,12 +832,14 @@ export async function addManualDiscount(
   // Valida posse da opcao e resolve moeda/base.
   const { data: option, error: optErr } = await supabase
     .from("quote_option")
-    .select("id")
+    .select("id, quote_id")
     .eq("tenant_id", args.tenantId)
     .eq("id", args.optionId)
     .maybeSingle();
   if (optErr) throw new Error(`Falha ao carregar opcao: ${optErr.message}`);
   if (!option) throw new Error("Opcao nao encontrada para este tenant.");
+
+  await exigirRascunho(supabase, args.tenantId, option.quote_id as string, "conceder desconto");
 
   let base = 0;
   let currency = "BRL";
@@ -960,12 +974,14 @@ export async function setPaymentPlan(
   // Valida posse da opcao.
   const { data: option, error: optErr } = await supabase
     .from("quote_option")
-    .select("id")
+    .select("id, quote_id")
     .eq("tenant_id", args.tenantId)
     .eq("id", args.optionId)
     .maybeSingle();
   if (optErr) throw new Error(`Falha ao carregar opcao: ${optErr.message}`);
   if (!option) throw new Error("Opcao nao encontrada para este tenant.");
+
+  await exigirRascunho(supabase, args.tenantId, option.quote_id as string, "definir plano de pagamento");
 
   const firstDueDate = args.installments[0]?.dueDate ?? null;
 
