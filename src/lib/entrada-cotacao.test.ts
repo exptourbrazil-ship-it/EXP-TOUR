@@ -66,3 +66,45 @@ test("deposito em outra moeda e ignorado e cai no calculo por taxas", () => {
     155,
   );
 });
+
+test("matricula multi-curso entra na entrada (a base fundida e pagamento unico)", () => {
+  // O motor funde N matriculas numa linha com basis "registration:<regra>".
+  // Essa base nao estava na lista de pagamento unico, entao a matricula ficava
+  // fora da entrada em TODA cotacao com 2+ cursos.
+  const e = entradaDaOpcao({
+    moeda: "USD",
+    deposit: null,
+    depositCurrency: null,
+    taxas: [
+      { amount: 250, currency: "USD", isRefundable: false, basis: "registration:charge_highest" },
+      { amount: 125, currency: "USD", isRefundable: false, basis: "once_per_item" },
+    ],
+  });
+  assert.equal(e, 375);
+});
+
+test("as tres regras de agregacao contam, e per_unit continua fora", () => {
+  for (const regra of ["charge_all", "charge_highest", "charge_lowest"]) {
+    const e = entradaDaOpcao({
+      moeda: "USD", deposit: null, depositCurrency: null,
+      taxas: [{ amount: 100, currency: "USD", isRefundable: null, basis: `registration:${regra}` }],
+    });
+    assert.equal(e, 100, regra);
+  }
+  // Material por semana e recorrente: nao e entrada.
+  assert.equal(
+    entradaDaOpcao({
+      moeda: "USD", deposit: null, depositCurrency: null,
+      taxas: [{ amount: 80, currency: "USD", isRefundable: false, basis: "per_unit" }],
+    }),
+    0,
+  );
+});
+
+test("matricula fundida REEMBOLSAVEL fica fora da entrada", () => {
+  const e = entradaDaOpcao({
+    moeda: "USD", deposit: null, depositCurrency: null,
+    taxas: [{ amount: 250, currency: "USD", isRefundable: true, basis: "registration:charge_all" }],
+  });
+  assert.equal(e, 0);
+});

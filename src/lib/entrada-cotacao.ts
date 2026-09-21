@@ -22,6 +22,18 @@
 // ajuste do preço da acomodação, não taxa de entrada.
 const BASES_UNICAS = new Set(["once_per_item", "once_per_quote", "per_person"]);
 
+/**
+ * A matrícula de cotação com 2+ cursos é FUNDIDA numa linha só pelo motor, que
+ * grava `basis = "registration:<regra>"` para deixar no rastro qual regra
+ * agregou (charge_all / charge_highest / charge_lowest). Essa base não estava
+ * em BASES_UNICAS, então a matrícula — a taxa que mais define a entrada —
+ * ficava FORA dela em toda cotação multi-curso, e a agência recebia a menos.
+ * Continua sendo pagamento único: uma matrícula, cobrada uma vez.
+ */
+function ehBaseUnica(basis: string): boolean {
+  return BASES_UNICAS.has(basis) || basis.startsWith("registration:");
+}
+
 export type TaxaParaEntrada = {
   amount: number;
   currency: string | null;
@@ -52,7 +64,7 @@ export function entradaDaOpcao(args: {
   let soma = 0;
   for (const t of args.taxas) {
     if (t.isRefundable === true) continue;
-    if (!t.basis || !BASES_UNICAS.has(t.basis)) continue;
+    if (!t.basis || !ehBaseUnica(t.basis)) continue;
     // Mesma razão: taxa em outra moeda fica de fora da entrada.
     if (t.currency && t.currency !== args.moeda) continue;
     const v = Number(t.amount);

@@ -119,10 +119,20 @@ seguem com `null`), então uma proposta de ontem e uma de hoje exibem a mesma
 taxa de formas diferentes — assimetria aceita para não reescrever snapshot de
 proposta já enviada.
 
-**Limite conhecido, NÃO resolvido aqui.** A linha "Matricula (multi-curso)"
-grava `basis = "registration:<regra>"`, que não está em `BASES_UNICAS`
-(`entrada-cotacao.ts`) — logo ela **nunca entra na entrada**. Em cotação com 2+
-cursos, justamente a taxa que mais define a entrada fica de fora e a agência
-recebe a menos. É anterior a esta ADR e não havia nenhuma cotação nessa
-situação em 21/09/2026; corrigir muda o valor que o cliente paga à vista, então
-exige decisão comercial.
+**Corrigido junto (21/09/2026), por decisão do titular.** A linha "Matricula
+(multi-curso)" grava `basis = "registration:<regra>"`, que não estava em
+`BASES_UNICAS` (`entrada-cotacao.ts`) — logo ela **nunca entrava na entrada**.
+Em cotação com 2+ cursos, justamente a taxa que mais define a entrada ficava de
+fora e a agência recebia a menos. `ehBaseUnica` passa a reconhecer o prefixo
+`registration:`: continua sendo pagamento único, uma matrícula cobrada uma vez,
+e o sufixo permanece no rastro para dizer qual regra agregou. Nenhuma cotação
+estava nessa situação em 21/09/2026, então o valor de nenhuma proposta viva
+mudou.
+
+**Backfill das linhas já congeladas (21/09/2026).** Só foram corrigidas as
+linhas cujo casamento com o catálogo é INEQUÍVOCO (mesmo campus, nome, valor e
+moeda, com exatamente um valor de `is_refundable` não nulo do outro lado): 2 de
+11. As outras 9 continuam `null` porque o próprio catálogo não registra a
+informação — inventar `false` ali seria afirmar ao cliente o que não se sabe.
+Como nenhuma taxa do tenant é `true`, o backfill não alterou nenhuma entrada;
+só fez a etiqueta aparecer.
