@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 import { obterIp } from "@/lib/rate-limit";
 import { estadoDoContrato, registrarTransicao } from "@/lib/contrato-estado-service";
 import { podeTransicionar, proximosEstados, estadoValido, rotuloEstado, type EstadoContrato } from "@/lib/contrato-estados";
@@ -22,12 +23,23 @@ function getSupabase() {
   );
 }
 
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "casos.ver"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.ver"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const { id } = await params;
   const supabase = getSupabase();
+
+  // Isolamento por marca: sem isto, um admin da Forio lia o estado e o historico
+  // completo de transicoes (autor, motivo, datas) de um contrato da EXP Tour so
+  // por ter `casos.ver`. A rota irma enviar-assinatura ja fazia esta checagem.
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
 
   const estado = await estadoDoContrato(supabase, id);
   if (estado === null) {
@@ -51,8 +63,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   // Autorização base: precisa poder gerir casos para transição normal.
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -78,6 +90,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const supabase = getSupabase();
+
+  // Mesma barreira do GET: sem ela um admin de uma marca transiciona — e com
+  // `override`, para fora da tabela de transicoes validas — contrato da outra.
+  const barrado = await barrarContratoForaDoEscopo(supabase, id);
+  if (barrado) return barrado;
   const de = await estadoDoContrato(supabase, id);
   if (de === null) {
     return NextResponse.json({ ok: false, erro: "Contrato não encontrado." }, { status: 404 });
@@ -89,7 +106,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const valida = podeTransicionar(de, para as EstadoContrato);
   // Transição fora da tabela de válidas exige a capacidade 'override' (só Gestor).
   if (!valida) {
-    if (!(await checarCapacidadeRequest(request, "override"))) {
+    if (!(await checarCapacidadeAdmin("override"))) {
       return NextResponse.json(
         { ok: false, erro: `Transição ${rotuloEstado(de)} → ${rotuloEstado(para as EstadoContrato)} exige permissão de override.` },
         { status: 403 },
@@ -97,7 +114,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   const res = await registrarTransicao(supabase, {
     contratoId: id,
     de,

@@ -57,10 +57,12 @@ export function escopoPermiteContrato(
 export async function escopoTenantAdmin(supabase: SupabaseClient): Promise<EscopoAdmin> {
   const { usuarioAdminAtual } = await import("@/lib/admin-guard");
   const email = await usuarioAdminAtual();
-  // Caminho Bearer de compatibilidade (checarCapacidadeRequest aceita o segredo
-  // ADMIN_CAMBIO_SECRET): sem e-mail de sessao => SUPER-ADMIN GLOBAL. So e seguro
-  // porque esse segredo e uma credencial de NIVEL-GRUPO; nunca entregue o Bearer
-  // a uma automacao que deva ficar presa a um unico tenant.
+  // Caminho Bearer de compatibilidade: sem e-mail de sessao => SUPER-ADMIN
+  // GLOBAL. Hoje resta UM unico consumidor possivel — `/api/admin/cambio-manual`,
+  // que grava `cotacoes_cambio` (global, sem tenant), entao na pratica este ramo
+  // nao decide escopo de ninguem. Se um dia outra rota voltar a aceitar o Bearer,
+  // ela herda este super-admin sem perceber: e por isso que o atalho foi fechado
+  // em todas as demais.
   if (!email) return { global: true };
 
   const { data, error } = await supabase

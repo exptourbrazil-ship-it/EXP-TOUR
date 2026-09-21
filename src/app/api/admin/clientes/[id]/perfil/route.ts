@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
@@ -14,12 +14,17 @@ export const dynamic = "force-dynamic";
 // LGPD): marcar "participante" faz o portal esconder/negar todo o financeiro na
 // hora (o enforcement lê o perfil vigente do banco a cada requisição).
 // Capacidade casos.gerir + escopo de tenant. Auditado.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: titularId } = await params;
   // Controle de ACESSO/privacidade (quem vê dinheiro): exige a capacidade forte
   // config.gerir (mesma da anonimização LGPD), não a operacional casos.gerir.
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const supabase = createClient(
@@ -59,7 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     await registrarAuditoriaAdmin(supabase, {
-      usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+      usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
       acao: "titular.perfil.definir",
       alvo: titularId,
       detalhe: { de: (antes as { perfil?: string | null } | null)?.perfil ?? null, para: perfil },

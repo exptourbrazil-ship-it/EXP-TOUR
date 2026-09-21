@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { obterIp } from "@/lib/rate-limit";
 import { registrarStatusVisto, VistoBloqueado } from "@/lib/visto-service";
@@ -11,9 +11,14 @@ export const runtime = "nodejs";
 // "atualiza visto"). Na transicao para "negado", dispara a automacao E1 (abre
 // excecao -> pausa regua, cria tarefa ao consultor, avisa o cliente). Ver
 // src/lib/visto-service.ts. Autorizacao por capacidade (casos.gerir).
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id: titularId } = await params;
@@ -33,7 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
   if (barrado) return barrado;
 
-  const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const autor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   try {
     const resultado = await registrarStatusVisto({
       contratoId,

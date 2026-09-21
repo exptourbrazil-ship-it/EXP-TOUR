@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 //  GET   -> lista as antecipacoes (com rotulo do contrato/titular).
 //  POST  -> registra uma nova antecipacao exigida (com lastro documental).
 //  PATCH -> muda o status (atendida/cancelada).
-// Autenticacao: sessao de admin (ou Bearer de compatibilidade).
+// Autenticacao: SESSAO de admin, sem atalho por segredo.
 
 function getSupabase() {
   return createClient(

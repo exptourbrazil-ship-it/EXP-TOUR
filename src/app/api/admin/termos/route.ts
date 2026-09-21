@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { calcularHashTermo } from "@/lib/termos";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 //  POST  -> cria uma nova versao (calcula o hash) e a torna a vigente, marcando
 //           as demais como inativas (uma unica versao ativa por tipo).
 //  PATCH -> ativa/desativa uma versao (ativar desativa as demais do mesmo tipo).
-// Autenticacao: sessao de admin (ou Bearer de compatibilidade).
+// Autenticacao: SESSAO de admin, sem atalho por segredo.
 
 const TIPO = "adesao";
 
@@ -24,9 +24,14 @@ function getSupabase() {
   );
 }
 
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -41,8 +46,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => null);
@@ -72,7 +77,7 @@ export async function POST(request: Request) {
   // Torna esta a unica vigente: desativa as demais do mesmo tipo.
   await supabase.from("termos").update({ ativo: false }).eq("tipo", TIPO).neq("id", novo.id);
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "termo.criar",
@@ -85,8 +90,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const body = await request.json().catch(() => null);
   const id = body?.id ? String(body.id) : "";
@@ -105,7 +110,7 @@ export async function PATCH(request: Request) {
     await supabase.from("termos").update({ ativo: false }).eq("tipo", TIPO).neq("id", id);
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "termo.status",

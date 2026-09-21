@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin } from "@/lib/admin-guard";
 import { carregarFinanceiro } from "@/lib/admin-financeiro";
 import { contratoIdsDoEscopoAtual } from "@/lib/admin-tenant";
 
@@ -9,11 +9,15 @@ export const dynamic = "force-dynamic";
 
 // Metricas financeiras + lista de parcelas para o painel admin. Toda a logica
 // de query e agregacao vive em carregarFinanceiro (server-only); aqui so
-// checamos a sessao e devolvemos o JSON. Autenticacao: sessao de admin (ou
-// Bearer de compatibilidade).
+// checamos a sessao e devolvemos o JSON. Autenticacao: SESSAO de admin.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "financeiro.ver"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("financeiro.ver"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   try {

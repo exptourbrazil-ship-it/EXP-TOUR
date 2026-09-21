@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarTitularForaDoEscopo, escopoTenantAdmin } from "@/lib/admin-tenant";
@@ -13,9 +13,9 @@ export const runtime = "nodejs";
 // titulares.data_inicio. A aba Inicio usa a data do contrato quando ela
 // existe e, caso contrario, cai para esta data do titular.
 //
-// Autorizacao por capacidade (checarCapacidadeRequest): GET exige casos.ver;
-// POST exige casos.gerir (escrita operacional de caso). Compatibilidade: tambem
-// aceita o Bearer ADMIN_CAMBIO_SECRET (ver admin-guard).
+// Autorizacao por capacidade, SO por sessao (checarCapacidadeAdmin): GET exige
+// casos.ver; POST exige casos.gerir (escrita operacional de caso). NAO aceita o
+// Bearer ADMIN_CAMBIO_SECRET — ver a nota abaixo.
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -24,9 +24,14 @@ function getSupabase() {
 
 // Lista os titulares (com a data de inicio ja gravada, se houver) para
 // preencher o seletor no painel administrativo.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "casos.ver"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.ver"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const supabase = getSupabase();
@@ -48,8 +53,8 @@ export async function GET(request: Request) {
 
 // Grava a data de inicio de um titular. Aceita data vazia para limpar.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => null);
@@ -85,7 +90,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, erro: "Nao foi possivel salvar a data." }, { status: 500 });
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "titular.data_inicio.definir",

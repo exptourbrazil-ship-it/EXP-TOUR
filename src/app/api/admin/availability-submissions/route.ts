@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { aprovarPropostaDisponibilidade, rejeitarPropostaDisponibilidade } from "@/lib/disponibilidade-proposta-service";
@@ -15,9 +15,14 @@ const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{
 // Publicar os itens escolhidos (ou recusar) de uma PROPOSTA DE DISPONIBILIDADE lida
 // por IA (F3.4). Capacidade fornecedores.gerir (falha fechada); o service revalida a
 // posse item a item (salvarIntake/salvarPeriodo) e audita.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "fornecedores.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("fornecedores.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL as string, process.env.SUPABASE_SERVICE_ROLE_KEY as string);
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
@@ -30,7 +35,7 @@ export async function POST(request: Request) {
   } catch (err) {
     return NextResponse.json({ ok: false, erro: err instanceof Error ? err.message : "Falha ao resolver o tenant." }, { status: 500 });
   }
-  const actor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const actor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   const ip = obterIp(request);
 
   if (acao === "aprovar") {

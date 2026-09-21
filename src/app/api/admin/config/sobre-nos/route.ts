@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { salvarConfigMarca } from "@/lib/tenant-config-service";
@@ -11,8 +11,13 @@ export const dynamic = "force-dynamic";
 // POST /api/admin/config/sobre-nos — salva o institucional "Sobre nós" + contato
 // do tenant (exibido na aba "Sobre nós" da cotação). Capacidade config.gerir
 // (falha fechada), só Gestor.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
     return NextResponse.json({ ok: false, erro: "Não autorizado" }, { status: 403 });
   }
   const supabase = createClient(

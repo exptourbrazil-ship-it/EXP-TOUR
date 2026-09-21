@@ -50,18 +50,19 @@ export async function checarCapacidadeAdmin(capacidade: CapacidadeAdmin): Promis
   return !!sessao && podeAdmin(sessao.papel, capacidade);
 }
 
-// Auth padrao das rotas de API admin: aceita a sessao de admin (cookie) e,
-// por compatibilidade, o Bearer ADMIN_CAMBIO_SECRET. A sessao e o caminho
-// preferido; o Bearer permanece para clientes/scripts que ainda o usem.
-export async function checarAdminRequest(request: Request): Promise<boolean> {
-  if (await checarAdminCookie()) return true;
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  if (!adminSecret) return false;
-  return request.headers.get("authorization") === "Bearer " + adminSecret;
-}
-
-// Mesma compat Bearer do checarAdminRequest, mas com a sessao de cookie gateada
-// por capacidade (RBAC). Use nas rotas de API que ja tem uma capacidade definida.
+// ATENCAO: aceita o Bearer ADMIN_CAMBIO_SECRET como ATALHO do RBAC. Sobrou UM
+// unico chamador: `/api/admin/cambio-manual`, que e a rota para a qual esse
+// segredo existe. NAO use em rota nova.
+//
+// Por que: o segredo e uma credencial de nivel-grupo. Quem o tem passa por
+// qualquer capacidade, a trilha atribui a acao a "bearer-secret" em vez de uma
+// pessoa, e como nao ha e-mail de sessao o `escopoTenantAdmin` promove o
+// portador a super-admin GLOBAL, atravessando as duas marcas. Por isso o atalho
+// foi fechado nas 29 rotas de dinheiro, documento (PII), acerto, cancelamento e
+// configuracao — todas usam `checarCapacidadeAdmin`, que so aceita sessao.
+//
+// (`checarAdminRequest`, a versao sem capacidade, foi removida por nao ter mais
+// chamador: enquanto existisse, convidava a reintroduzir o atalho.)
 export async function checarCapacidadeRequest(request: Request, capacidade: CapacidadeAdmin): Promise<boolean> {
   if (await checarCapacidadeAdmin(capacidade)) return true;
   const adminSecret = process.env.ADMIN_CAMBIO_SECRET;

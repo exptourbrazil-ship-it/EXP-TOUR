@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { tenantIdAtual } from "@/lib/catalog-service";
@@ -17,11 +17,15 @@ export const dynamic = "force-dynamic";
 // importado — util para conferir os campos reais do CRM. Para aplicar de fato,
 // envie { "dryRun": false } (ou { "aplicar": true }).
 //
-// Autorizacao: capacidade fornecedores.gerir (com fallback Bearer, como as
-// demais rotas admin).
+// Autorizacao: capacidade fornecedores.gerir, so por sessao.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "fornecedores.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("fornecedores.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
@@ -47,7 +51,7 @@ export async function POST(request: Request) {
 
     // So audita a aplicacao real (o dry-run nao muda nada).
     if (!resultado.dryRun) {
-      const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+      const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
       await registrarAuditoriaAdmin(supabase, {
         usuario,
         acao: "fornecedores.sync_zoho",

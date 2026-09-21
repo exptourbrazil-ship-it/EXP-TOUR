@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp, checarELimitar } from "@/lib/rate-limit";
 import { enviarConviteFornecedorEmail } from "@/lib/email";
@@ -19,9 +19,14 @@ const REENVIO_MAX = Number(process.env.RATE_LIMIT_FORNECEDOR_CONVITE || "3");
 //  - { active: boolean }        -> ativa/desativa o acesso (revoga/restaura);
 //  - { reenviarConvite: true }  -> reenvia o e-mail de boas-vindas/login.
 // Autorizacao: capacidade fornecedores.gerir.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "fornecedores.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("fornecedores.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await ctx.params;
@@ -46,7 +51,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ ok: false, erro: "Usuário não encontrado." }, { status: 404 });
   }
 
-  const quem = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const quem = (await usuarioAdminAtual()) ?? "sessao-expirada";
   const ip = obterIp(request);
 
   // Reenvio do convite (nao muda o registro; so dispara o e-mail).

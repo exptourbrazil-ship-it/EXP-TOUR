@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
@@ -21,10 +21,15 @@ export const runtime = "nodejs";
 // Envia um contrato para assinatura no Zoho Sign a partir do template
 // configurado. Monta os signatarios (pagante sempre; estudante so se maior de
 // idade e com e-mail), cria o envelope e registra em contratos_assinatura.
-// Autenticacao: sessao de admin (ou Bearer de compatibilidade).
+// Autenticacao: SESSAO de admin com a capacidade exigida.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "propostas.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("propostas.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   if (!signTemplateConfigurado()) {
@@ -140,7 +145,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "contrato.enviar_assinatura",

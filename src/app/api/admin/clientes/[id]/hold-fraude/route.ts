@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { obterIp } from "@/lib/rate-limit";
 import { abrirHoldFraude, HoldBloqueado } from "@/lib/hold-service";
@@ -14,9 +14,14 @@ export const runtime = "nodejs";
 // (Operacao conduz excecoes; Gestor tudo). Limpar o hold = resolver o E10 no
 // Caso 360 (Acoes -> Processos de excecao). Quando a conferencia automatica de
 // uploads existir, ela sera outro gatilho para o mesmo servico.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id: titularId } = await params;
@@ -36,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
   if (barrado) return barrado;
 
-  const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const autor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   try {
     const abriu = await abrirHoldFraude({
       contratoId,

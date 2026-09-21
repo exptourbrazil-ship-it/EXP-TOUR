@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // Fila de documentos para a operacao: lista os documentos de TODOS os titulares
 // (por padrao apenas status 'pendente') com nome/CPF do titular e uma URL
 // assinada de curta duracao para o admin conferir o arquivo antes de aprovar
-// ou rejeitar. Autenticacao: sessao de admin (ou Bearer de compatibilidade).
+// ou rejeitar. Autenticacao: SESSAO de admin, sem atalho por segredo.
 //
 // O balde depende da origem do documento: 'titular' -> documentos-titular,
 // 'admin' -> documentos-admin. Documentos vindos do Zoho (outra origem) nao tem

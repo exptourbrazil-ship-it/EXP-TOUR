@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 import { obterIp } from "@/lib/rate-limit";
 import {
@@ -15,6 +15,11 @@ export const runtime = "nodejs";
 //  - "contato" (nome/telefone/email): capacidade casos.gerir.
 //  - "cpf" (muda a identidade de login): capacidade override + justificativa.
 // A mutacao (validacao/transacao/auditoria) vive em src/lib/cadastro-service.ts.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: titularId } = await params;
   const body = await request.json().catch(() => null);
@@ -22,8 +27,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   // A capacidade exigida depende da secao — o CPF e sensivel (so Gestor).
   const capacidade = secao === "cpf" ? "override" : "casos.gerir";
-  if (!(await checarCapacidadeRequest(request, capacidade))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin(capacidade))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   // Isolamento por tenant: barra se o titular da URL nao esta no escopo do admin.
@@ -34,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const barrado = await barrarTitularForaDoEscopo(supabase, titularId);
   if (barrado) return barrado;
 
-  const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const autor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   const ip = obterIp(request);
 
   try {

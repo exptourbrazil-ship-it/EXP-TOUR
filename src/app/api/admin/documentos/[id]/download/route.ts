@@ -20,8 +20,8 @@ export const dynamic = "force-dynamic";
 // cliente exige que o documento seja do proprio titular; aqui o admin pode ver
 // qualquer documento). Resolve os dois casos: arquivo no Storage do Supabase
 // (origem 'titular'/'admin'/'sistema' -> URL assinada de 60s) ou anexo no Zoho
-// CRM (demais origens -> stream do conteudo). Autenticacao: sessao de admin (ou
-// Bearer de compatibilidade).
+// CRM (demais origens -> stream do conteudo). Autenticacao: SESSAO de admin,
+// sem atalho por segredo.
 //
 // Mapa de origem -> bucket do Storage. 'sistema' cobre os contratos assinados
 // gerados pelo Zoho Sign (ver docs/plano-zoho-sign.md).

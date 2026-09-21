@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin } from "@/lib/admin-guard";
 import { verificarConexaoZoho } from "@/lib/zoho";
 
 export const runtime = "nodejs";
@@ -9,9 +9,14 @@ export const dynamic = "force-dynamic";
 // presentes (sem revelar os valores) e tenta renovar o access token. Serve
 // para a equipe validar a configuracao OAuth apos preencher os segredos no
 // ambiente (Vercel). Nao recebe nem grava credenciais.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   // Presenca (booleana) das variaveis — nunca os valores.

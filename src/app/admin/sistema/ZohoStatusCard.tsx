@@ -23,8 +23,17 @@ export default function ZohoStatusCard() {
     try {
       const res = await fetch("/api/admin/zoho/status", { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok && res.status === 401) {
-        setErro("Sessão expirada. Faça login novamente.");
+      // 403 = sessão válida sem permissão; 401 = sessão expirada. Sem tratar os
+      // dois, a recusa caía no `else` e virava `status`, e o cartão exibia
+      // `{ ok:false, erro:"Não autorizado" }` como se fosse status do Zoho.
+      if (!res.ok) {
+        setErro(
+          res.status === 403
+            ? "Você não tem permissão para ver o status das integrações."
+            : res.status === 401
+              ? "Sessão expirada. Faça login novamente."
+              : json?.error || json?.erro || "Falha ao consultar o status.",
+        );
         setStatus(null);
       } else {
         setStatus(json);
@@ -43,8 +52,15 @@ export default function ZohoStatusCard() {
         const res = await fetch("/api/admin/zoho/status", { cache: "no-store" });
         const json = await res.json();
         if (!ativo) return;
-        if (!res.ok && res.status === 401) {
-          setErro("Sessão expirada. Faça login novamente.");
+        if (!res.ok) {
+          setErro(
+            res.status === 403
+              ? "Você não tem permissão para ver o status das integrações."
+              : res.status === 401
+                ? "Sessão expirada. Faça login novamente."
+                : json?.error || json?.erro || "Falha ao consultar o status.",
+          );
+          setStatus(null);
         } else {
           setStatus(json);
         }

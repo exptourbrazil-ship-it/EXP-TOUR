@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { montarAnexoIIISnapshot, serializarAnexoIIISnapshot } from "@/lib/anexo-iii-snapshot";
@@ -13,9 +13,14 @@ export const dynamic = "force-dynamic";
 // EMITE (congela) o Anexo III de um contrato: monta o snapshot imutável dos itens
 // atuais + hash de integridade (Cláusula 18.2) e trava edições posteriores. O que
 // o cliente vê passa a ser o EMITIDO. Idempotente: reemitir um já emitido é 409.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "config.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("config.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const b = await request.json().catch(() => null);
   const contratoId = b?.contratoId ? String(b.contratoId) : "";
@@ -65,7 +70,7 @@ export async function POST(request: Request) {
   }
 
   const emitidoEm = new Date().toISOString();
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   const snapshot = montarAnexoIIISnapshot(itens, { emitidoEm });
   const hash = createHash("sha256").update(serializarAnexoIIISnapshot(snapshot)).digest("hex");
 

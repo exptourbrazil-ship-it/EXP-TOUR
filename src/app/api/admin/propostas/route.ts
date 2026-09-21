@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { escopoTenantAdmin, barrarPropostaForaDoEscopo } from "@/lib/admin-tenant";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 //  GET   -> lista as propostas.
 //  POST  -> cria uma proposta (token + validade de 10 dias) para o link publico.
 //  PATCH -> muda o status (ex.: cancelada).
-// Autenticacao: sessao de admin (ou Bearer de compatibilidade).
+// Autenticacao: SESSAO de admin, sem atalho por segredo.
 // A ACEITACAO (assinatura -> provisiona titular/contrato) sera Fase C, na
 // pagina publica; aqui e so a criacao/gestao.
 
@@ -27,9 +27,14 @@ function getSupabase() {
   );
 }
 
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "propostas.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("propostas.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const supabase = getSupabase();
   const escopo = await escopoTenantAdmin(supabase);
@@ -47,8 +52,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "propostas.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("propostas.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const b = await request.json().catch(() => null);
   const nome = b?.nomeCompleto ? String(b.nomeCompleto).trim() : "";
@@ -88,7 +93,7 @@ export async function POST(request: Request) {
       custo_programa: custo,
       plano,
       data_inicio: dataInicio,
-      criado_por: (await usuarioAdminAtual()) ?? "bearer-secret",
+      criado_por: (await usuarioAdminAtual()) ?? "sessao-expirada",
     })
     .select("id, token")
     .single();
@@ -97,7 +102,7 @@ export async function POST(request: Request) {
   }
 
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "proposta.criar",
     alvo: nova.id,
     detalhe: { cpf, moeda, custo },
@@ -108,8 +113,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "propostas.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("propostas.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const b = await request.json().catch(() => null);
   const id = b?.id ? String(b.id) : "";
@@ -129,7 +134,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, erro: "Falha ao atualizar a proposta." }, { status: 500 });
   }
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "proposta.status",
     alvo: id,
     detalhe: { status },

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { validarPrograma, validarIntake, validarAcomodacao, validarPeriodo } from "@/lib/disponibilidade";
 import {
@@ -20,9 +20,14 @@ export const dynamic = "force-dynamic";
 // Espelho admin do endpoint de Disponibilidade. Mesmo `acao`, mas gateado por
 // capacidade (fornecedores.gerir) e escopado ao `supplierId` do corpo (a equipe
 // pode gerir a disponibilidade de qualquer fornecedor). actor_kind = 'admin'.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron. O caminho Bearer nao tem e-mail de
+// sessao, entao a trilha atribui tudo a "bearer-secret" e o escopoTenantAdmin
+// o promove a super-admin GLOBAL, atravessando as duas marcas. So as telas do
+// admin chamam esta rota, por cookie.
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "fornecedores.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("fornecedores.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -33,7 +38,7 @@ export async function POST(request: Request) {
   const acao = String(body?.acao || "");
   const supplierId = String(body?.supplierId || "");
   if (!supplierId) return NextResponse.json({ ok: false, erro: "Informe o fornecedor." }, { status: 400 });
-  const actor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const actor = (await usuarioAdminAtual()) ?? "sessao-expirada";
 
   let tenantId: string;
   try {
