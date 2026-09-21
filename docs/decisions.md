@@ -76,3 +76,53 @@ coloca o bruto do item em `bases.tuition` mesmo quando o produto é acomodação
 por isso `bases.accommodation` carrega só o sazonal. Quando a cotação passar a
 consolidar vários itens por tipo, `bases.accommodation` deve receber o bruto da
 acomodação **mais** o sazonal, e esta ADR deve ser revisitada.
+
+---
+
+## ADR-003 — `is_refundable` da taxa viaja do catálogo até a cotação
+
+**Contexto.** `quote_item_fee.is_refundable` era gravado como `null` **literal**
+em `addQuoteItem`, com um `TODO` admitindo a lacuna: o tipo de saída do motor
+(`FeeLine`) não carregava a flag, embora `catalog-service` já a lesse do banco
+para o input `Fee`. Duas consequências, descobertas em 21/09/2026 ao conferir a
+cotação 2026-9: a proposta **nunca** exibia "(não reembolsável)", mesmo para
+taxas que o catálogo marca como tal; e a ENTRADA tratava tudo como não
+reembolsável por acidente — `entradaDaOpcao` só pula `isRefundable === true`, e
+nenhuma das 202 taxas do tenant era `true`. Estava certo por coincidência, não
+por construção.
+
+**Decisão.**
+
+1. `Fee` ganha `id`; `FeeLine` ganha `feeId` e `isRefundable`. A flag atravessa
+   motor → gravação → leitura → proposta/PDF → entrada.
+2. **Três estados, não dois.** `true`, `false` e `undefined`/`null`
+   (DESCONHECIDO) são distintos ponta a ponta. Desconhecido **não** é
+   reembolsável para efeito de entrada — a convenção que já existia —, mas
+   também não recebe a etiqueta "(não reembolsável)", porque afirmar isso seria
+   dizer o que não se sabe.
+3. **Taxas fundidas** (a linha "Matricula (multi-curso)", que agrega N
+   matrículas) combinam a flag por `combinarReembolsavel`: `false` vence tudo;
+   sobrando algum desconhecido, a linha é desconhecida; só é `true` quando
+   **todas** forem explicitamente `true`. A regra é assimétrica de propósito —
+   marcar `true` por engano **tira** a taxa da entrada e a agência recebe a
+   menos. A linha fundida não tem `feeId`: nenhuma das taxas é "a" origem.
+4. `fee_id` é gravado como PROCEDÊNCIA, sem nenhum leitor. Como a FK é
+   `NO ACTION`, `limparMaterializacaoDoSubmission` solta o ponteiro antes de
+   apagar as taxas de um submission — senão uma taxa já cotada bloquearia o
+   retry da republicação de price list.
+
+**Consequência.** O checkbox "Reembolsável" do cadastro de taxa **passa a mexer
+em dinheiro**: até aqui ele era cosmético no fluxo de cotação, e agora marcar
+uma taxa como reembolsável a retira da entrada. Quem opera o cadastro precisa
+saber disso. Cotações já emitidas não são corrigidas (as linhas congeladas
+seguem com `null`), então uma proposta de ontem e uma de hoje exibem a mesma
+taxa de formas diferentes — assimetria aceita para não reescrever snapshot de
+proposta já enviada.
+
+**Limite conhecido, NÃO resolvido aqui.** A linha "Matricula (multi-curso)"
+grava `basis = "registration:<regra>"`, que não está em `BASES_UNICAS`
+(`entrada-cotacao.ts`) — logo ela **nunca entra na entrada**. Em cotação com 2+
+cursos, justamente a taxa que mais define a entrada fica de fora e a agência
+recebe a menos. É anterior a esta ADR e não havia nenhuma cotação nessa
+situação em 21/09/2026; corrigir muda o valor que o cliente paga à vista, então
+exige decisão comercial.

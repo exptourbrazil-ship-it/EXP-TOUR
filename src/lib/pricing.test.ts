@@ -15,6 +15,7 @@ import {
   calcWithTransition,
   applyFreeUnits,
   aggregateRegistrationFee,
+  combinarReembolsavel,
   convertFx,
   applyFees,
   isPromotionApplicable,
@@ -935,4 +936,52 @@ test("S10: priceProduct com e sem ajuste sazonal", () => {
   // O item sem ajuste continua identico em tudo o mais.
   assert.equal(comSazonal.averageUnitPrice, semSazonal.averageUnitPrice);
   assert.equal(comSazonal.endDate, semSazonal.endDate);
+});
+
+// ── propagacao de is_refundable / feeId (a flag decide a ENTRADA) ───────────
+test("applyFees carrega feeId e isRefundable do catalogo ate a linha", () => {
+  const ctx: FeeContext = {
+    billableQuantity: 4, itemCount: 1, personCount: 1,
+    programItemCount: 1, multiCourseRule: "charge_all",
+  };
+  const r = applyFees(
+    [
+      { id: "f-1", name: "Matrícula", feeType: "registration", chargeBasis: "once_per_item", amount: 155, currency: "USD", isRefundable: false },
+      { id: "f-2", name: "Caução", feeType: "other", chargeBasis: "once_per_item", amount: 200, currency: "USD", isRefundable: true },
+      { id: "f-3", name: "Material", feeType: "material", chargeBasis: "once_per_item", amount: 80, currency: "USD" },
+    ],
+    ctx,
+  );
+  assert.deepEqual(
+    r.fees.map((l) => [l.feeId, l.isRefundable]),
+    [["f-1", false], ["f-2", true], ["f-3", undefined]],
+    "false, true e desconhecido sao TRES estados distintos",
+  );
+});
+
+test("combinarReembolsavel nunca inventa `true`", () => {
+  // `true` tira a taxa da entrada: so quando TODAS forem reembolsaveis.
+  assert.equal(combinarReembolsavel([true, true]), true);
+  assert.equal(combinarReembolsavel([true, false]), false);
+  assert.equal(combinarReembolsavel([false, undefined]), false, "false vence o desconhecido");
+  assert.equal(combinarReembolsavel([true, undefined]), undefined, "desconhecido nao vira true");
+  assert.equal(combinarReembolsavel([]), undefined);
+});
+
+test("matricula multi-curso combina a flag das taxas que fundiu", () => {
+  const ctx: FeeContext = {
+    billableQuantity: 4, itemCount: 2, personCount: 1,
+    programItemCount: 2, multiCourseRule: "charge_highest",
+  };
+  const r = applyFees(
+    [
+      { id: "a", name: "Matrícula A", feeType: "registration", chargeBasis: "once_per_item", amount: 100, currency: "USD", isRefundable: false },
+      { id: "b", name: "Matrícula B", feeType: "registration", chargeBasis: "once_per_item", amount: 150, currency: "USD", isRefundable: true },
+    ],
+    ctx,
+  );
+  const linha = r.fees.find((l) => l.name.includes("multi-curso"));
+  assert.ok(linha);
+  assert.equal(linha.feeId, undefined, "linha fundida nao tem uma origem unica");
+  assert.equal(linha.isRefundable, false, "uma nao reembolsavel torna a linha nao reembolsavel");
 });

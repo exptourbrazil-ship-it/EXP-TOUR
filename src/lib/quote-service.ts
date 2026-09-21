@@ -644,17 +644,22 @@ export async function addQuoteItem(
   if (itemErr) throw new Error(`Falha ao gravar item: ${itemErr.message}`);
   const itemId = item.id as string;
 
-  // Taxas do item (priced.fees). FeeLine nao carrega fee_id nem is_refundable,
-  // entao fee_id fica nulo. TODO: propagar fee_id/is_refundable do motor.
+  // Taxas do item (priced.fees). `is_refundable` vem do motor e NAO pode ser
+  // perdido aqui: decide a etiqueta "(nao reembolsavel)" na proposta e se a
+  // taxa entra na ENTRADA. Gravar null fixo fazia toda taxa chegar como
+  // desconhecida — inclusive as que o catalogo marca como nao reembolsaveis.
+  // `undefined` (catalogo sem a informacao) continua virando null: desconhecido
+  // e um estado legitimo, diferente de "e reembolsavel".
   for (const fee of priced.fees) {
     await supabase.from("quote_item_fee").insert({
       tenant_id: args.tenantId,
       quote_item_id: itemId,
-      fee_id: null,
+      // Sem fee_id na linha multi-curso: ela funde varias taxas.
+      fee_id: fee.feeId ?? null,
       name: fee.name,
       amount: fee.amount,
       currency: fee.currency,
-      is_refundable: null,
+      is_refundable: fee.isRefundable ?? null,
       basis: fee.basis,
     });
   }

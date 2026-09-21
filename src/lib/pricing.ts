@@ -71,6 +71,8 @@ export type FeeChargeBasis =
 
 /** Taxa avulsa da cotacao (subconjunto puro de `fee`, secao 3.6). */
 export type Fee = {
+  /** `fee.id` de origem, para a cotacao apontar de volta ao catalogo. */
+  id?: string;
   name: string;
   feeType: string; // fee_type (registration | material | bank | ...)
   chargeBasis: FeeChargeBasis;
@@ -90,10 +92,22 @@ export type FeeContext = {
 
 /** Linha de taxa calculada (rastro auditavel do price_breakdown, secao 4.7). */
 export type FeeLine = {
+  /**
+   * `fee.id` de origem. Ausente quando a linha nao vem de UMA taxa so (ex.: a
+   * matricula multi-curso, que funde varias).
+   */
+  feeId?: string;
   name: string;
   amount: number;
   currency: string;
   basis: string;
+  /**
+   * Reembolsavel: `true`/`false` do catalogo, `undefined` = DESCONHECIDO.
+   * Viaja ate a cotacao porque decide duas coisas para o cliente: a etiqueta
+   * "(nao reembolsavel)" na proposta e se a taxa entra na ENTRADA. Perder essa
+   * flag no caminho fazia toda taxa chegar como desconhecida.
+   */
+  isRefundable?: boolean;
 };
 
 /** Dimensao de segmentacao de uma promocao (secao 3.6, `promotion_target`). */
@@ -580,6 +594,19 @@ function feeRawAmount(fee: Fee, ctx: FeeContext): number {
  * via aggregateRegistrationFee conforme multiCourseRule (charge_highest/lowest/
  * all). Com um unico programa, a matricula e cobrada normalmente pela sua base.
  */
+/**
+ * Combina o `isRefundable` de varias taxas fundidas numa linha so.
+ * So e reembolsavel se TODAS forem explicitamente reembolsaveis; qualquer uma
+ * nao reembolsavel torna a linha nao reembolsavel; se sobrar desconhecida, a
+ * linha fica desconhecida. Nunca inventa `true`: dizer que e reembolsavel tira
+ * a taxa da entrada, e a agencia receberia a menos.
+ */
+export function combinarReembolsavel(valores: (boolean | undefined)[]): boolean | undefined {
+  if (valores.some((v) => v === false)) return false;
+  if (valores.some((v) => v === undefined)) return undefined;
+  return valores.length > 0 ? true : undefined;
+}
+
 export function applyFees(
   fees: Fee[],
   ctx: FeeContext
@@ -594,10 +621,12 @@ export function applyFees(
       continue;
     }
     lines.push({
+      feeId: fee.id,
       name: fee.name,
       amount: round2(feeRawAmount(fee, ctx)),
       currency: fee.currency,
       basis: fee.chargeBasis,
+      isRefundable: fee.isRefundable,
     });
   }
 
@@ -606,10 +635,12 @@ export function applyFees(
   if (registrationFees.length > 0) {
     const amounts = registrationFees.map((f) => f.amount);
     lines.push({
+      // Sem `feeId`: a linha funde varias taxas, nenhuma e "a" origem.
       name: "Matricula (multi-curso)",
       amount: aggregateRegistrationFee(amounts, ctx.multiCourseRule),
       currency: registrationFees[0].currency,
       basis: `registration:${ctx.multiCourseRule}`,
+      isRefundable: combinarReembolsavel(registrationFees.map((f) => f.isRefundable)),
     });
   }
 

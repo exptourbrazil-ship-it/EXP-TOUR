@@ -111,6 +111,19 @@ async function carregar(supabase: SupabaseClient, tenantId: string, id: string):
 // price_template cascateia tiers e o vinculo; deletar o product cascateia o
 // detail. As taxas sao deletadas a parte.
 async function limparMaterializacaoDoSubmission(supabase: SupabaseClient, submissionId: string) {
+  // Solta a PROCEDENCIA antes de apagar. `quote_item_fee.fee_id` referencia
+  // `fee` com NO ACTION: uma taxa ja usada em cotacao bloquearia este delete e
+  // derrubaria o retry da republicacao. A linha da cotacao e congelada (guarda
+  // nome, valor, moeda e base proprios) — o ponteiro e so rastro de origem, e
+  // apontar para uma taxa que deixou de existir nao rastreia nada.
+  const { data: taxasDoSubmission } = await supabase
+    .from("fee")
+    .select("id")
+    .eq("source_submission_id", submissionId);
+  const idsTaxas = (taxasDoSubmission ?? []).map((t) => t.id as string);
+  if (idsTaxas.length > 0) {
+    await supabase.from("quote_item_fee").update({ fee_id: null }).in("fee_id", idsTaxas);
+  }
   await supabase.from("fee").delete().eq("source_submission_id", submissionId);
   await supabase.from("price_template").delete().eq("source_submission_id", submissionId);
   await supabase.from("product").delete().eq("source_submission_id", submissionId);

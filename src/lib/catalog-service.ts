@@ -279,6 +279,7 @@ export async function loadPricingInputs(
     if (f.valid_from != null && startDate < f.valid_from) continue;
     if (f.valid_until != null && startDate > f.valid_until) continue;
     fees.push({
+      id: f.id as string,
       name: f.name,
       feeType: f.fee_type,
       chargeBasis: f.charge_basis,
