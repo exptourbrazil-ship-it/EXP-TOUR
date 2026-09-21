@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { escopoTenantAdmin, escopoPermiteContrato, tenantDoContrato } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em acerto, cancelamento e aditivo de contrato — dinheiro de cliente —
+// com a trilha atribuindo tudo a "bearer-secret". O caminho Bearer tambem nao
+// tem e-mail de sessao e por isso vira super-admin GLOBAL (admin-tenant.ts),
+// atravessando as duas marcas. So as telas do admin chamam estas rotas.
 
 function supa() {
   return createClient(
@@ -25,8 +32,8 @@ const STATUS_PERMITIDOS = new Set(["em_analise", "concluido", "cancelado"]);
 // Body: { solicitacaoId, status }. Gateado por cancelamento.gerir (RBAC) +
 // escopo de tenant. A solicitação precisa pertencer ao contrato de [id].
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("cancelamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 403 });
   }
   const { id } = await params;
   const supabase = supa();
@@ -81,7 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // Trilha de auditoria (quem/quando + antes/depois). Best-effort: a mudança de
   // status já está gravada; uma falha aqui não a derruba.
   try {
-    const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+    const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
     await registrarAuditoriaAdmin(supabase, {
       usuario,
       acao: "cancelamento_solicitacao.status",

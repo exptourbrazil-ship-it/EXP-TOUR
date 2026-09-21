@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { calcularERegistrarAcerto, AcertoBloqueado } from "@/lib/acerto-service";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
@@ -12,9 +12,15 @@ export const runtime = "nodejs";
 // revisar. NAO propoe ao cliente, NAO coleta aceite, NAO executa refund (marcos
 // proprios). Autorizacao por capacidade financeiro.gerir (o acerto e do
 // Financeiro). Requer uma excecao de cancelamento ATIVA no contrato.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em acerto, cancelamento e aditivo de contrato — dinheiro de cliente —
+// com a trilha atribuindo tudo a "bearer-secret". O caminho Bearer tambem nao
+// tem e-mail de sessao e por isso vira super-admin GLOBAL (admin-tenant.ts),
+// atravessando as duas marcas. So as telas do admin chamam estas rotas.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "financeiro.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("financeiro.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id: titularId } = await params;
@@ -36,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "Informe contratoId" }, { status: 400 });
   }
 
-  const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const autor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   try {
     const acerto = await calcularERegistrarAcerto({
       contratoId,

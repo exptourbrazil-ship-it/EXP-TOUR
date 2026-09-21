@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarExcecaoForaDoEscopo } from "@/lib/admin-tenant";
 import { mudarStatusExcecao, ExcecaoBloqueada } from "@/lib/excecao-service";
@@ -11,9 +11,15 @@ export const runtime = "nodejs";
 // Avanca a maquina de estados de uma excecao (assumir, resolver, cancelar,
 // reabrir). Autorizacao por capacidade (casos.gerir). A validacao da transicao,
 // do desfecho e da resolucao e feita no servico (src/lib/excecao-service.ts).
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em acerto, cancelamento e aditivo de contrato — dinheiro de cliente —
+// com a trilha atribuindo tudo a "bearer-secret". O caminho Bearer tambem nao
+// tem e-mail de sessao e por isso vira super-admin GLOBAL (admin-tenant.ts),
+// atravessando as duas marcas. So as telas do admin chamam estas rotas.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -32,7 +38,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: false, error: "Status alvo invalido" }, { status: 400 });
   }
 
-  const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const autor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   try {
     const excecao = await mudarStatusExcecao({
       id,

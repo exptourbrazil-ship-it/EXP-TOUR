@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
@@ -29,9 +29,15 @@ function getSupabase() {
   );
 }
 
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em acerto, cancelamento e aditivo de contrato — dinheiro de cliente —
+// com a trilha atribuindo tudo a "bearer-secret". O caminho Bearer tambem nao
+// tem e-mail de sessao e por isso vira super-admin GLOBAL (admin-tenant.ts),
+// atravessando as duas marcas. So as telas do admin chamam estas rotas.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("cancelamento.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -70,7 +76,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const supabase = getSupabase();
   const barrado = await barrarContratoForaDoEscopo(supabase, id);
   if (barrado) return barrado;
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
 
   const { data: contrato, error: selErr } = await supabase
     .from("contratos")
@@ -134,15 +140,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 // Reativa um contrato cancelado. Cancelamento por engano acontece, e a
 // alternativa seria mexer no banco na mao.
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("cancelamento.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await params;
   const supabase = getSupabase();
   const barrado = await barrarContratoForaDoEscopo(supabase, id);
   if (barrado) return barrado;
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
 
   const { error } = await supabase
     .from("contratos")

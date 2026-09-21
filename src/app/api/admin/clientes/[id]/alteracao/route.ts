@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { obterIp } from "@/lib/rate-limit";
 import { calcularERegistrarAlteracao, AlteracaoBloqueada } from "@/lib/alteracao-service";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
@@ -12,9 +12,15 @@ export const runtime = "nodejs";
 // saldo em aberto, para o Financeiro/Operacao revisar. NAO reescreve parcelas,
 // NAO gera aditivo, NAO toca dinheiro (aplicacao = marco proprio). Autorizacao
 // por capacidade casos.gerir (E2 e do dono do caso). Requer um E2 ATIVO.
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em acerto, cancelamento e aditivo de contrato — dinheiro de cliente —
+// com a trilha atribuindo tudo a "bearer-secret". O caminho Bearer tambem nao
+// tem e-mail de sessao e por isso vira super-admin GLOBAL (admin-tenant.ts),
+// atravessando as duas marcas. So as telas do admin chamam estas rotas.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "casos.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("casos.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id: titularId } = await params;
@@ -36,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "Informe a nova data de inicio" }, { status: 400 });
   }
 
-  const autor = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const autor = (await usuarioAdminAtual()) ?? "sessao-expirada";
   try {
     const alteracao = await calcularERegistrarAlteracao({
       contratoId,

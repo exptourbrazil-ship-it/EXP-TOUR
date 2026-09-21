@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import {
@@ -12,6 +12,13 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em acerto, cancelamento e aditivo de contrato — dinheiro de cliente —
+// com a trilha atribuindo tudo a "bearer-secret". O caminho Bearer tambem nao
+// tem e-mail de sessao e por isso vira super-admin GLOBAL (admin-tenant.ts),
+// atravessando as duas marcas. So as telas do admin chamam estas rotas.
 
 // Antecipacoes por exigencia de visto/fornecedor (Clausula 7.5).
 //  GET   -> lista as antecipacoes (com rotulo do contrato/titular).
@@ -27,8 +34,8 @@ function getSupabase() {
 }
 
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "financeiro.ver"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("financeiro.ver"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const supabase = getSupabase();
   const escopo = await escopoTenantAdmin(supabase);
@@ -50,8 +57,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "financeiro.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("financeiro.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const body = await request.json().catch(() => null);
   const contratoId = body?.contratoId ? String(body.contratoId) : "";
@@ -85,7 +92,7 @@ export async function POST(request: Request) {
       moeda,
       data_limite: dataLimite,
       comprovante_url: comprovanteUrl,
-      criado_por: (await usuarioAdminAtual()) ?? "bearer-secret",
+      criado_por: (await usuarioAdminAtual()) ?? "sessao-expirada",
     })
     .select("id")
     .single();
@@ -94,7 +101,7 @@ export async function POST(request: Request) {
   }
 
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "antecipacao.criar",
     alvo: nova.id,
     detalhe: { contratoId, documento, valor, moeda, dataLimite },
@@ -105,8 +112,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "financeiro.gerir"))) {
-    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("financeiro.gerir"))) {
+    return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 403 });
   }
   const body = await request.json().catch(() => null);
   const id = body?.id ? String(body.id) : "";
@@ -125,7 +132,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, erro: "Falha ao atualizar a antecipacao." }, { status: 500 });
   }
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "antecipacao.status",
     alvo: id,
     detalhe: { status },
