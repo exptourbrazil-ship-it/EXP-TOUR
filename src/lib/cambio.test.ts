@@ -104,3 +104,18 @@ test("recomporVetTenant: a conversao resultante bate com a decomposicao do recib
   assert.equal(itens.iof, 175);
   assert.equal(itens.totalBRL, converterParaBRL(1000, vetTenant));
 });
+
+test("recomporVetTenant com o MESMO spread da VET e no-op (o 5% nao pode ser desfeito)", () => {
+  // A cobranca recompoe a VET global com o spread do tenant. Se as duas fontes
+  // divergirem, a tela mostra um valor e o Pix cobra outro — foi o que quase
+  // aconteceu ao trocar o spread so na composicao da VET.
+  const ptax = 6.8966;
+  const vet5 = comporCotacaoVet(ptax, 0.05, 0.035);
+  assert.equal(recomporVetTenant(vet5, 0.05, 0.035, 0.05, 0.035), vet5);
+
+  // Tenant ainda em 6,6% desfaz o 5% e re-infla — 161 reais a mais em 1.460.
+  const reinflada = recomporVetTenant(vet5, 0.05, 0.035, 0.066, 0.035);
+  assert.ok(reinflada > vet5, "recomposicao com spread maior aumenta a VET");
+  assert.equal(Math.round(1460 * vet5 * 100) / 100, 10924.9);
+  assert.equal(Math.round(1460 * reinflada * 100) / 100, 11086.01);
+});

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
 import { comporCotacaoVet } from "@/lib/cambio";
-import { carregarIofVigente } from "@/lib/iof-vigencia";
+import { carregarIofVigente, carregarSpreadVigente } from "@/lib/iof-vigencia";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 
@@ -38,8 +38,11 @@ export async function POST(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  const spreadPercentual = Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
   const hojeISO = new Date().toISOString().slice(0, 10);
+  // Mesma fonte do cron: tabela de vigencia primeiro, env/default depois. Os
+  // dois compoem a MESMA VET e nao podem divergir.
+  const spreadVigente = await carregarSpreadVigente(supabase, hojeISO);
+  const spreadPercentual = spreadVigente ?? Number(process.env.SPREAD_CAMBIO_PERCENTUAL || "0.05");
   // §8 fonte única: IOF da tabela de vigência (fallback env/default) — mesma fonte
   // da recomposição na cobrança, para a VET gravada não divergir.
   const iofVigente = await carregarIofVigente(supabase, hojeISO);

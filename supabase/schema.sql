@@ -1880,6 +1880,19 @@ create table if not exists iof_vigencia (
 );
 alter table if exists iof_vigencia enable row level security;
 
+-- Spread de intermediacao e cambio por VIGENCIA. Mesmo desenho (e mesmo motivo)
+-- de iof_vigencia: o spread compoe a VET que o cliente paga, entao nao pode viver
+-- so numa variavel de ambiente — foi assim que 6,6% rodou em producao enquanto a
+-- proposta anunciava 5%. O cron e o cambio manual leem daqui, com fallback ao env.
+create table if not exists spread_cambio_vigencia (
+  id uuid primary key default gen_random_uuid(),
+  percentual numeric(6,4) not null check (percentual >= 0 and percentual <= 1),
+  vigente_desde date not null unique,
+  observacao text,
+  criado_em timestamptz not null default now()
+);
+alter table if exists spread_cambio_vigencia enable row level security;
+
 create table if not exists market (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenant(id),

@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarConfigTenant, type ConfigTenant, type LinhaTenantConfig } from "@/lib/tenant-config-merge";
 import { SPREAD_PADRAO, IOF_PADRAO } from "@/lib/cambio";
-import { carregarIofVigente } from "@/lib/iof-vigencia";
+import { carregarIofVigente, carregarSpreadVigente } from "@/lib/iof-vigencia";
 import { MORA_MULTA_PADRAO, MORA_JUROS_MES_PADRAO, MORA_INDICE_PADRAO } from "@/lib/mora";
 import { TETO_RETENCAO_PADRAO, ETAPAS_ANEXO_I_PADRAO } from "@/lib/reembolso-anexo-i";
 
@@ -58,6 +58,13 @@ export async function carregarConfigTenant(
   const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const iofVigente = await carregarIofVigente(supabase, hoje);
   if (iofVigente != null) cfg.iofCambio = iofVigente;
+
+  // O SPREAD segue a MESMA fonte, e nao e detalhe: `gerar-cobranca` RECOMPOE a
+  // VET com `cfg.spreadCambio` antes de emitir o Pix. Se so a VET global
+  // mudasse de spread, a tela mostraria 5% e a cobranca sairia a 6,6% —
+  // divergencia entre o que o cliente ve e o que ele paga, no mesmo dia.
+  const spreadVigente = await carregarSpreadVigente(supabase, hoje);
+  if (spreadVigente != null) cfg.spreadCambio = spreadVigente;
 
   return cfg;
 }

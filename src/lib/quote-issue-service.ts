@@ -136,6 +136,28 @@ type TotaisOpcao = {
   moedas: string[]; // moedas de origem vistas nos itens (para detectar mistura)
 };
 
+/**
+ * Descreve como a VET foi composta, a partir dos percentuais REALMENTE gravados
+ * com ela. Sai no rodape da proposta e do PDF. Se as moedas em uso tiverem
+ * percentuais diferentes (transicao de aliquota), o texto nao cita numero — e
+ * melhor generico do que citar um percentual que nao vale para todas.
+ */
+function descricaoComposicaoVet(
+  linhas: { spread: number | null; iof: number | null }[],
+): string {
+  const pct = (n: number) => (n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  // `null` = DESCONHECIDO (linha gravada antes de persistirmos spread/iof), nao
+  // "ignore". Descartar essas linhas faria o rodape afirmar 5% para um R$ que
+  // embute outro percentual — a mesma falsa promessa, por outra porta.
+  const desconhecido = linhas.length === 0 || linhas.some((l) => l.spread == null || l.iof == null);
+  const spreads = new Set(linhas.map((l) => l.spread));
+  const iofs = new Set(linhas.map((l) => l.iof));
+  if (!desconhecido && spreads.size === 1 && iofs.size === 1) {
+    return `BACEN PTAX + IOF ${pct([...iofs][0] as number)}% + spread ${pct([...spreads][0] as number)}% — cotação do dia`;
+  }
+  return "BACEN PTAX + IOF + spread de intermediação — cotação do dia";
+}
+
 async function carregarTotaisPorOpcao(
   supabase: SupabaseClient,
   tenantId: string,
@@ -944,18 +966,29 @@ export async function getPublicQuote(
   const sourceCurrency = (quote.source_currency as string) ?? null;
   const hoje = hojeBrasilISO();
   const moedasOrigem = Array.from(new Set(totais.map((t) => t.currency).filter((c) => !!c && c !== presentment)));
-  const vetPorMoeda = new Map<string, { vet: number; data: string }>();
+  const vetPorMoeda = new Map<
+    string,
+    { vet: number; data: string; spread: number | null; iof: number | null }
+  >();
   for (const moeda of moedasOrigem) {
     const { data: row } = await supabase
       .from("cotacoes_cambio")
-      .select("cotacao_vet, data")
+      .select("cotacao_vet, data, spread, iof")
       .eq("moeda", moeda)
       .lte("data", hoje)
       .order("data", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (row && row.cotacao_vet != null) {
-      vetPorMoeda.set(moeda, { vet: toNum(row.cotacao_vet), data: (row.data as string).slice(0, 10) });
+      vetPorMoeda.set(moeda, {
+        vet: toNum(row.cotacao_vet),
+        data: (row.data as string).slice(0, 10),
+        // Percentuais que COMPUSERAM esta VET. O texto mostrado ao cliente sai
+        // daqui, nunca de constante escrita a mao: foi assim que a proposta
+        // anunciou "spread 5%" por meses enquanto a VET embutia 6,6%.
+        spread: row.spread != null ? toNum(row.spread) : null,
+        iof: row.iof != null ? toNum(row.iof) : null,
+      });
     }
   }
   // Conversao e necessaria se QUALQUER opcao esta em moeda diferente da de
@@ -1113,7 +1146,12 @@ export async function getPublicQuote(
       necessario: fxNecessario,
       rate: rateExibida,
       rateAt: vetPrimaria ? `${vetPrimaria.data}T00:00:00.000Z` : ((quote.fx_rate_at as string) ?? null),
-      source: "BACEN PTAX + IOF 3,5% + spread 5% — cotação do dia",
+      // Moeda sem linha do dia cai na VET congelada, que nao esta no mapa: citar
+      // um percentual ai seria descrever uma conversao que nao foi essa.
+      source:
+        vetPorMoeda.size < moedasOrigem.length
+          ? "BACEN PTAX + IOF + spread de intermediação — cotação do dia"
+          : descricaoComposicaoVet([...vetPorMoeda.values()]),
       sourceCurrency,
       presentmentCurrency: presentment,
       disclaimer: (policy?.disclaimer as string) ?? "",

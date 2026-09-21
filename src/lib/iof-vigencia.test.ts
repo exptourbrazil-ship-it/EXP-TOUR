@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliquotaIofVigente, type VigenciaIof } from "./iof-vigencia.ts";
+import { aliquotaIofVigente, percentualVigente, type VigenciaIof } from "./iof-vigencia.ts";
 
 const VIG: VigenciaIof[] = [
   { aliquota: 0.038, vigenteDesde: "2020-01-01" },
@@ -38,4 +38,23 @@ test("ignora linhas inválidas (negativa/NaN/>1, vigenteDesde vazio)", () => {
 
 test("data inválida/vazia => null", () => {
   assert.equal(aliquotaIofVigente(VIG, ""), null);
+});
+
+// ── spread (mesma selecao pura, outro percentual) ────────────────────────────
+test("percentualVigente serve spread e IOF com a mesma regra", () => {
+  const v = [
+    { percentual: 0.066, vigenteDesde: "2024-01-01" },
+    { percentual: 0.05, vigenteDesde: "2026-09-21" },
+  ];
+  assert.equal(percentualVigente(v, "2026-09-20"), 0.066, "antes da vigencia, o spread antigo");
+  assert.equal(percentualVigente(v, "2026-09-21"), 0.05, "limite inclusivo");
+  assert.equal(percentualVigente(v, "2027-03-01"), 0.05);
+  assert.equal(percentualVigente(v, "2023-12-31"), null, "sem vigencia aplicavel -> env/default");
+});
+
+test("percentualVigente recusa percentual fora de [0,1] (erro de fracao x percentual)", () => {
+  // 5 no lugar de 0.05 multiplicaria a conta do cliente por 6.
+  assert.equal(percentualVigente([{ percentual: 5, vigenteDesde: "2026-01-01" }], "2026-06-01"), null);
+  assert.equal(percentualVigente([{ percentual: -0.05, vigenteDesde: "2026-01-01" }], "2026-06-01"), null);
+  assert.equal(percentualVigente([{ percentual: Number.NaN, vigenteDesde: "2026-01-01" }], "2026-06-01"), null);
 });
