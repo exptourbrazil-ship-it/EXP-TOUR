@@ -13,8 +13,9 @@ const STATUS_OPCOES = ["pendente", "aprovado", "rejeitado"];
 
 // Tela admin de documentos: enviar um documento em nome do cliente e
 // aprovar/rejeitar os documentos enviados pelo titular. A autenticacao e a
-// sessao de admin (cookie) — as rotas /api/admin/documentos* aceitam esse
-// cookie, entao nao ha mais senha digitada aqui.
+// sessao de admin (cookie) com a capacidade `documentos.analisar` — as rotas
+// /api/admin/documentos* exigem ESSA sessao e nada mais: nao ha senha digitada
+// aqui nem atalho por segredo de ambiente.
 export default function DocumentosAdminClient() {
   const [cpf, setCpf] = useState("");
   const [tipoDocumento, setTipoDocumento] = useState(TIPOS_DOCUMENTO[0].valor);

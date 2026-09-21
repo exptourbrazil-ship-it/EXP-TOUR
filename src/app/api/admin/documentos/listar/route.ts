@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
@@ -10,8 +10,8 @@ export const runtime = "nodejs";
 // Lista os documentos de um titular (por CPF) para a tela de admin
 // aprovar/rejeitar documentos enviados pelo cliente.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
 const { searchParams } = new URL(request.url);
@@ -44,7 +44,7 @@ const { data: documentos, error } = await supabase.from("documentos").select("*"
 // taxonomia completa (passaporte, CPF, visto) daquela pessoa. Auditado pelo
 // mesmo motivo do download.
 await registrarAuditoriaAdmin(supabase, {
-  usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+  usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
   acao: "documento.listar",
   alvo: cpf,
   detalhe: { titular_id: titular.id, quantidade: (documentos || []).length },

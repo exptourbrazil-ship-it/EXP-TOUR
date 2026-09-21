@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { enviarAvisoDocumentoEmail } from "@/lib/email";
@@ -18,8 +18,8 @@ const MOTIVO_MAX = 500;
 // documentos.motivo_rejeicao, registra na trilha e avisa o titular por e-mail.
 // Autorizacao por capacidade (documentos.analisar).
 export async function PATCH(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const body = await request.json();
@@ -76,7 +76,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, error: "Falha ao atualizar status" }, { status: 500 });
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "documento.status.definir",

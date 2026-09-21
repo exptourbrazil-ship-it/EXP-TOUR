@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin } from "@/lib/admin-guard";
 import { escopoTenantAdmin, titularIdsDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador acesso a
+// DOCUMENTO de cliente (PII) de qualquer titular e de qualquer marca — o
+// caminho Bearer nao tem e-mail de sessao e por isso vira super-admin global
+// (admin-tenant.ts). So as telas do admin chamam estas rotas, por cookie.
 
 // Fila de documentos para a operacao: lista os documentos de TODOS os titulares
 // (por padrao apenas status 'pendente') com nome/CPF do titular e uma URL
@@ -15,8 +21,8 @@ export const dynamic = "force-dynamic";
 // 'admin' -> documentos-admin. Documentos vindos do Zoho (outra origem) nao tem
 // arquivo no Storage aqui; nesse caso a URL vem nula.
 export async function GET(request: Request) {
-  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { searchParams } = new URL(request.url);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
@@ -8,6 +8,12 @@ import { ehTipoDocumentoValido, tipoTemValidade, tipoTemCobertura, tipoTemVoo } 
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador acesso a
+// DOCUMENTO de cliente (PII) de qualquer titular e de qualquer marca — o
+// caminho Bearer nao tem e-mail de sessao e por isso vira super-admin global
+// (admin-tenant.ts). So as telas do admin chamam estas rotas, por cookie.
 
 // Valida uma data de calendário REAL (não só o formato). Date.parse aceita
 // "2026-02-30" fazendo roll-over — aqui remontamos em UTC e conferimos os
@@ -31,8 +37,8 @@ function ehDataCalendarioValida(iso: string): boolean {
 // escopo por tenant (barrarDocumentoForaDoEscopo), auditado. Atualização parcial:
 // envie `validade` (YYYY-MM-DD ou null p/ limpar) e/ou `tipoDocumento`.
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await ctx.params;
@@ -218,7 +224,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ ok: false, error: "Falha ao atualizar o documento." }, { status: 500 });
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "documento.metadados",

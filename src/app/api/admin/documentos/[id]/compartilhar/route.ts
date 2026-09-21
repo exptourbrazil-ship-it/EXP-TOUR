@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
@@ -8,6 +8,12 @@ import { avaliarTravaRemessa } from "@/lib/trava-remessa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador acesso a
+// DOCUMENTO de cliente (PII) de qualquer titular e de qualquer marca — o
+// caminho Bearer nao tem e-mail de sessao e por isso vira super-admin global
+// (admin-tenant.ts). So as telas do admin chamam estas rotas, por cookie.
 
 // Compartilha (ou deixa de compartilhar) UM documento com a escola no Portal do
 // Fornecedor. Nada e visivel a escola por padrao; aqui o admin decide caso a
@@ -19,8 +25,8 @@ export const dynamic = "force-dynamic";
 // de um (ou nenhum), recusamos e pedimos que a viagem/contrato seja resolvida
 // antes — compartilhar sem contrato deixaria o doc invisivel (ou ambiguo).
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await ctx.params;
@@ -48,7 +54,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ ok: false, error: "Documento nao encontrado" }, { status: 404 });
   }
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
 
   // Resolve o contrato efetivo do documento (usado tanto para a trava D+7 quanto
   // para o vinculo por contrato). Ao compartilhar um doc de nivel titular (sem

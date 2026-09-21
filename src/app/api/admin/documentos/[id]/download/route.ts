@@ -3,12 +3,18 @@ import { createClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { obterIp } from "@/lib/rate-limit";
 import { usuarioAdminAtual } from "@/lib/admin-guard";
-import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin } from "@/lib/admin-guard";
 import { barrarDocumentoForaDoEscopo } from "@/lib/admin-tenant";
 import { getZohoAttachmentContent } from "@/lib/zoho";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador acesso a
+// DOCUMENTO de cliente (PII) de qualquer titular e de qualquer marca — o
+// caminho Bearer nao tem e-mail de sessao e por isso vira super-admin global
+// (admin-tenant.ts). So as telas do admin chamam estas rotas, por cookie.
 
 // Download/visualizacao de um documento pelo ADMIN (fecha o gap: a versao do
 // cliente exige que o documento seja do proprio titular; aqui o admin pode ver
@@ -27,8 +33,8 @@ const BUCKET_POR_ORIGEM: Record<string, string> = {
 };
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "documentos.analisar"))) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
+    return NextResponse.json({ ok: false, error: "Nao autorizado" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -50,7 +56,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // abriu o documento de quem. Para um cofre de documentos, isso e a lacuna
   // mais seria de registro.
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "bearer-secret",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "documento.ler",
     alvo: id,
     detalhe: {
