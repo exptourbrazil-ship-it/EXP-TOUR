@@ -222,7 +222,7 @@ function EscolaResumo({ esc, s }: { esc: NonNullable<Opcao["itens"][number]["det
 function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles }) {
   const temDesconto = op.descontos > 0;
   const conv =
-    fx.necessario && op.liquidoConvertido != null
+    op.liquidoConvertido != null
       ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency)
       : null;
   // Escola: pega o primeiro item com bloco de escola (todos de uma opcao
@@ -355,6 +355,17 @@ export async function renderQuotePdf(
       ? data.options.filter((o) => o.index === optionIndex)
       : data.options;
 
+  // Taxa do dia por moeda, a partir das opcoes DESTE documento (cada opcao ja
+  // carrega o seu VET). Uma cotacao pode comparar destinos em moedas diferentes.
+  const taxasPorMoeda = (() => {
+    const m = new Map<string, { moeda: string; vet: number; vetAt: string | null }>();
+    for (const op of options) {
+      if (op.currency === data.fx.presentmentCurrency || op.vet == null) continue;
+      if (!m.has(op.currency)) m.set(op.currency, { moeda: op.currency, vet: op.vet, vetAt: op.vetAt });
+    }
+    return [...m.values()].sort((a, b) => a.moeda.localeCompare(b.moeda));
+  })();
+
   // Tema de impressao do tenant da cotacao (default seguro = EXP Tour).
   const t = getTenantBrand(data.brandSlug).pdf;
   if (t.font === "Inter") registrarInter();
@@ -416,11 +427,29 @@ export async function renderQuotePdf(
 
           {data.fx.necessario ? (
             <View style={s.fxBox} wrap={false}>
-              <Text style={s.fxText}>
-                Conversao {data.fx.sourceCurrency} para {data.fx.presentmentCurrency} pela cotacao do dia
-                {data.fx.rateAt ? ` (${fmtData(data.fx.rateAt)})` : ""}: 1 {data.fx.sourceCurrency} ={" "}
-                {data.fx.rate?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })} {data.fx.presentmentCurrency}.
-              </Text>
+              {/* Com opcoes em moedas diferentes nao ha UMA taxa: lista a de cada
+                  moeda, que e como cada opcao foi convertida. */}
+              {taxasPorMoeda.length > 1 ? (
+                <Text style={s.fxText}>
+                  As opcoes estao em moedas diferentes; cada uma foi convertida para{" "}
+                  {data.fx.presentmentCurrency} pela cotacao do dia da sua moeda:{" "}
+                  {taxasPorMoeda
+                    .map(
+                      (t) =>
+                        `1 ${t.moeda} = ${t.vet.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}${t.vetAt ? ` (${fmtData(t.vetAt)})` : ""}`,
+                    )
+                    .join("; ")}
+                  .
+                </Text>
+              ) : (
+                <Text style={s.fxText}>
+                  Conversao {data.fx.sourceCurrency ?? taxasPorMoeda[0]?.moeda} para {data.fx.presentmentCurrency} pela cotacao do dia
+                  {data.fx.rateAt ? ` (${fmtData(data.fx.rateAt)})` : ""}: 1{" "}
+                  {data.fx.sourceCurrency ?? taxasPorMoeda[0]?.moeda} ={" "}
+                  {(data.fx.rate ?? taxasPorMoeda[0]?.vet)?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}{" "}
+                  {data.fx.presentmentCurrency}.
+                </Text>
+              )}
               <Text style={[s.fxText, { marginTop: 3 }]}>
                 O valor na moeda do curso e fixo; o R$ e recalculado pela cotacao do dia sempre que este documento e gerado
                 {data.fx.source ? ` (${data.fx.source})` : ""}.

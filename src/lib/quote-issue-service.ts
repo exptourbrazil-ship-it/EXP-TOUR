@@ -464,11 +464,27 @@ export async function issueQuote(
   const presentment = (quote.presentment_currency as string) || "BRL";
   const totais = await carregarTotaisPorOpcao(supabase, args.tenantId, args.quoteId);
 
-  // Moeda de origem (dos itens) e necessidade de conversao.
+  // Moedas de origem. Moedas diferentes ENTRE opcoes sao permitidas: cada opcao
+  // e convertida pelo VET da sua propria moeda, pela mesma formula do contrato
+  // (PTAX + spread + IOF). O que nao tem solucao e uma MESMA opcao com itens em
+  // moedas diferentes — nao existe um total para ela.
   const todasMoedas = totais.flatMap((t) => t.moedas);
-  const source = moedaOrigemUnica(todasMoedas, presentment);
-  const fxMoedasMisturadas = source === null;
-  const fxNecessario = !fxMoedasMisturadas && source !== presentment;
+  const source = moedaOrigemUnica(todasMoedas, presentment); // null quando ha mistura
+  // A conta do total e `bruto - descontos + taxas`: taxa e desconto entram na
+  // soma igual aos itens, entao a moeda deles conta na verificacao de mistura.
+  const moedasDaOpcao = (t: (typeof totais)[number]) =>
+    new Set(
+      [
+        ...t.moedas,
+        ...t.taxasDetalhadas.map((x) => x.currency),
+        ...t.descontosDetalhados.map((x) => x.currency),
+      ].filter(Boolean),
+    );
+  const opcoesComMoedaMisturada = totais.filter((t) => moedasDaOpcao(t).size > 1).length;
+  // Moedas que precisam de conversao (todas as de origem, exceto a de apresentacao).
+  const moedasParaConverter = Array.from(
+    new Set(totais.flatMap((t) => [...moedasDaOpcao(t)]).filter((m) => m !== presentment)),
+  ).sort();
 
   // Idade maxima da cotacao_vet (em DIAS) tolerada para congelar. Vem da politica
   // do tenant (max_rate_age_hours -> dias, arredondando pra cima); o cron diario
@@ -487,26 +503,37 @@ export async function issueQuote(
   // PTAX do BACEN + spread + IOF, modelo aditivo; NZD via BCE). Fonte unica ->
   // o BRL exibido na cotacao casa, por construcao, com a regra da parcela. A VET
   // ja embute spread/IOF, entao NAO ha markup adicional aqui.
+  // Uma consulta por moeda: TODAS precisam de cotacao, senao alguma opcao sairia
+  // sem valor em real na proposta.
+  const moedasSemTaxa: string[] = [];
+  const moedasVencidas: string[] = [];
   let fxRate: number | null = null;
   let fxRateAt: string | null = null;
   let fxSource: string | null = null;
-  let fxPresente = false;
-  let fxVencido = false;
-  if (fxNecessario && source) {
+  for (const moeda of moedasParaConverter) {
     const { data: vetRow } = await supabase
       .from("cotacoes_cambio")
       .select("cotacao_vet, data")
-      .eq("moeda", source)
+      .eq("moeda", moeda)
       .lte("data", issueDate)
       .order("data", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (vetRow && vetRow.cotacao_vet != null) {
-      fxPresente = true;
+    if (!vetRow || vetRow.cotacao_vet == null) {
+      moedasSemTaxa.push(moeda);
+      continue;
+    }
+    if (cambioVencidoPorData(vetRow.data as string, issueDate, maxDiasCambio)) {
+      moedasVencidas.push(moeda);
+      continue;
+    }
+    // `quote.fx_rate` guarda UMA taxa: so faz sentido quando a cotacao inteira
+    // esta numa moeda so. Com varias, o portal usa o VET por opcao (o campo fica
+    // nulo em vez de guardar a taxa de uma das moedas e fingir que vale para todas).
+    if (moeda === source) {
       fxRate = toNum(vetRow.cotacao_vet);
       fxRateAt = `${(vetRow.data as string).slice(0, 10)}T00:00:00.000Z`;
       fxSource = "BACEN PTAX + spread/IOF (cotacoes_cambio); NZD via BCE";
-      fxVencido = cambioVencidoPorData(vetRow.data as string, issueDate, maxDiasCambio);
     }
   }
 
@@ -515,10 +542,9 @@ export async function issueQuote(
     numOpcoes: totais.length,
     itensPorOpcao: totais.map((t) => t.itens.length),
     temValidUntil: true, // definimos a validade abaixo se faltar
-    fxNecessario,
-    fxPresente,
-    fxVencido,
-    fxMoedasMisturadas,
+    opcoesComMoedaMisturada,
+    moedasSemTaxa,
+    moedasVencidas,
     warningsBloqueantes: 0,
   };
   const veredito = podeEmitir(precond);
@@ -926,7 +952,11 @@ export async function getPublicQuote(
       vetPorMoeda.set(moeda, { vet: toNum(row.cotacao_vet), data: (row.data as string).slice(0, 10) });
     }
   }
-  const fxNecessario = !!sourceCurrency && sourceCurrency !== presentment;
+  // Conversao e necessaria se QUALQUER opcao esta em moeda diferente da de
+  // apresentacao. Antes dependia de haver uma moeda de origem unica: numa
+  // cotacao com Londres (GBP) e Vancouver (CAD), `source_currency` e nulo e o
+  // portal escondia a regua de parcelas e o valor em real das duas opcoes.
+  const fxNecessario = moedasOrigem.length > 0;
   const vetPrimaria = sourceCurrency ? vetPorMoeda.get(sourceCurrency) ?? null : null;
   // Taxa do dia para a moeda de origem primária (com fallback ao congelado).
   const rateExibida = vetPrimaria?.vet ?? frozenFxRate;

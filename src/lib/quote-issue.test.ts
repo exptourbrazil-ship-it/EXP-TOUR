@@ -26,10 +26,9 @@ const base: PrecondicoesEmissao = {
   numOpcoes: 1,
   itensPorOpcao: [2],
   temValidUntil: true,
-  fxNecessario: true,
-  fxPresente: true,
-  fxVencido: false,
-  fxMoedasMisturadas: false,
+  opcoesComMoedaMisturada: 0,
+  moedasSemTaxa: [],
+  moedasVencidas: [],
   warningsBloqueantes: 0,
 };
 
@@ -50,15 +49,17 @@ test("podeEmitir: sem validade", () => {
   assert.equal(podeEmitir({ ...base, temValidUntil: false }).ok, false);
 });
 
-test("podeEmitir: cambio necessario ausente/vencido/misturado", () => {
-  assert.equal(podeEmitir({ ...base, fxPresente: false }).ok, false);
-  assert.equal(podeEmitir({ ...base, fxVencido: true }).ok, false);
-  assert.equal(podeEmitir({ ...base, fxMoedasMisturadas: true }).ok, false);
+test("podeEmitir: moeda sem cotacao ou com cotacao vencida barra, e diz qual", () => {
+  const sem = podeEmitir({ ...base, moedasSemTaxa: ["GBP", "NZD"] });
+  assert.equal(sem.ok, false);
+  assert.match(sem.motivos.join(" "), /GBP, NZD/);
+  const venc = podeEmitir({ ...base, moedasVencidas: ["EUR"] });
+  assert.equal(venc.ok, false);
+  assert.match(venc.motivos.join(" "), /vencida.*EUR/);
 });
 
-test("podeEmitir: cambio nao necessario ignora fx", () => {
-  const r = podeEmitir({ ...base, fxNecessario: false, fxPresente: false, fxVencido: true });
-  assert.equal(r.ok, true);
+test("podeEmitir: sem moeda estrangeira nao ha nada de cambio a cobrar", () => {
+  assert.deepEqual(podeEmitir(base), { ok: true, motivos: [] });
 });
 
 test("podeEmitir: warnings bloqueantes barram", () => {
@@ -121,34 +122,23 @@ test("cambioVencidoPorData: janela de folga em dias", () => {
   assert.equal(cambioVencidoPorData("2026-08-30", "2026-08-29", 4), false); // VET "do futuro"
 });
 
-test("mistura de moedas BLOQUEIA a emissao (o motivo era inalcancavel)", () => {
-  // Com mistura nao existe moeda de origem unica, entao fxNecessario e false.
-  // O teste ficava DENTRO do `if (fxNecessario)` e nunca rodava: a cotacao
-  // emitia e o portal somava GBP com BRL como se fosse a mesma unidade.
-  const r = podeEmitir({
-    numOpcoes: 1,
-    itensPorOpcao: [2],
-    temValidUntil: true,
-    fxNecessario: false,
-    fxMoedasMisturadas: true,
-    fxPresente: false,
-    fxVencido: false,
-    warningsBloqueantes: 0,
-  });
+test("uma MESMA opcao com itens em moedas diferentes bloqueia", () => {
+  // Nao ha total possivel para a opcao: somar libra com dolar nao da dinheiro.
+  const r = podeEmitir({ ...base, opcoesComMoedaMisturada: 1 });
   assert.equal(r.ok, false);
   assert.ok(r.motivos.some((m) => m.includes("moedas diferentes")), r.motivos.join(" | "));
 });
 
-test("moeda unica igual a de apresentacao continua emitindo sem cambio", () => {
+test("opcoes em moedas DIFERENTES entre si podem ser emitidas", () => {
+  // Comparar Londres (GBP) com Vancouver (CAD) e o uso normal do comparativo:
+  // cada opcao e convertida pelo VET da sua propria moeda.
   const r = podeEmitir({
-    numOpcoes: 1,
-    itensPorOpcao: [1],
-    temValidUntil: true,
-    fxNecessario: false,
-    fxMoedasMisturadas: false,
-    fxPresente: false,
-    fxVencido: false,
-    warningsBloqueantes: 0,
+    ...base,
+    numOpcoes: 2,
+    itensPorOpcao: [2, 2],
+    opcoesComMoedaMisturada: 0,
+    moedasSemTaxa: [],
+    moedasVencidas: [],
   });
   assert.deepEqual(r, { ok: true, motivos: [] });
 });

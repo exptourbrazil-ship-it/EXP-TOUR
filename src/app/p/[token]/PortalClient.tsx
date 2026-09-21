@@ -153,6 +153,16 @@ export default function PortalClient({
   }, [dados.options]);
   const [mesIdx, setMesIdx] = useState(() => mesInicialDaRegua(meses, inicioCurso));
   const mostrarRegua = fx.necessario;
+  // Taxa do dia por moeda, a partir das opcoes (cada uma ja carrega o seu VET).
+  // Uma cotacao pode comparar destinos em moedas diferentes.
+  const taxasPorMoeda = (() => {
+    const m = new Map<string, { moeda: string; vet: number; vetAt: string | null }>();
+    for (const op of dados.options) {
+      if (op.currency === fx.presentmentCurrency || op.vet == null) continue;
+      if (!m.has(op.currency)) m.set(op.currency, { moeda: op.currency, vet: op.vet, vetAt: op.vetAt });
+    }
+    return [...m.values()].sort((a, b) => a.moeda.localeCompare(b.moeda));
+  })();
   const temNotes = !!dados.notesHtml || dados.notas.length > 0;
 
   // Aceite concluido: tela terminal de sucesso (o codigo de acesso foi enviado).
@@ -338,14 +348,38 @@ export default function PortalClient({
         />
       ) : null}
 
-      {/* Cambio */}
+      {/* Cambio. Quando as opcoes estao em moedas diferentes (ex.: Londres em GBP
+          e Vancouver em CAD) nao ha UMA taxa: cada opcao e convertida pela
+          cotacao do dia da sua propria moeda, e o bloco lista todas. */}
       {fx.necessario ? (
         <section className="mt-6 rounded-2xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] p-4 text-xs text-[color:var(--p-muted)]">
-          <p>
-            Conversão {fx.sourceCurrency} → {fx.presentmentCurrency} pela taxa{" "}
-            <strong>{fx.rate?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</strong>
-            {fx.rateAt ? `, de ${fmtData(fx.rateAt)}` : ""} — <strong>cotação do dia</strong>, atualizada cada vez que este link é aberto.
-          </p>
+          {taxasPorMoeda.length > 1 ? (
+            <>
+              <p>
+                As opções estão em moedas diferentes: cada uma é convertida para{" "}
+                {fx.presentmentCurrency} pela <strong>cotação do dia</strong> da sua própria moeda,
+                atualizada cada vez que este link é aberto.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {taxasPorMoeda.map((t) => (
+                  <li key={t.moeda}>
+                    1 {t.moeda} ={" "}
+                    <strong>
+                      {t.vet.toLocaleString("pt-BR", { style: "currency", currency: fx.presentmentCurrency, minimumFractionDigits: 4 })}
+                    </strong>
+                    {t.vetAt ? `, de ${fmtData(t.vetAt)}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>
+              Conversão {fx.sourceCurrency ?? taxasPorMoeda[0]?.moeda} → {fx.presentmentCurrency} pela taxa{" "}
+              <strong>{(fx.rate ?? taxasPorMoeda[0]?.vet)?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</strong>
+              {fx.rateAt ?? taxasPorMoeda[0]?.vetAt ? `, de ${fmtData(fx.rateAt ?? taxasPorMoeda[0]?.vetAt ?? null)}` : ""} —{" "}
+              <strong>cotação do dia</strong>, atualizada cada vez que este link é aberto.
+            </p>
+          )}
           {fx.disclaimer ? <p className="mt-1 opacity-80">{fx.disclaimer}</p> : null}
         </section>
       ) : null}
@@ -420,7 +454,7 @@ function Overview({
       {dados.options.map((op) => {
         const totalNaMoeda = fmtMoeda(op.liquido, op.currency);
         const totalConvertido =
-          fx.necessario && op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
+          op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
         const escolhida = selectedIndex === op.index;
         const borda = escolhida
           ? "border-[color:var(--p-success)] ring-1 ring-[color:var(--p-success)]"
@@ -980,7 +1014,7 @@ function DetalheOpcao({
 }) {
   const totalNaMoeda = fmtMoeda(op.liquido, op.currency);
   const totalConvertido =
-    fx.necessario && op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
+    op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
 
   // Agrupa os itens por grupo, preservando a ordem de aparicao dos grupos.
   const grupos: { grupo: string; itens: OpcaoData["itens"] }[] = [];
@@ -1182,7 +1216,7 @@ function DetalhamentoPreco({
 }) {
   const totalNaMoeda = fmtMoeda(op.liquido, op.currency);
   const totalConvertido =
-    fx.necessario && op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
+    op.liquidoConvertido != null ? fmtMoeda(op.liquidoConvertido, fx.presentmentCurrency) : null;
 
   // Taxa de COTACAO INTEIRA nao e de item nenhum: no banco ela fica pendurada em
   // um quote_item qualquer (a coluna e obrigatoria), e mostra-la sob a acomodacao
@@ -1588,7 +1622,7 @@ function Checkout({
 
   const totalNaMoeda = fmtMoeda(opcao.liquido, opcao.currency);
   const totalConvertido =
-    fx.necessario && opcao.liquidoConvertido != null ? fmtMoeda(opcao.liquidoConvertido, fx.presentmentCurrency) : null;
+    opcao.liquidoConvertido != null ? fmtMoeda(opcao.liquidoConvertido, fx.presentmentCurrency) : null;
 
   async function enviar() {
     if (!podeEnviar) return;

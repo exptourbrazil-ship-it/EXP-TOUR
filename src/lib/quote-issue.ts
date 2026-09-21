@@ -6,20 +6,20 @@
 
 /** Pre-condicoes de emissao (spec 5.1): o que precisa ser verdade para `issued`. */
 export type PrecondicoesEmissao = {
-  /** Quantidade de opcoes da cotacao. */
   numOpcoes: number;
-  /** Quantidade de itens em cada opcao (comprimento = numOpcoes). */
   itensPorOpcao: number[];
-  /** `valid_until` definido. */
   temValidUntil: boolean;
-  /** A conversao cambial e necessaria (moeda de origem != apresentacao). */
-  fxNecessario: boolean;
-  /** Ha uma taxa de cambio congelavel disponivel. */
-  fxPresente: boolean;
-  /** A taxa disponivel esta vencida (mais velha que max_rate_age_hours). */
-  fxVencido: boolean;
-  /** Itens em mais de uma moeda de origem (nao ha taxa unica para congelar). */
-  fxMoedasMisturadas: boolean;
+  /**
+   * Opcoes cujos ITENS estao em mais de uma moeda. Cada opcao vira UM total, e
+   * somar libra com dolar nao produz dinheiro nenhum — o consultor tem de
+   * separar em opcoes por moeda. Moedas diferentes ENTRE opcoes sao permitidas:
+   * cada opcao e convertida pelo VET da sua propria moeda.
+   */
+  opcoesComMoedaMisturada: number;
+  /** Moedas de origem (diferentes da de apresentacao) sem cotacao disponivel. */
+  moedasSemTaxa: string[];
+  /** Moedas cuja cotacao esta fora da janela de max_rate_age_hours. */
+  moedasVencidas: string[];
   /** Numero de avisos bloqueantes acumulados no construtor. */
   warningsBloqueantes: number;
 };
@@ -36,19 +36,16 @@ export function podeEmitir(p: PrecondicoesEmissao): { ok: boolean; motivos: stri
     motivos.push(`Ha ${opcoesVazias} opcao(oes) sem itens; cada opcao precisa de ao menos um item.`);
   }
   if (!p.temValidUntil) motivos.push("Defina a validade (valid_until) antes de emitir.");
-  // Mistura de moedas bloqueia SEMPRE, fora do `if (fxNecessario)`. Quando ha
-  // mistura, `fxNecessario` e false (nao existe moeda de origem unica) — o teste
-  // aqui dentro era inalcançavel e a cotacao emitia somando moedas diferentes
-  // como se fossem a mesma unidade.
-  if (p.fxMoedasMisturadas) {
-    motivos.push("A cotacao tem itens em moedas diferentes; nao ha taxa unica para congelar.");
+  if (p.opcoesComMoedaMisturada > 0) {
+    motivos.push(
+      `Ha ${p.opcoesComMoedaMisturada} opcao(oes) com itens em moedas diferentes; separe em uma opcao por moeda.`,
+    );
   }
-  if (p.fxNecessario) {
-    if (!p.fxPresente) {
-      motivos.push("Nao ha taxa de cambio disponivel para congelar.");
-    } else if (p.fxVencido) {
-      motivos.push("A taxa de cambio disponivel esta vencida (fora de max_rate_age_hours).");
-    }
+  if (p.moedasSemTaxa.length > 0) {
+    motivos.push(`Nao ha cotacao de cambio para: ${p.moedasSemTaxa.join(", ")}.`);
+  }
+  if (p.moedasVencidas.length > 0) {
+    motivos.push(`A cotacao de cambio esta vencida para: ${p.moedasVencidas.join(", ")}.`);
   }
   if (p.warningsBloqueantes > 0) {
     motivos.push(`Ha ${p.warningsBloqueantes} aviso(s) bloqueante(s) a resolver.`);
