@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest, usuarioAdminAtual } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin, usuarioAdminAtual } from "@/lib/admin-guard";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { carregarReembolsoContrato, definirEtapaAnexoI } from "@/lib/reembolso-service";
 import { etapaValida } from "@/lib/etapa-anexo-i";
@@ -9,6 +9,11 @@ import { barrarContratoForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em DINHEIRO de cliente, com a trilha registrando so "bearer-secret",
+// sem pessoa. So a tela do admin chama esta rota, por cookie.
 
 function supa() {
   return createClient(
@@ -20,8 +25,8 @@ function supa() {
 // GET: calcula o reembolso do Anexo I para o contrato (what-if via query:
 // ?naoRecuperaveis=&etapa=&dispensa=). Gateado por cancelamento.gerir (RBAC).
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("cancelamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 403 });
   }
   const { id } = await params;
   const url = new URL(request.url);
@@ -43,8 +48,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 // POST: grava (ou limpa) o override da etapa concluida. Body: { etapa: string|null }.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("cancelamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 403 });
   }
   const { id } = await params;
   const body = (await request.json().catch(() => ({}))) ?? {};
@@ -63,7 +68,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const ok = await definirEtapaAnexoI(supabase, id, etapa);
   if (!ok) return NextResponse.json({ ok: false, error: "Contrato não encontrado." }, { status: 404 });
 
-  const usuario = (await usuarioAdminAtual()) ?? "bearer-secret";
+  const usuario = (await usuarioAdminAtual()) ?? "sessao-expirada";
   await registrarAuditoriaAdmin(supabase, {
     usuario,
     acao: "reembolso.etapa_definida",

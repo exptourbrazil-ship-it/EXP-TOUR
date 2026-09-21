@@ -84,11 +84,30 @@ export default function CampusConfigClient({ campi }: { campi: CampusOpcao[] }) 
   const carregar = useCallback(async (id: string) => {
     setErro(null); setMsg(null);
     try {
-      const [pr, tr, er] = await Promise.all([
-        fetch(`/api/admin/config/campus-politica?campus=${id}`).then((r) => r.json()),
-        fetch(`/api/admin/config/taxa-obrigatoria?campus=${id}`).then((r) => r.json()),
-        fetch(`/api/admin/config/exigencia-antecipacao?campus=${id}`).then((r) => r.json()),
+      // O STATUS importa: sem ele, uma recusa (403) ou falha (500) caía nos
+      // defaults abaixo e a tela exibia "reembolso em dinheiro, 30 dias, sem
+      // proteção estudantil" como se fosse a política SALVA daquele campus —
+      // número que alguém citaria ao cliente num cancelamento. Política ausente
+      // (resposta ok com `politica` nula) continua caindo nos defaults, que aí
+      // é o comportamento correto: é um campus ainda sem política.
+      const [rp, rt, re] = await Promise.all([
+        fetch(`/api/admin/config/campus-politica?campus=${id}`),
+        fetch(`/api/admin/config/taxa-obrigatoria?campus=${id}`),
+        fetch(`/api/admin/config/exigencia-antecipacao?campus=${id}`),
       ]);
+      const [pr, tr, er] = await Promise.all([rp.json().catch(() => null), rt.json().catch(() => null), re.json().catch(() => null)]);
+      if (!rp.ok || !rt.ok || !re.ok) {
+        const semPermissao = [rp, rt, re].some((r) => r.status === 403);
+        setPol({});
+        setTaxas([]);
+        setExigs([]);
+        setErro(
+          semPermissao
+            ? "Você não tem permissão para ver a configuração deste campus."
+            : "Falha ao carregar a configuração. Os valores abaixo não são os do campus.",
+        );
+        return;
+      }
       const p: Politica = pr?.ok ? pr.politica : null;
       setPol({
         prazoPagamentoAncora: (p?.prazo_pagamento_ancora as string) || "inicio_curso",

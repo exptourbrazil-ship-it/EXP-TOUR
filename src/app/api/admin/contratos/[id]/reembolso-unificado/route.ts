@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { checarCapacidadeRequest } from "@/lib/admin-guard";
+import { checarCapacidadeAdmin } from "@/lib/admin-guard";
 import { carregarReembolsoUnificado } from "@/lib/reembolso-service";
 import { escopoTenantAdmin, escopoPermiteContrato, tenantDoContrato } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Exige SESSAO com RBAC. NAO aceita o fallback Bearer ADMIN_CAMBIO_SECRET:
+// esse segredo existe para cambio/cron e daria a qualquer portador o poder de
+// mexer em DINHEIRO de cliente, com a trilha registrando so "bearer-secret",
+// sem pessoa. So a tela do admin chama esta rota, por cookie.
 
 function supa() {
   return createClient(
@@ -19,8 +24,8 @@ function supa() {
 // move dinheiro. What-if via query: ?naoRecuperaveis=&remuneracaoServicos=&data=.
 // Gateado por cancelamento.gerir (RBAC) + escopo de tenant (banco compartilhado).
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await checarCapacidadeRequest(request, "cancelamento.gerir"))) {
-    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 401 });
+  if (!(await checarCapacidadeAdmin("cancelamento.gerir"))) {
+    return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 403 });
   }
   const { id } = await params;
   const supabase = supa();

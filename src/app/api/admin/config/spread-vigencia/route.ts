@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     );
   }
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "sessao",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "config.spread_vigencia.criar",
     alvo: data.id as string,
     detalhe: { percentual, vigente_desde: vigenteDesde },
@@ -136,7 +136,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, erro: "Vigência não encontrada." }, { status: 404 });
   }
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "sessao",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "config.spread_vigencia.remover",
     // O "antes" precisa estar aqui: depois do delete nao ha como reconstruir
     // qual percentual saiu.

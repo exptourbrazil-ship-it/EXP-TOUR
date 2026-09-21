@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     );
   }
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "sessao",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "config.iof_vigencia.criar",
     alvo: data.id as string,
     detalhe: { aliquota, vigente_desde: vigenteDesde },
@@ -79,7 +79,7 @@ export async function DELETE(request: Request) {
   const { error } = await supabase.from("iof_vigencia").delete().eq("id", id);
   if (error) return NextResponse.json({ ok: false, erro: "Falha ao remover." }, { status: 500 });
   await registrarAuditoriaAdmin(supabase, {
-    usuario: (await usuarioAdminAtual()) ?? "sessao",
+    usuario: (await usuarioAdminAtual()) ?? "sessao-expirada",
     acao: "config.iof_vigencia.remover",
     alvo: id,
     detalhe: {},
