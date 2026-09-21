@@ -15,6 +15,16 @@ const DELIVERY = [
   { v: "online", t: "Online" },
   { v: "hybrid", t: "Híbrido" },
 ];
+// Formato da aula: quantos alunos dividem o professor. Enum, e nao texto livre,
+// porque o preco depende dele — a mesma carga horaria em grupo e individual sao
+// duas tabelas diferentes.
+const FORMATO = [
+  { v: "", t: "—" },
+  { v: "group", t: "Em grupo" },
+  { v: "mini_group", t: "Mini-grupo (2 alunos)" },
+  { v: "one_to_one", t: "Individual (1:1)" },
+  { v: "combined", t: "Grupo + individual" },
+];
 const STATUS_LABEL: Record<string, { texto: string; cor: string }> = {
   draft: { texto: "Rascunho", cor: "var(--p-accent-ink)" },
   pending_admin: { texto: "Aguardando EXP Tour", cor: "#1d4ed8" },
@@ -226,12 +236,17 @@ export default function ConteudoProgramaEditor({ productId }: { productId: strin
           <div><label style={lbl}>Área/assunto</label><input value={prog.subject} onChange={(e) => setP({ subject: e.target.value })} style={inp} /></div>
           <div><label style={lbl}>Idioma</label><input value={prog.language} onChange={(e) => setP({ language: e.target.value })} style={inp} /></div>
           <div>
-            <label style={lbl}>Modalidade</label>
+            <label style={lbl}>Onde acontece</label>
             <select value={prog.delivery_method} onChange={(e) => setP({ delivery_method: e.target.value })} style={inp}>
               {DELIVERY.map((d) => <option key={d.v} value={d.v}>{d.t}</option>)}
             </select>
           </div>
-          <div><label style={lbl}>Formato</label><input value={prog.format} onChange={(e) => setP({ format: e.target.value })} style={inp} /></div>
+          <div>
+            <label style={lbl}>Formato da aula</label>
+            <select value={prog.format} onChange={(e) => setP({ format: e.target.value })} style={inp}>
+              {FORMATO.map((f) => <option key={f.v} value={f.v}>{f.t}</option>)}
+            </select>
+          </div>
           <div><label style={lbl}>Aulas por semana</label><input value={prog.lessons_per_week} onChange={(e) => setP({ lessons_per_week: e.target.value })} inputMode="numeric" style={inp} /></div>
           <div><label style={lbl}>Carga horária (h/semana)</label><input value={prog.hours_per_week} onChange={(e) => setP({ hours_per_week: e.target.value })} inputMode="decimal" style={inp} /></div>
           <div><label style={lbl}>Níveis (um por linha)</label><textarea value={prog.grades} onChange={(e) => setP({ grades: e.target.value })} rows={2} style={inp} /></div>

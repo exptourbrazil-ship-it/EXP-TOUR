@@ -1952,7 +1952,10 @@ create table if not exists program_detail (
   product_id uuid primary key references product(id) on delete cascade,
   education_type text, subject text, language text,
   delivery_method text check (delivery_method in ('in_person','online','hybrid')),
-  format text, institution_type text, grades text[],
+  -- format = formato da AULA (quantos alunos por professor). Dimensao de preco:
+  -- a mesma carga horaria custa varias vezes mais em individual do que em grupo.
+  format text check (format in ('group','mini_group','one_to_one','combined')),
+  institution_type text, grades text[],
   lessons_per_week int, hours_per_week numeric(5,2),
   is_pathway boolean, includes_activities boolean, timetable jsonb
 );

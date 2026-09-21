@@ -45,6 +45,14 @@ export function resumoProdutos(
 }
 
 export const DELIVERY_METHODS = ["in_person", "online", "hybrid"] as const;
+// Formato da aula: quantos alunos dividem o professor. E dimensao de PRECO, nao
+// so descricao — a mesma carga horaria custa ordens de grandeza diferentes em
+// grupo e em individual (na Rennert, 2,4x no mesmo numero de aulas). Por isso
+// entra no cadastro como enum e nao como texto livre: e a chave que impede
+// juntar numa tabela so duas coisas que por acaso tem o mesmo preco hoje.
+// `mini_group` existe porque o catalogo tem cursos "2:1" de verdade (London
+// School), que nao sao nem grupo nem individual.
+export const CLASS_FORMATS = ["group", "mini_group", "one_to_one", "combined"] as const;
 export const ACCOMMODATION_TYPES = [
   "homestay", "residence", "shared_apartment", "studio", "hotel", "other",
 ] as const;
@@ -81,7 +89,7 @@ export type ProgramDetalhe = {
   subject: string | null;
   language: string | null;
   delivery_method: (typeof DELIVERY_METHODS)[number] | null;
-  format: string | null;
+  format: (typeof CLASS_FORMATS)[number] | null;
   institution_type: string | null;
   grades: string[] | null;
   lessons_per_week: number | null;
@@ -242,7 +250,7 @@ function validarPrograma(raw: Record<string, unknown>, falhas: Falha[]): Program
     subject: optStr(raw.subject),
     language: optStr(raw.language),
     delivery_method: optEnum(raw.delivery_method, DELIVERY_METHODS, "delivery_method", falhas),
-    format: optStr(raw.format),
+    format: optEnum(raw.format, CLASS_FORMATS, "format", falhas),
     institution_type: optStr(raw.institution_type),
     grades: optListaStr(raw.grades),
     lessons_per_week: optIntNaoNeg(raw.lessons_per_week, "lessons_per_week", falhas),

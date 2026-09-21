@@ -369,6 +369,9 @@ export type DetalhesSnapshot = {
 };
 
 const DELIVERY_LABEL: Record<string, string> = { in_person: "Presencial", online: "Online", hybrid: "Híbrido" };
+const FORMATO_LABEL: Record<string, string> = {
+  group: "Em grupo", mini_group: "Mini-grupo (2 alunos)", one_to_one: "Individual", combined: "Grupo + individual",
+};
 const ACCOM_TYPE_LABEL: Record<string, string> = {
   homestay: "Casa de família",
   residence: "Residência estudantil",
@@ -430,7 +433,9 @@ function detalhesPrograma(pd: unknown): DetalhesPrograma | null {
   if (typeof pd.delivery_method === "string" && DELIVERY_LABEL[pd.delivery_method]) {
     linhas.push({ rotulo: "Modalidade", valor: DELIVERY_LABEL[pd.delivery_method] });
   }
-  pushLinha(linhas, "Formato", pd.format);
+  if (typeof pd.format === "string" && FORMATO_LABEL[pd.format]) {
+    linhas.push({ rotulo: "Formato da aula", valor: FORMATO_LABEL[pd.format] });
+  }
   if (pd.lessons_per_week != null && Number(pd.lessons_per_week) > 0) {
     linhas.push({ rotulo: "Aulas por semana", valor: String(pd.lessons_per_week) });
   }
@@ -523,13 +528,18 @@ export function detalhesDoSnapshot(snap: unknown, locale: ContentLocale = "pt-BR
 // em enum/número inválido. Retorna as colunas de program_detail normalizadas.
 export const DELIVERY_METHODS = ["in_person", "online", "hybrid"] as const;
 export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
+// Formato da aula — ver o comentario em produto.ts. Repetido aqui (e nao
+// importado) pelo mesmo motivo de DELIVERY_METHODS: este modulo e a validacao
+// do que a ESCOLA propoe e nao depende do editor interno.
+export const CLASS_FORMATS = ["group", "mini_group", "one_to_one", "combined"] as const;
+export type ClassFormat = (typeof CLASS_FORMATS)[number];
 
 export type ProgramDetailNormalizado = {
   education_type: string | null;
   subject: string | null;
   language: string | null;
   delivery_method: DeliveryMethod | null;
-  format: string | null;
+  format: ClassFormat | null;
   institution_type: string | null;
   grades: string[];
   lessons_per_week: number | null;
@@ -575,12 +585,19 @@ export function validarProgramDetail(raw: unknown): Resultado<ProgramDetailNorma
     else falhas.push({ campo: "delivery_method", erro: "modalidade inválida" });
   }
 
+  let formato: ClassFormat | null = null;
+  const fmt = optStrOuNull(o.format);
+  if (fmt) {
+    if ((CLASS_FORMATS as readonly string[]).includes(fmt)) formato = fmt as ClassFormat;
+    else falhas.push({ campo: "format", erro: "formato de aula inválido" });
+  }
+
   const valor: ProgramDetailNormalizado = {
     education_type: optTextoCurto(o.education_type, "education_type", falhas),
     subject: optTextoCurto(o.subject, "subject", falhas),
     language: optTextoCurto(o.language, "language", falhas),
     delivery_method: delivery,
-    format: optTextoCurto(o.format, "format", falhas),
+    format: formato,
     institution_type: optTextoCurto(o.institution_type, "institution_type", falhas),
     grades: capBullets(listaStr(o.grades)),
     lessons_per_week: (() => {

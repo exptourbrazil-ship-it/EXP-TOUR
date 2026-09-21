@@ -37,7 +37,7 @@ test("programa válido normaliza core + detalhe program", () => {
     min_duration: 1,
     max_duration: 52,
     default_unit: "week",
-    detail: { language: "en", delivery_method: "in_person", lessons_per_week: 20, hours_per_week: 15 },
+    detail: { language: "en", delivery_method: "in_person", format: "group", lessons_per_week: 20, hours_per_week: 15 },
   });
   assert.ok(r.ok);
   if (!r.ok) return;
@@ -48,8 +48,16 @@ test("programa válido normaliza core + detalhe program", () => {
   assert.equal(r.valor.detalhe.kind, "program");
   if (r.valor.detalhe.kind === "program") {
     assert.equal(r.valor.detalhe.program.delivery_method, "in_person");
+    assert.equal(r.valor.detalhe.program.format, "group");
     assert.equal(r.valor.detalhe.program.lessons_per_week, 20);
   }
+});
+
+// Formato da aula e dimensao de preco: grupo e individual com a mesma carga
+// horaria sao tabelas diferentes. Texto livre voltaria a misturar as duas.
+test("programa: formato da aula fora do vocabulário falha", () => {
+  const r = validarProduto({ kind: "program", name: "X", campus_id: "c", detail: { format: "1-to-1" } });
+  assert.ok(!r.ok && r.falhas.some((f: Falha) => f.campo === "format"));
 });
 
 test("defaults: source=internal, visibility=internal, status=draft, unit=week", () => {

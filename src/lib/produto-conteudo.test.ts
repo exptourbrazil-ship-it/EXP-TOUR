@@ -319,6 +319,18 @@ test("validarProgramDetail: vazio é válido (tudo opcional)", () => {
   }
 });
 
+// O formato da aula e dimensao de PRECO (grupo x individual custam diferente no
+// mesmo numero de aulas), entao texto livre nao serve: "Group", "grupo" e
+// "1-to-1" na mesma coluna impediriam agrupar preco por carga horaria.
+test("validarProgramDetail: formato da aula só aceita o vocabulário fechado", () => {
+  const ok = validarProgramDetail({ format: "one_to_one" });
+  assert.ok(ok.ok && ok.valor.format === "one_to_one");
+  const vazio = validarProgramDetail({ format: "" });
+  assert.ok(vazio.ok && vazio.valor.format === null);
+  const ruim = validarProgramDetail({ format: "Group" });
+  assert.ok(!ruim.ok && ruim.falhas.some((f: Falha) => f.campo === "format"));
+});
+
 test("validarProgramDetail: enum e números inválidos falham", () => {
   const bad1 = validarProgramDetail({ delivery_method: "telepatia" });
   assert.ok(!bad1.ok && bad1.falhas.some((f: Falha) => f.campo === "delivery_method"));

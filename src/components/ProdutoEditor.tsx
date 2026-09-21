@@ -9,6 +9,7 @@ import {
   STATUSES,
   UNITS,
   DELIVERY_METHODS,
+  CLASS_FORMATS,
   ACCOMMODATION_TYPES,
   ROOM_TYPES,
   BATHROOM_TYPES,
@@ -34,6 +35,7 @@ const L: Record<string, string> = {
   draft: "Rascunho", active: "Ativo", inactive: "Inativo",
   once: "Único", day: "Dia", night: "Noite", week: "Semana", month: "Mês", person: "Pessoa", unit: "Unidade",
   in_person: "Presencial", online: "Online", hybrid: "Híbrido",
+  group: "Em grupo", mini_group: "Mini-grupo (2 alunos)", one_to_one: "Individual", combined: "Grupo + individual",
   homestay: "Casa de família", residence: "Residência estudantil", shared_apartment: "Apto. compartilhado", studio: "Studio", hotel: "Hotel",
   private: "Individual", shared_2: "Duplo", shared_3plus: "Triplo+", shared: "Compartilhado",
   none: "Sem refeição", breakfast: "Café da manhã", half_board: "Meia pensão", full_board: "Pensão completa", self_catering: "Cozinha própria",
@@ -282,8 +284,8 @@ export default function ProdutoEditor({
             <Campo label="Tipo de ensino"><input value={campo.education_type} onChange={(e) => set("education_type", e.target.value)} className={inp} /></Campo>
             <Campo label="Assunto/Área"><input value={campo.subject} onChange={(e) => set("subject", e.target.value)} className={inp} /></Campo>
             <Campo label="Idioma"><input value={campo.language} onChange={(e) => set("language", e.target.value)} className={inp} placeholder="en, es…" /></Campo>
-            <Sel label="Modalidade" v={campo.delivery_method} set={(x) => set("delivery_method", x)} opts={DELIVERY_METHODS} vazio />
-            <Campo label="Formato"><input value={campo.format} onChange={(e) => set("format", e.target.value)} className={inp} /></Campo>
+            <Sel label="Onde acontece" v={campo.delivery_method} set={(x) => set("delivery_method", x)} opts={DELIVERY_METHODS} vazio />
+            <Sel label="Formato da aula" v={campo.format} set={(x) => set("format", x)} opts={CLASS_FORMATS} vazio erro={falhaDe("format")} />
             <Campo label="Tipo de instituição"><input value={campo.institution_type} onChange={(e) => set("institution_type", e.target.value)} className={inp} /></Campo>
             <Campo label="Aulas/semana" erro={falhaDe("lessons_per_week")}><input type="number" min={0} value={campo.lessons_per_week} onChange={(e) => set("lessons_per_week", e.target.value)} className={inp} /></Campo>
             <Campo label="Horas/semana" erro={falhaDe("hours_per_week")}><input type="number" min={0} step="0.5" value={campo.hours_per_week} onChange={(e) => set("hours_per_week", e.target.value)} className={inp} /></Campo>
