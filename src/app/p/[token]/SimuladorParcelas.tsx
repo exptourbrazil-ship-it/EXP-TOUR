@@ -145,6 +145,7 @@ export function ParcelaDaOpcao({
   entrada,
   currency,
   vet,
+  vetAt,
   mes,
   hojeISO,
   compacto = false,
@@ -154,6 +155,8 @@ export function ParcelaDaOpcao({
   currency: string;
   /** VET DESTA opção (BRL por 1 unidade da moeda dela). null = não simula. */
   vet: number | null;
+  /** Data do VET desta opção (YYYY-MM-DD). */
+  vetAt?: string | null;
   mes: MesInicio | undefined;
   hojeISO: string;
   compacto?: boolean;
@@ -203,6 +206,16 @@ export function ParcelaDaOpcao({
         ) : (
           <>Total de {fmtMoeda(liquido, currency)} dividido nas parcelas.</>
         )}
+      </p>
+
+      {/* Qual câmbio gerou este número. Numa cotação com opções em moedas
+          diferentes não existe uma taxa só no cabeçalho, então a taxa tem de
+          estar ao lado da parcela que ela produziu. */}
+      <p className="mt-2 text-[11px] text-[color:var(--p-muted)]">
+        Simulação pela cotação{" "}
+        {vetAt ? (vetAt.slice(0, 10) === hojeISO ? "de hoje" : `de ${fmtDataCurta(vetAt)}`) : "vigente"}, de{" "}
+        {vet.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 4 })} por {currency}.
+        O valor de cada parcela em real se confirma na geração do Pix.
       </p>
 
       {sim.curto ? (

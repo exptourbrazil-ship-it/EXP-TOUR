@@ -163,6 +163,17 @@ export default function PortalClient({
     }
     return [...m.values()].sort((a, b) => a.moeda.localeCompare(b.moeda));
   })();
+  // Par moeda+taxa resolvido de UMA fonte so: pegar a moeda de um lado e a taxa
+  // do outro pode imprimir "1 GBP = <VET do CAD>", errado e com cara de preciso.
+  const taxaUnica =
+    taxasPorMoeda[0] ??
+    (fx.sourceCurrency && fx.rate ? { moeda: fx.sourceCurrency, vet: fx.rate, vetAt: fx.rateAt } : null);
+  // Opcao estrangeira que ficou sem valor em real (sem cotacao do dia, ou opcao
+  // com moedas misturadas). Silencio aqui seria o cliente procurando um numero
+  // que nao esta la.
+  const opcoesSemReal = dados.options.filter(
+    (op) => op.currency !== fx.presentmentCurrency && op.liquidoConvertido == null,
+  );
   const temNotes = !!dados.notesHtml || dados.notas.length > 0;
 
   // Aceite concluido: tela terminal de sucesso (o codigo de acesso foi enviado).
@@ -350,15 +361,16 @@ export default function PortalClient({
 
       {/* Cambio. Quando as opcoes estao em moedas diferentes (ex.: Londres em GBP
           e Vancouver em CAD) nao ha UMA taxa: cada opcao e convertida pela
-          cotacao do dia da sua propria moeda, e o bloco lista todas. */}
-      {fx.necessario ? (
+          cotacao da sua propria moeda, e o bloco lista todas. Sem nenhuma taxa
+          conhecida o bloco nao aparece — melhor nada do que "1  =  BRL". */}
+      {taxasPorMoeda.length > 0 || opcoesSemReal.length > 0 ? (
         <section className="mt-6 rounded-2xl border border-[color:var(--p-line)] bg-[color:var(--p-surface)] p-4 text-xs text-[color:var(--p-muted)]">
           {taxasPorMoeda.length > 1 ? (
             <>
               <p>
                 As opções estão em moedas diferentes: cada uma é convertida para{" "}
-                {fx.presentmentCurrency} pela <strong>cotação do dia</strong> da sua própria moeda,
-                atualizada cada vez que este link é aberto.
+                {fx.presentmentCurrency} pela cotação da sua própria moeda, atualizada cada vez que
+                este link é aberto.
               </p>
               <ul className="mt-1 space-y-0.5">
                 {taxasPorMoeda.map((t) => (
@@ -367,19 +379,32 @@ export default function PortalClient({
                     <strong>
                       {t.vet.toLocaleString("pt-BR", { style: "currency", currency: fx.presentmentCurrency, minimumFractionDigits: 4 })}
                     </strong>
-                    {t.vetAt ? `, de ${fmtData(t.vetAt)}` : ""}
+                    {t.vetAt ? (t.vetAt.slice(0, 10) === hojeISO ? ", de hoje" : `, de ${fmtData(t.vetAt)}`) : ""}
                   </li>
                 ))}
               </ul>
             </>
-          ) : (
+          ) : taxaUnica ? (
             <p>
-              Conversão {fx.sourceCurrency ?? taxasPorMoeda[0]?.moeda} → {fx.presentmentCurrency} pela taxa{" "}
-              <strong>{(fx.rate ?? taxasPorMoeda[0]?.vet)?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</strong>
-              {fx.rateAt ?? taxasPorMoeda[0]?.vetAt ? `, de ${fmtData(fx.rateAt ?? taxasPorMoeda[0]?.vetAt ?? null)}` : ""} —{" "}
-              <strong>cotação do dia</strong>, atualizada cada vez que este link é aberto.
+              Conversão {taxaUnica.moeda} → {fx.presentmentCurrency} pela taxa{" "}
+              <strong>{taxaUnica.vet.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</strong>
+              {/* "do dia" so quando a cotacao E do dia: quando o cambio nao rodou
+                  hoje, afirmar isso seria dizer o que nao se sabe. */}
+              {taxaUnica.vetAt
+                ? taxaUnica.vetAt.slice(0, 10) === hojeISO
+                  ? " — cotação de hoje"
+                  : `, de ${fmtData(taxaUnica.vetAt)}`
+                : ""}
+              , atualizada cada vez que este link é aberto.
             </p>
-          )}
+          ) : null}
+          {opcoesSemReal.length > 0 ? (
+            <p className="mt-1 text-[color:var(--p-ink)]">
+              {opcoesSemReal.length === 1
+                ? `O valor em ${fx.presentmentCurrency} de "${opcoesSemReal[0].label || "uma das opções"}" não pôde ser calculado hoje; fale com seu consultor.`
+                : `O valor em ${fx.presentmentCurrency} de ${opcoesSemReal.length} opções não pôde ser calculado hoje; fale com seu consultor.`}
+            </p>
+          ) : null}
           {fx.disclaimer ? <p className="mt-1 opacity-80">{fx.disclaimer}</p> : null}
         </section>
       ) : null}
@@ -514,6 +539,7 @@ function Overview({
                 entrada={op.entrada}
                 currency={op.currency}
                 vet={op.vet}
+                vetAt={op.vetAt}
                 mes={mes}
                 hojeISO={hojeISO}
                 compacto
@@ -1059,6 +1085,7 @@ function DetalheOpcao({
           entrada={op.entrada}
           currency={op.currency}
           vet={op.vet}
+          vetAt={op.vetAt}
           mes={mes}
           hojeISO={hojeISO}
         />

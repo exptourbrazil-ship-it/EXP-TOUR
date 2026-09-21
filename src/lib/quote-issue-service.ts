@@ -510,6 +510,7 @@ export async function issueQuote(
   let fxRate: number | null = null;
   let fxRateAt: string | null = null;
   let fxSource: string | null = null;
+  const fxPorMoeda: { moeda: string; vet: number; data: string }[] = [];
   for (const moeda of moedasParaConverter) {
     const { data: vetRow } = await supabase
       .from("cotacoes_cambio")
@@ -530,6 +531,11 @@ export async function issueQuote(
     // `quote.fx_rate` guarda UMA taxa: so faz sentido quando a cotacao inteira
     // esta numa moeda so. Com varias, o portal usa o VET por opcao (o campo fica
     // nulo em vez de guardar a taxa de uma das moedas e fingir que vale para todas).
+    fxPorMoeda.push({
+      moeda,
+      vet: toNum(vetRow.cotacao_vet),
+      data: (vetRow.data as string).slice(0, 10),
+    });
     if (moeda === source) {
       fxRate = toNum(vetRow.cotacao_vet);
       fxRateAt = `${(vetRow.data as string).slice(0, 10)}T00:00:00.000Z`;
@@ -605,14 +611,14 @@ export async function issueQuote(
     quote_id: args.quoteId,
     kind: "issued",
     actor_type: "user",
-    metadata: { fxRate, source, presentment },
+    metadata: { fxRate, source, presentment, fxPorMoeda },
   });
 
   await registrarAuditoriaAdmin(supabase, {
     usuario: actor.usuario,
     acao: "quote.issued",
     alvo: args.quoteId,
-    detalhe: { issueDate, validUntil, fxRate, source, presentment },
+    detalhe: { issueDate, validUntil, fxRate, source, presentment, fxPorMoeda },
     ip: actor.ip ?? null,
   });
 
@@ -966,10 +972,22 @@ export async function getPublicQuote(
 
   const options = totais.map((t, index) => {
     if (selectedId && t.option.id === selectedId) selectedIndex = index;
+    // `t.currency` e a moeda do ULTIMO item; `t.liquido` soma tudo sem converter.
+    // Se a opcao tiver mais de uma moeda (cotacao emitida antes do bloqueio),
+    // esse total nao e dinheiro nenhum: nao se converte nem se simula parcela.
+    // O portal mostra "total por moeda" nesse caso.
+    const moedasDestaOpcao = new Set(
+      [
+        ...t.moedas,
+        ...t.taxasDetalhadas.map((x) => x.currency),
+        ...t.descontosDetalhados.map((x) => x.currency),
+      ].filter(Boolean),
+    );
+    const opcaoMista = moedasDestaOpcao.size > 1;
     const v = vetPorMoeda.get(t.currency);
-    const vet = v?.vet ?? (t.currency === sourceCurrency ? frozenFxRate : null); // fallback só p/ moeda primária
+    const vet = opcaoMista ? null : v?.vet ?? (t.currency === sourceCurrency ? frozenFxRate : null); // fallback só p/ moeda primária
     const liquidoConvertido =
-      t.currency !== presentment && vet ? converterParaBRL(t.liquido, vet) : null;
+      !opcaoMista && t.currency !== presentment && vet ? converterParaBRL(t.liquido, vet) : null;
     return {
       index,
       label: t.option.label,
@@ -990,8 +1008,8 @@ export async function getPublicQuote(
         taxas: t.taxasDetalhadas,
       }),
       // Moeda da opcao == moeda de apresentacao: nao ha conversao, VET = 1.
-      vet: t.currency === presentment ? 1 : vet,
-      vetAt: t.currency === presentment ? null : v?.data ?? null,
+      vet: opcaoMista ? null : t.currency === presentment ? 1 : vet,
+      vetAt: opcaoMista || t.currency === presentment ? null : v?.data ?? null,
       itens: t.itens,
       taxasDetalhadas: t.taxasDetalhadas,
       planoPagamento: t.planoPagamento,

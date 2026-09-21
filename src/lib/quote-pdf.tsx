@@ -425,7 +425,10 @@ export async function renderQuotePdf(
             <OpcaoBloco key={op.index} op={op} fx={data.fx} s={s} />
           ))}
 
-          {data.fx.necessario ? (
+          {/* Condicionado as taxas DESTE documento: com `?option=N` o PDF pode
+              trazer so a opcao em BRL, e `data.fx.necessario` (global) faria
+              imprimir "Conversao  para BRL: 1  =  BRL." */}
+          {taxasPorMoeda.length > 0 ? (
             <View style={s.fxBox} wrap={false}>
               {/* Com opcoes em moedas diferentes nao ha UMA taxa: lista a de cada
                   moeda, que e como cada opcao foi convertida. */}
@@ -443,10 +446,12 @@ export async function renderQuotePdf(
                 </Text>
               ) : (
                 <Text style={s.fxText}>
-                  Conversao {data.fx.sourceCurrency ?? taxasPorMoeda[0]?.moeda} para {data.fx.presentmentCurrency} pela cotacao do dia
-                  {data.fx.rateAt ? ` (${fmtData(data.fx.rateAt)})` : ""}: 1{" "}
-                  {data.fx.sourceCurrency ?? taxasPorMoeda[0]?.moeda} ={" "}
-                  {(data.fx.rate ?? taxasPorMoeda[0]?.vet)?.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}{" "}
+                  {/* Moeda e taxa saem do MESMO par: pegar a moeda de um lado e a
+                      taxa do outro imprimiria "1 GBP = <VET do CAD>". */}
+                  Conversao {taxasPorMoeda[0].moeda} para {data.fx.presentmentCurrency} pela cotacao
+                  {taxasPorMoeda[0].vetAt ? ` de ${fmtData(taxasPorMoeda[0].vetAt)}` : " do dia"}: 1{" "}
+                  {taxasPorMoeda[0].moeda} ={" "}
+                  {taxasPorMoeda[0].vet.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}{" "}
                   {data.fx.presentmentCurrency}.
                 </Text>
               )}
