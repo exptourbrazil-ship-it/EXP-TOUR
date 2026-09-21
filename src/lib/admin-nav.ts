@@ -159,6 +159,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "config.gerir",
   },
   {
+    href: "/admin/config/spread",
+    label: "Spread por vigência",
+    descricao: "Spread de intermediação e câmbio por data de vigência (fonte única); é o que a proposta declara ao estudante",
+    icone: ICONES.catalogo,
+    capacidade: "config.gerir",
+  },
+  {
     href: "/admin/antecipacoes",
     label: "Antecipações",
     descricao: "Antecipações exigidas por visto/fornecedor",

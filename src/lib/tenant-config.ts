@@ -63,8 +63,14 @@ export async function carregarConfigTenant(
   // VET com `cfg.spreadCambio` antes de emitir o Pix. Se so a VET global
   // mudasse de spread, a tela mostraria 5% e a cobranca sairia a 6,6% —
   // divergencia entre o que o cliente ve e o que ele paga, no mesmo dia.
-  const spreadVigente = await carregarSpreadVigente(supabase, hoje);
-  if (spreadVigente != null) cfg.spreadCambio = spreadVigente;
+  // Precedencia EXPLICITA, diferente do IOF: o IOF e federal (igual para todo
+  // tenant), o spread e remuneracao — uma instancia pode ter a sua. Entao a
+  // vigencia e o PADRAO, e `tenant_config.spread_cambio` vence quando definido.
+  // Sem isso a coluna do tenant viraria letra morta.
+  if (row?.spread_cambio == null) {
+    const spreadVigente = await carregarSpreadVigente(supabase, hoje);
+    if (spreadVigente != null) cfg.spreadCambio = spreadVigente;
+  }
 
   return cfg;
 }
