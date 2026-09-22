@@ -25,9 +25,12 @@ function promos(): Promotion[] {
       appliesToRefId: MATERIAL, maxQuantity: 12, isStackable: true, priority: 20, status: "active", targets: [] },
     { id: "mtr", name: "Matrícula reduzida (12+)", promoType: "fixed_off", value: 50, appliesTo: "specific_fee",
       appliesToRefId: MATRICULA, minQuantity: 12, isStackable: true, priority: 30, status: "active", targets: [] },
-    { id: "gra", name: "4 semanas grátis", promoType: "free_units", value: 4, freeUnitsSemantics: "bonus_on_top",
-      freeUnitsTierQuantity: 12,
-      appliesTo: "tuition", minQuantity: 24, isStackable: true, priority: 40, status: "active", targets: alvo },
+    // Matrícula de 24 semanas pagando 20: discount_on_booked. Paga-se por 20,
+    // e é por isso que o folheto diz que a tarifa é a da faixa de 12 a 23 — 20
+    // cai nessa faixa. A faixa de cobrança segue a quantidade PAGA.
+    { id: "gra", name: "4 semanas grátis", promoType: "free_units", value: 4, freeUnitsSemantics: "discount_on_booked",
+      freeUnitsTierQuantity: 20,
+      appliesTo: "tuition", minQuantity: 24, maxQuantity: 24, isStackable: true, priority: 40, status: "active", targets: alvo },
   ];
 }
 
@@ -72,20 +75,28 @@ test("13 semanas: material volta a ser cobrado", () => {
 // período de 12 a 23 semanas" — que é MAIS CARA (210) que a faixa de 24 (202).
 // O curso e o desconto promocional precisam seguir a MESMA faixa; as taxas
 // continuam olhando a duração real (24 semanas de material, matrícula 12+).
-test("24 semanas: 4 grátis, cobradas pela faixa de 12-23 como manda o folheto", () => {
+// Matrícula de 24 semanas, paga 20. O estudante ESTUDA 24; a conta é de 20, à
+// tarifa da faixa em que 20 cai (12-23). O desconto percentual tem de incidir
+// sobre o que sobrou depois das semanas grátis, não sobre o bruto das 24 —
+// senão o desconto vira quase 70% e a diferença sai do nosso bolso.
+test("24 semanas pagando 20: entrega 24, cobra 20 à tarifa da faixa de 12-23", () => {
   const r = cotar(24);
-  assert.equal(r.deliveredQuantity, 28);
-  assert.equal(r.billableQuantity, 24);
-  assert.equal(r.grossAmount, 24 * 445); // faixa de 12-23, não a de 24
-  const liq = r.grossAmount + r.fees.reduce((a, f) => a + f.amount, 0) - r.discounts.reduce((a, d) => a + d.amount, 0);
-  assert.equal(liq, 24 * 210 + 125 + 24 * 20);
+  assert.equal(r.deliveredQuantity, 24);
+  assert.equal(r.billableQuantity, 20);
+  assert.equal(r.grossAmount, 24 * 445);
+  const descontosDoCurso = r.discounts
+    .filter((d) => d.appliesTo === "tuition")
+    .reduce((a, d) => a + d.amount, 0);
+  assert.equal(r.grossAmount - descontosDoCurso, 20 * 210);
 });
 
 // A faixa sobreposta vale para o PREÇO, não para as taxas: senão "material
 // grátis até 12 semanas" passaria a valer numa reserva de 24.
-test("a faixa sobreposta não libera o material grátis numa reserva de 24 semanas", () => {
+// A faixa sobreposta vale para o PREÇO, não para as taxas: senão "material
+// grátis até 12 semanas" passaria a valer numa matrícula de 24 semanas.
+test("a faixa sobreposta não libera o material grátis numa matrícula de 24 semanas", () => {
   const r = cotar(24);
-  const material = r.fees.find((f) => f.name.includes("Material"));
-  assert.equal(material?.amount, 24 * 20);
+  assert.ok(r.fees.some((f) => f.name.includes("Material") && f.amount > 0));
   assert.ok(!r.discounts.some((d) => d.name.includes("Material")));
+  assert.ok(r.discounts.some((d) => d.name.includes("Matrícula")));
 });

@@ -1328,12 +1328,20 @@ export function priceProduct(request: PriceRequest): PricedItem {
   // que e curso. Assim uma promocao sobre acomodacao incide sobre o valor com
   // temporada, e uma promocao sobre curso ignora a temporada.
   const ehAcomodacao = product.kind === "accommodation";
+  // As unidades gratuitas ja abateram parte do bruto (semantica
+  // discount_on_booked). A promocao percentual precisa incidir sobre o que
+  // SOBROU, nao sobre o bruto cheio: "24 semanas pagando 20, com 52% de
+  // desconto" tem que dar 20 semanas a 52% — cobrando os dois sobre o bruto de
+  // 24 o desconto vira quase 70% e a agencia paga a diferenca.
+  const brutoAposGratis = round2(
+    grossAmount - sumMoney(freeUnitsDiscounts.map((d) => d.amount)),
+  );
   const bases: PromoBases = {
-    tuition: grossAmount,
+    tuition: brutoAposGratis,
     // Base de acomodacao = bruto do proprio item (quando ele E acomodacao) + o
     // sazonal. So o sazonal, como estava, fazia uma promocao "sobre acomodacao"
     // incidir apenas sobre o suplemento — um desconto de poucos euros, enganoso.
-    accommodation: ehAcomodacao ? round2(grossAmount + seasonalResult.total) : seasonalResult.total,
+    accommodation: ehAcomodacao ? round2(brutoAposGratis + seasonalResult.total) : seasonalResult.total,
     insurance: 0,
     fees: feesResult.total,
     // A linha FUNDIDA (matricula multi-curso) responde por todos os ids que ela
@@ -1344,7 +1352,7 @@ export function priceProduct(request: PriceRequest): PricedItem {
         (l.feeId != null ? [l.feeId] : (l.mergedFeeIds ?? [])).map((id) => [id, l.amount] as const),
       ),
     ),
-    total: round2(grossAmount + feesResult.total + seasonalResult.total),
+    total: round2(brutoAposGratis + feesResult.total + seasonalResult.total),
   };
   const promoResult = applyPromotions(
     promotions,
