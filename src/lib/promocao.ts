@@ -41,6 +41,7 @@ export type PromocaoCore = {
   applies_to_ref_id: string | null;
   min_quantity: number | null;
   max_quantity: number | null;
+  free_units_tier_quantity: number | null;
   max_discount_amount: number | null;
   is_stackable: boolean;
   priority: number;
@@ -169,8 +170,12 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
 
   // free_units_semantics: obrigatorio para free_units; senao null.
   let semantics: (typeof FREE_UNITS_SEMANTICS)[number] | null = null;
+  let tierQuantity: number | null = null;
   if (promoType === "free_units") {
     semantics = reqEnum(raw.free_units_semantics, FREE_UNITS_SEMANTICS, "free_units_semantics", falhas);
+    // Opcional: cobra pela faixa de N unidades em vez da contratada.
+    tierQuantity = optIntNaoNeg(raw.free_units_tier_quantity, "free_units_tier_quantity", falhas);
+    if (tierQuantity === 0) tierQuantity = null;
   }
 
   // waive_fee desconta a BASE INTEIRA. Com applies_to='total' ou 'tuition' isso
@@ -249,6 +254,7 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
     applies_to_ref_id: refId,
     min_quantity: minQuantity,
     max_quantity: maxQuantity,
+    free_units_tier_quantity: tierQuantity,
     max_discount_amount: maxDiscount,
     is_stackable: optBool(raw.is_stackable, false),
     priority,

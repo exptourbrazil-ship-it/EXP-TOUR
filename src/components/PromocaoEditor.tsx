@@ -58,6 +58,7 @@ export default function PromocaoEditor({
     promo_type: p.promo_type ?? "percent_off",
     value: p.value != null ? String(p.value) : "",
     free_units_semantics: p.free_units_semantics ?? "bonus_on_top",
+    free_units_tier_quantity: p.free_units_tier_quantity ?? "",
     applies_to: p.applies_to ?? "tuition",
     applies_to_ref_id: p.applies_to_ref_id ?? "",
     min_quantity: p.min_quantity ?? "",
@@ -113,7 +114,10 @@ export default function PromocaoEditor({
       targets: targets.filter((t) => t.dimension && t.value),
     };
     if (exigeValue) c.value = num(campo.value);
-    if (exigeSemantics) c.free_units_semantics = campo.free_units_semantics;
+    if (exigeSemantics) {
+      c.free_units_semantics = campo.free_units_semantics;
+      c.free_units_tier_quantity = num(campo.free_units_tier_quantity);
+    }
     if (exigeRef) c.applies_to_ref_id = campo.applies_to_ref_id || undefined;
     return c;
   }
@@ -185,6 +189,15 @@ export default function PromocaoEditor({
             ) : null}
             {exigeSemantics ? (
               <Sel label="Semântica das unidades grátis" v={campo.free_units_semantics} set={(x) => set("free_units_semantics", x)} opts={FREE_UNITS_SEMANTICS} />
+            ) : null}
+            {/* Cobrar pela faixa de OUTRA quantidade. A VanWest dá 4 semanas
+                grátis a quem contrata 24 mas cobra "pela tarifa de 12 a 23
+                semanas" — que é mais cara que a faixa de 24. Em branco = cobra
+                pela faixa da quantidade contratada. */}
+            {exigeSemantics ? (
+              <Campo label="Cobrar pela faixa de (unidades, opcional)" erro={falhaDe("free_units_tier_quantity")}>
+                <input type="number" min={0} value={campo.free_units_tier_quantity} onChange={(e) => set("free_units_tier_quantity", e.target.value)} className={inp} />
+              </Campo>
             ) : null}
             <Campo label="Teto de desconto (opcional)" erro={falhaDe("max_discount_amount")}>
               <input type="number" min={0} step="0.01" value={campo.max_discount_amount} onChange={(e) => set("max_discount_amount", e.target.value)} className={inp} />

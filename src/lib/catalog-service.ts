@@ -296,7 +296,7 @@ export async function loadPricingInputs(
   const { data: promoRows } = await supabase
     .from("promotion")
     .select(
-      "id, name, promo_type, value, free_units_semantics, applies_to, applies_to_ref_id, min_quantity, max_quantity, max_discount_amount, is_stackable, priority, booking_from, booking_until, travel_from, travel_until, status, campus_id",
+      "id, name, promo_type, value, free_units_semantics, free_units_tier_quantity, applies_to, applies_to_ref_id, min_quantity, max_quantity, max_discount_amount, is_stackable, priority, booking_from, booking_until, travel_from, travel_until, status, campus_id",
     )
     .eq("tenant_id", tenantId)
     .eq("supplier_id", campus.supplier_id)
@@ -330,6 +330,7 @@ export async function loadPricingInputs(
     appliesTo: p.applies_to,
     appliesToRefId: p.applies_to_ref_id ?? undefined,
     freeUnitsSemantics: p.free_units_semantics ?? undefined,
+    freeUnitsTierQuantity: p.free_units_tier_quantity ?? undefined,
     minQuantity: p.min_quantity ?? undefined,
     maxQuantity: p.max_quantity ?? undefined,
     maxDiscountAmount: toNumOrUndef(p.max_discount_amount),

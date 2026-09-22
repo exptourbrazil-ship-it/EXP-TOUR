@@ -157,6 +157,14 @@ export type Promotion = {
   appliesToRefId?: string;
   /** So para promoType 'free_units'. Default: bonus_on_top. */
   freeUnitsSemantics?: FreeUnitSemantics;
+  /**
+   * So para 'free_units': quantidade usada para escolher a FAIXA DE PRECO, no
+   * lugar da contratada. A VanWest da 4 semanas gratis a quem contrata 24, mas
+   * cobra a semana "pela tarifa aplicavel ao periodo de 12 a 23 semanas" — que
+   * e MAIS CARA que a faixa de 24. Sem isto, o desconto sairia maior do que a
+   * escola concede e a diferenca ficaria com a agencia.
+   */
+  freeUnitsTierQuantity?: number;
   minQuantity?: number;
   /**
    * Teto de quantidade (inclusivo). Espelha minQuantity e existe porque uma
@@ -217,7 +225,7 @@ export type DiscountLine = {
 };
 
 /** Semantica das unidades gratuitas embutidas na requisicao. */
-export type PriceRequestFreeUnits = { semantics: FreeUnitSemantics; units: number };
+export type PriceRequestFreeUnits = { semantics: FreeUnitSemantics; units: number; tierQuantity?: number };
 
 /** Politica de conversao cambial da requisicao (secao 4.1). */
 export type PriceRequestFx = {
@@ -588,6 +596,9 @@ export function escolherUnidadesGratuitas(
     freeUnits: {
       units: escolhida.value as number,
       semantics: escolhida.freeUnitsSemantics ?? "bonus_on_top",
+      ...(escolhida.freeUnitsTierQuantity != null
+        ? { tierQuantity: escolhida.freeUnitsTierQuantity }
+        : {}),
     },
     promo: escolhida,
   };
@@ -599,13 +610,16 @@ export function applyFreeUnits(params: {
   freeUnits: number;
   semantics: FreeUnitSemantics;
   chargeInTiers?: boolean;
+  /** Faixa a usar no lugar de N (ver Promotion.freeUnitsTierQuantity). */
+  tierQuantity?: number;
 }): FreeUnitsResult {
   const { tiers, bookedQuantity: n, freeUnits: f, semantics } = params;
   const chargeInTiers = params.chargeInTiers ?? false;
+  // Cobra N unidades, mas pela faixa de `tierQuantity` quando a promocao manda.
+  const qFaixa = params.tierQuantity ?? n;
 
-  // Faixa e bruto sempre pela quantidade contratada N.
-  const grossAmount = priceTier(tiers, n, chargeInTiers, n);
-  const tierUnit = tierFor(tiers, n).unitPrice;
+  const grossAmount = priceTier(tiers, n, chargeInTiers, qFaixa);
+  const tierUnit = tierFor(tiers, qFaixa).unitPrice;
 
   if (semantics === "bonus_on_top") {
     return {
@@ -853,6 +867,13 @@ export function applyPromotions(
    * um "10% off" tambem nao empilhavel: a escola dava os dois.
    */
   jaAplicadas: Promotion[] = [],
+  /**
+   * Contexto com a QUANTIDADE DE FAIXA, quando ela difere da contratada (ver
+   * Promotion.freeUnitsTierQuantity). Vale so para as promocoes que incidem
+   * sobre PRECO; as de taxa continuam olhando a duracao real, senao "material
+   * gratis ate 12 semanas" passaria a valer numa reserva de 24.
+   */
+  ctxFaixa?: PromoContext,
 ): { discounts: DiscountLine[]; totalDiscount: number; warnings: string[] } {
   // Desempate por id: a consulta do banco nao garante ordem, e sem um criterio
   // final duas cotacoes identicas podiam sair com precos diferentes.
@@ -863,10 +884,13 @@ export function applyPromotions(
   const applied: Promotion[] = [...jaAplicadas];
   const warnings: string[] = [];
 
+  const ALVOS_DE_PRECO: PromoAppliesTo[] = ["tuition", "accommodation", "insurance"];
   for (const promo of sorted) {
     if (promo.promoType === "free_units") continue; // resolvida antes do bruto
     if (applied.some((p) => p.id != null && p.id === promo.id)) continue;
-    if (!isPromotionApplicable(promo, ctx)) continue;
+    const ctxDaVez =
+      ctxFaixa && ALVOS_DE_PRECO.includes(promo.appliesTo) ? ctxFaixa : ctx;
+    if (!isPromotionApplicable(promo, ctxDaVez)) continue;
 
     // Empilhamento: a primeira sempre entra; as seguintes so se todas as ja
     // aplicadas E a candidata forem empilhaveis.
@@ -1219,6 +1243,7 @@ export function priceProduct(request: PriceRequest): PricedItem {
       freeUnits: freeUnits.units,
       semantics: freeUnits.semantics,
       chargeInTiers,
+      tierQuantity: freeUnits.tierQuantity,
     });
     billableQuantity = fu.billableQuantity;
     deliveredQuantity = fu.deliveredQuantity;
@@ -1326,6 +1351,9 @@ export function priceProduct(request: PriceRequest): PricedItem {
     bases,
     context,
     escolhaGratis ? [escolhaGratis.promo] : [],
+    freeUnits?.tierQuantity != null
+      ? { ...context, billableQuantity: freeUnits.tierQuantity }
+      : undefined,
   );
   warnings.push(...promoResult.warnings);
   // Descontos de unidades gratuitas somam aos descontos de promocao.
