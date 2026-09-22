@@ -129,8 +129,25 @@ export default function BuscadorCatalogo({
   );
 
   /** Quantidade default de um produto do passo 3, na unidade dele. */
+  /**
+   * Quantas unidades DO ITEM cabem numa semana. `unit` e texto livre no banco e
+   * o repositorio ja usa varios rotulos (day, night, month...), entao decidir
+   * pela string "day" deixaria "night" cair na regra semanal — e um hotel de 4
+   * SEMANAS voltaria a ser cotado como 4 noites.
+   */
+  const POR_SEMANA: Record<string, number> = { week: 1, day: 7, night: 7, month: 1 / 4.345 };
+
   const qtdPadrao = useCallback(
-    (item: ItemCatalogo) => (item.unit === "day" ? 1 : semanasCurso),
+    (item: ItemCatalogo, semanasBase?: number) => {
+      const semanas = semanasBase ?? semanasCurso;
+      const fator = POR_SEMANA[item.unit];
+      // Add-on (noite extra) e pedido noite a noite; item discreto (transfer,
+      // taxa avulsa) e pedido a unidade. Os dois comecam em 1.
+      if (item.addonDe != null || fator === undefined) return 1;
+      const f = faixaDe(item);
+      const n = Math.max(1, Math.round(semanas * fator));
+      return f ? Math.min(Math.max(n, f.min), f.max) : n;
+    },
     [semanasCurso],
   );
 
@@ -177,6 +194,9 @@ export default function BuscadorCatalogo({
         kinds: ["accommodation"],
         campusId: campusFiltro,
         quantidade: semanasAcom,
+        // O seletor do passo 2 conta SEMANAS. Hotel cobrado por diaria fica
+        // fora do filtro de faixa (e traz a propria quantidade no card).
+        unidadeDaQuantidade: "week",
       });
     }
     if (passo === 3) {
@@ -202,22 +222,55 @@ export default function BuscadorCatalogo({
 
   const naTela = useMemo(() => resultados.slice(0, visiveis), [resultados, visiveis]);
 
-  /** Quantidade usada para precificar um card, conforme o passo. */
+  /**
+   * Quantidade da ACOMODACAO, na unidade dela. FONTE UNICA: card, carrinho e
+   * checagem de faixa leem daqui. Acomodacao cobrada por DIARIA (hotel) nao
+   * segue o seletor de semanas — o numero de semanas viraria numero de noites e
+   * uma estadia de 4 semanas sairia como 4 diarias, quase 90% mais barata.
+   */
+  const qtdDaAcom = useCallback(
+    (item: ItemCatalogo) =>
+      item.unit === "week"
+        ? semanasAcom
+        // Base e a duracao da ACOMODACAO, nao a do curso: o seletor do passo 2
+        // existe justamente para quem chega antes ou fica depois.
+        : (qtdServico[item.id] ?? qtdPadrao(item, semanasAcom)),
+    [semanasAcom, qtdServico, qtdPadrao],
+  );
+
   const qtdDoCard = useCallback(
     (item: ItemCatalogo) => {
       if (passo === 1) return semanasCurso;
-      if (passo === 2) return semanasAcom;
+      if (passo === 2) return qtdDaAcom(item);
       return qtdServico[item.id] ?? qtdPadrao(item);
     },
-    [passo, semanasCurso, semanasAcom, qtdServico, qtdPadrao],
+    [passo, semanasCurso, qtdDaAcom, qtdServico, qtdPadrao],
   );
+
+  // ——— Carrinho ————————————————————————————————————————————————
+  const carrinho: ItemCarrinho[] = useMemo(() => {
+    const out: ItemCarrinho[] = [];
+    if (curso) out.push({ item: curso, qtd: semanasCurso });
+    if (acom) out.push({ item: acom, qtd: qtdDaAcom(acom) });
+    for (const item of Object.values(extras)) {
+      out.push({ item, qtd: qtdServico[item.id] ?? qtdPadrao(item) });
+    }
+    return out;
+  }, [curso, acom, extras, semanasCurso, qtdDaAcom, qtdServico, qtdPadrao]);
 
   // ——— Precificacao dos cards visiveis, pelo motor real ————————————————
   const emVoo = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (passo === 4) return;
-    const pendentes = naTela
-      .map((item) => ({ item, qtd: qtdDoCard(item) }))
+    // O passo 4 tambem precifica, e sobre o CARRINHO. Sem isso, qualquer chave
+    // nova criada ali — marcar uma taxa opcional muda a chave — nunca era
+    // calculada: a linha virava "sem preco", o bloco de taxas sumia (nao dava
+    // nem para desmarcar) e o item era descartado na gravacao. O mesmo valia
+    // para quem digitava a quantidade e avancava antes dos 250ms do debounce.
+    const aPrecificar =
+      passo === 4
+        ? carrinho.map((c) => ({ item: c.item, qtd: c.qtd }))
+        : naTela.map((item) => ({ item, qtd: qtdDoCard(item) }));
+    const pendentes = aPrecificar
       .filter(({ item, qtd }) => {
         const k = chavePreco(item.id, qtd, item.unit);
         return precos[k] === undefined && !emVoo.current.has(k);
@@ -297,18 +350,7 @@ export default function BuscadorCatalogo({
         setPrecificando(false);
       }
     }
-  }, [passo, naTela, precos, chavePreco, inicio, qtdDoCard, taxasEscolhidas]);
-
-  // ——— Carrinho ————————————————————————————————————————————————
-  const carrinho: ItemCarrinho[] = useMemo(() => {
-    const out: ItemCarrinho[] = [];
-    if (curso) out.push({ item: curso, qtd: semanasCurso });
-    if (acom) out.push({ item: acom, qtd: semanasAcom });
-    for (const item of Object.values(extras)) {
-      out.push({ item, qtd: qtdServico[item.id] ?? qtdPadrao(item) });
-    }
-    return out;
-  }, [curso, acom, extras, semanasCurso, semanasAcom, qtdServico, qtdPadrao]);
+  }, [passo, naTela, carrinho, precos, chavePreco, inicio, qtdDoCard, taxasEscolhidas]);
 
   const precoDe = useCallback(
     (c: ItemCarrinho) => precos[chavePreco(c.item.id, c.qtd, c.item.unit)],
@@ -383,6 +425,14 @@ export default function BuscadorCatalogo({
     // Sequencial: cada item e precificado e auditado no servidor, e uma falha
     // no meio precisa dizer QUAL produto ficou de fora.
     for (const c of carrinho) {
+      // REDE DE PROTECAO: a Revisao promete que "item sem preco sera recusado
+      // ao adicionar", e nao era verdade — o laco postava tudo e o servidor
+      // reprecificava e gravava. Item sem preco na tela nao vai para a cotacao.
+      const p = precoDe(c);
+      if (!p || !p.ok) {
+        falhas.push({ nome: c.item.name, motivo: "sem preço para esta duração" });
+        continue;
+      }
       try {
         const res = await fetch(`/api/admin/quotes/${quoteId}/items`, {
           method: "POST",
@@ -404,7 +454,8 @@ export default function BuscadorCatalogo({
       }
     }
     setAdicionando(false);
-    onAdicionado();
+    // Sem nada gravado nao ha o que recarregar, e chamar isto sugeriria sucesso.
+    if (gravados > 0) onAdicionado();
     if (falhas.length > 0) {
       setErro(
         `${gravados} item(ns) adicionado(s). Não foi possível adicionar: ` +
@@ -424,8 +475,12 @@ export default function BuscadorCatalogo({
   }, [curso, semanasCurso]);
   const acomForaDaFaixa = useMemo(() => {
     const f = acom ? faixaDe(acom) : null;
-    return !!f && (semanasAcom < f.min || semanasAcom > f.max);
-  }, [acom, semanasAcom]);
+    if (!f || !acom) return false;
+    // Na unidade DO ITEM: comparar semanas com um minimo em noites travava a
+    // cotacao de hotel sem que houvesse nada de errado com ela.
+    const q = qtdDaAcom(acom);
+    return q < f.min || q > f.max;
+  }, [acom, qtdDaAcom]);
   const foraDaFaixaNoCarrinho = cursoForaDaFaixa || acomForaDaFaixa;
 
   const podeAvancar = (passo === 1 ? !!curso : true) && !foraDaFaixaNoCarrinho;
@@ -467,7 +522,7 @@ export default function BuscadorCatalogo({
                     {faixaDe(acom)!.min === faixaDe(acom)!.max
                       ? labelUnidade(acom.unit, faixaDe(acom)!.min)
                       : `${faixaDe(acom)!.min}–${labelUnidade(acom.unit, faixaDe(acom)!.max)}`}
-                    , e a acomodação está em {labelSemanas(semanasAcom)}.{" "}
+                    , e a acomodação está em {labelUnidade(acom.unit, qtdDaAcom(acom))}.{" "}
                   </>
                 ) : null}
                 Ajuste a duração ou troque o item para continuar.
@@ -550,7 +605,7 @@ export default function BuscadorCatalogo({
                   ) : null}
 
                   {passo === 2 ? (
-                    <FiltroCard titulo="Duração da acomodação">
+                    <FiltroCard titulo="Duração da acomodação (semanas)">
                       <select
                         value={semanasAcom}
                         onChange={(e) => setSemanasAcom(parseInt(e.target.value, 10))}
@@ -562,6 +617,13 @@ export default function BuscadorCatalogo({
                           </option>
                         ))}
                       </select>
+                      {/* O seletor vale para acomodacao SEMANAL. Hotel cobrado
+                          por diaria traz a propria quantidade no card, e ver
+                          dois numeros para o mesmo item confunde. */}
+                      <p className="mt-2 text-[11px] text-neutral-500">
+                        Acomodação cobrada por diária (hotel) tem a quantidade no
+                        próprio card, em noites.
+                      </p>
                       <p className="mt-1.5 text-[11px] text-neutral-500">
                         Começa igual ao curso. Ajuste se o aluno chega antes ou fica depois.
                       </p>
@@ -638,7 +700,7 @@ export default function BuscadorCatalogo({
                             qtd={qtd}
                             preco={preco}
                             selecionado={selecionado}
-                            mostrarQtd={passo === 3}
+                            mostrarQtd={passo === 3 || (passo === 2 && item.unit !== "week")}
                             onMudarQtd={(v) => mudarQtdServico(item, v)}
                             onSelecionar={() => {
                               if (passo === 1) escolherCurso(item);
@@ -778,7 +840,7 @@ function TituloPasso({
     passo === 1
       ? `início ${fmtData(inicio)} · ${labelSemanas(semanasCurso)}`
       : passo === 2
-        ? `${labelSemanas(semanasAcom)} a partir de ${fmtData(inicio)}`
+        ? `semanal: ${labelSemanas(semanasAcom)} · a partir de ${fmtData(inicio)}`
         : "cada serviço tem a própria quantidade";
   return (
     <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">

@@ -155,3 +155,27 @@ test("produto sem addonDe nunca e escondido pelo filtro de acomodacao", () => {
   assert.equal(filtrarItensCatalogo({ itens, termo: "", quantidade: null, acomodacaoId: "qualquer" }).resultados.length, 1);
   assert.equal(filtrarItensCatalogo({ itens, termo: "", quantidade: null, acomodacaoId: null }).resultados.length, 1);
 });
+
+// Hotel cobrado por DIARIA no passo da acomodacao: o seletor conta semanas, e
+// comparar 4 (semanas) com um minimo de 7 (noites) escondia o hotel da busca.
+test("item de outra unidade fica fora do filtro de faixa", () => {
+  const itens = [
+    item({ id: "casa", name: "Casa de familia", kind: "accommodation", unit: "week", minQtd: 1, maxQtd: 52 }),
+    item({ id: "hotel", name: "Hotel Dorsett", kind: "accommodation", unit: "day", minQtd: 7, maxQtd: 90 }),
+  ];
+  const so = (unidade: string | null) =>
+    filtrarItensCatalogo({ itens, termo: "", quantidade: 4, unidadeDaQuantidade: unidade })
+      .resultados.map((r) => r.id).sort();
+  // Sem declarar a unidade, o hotel some: 4 < 7.
+  assert.deepEqual(so(null), ["casa"]);
+  // Declarando que os 4 sao SEMANAS, o hotel volta — a quantidade dele e outra.
+  assert.deepEqual(so("week"), ["casa", "hotel"]);
+});
+
+// Cadastro ruim de price list ja produziu max < min. Sem normalizar, a faixa
+// travava a cotacao com "aceita 7-3 noites" e um input HTML invalido.
+test("faixa invertida e normalizada: max nunca fica abaixo do min", () => {
+  assert.deepEqual(faixaDe({ minQtd: 7, maxQtd: 3 }), { min: 7, max: 7 });
+  assert.deepEqual(faixaDe({ minQtd: 2, maxQtd: 8 }), { min: 2, max: 8 });
+  assert.equal(faixaDe({ minQtd: 0, maxQtd: 0 }), null);
+});

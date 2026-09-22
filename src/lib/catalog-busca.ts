@@ -58,7 +58,10 @@ export type ResultadoBuscaCatalogo = {
  */
 export function faixaDe(item: Pick<ItemCatalogo, "minQtd" | "maxQtd">): { min: number; max: number } | null {
   const min = Number(item.minQtd) || 0;
-  const max = Number(item.maxQtd) || min;
+  // NUNCA menor que o minimo: uma faixa invertida vinda de cadastro ruim
+  // (min 7, max 3) travava a cotacao com um aviso sem sentido ("aceita 7-3
+  // noites") e gerava um <input min=7 max=3> invalido.
+  const max = Math.max(min, Number(item.maxQtd) || min);
   if (min <= 0) return null; // sem restricao declarada
   return { min, max };
 }
@@ -105,6 +108,13 @@ export function filtrarItensCatalogo(args: {
    * diarias): ali cada extra tem a sua propria quantidade no carrinho.
    */
   quantidade: number | null;
+  /**
+   * Unidade a que `quantidade` se refere. Item de OUTRA unidade fica fora do
+   * filtro de faixa em vez de ser comparado em unidade errada: um hotel cobrado
+   * por diaria, com minimo de 7 noites, sumia de uma busca de 4 SEMANAS porque
+   * 4 < 7. O preco desse item vem da quantidade propria dele.
+   */
+  unidadeDaQuantidade?: string | null;
 }): ResultadoBuscaCatalogo {
   const termos = expandirTermos(args.termo);
   const termoNorm = normalizar(args.termo);
@@ -126,8 +136,13 @@ export function filtrarItensCatalogo(args: {
     if (score === null) continue;
 
     const faixa = faixaDe(item);
+    const mesmaUnidade =
+      args.unidadeDaQuantidade == null || item.unit === args.unidadeDaQuantidade;
     const naFaixa =
-      args.quantidade == null || faixa == null || (args.quantidade >= faixa.min && args.quantidade <= faixa.max);
+      args.quantidade == null ||
+      faixa == null ||
+      !mesmaUnidade ||
+      (args.quantidade >= faixa.min && args.quantidade <= faixa.max);
     if (naFaixa) {
       candidatos.push({ item, score });
     } else if (faixa) {
