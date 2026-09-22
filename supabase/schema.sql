@@ -2083,7 +2083,9 @@ create table if not exists promotion (
   free_units_semantics text check (free_units_semantics in ('bonus_on_top','discount_on_booked')),
   applies_to text not null check (applies_to in
     ('tuition','accommodation','insurance','fees','specific_fee','total','specific_product')),
-  applies_to_ref_id uuid, min_quantity int, max_discount_amount numeric(14,2),
+  -- min + max desenham a FAIXA de quantidade em que a promocao vale. Sem o
+  -- teto, duas faixas de preco promocional se sobrepoem na mesma cotacao.
+  applies_to_ref_id uuid, min_quantity int, max_quantity int, max_discount_amount numeric(14,2),
   is_stackable boolean not null default false, priority int not null default 100,
   booking_from date, booking_until date, travel_from date, travel_until date,
   status text not null default 'draft' check (status in ('draft','active','expired')),

@@ -97,6 +97,12 @@ export type FeeLine = {
    * matricula multi-curso, que funde varias).
    */
   feeId?: string;
+  /**
+   * Ids das taxas FUNDIDAS nesta linha. Sem isto, uma promocao de isencao de
+   * matricula funcionava com um curso e sumia em silencio com dois, porque a
+   * linha fundida nao tem `feeId` e a promocao nao achava o alvo.
+   */
+  mergedFeeIds?: string[];
   name: string;
   amount: number;
   currency: string;
@@ -149,7 +155,16 @@ export type Promotion = {
   value?: number;
   appliesTo: PromoAppliesTo;
   appliesToRefId?: string;
+  /** So para promoType 'free_units'. Default: bonus_on_top. */
+  freeUnitsSemantics?: FreeUnitSemantics;
   minQuantity?: number;
+  /**
+   * Teto de quantidade (inclusivo). Espelha minQuantity e existe porque uma
+   * promocao de faixa e um INTERVALO: "material gratis ate 12 semanas" ou "de
+   * 12 a 23 semanas o preco e outro". Sem o teto, so da para dizer "a partir
+   * de", e duas faixas de preco se sobreporiam na mesma cotacao.
+   */
+  maxQuantity?: number;
   maxDiscountAmount?: number;
   isStackable: boolean;
   priority: number;
@@ -181,6 +196,12 @@ export type PromoBases = {
   insurance: number;
   fees: number;
   total: number;
+  /**
+   * Valor COBRADO de cada taxa, por `fee.id`. E o que permite uma promocao
+   * mirar UMA taxa ("material didatico gratis") em vez de todas. Sem isto,
+   * isentar o material derrubaria tambem a matricula.
+   */
+  feeAmountById?: Record<string, number>;
 };
 
 /** Linha de desconto calculada (rastro auditavel). */
@@ -512,6 +533,66 @@ export function calcWithTransition(params: {
  * - discount_on_booked: contrata N, recebe N, paga N-F. Faixa por N. gross = N
  *   ao preco da faixa de N; discount = F x preco da faixa de N; net = gross - discount.
  */
+/** Alvos de promocao que casam com cada tipo de produto. */
+const ALVO_POR_KIND: Record<string, PromoAppliesTo[]> = {
+  program: ["tuition", "total"],
+  accommodation: ["accommodation", "total"],
+  insurance: ["insurance", "total"],
+};
+
+/**
+ * Escolhe a promocao de UNIDADES GRATUITAS aplicavel ao cenario. O motor ja
+ * sabia calcular semanas gratis (applyFreeUnits), mas nada ligava isso a tabela
+ * de promocoes: a escola oferecia "24 semanas, 4 gratis" e a cotacao cobrava as
+ * 28. Empate resolve por priority, depois pela MAIOR quantidade e por fim pelo
+ * id — sem o ultimo criterio, a ordem do banco decidiria o preco.
+ *
+ * Tres recusas que NAO sao detalhe:
+ * - `appliesTo` precisa casar com o kind do produto. As promocoes vem do
+ *   FORNECEDOR, nao do produto: sem isto, "4 semanas gratis de curso" daria
+ *   tambem 4 semanas de casa de familia do mesmo campus.
+ * - `units` precisa ser inteiro e MENOR que a quantidade contratada. Com
+ *   `discount_on_booked`, 4 gratis em 2 semanas cobradas gera quantidade -2 e
+ *   valor NEGATIVO — credito para o estudante, sem nenhum aviso.
+ */
+export function escolherUnidadesGratuitas(
+  promotions: Promotion[],
+  ctx: PromoContext,
+  opts: { kind: string; quantity: number; warnings?: string[] },
+): { freeUnits: PriceRequestFreeUnits; promo: Promotion } | undefined {
+  const alvosValidos = ALVO_POR_KIND[opts.kind] ?? ["total"];
+  const candidatas = promotions
+    .filter((p) => p.promoType === "free_units")
+    .filter((p) => alvosValidos.includes(p.appliesTo))
+    .filter((p) => isPromotionApplicable(p, ctx))
+    .filter((p) => {
+      const v = p.value ?? 0;
+      if (!Number.isInteger(v) || v <= 0) return false;
+      if (v >= opts.quantity) {
+        opts.warnings?.push(
+          `Promocao "${p.name}" oferece ${v} unidade(s) gratuita(s) para ${opts.quantity} contratada(s); ignorada.`,
+        );
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (a, b) =>
+        a.priority - b.priority ||
+        (b.value ?? 0) - (a.value ?? 0) ||
+        (a.id ?? "").localeCompare(b.id ?? ""),
+    );
+  const escolhida = candidatas[0];
+  if (!escolhida) return undefined;
+  return {
+    freeUnits: {
+      units: escolhida.value as number,
+      semantics: escolhida.freeUnitsSemantics ?? "bonus_on_top",
+    },
+    promo: escolhida,
+  };
+}
+
 export function applyFreeUnits(params: {
   tiers: Tier[];
   bookedQuantity: number;
@@ -635,8 +716,11 @@ export function applyFees(
   if (registrationFees.length > 0) {
     const amounts = registrationFees.map((f) => f.amount);
     lines.push({
-      // Sem `feeId`: a linha funde varias taxas, nenhuma e "a" origem.
+      // Sem `feeId`: a linha funde varias taxas, nenhuma e "a" origem. Os ids
+      // viajam em `mergedFeeIds` para a promocao de isencao continuar achando
+      // o alvo.
       name: "Matricula (multi-curso)",
+      mergedFeeIds: registrationFees.map((f) => f.id).filter((x): x is string => x != null),
       amount: aggregateRegistrationFee(amounts, ctx.multiCourseRule),
       currency: registrationFees[0].currency,
       basis: `registration:${ctx.multiCourseRule}`,
@@ -696,8 +780,11 @@ export function isPromotionApplicable(
   if (promo.travelFrom != null && ctx.startDate < promo.travelFrom) return false;
   if (promo.travelUntil != null && ctx.startDate > promo.travelUntil) return false;
 
-  // Quantidade minima.
+  // Quantidade minima e maxima (as duas inclusivas).
   if (promo.minQuantity != null && ctx.billableQuantity < promo.minQuantity) {
+    return false;
+  }
+  if (promo.maxQuantity != null && ctx.billableQuantity > promo.maxQuantity) {
     return false;
   }
 
@@ -730,10 +817,14 @@ function promoBase(promo: Promotion, bases: PromoBases): number {
       return bases.fees;
     case "total":
       return bases.total;
-    // specific_fee / specific_product exigem o id do alvo e o valor da linha
-    // especifica, que nao existem neste escopo puro. Trata como base 0 (nao
-    // gera desconto); sera implementado quando a cotacao expuser as linhas.
+    // Taxa ESPECIFICA: base e o valor ja cobrado daquela taxa. Sem o id do
+    // alvo ou com a taxa ausente da conta, base 0 — nao gera linha.
     case "specific_fee":
+      return promo.appliesToRefId != null
+        ? (bases.feeAmountById?.[promo.appliesToRefId] ?? 0)
+        : 0;
+    // specific_product ainda exige a linha do produto, que nao existe neste
+    // escopo puro.
     case "specific_product":
     default:
       return 0;
@@ -746,20 +837,35 @@ function promoBase(promo: Promotion, bases: PromoBases): number {
  * candidata forem isStackable. maxDiscountAmount e teto por promocao. Cada linha
  * e arredondada com round2; o total e sumMoney das linhas.
  *
- * Tipos suportados: percent_off (value = percentual, ex.: 30 = 30%) e fixed_off
- * (value = valor absoluto). Os demais (free_units, waive_fee, free_product,
- * override_price) fogem deste escopo e sao ignorados aqui.
+ * Tipos suportados: percent_off (value = percentual, ex.: 30 = 30%), fixed_off
+ * (value = valor absoluto) e waive_fee (desconta a base inteira — com
+ * appliesTo='specific_fee' isenta UMA taxa). free_units e resolvido antes, no
+ * bruto (priceProduct). free_product e override_price seguem fora do escopo.
  */
 export function applyPromotions(
   promotions: Promotion[],
   bases: PromoBases,
-  ctx: PromoContext
-): { discounts: DiscountLine[]; totalDiscount: number } {
-  const sorted = [...promotions].sort((a, b) => a.priority - b.priority);
+  ctx: PromoContext,
+  /**
+   * Promocoes ja aplicadas FORA desta funcao — hoje, a de unidades gratuitas,
+   * resolvida antes do bruto. Sem isto ela nao entrava na conta do
+   * empilhamento, e uma promocao "4 semanas gratis" NAO empilhavel convivia com
+   * um "10% off" tambem nao empilhavel: a escola dava os dois.
+   */
+  jaAplicadas: Promotion[] = [],
+): { discounts: DiscountLine[]; totalDiscount: number; warnings: string[] } {
+  // Desempate por id: a consulta do banco nao garante ordem, e sem um criterio
+  // final duas cotacoes identicas podiam sair com precos diferentes.
+  const sorted = [...promotions].sort(
+    (a, b) => a.priority - b.priority || (a.id ?? "").localeCompare(b.id ?? ""),
+  );
   const discounts: DiscountLine[] = [];
-  const applied: Promotion[] = [];
+  const applied: Promotion[] = [...jaAplicadas];
+  const warnings: string[] = [];
 
   for (const promo of sorted) {
+    if (promo.promoType === "free_units") continue; // resolvida antes do bruto
+    if (applied.some((p) => p.id != null && p.id === promo.id)) continue;
     if (!isPromotionApplicable(promo, ctx)) continue;
 
     // Empilhamento: a primeira sempre entra; as seguintes so se todas as ja
@@ -775,8 +881,13 @@ export function applyPromotions(
       amount = round2((base * (promo.value ?? 0)) / 100);
     } else if (promo.promoType === "fixed_off") {
       amount = round2(promo.value ?? 0);
+    } else if (promo.promoType === "waive_fee") {
+      // Isencao: o desconto e a propria base — a taxa inteira. Com
+      // appliesTo='specific_fee' isenta uma taxa; com 'fees', todas.
+      amount = round2(base);
     } else {
-      // Tipos fora deste escopo (semanas gratis, isencao, brinde, override).
+      // Fora deste escopo: free_units (tratado antes do bruto, em
+      // priceProduct), free_product e override_price.
       continue;
     }
 
@@ -784,6 +895,9 @@ export function applyPromotions(
     if (promo.maxDiscountAmount != null && amount > promo.maxDiscountAmount) {
       amount = round2(promo.maxDiscountAmount);
     }
+    // Nenhum desconto pode passar da propria base: um fixed_off de 50 sobre uma
+    // taxa de 20 viraria credito de 30 para o estudante.
+    if (amount > base) amount = round2(base);
 
     if (amount <= 0) continue; // sem base valida (ex.: specific_*) nao gera linha
 
@@ -797,7 +911,21 @@ export function applyPromotions(
     applied.push(promo);
   }
 
-  return { discounts, totalDiscount: sumMoney(discounts.map((d) => d.amount)) };
+  // TETO AGREGADO. O teto por promocao limita cada linha a sua propria base,
+  // mas nada limitava a SOMA: duas isencoes empilhaveis sobre a mesma taxa, ou
+  // dois percentuais de 60%, deixavam o liquido negativo em silencio.
+  let total = sumMoney(discounts.map((d) => d.amount));
+  if (total > bases.total && bases.total > 0) {
+    const excedente = round2(total - bases.total);
+    const ultima = discounts[discounts.length - 1];
+    ultima.amount = round2(ultima.amount - excedente);
+    if (ultima.amount <= 0) discounts.pop();
+    total = sumMoney(discounts.map((d) => d.amount));
+    warnings.push(
+      `Descontos somavam mais que o valor da cotacao; o total foi limitado a ${bases.total}.`,
+    );
+  }
+  return { discounts, totalDiscount: total, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -1021,12 +1149,23 @@ export function priceProduct(request: PriceRequest): PricedItem {
     transitionRule,
     fees,
     promotions,
-    freeUnits,
     context,
   } = request;
   const chargeInTiers = request.chargeInTiers ?? false;
   const currency = product.currency;
   const warnings: string[] = [];
+  // `request.freeUnits` explicito continua vencendo (usado por testes e pelo
+  // preview); na ausencia dele, a tabela de promocoes responde.
+  const escolhaGratis = request.freeUnits
+    ? undefined
+    : escolherUnidadesGratuitas(promotions, context, {
+        // Sem kind conhecido, so promocao de alvo 'total' passa — falha fechada:
+        // nao da semanas gratis por engano num produto que nao sabemos o que e.
+        kind: product.kind ?? "",
+        quantity,
+        warnings,
+      });
+  const freeUnits = request.freeUnits ?? escolhaGratis?.freeUnits;
 
   // 1) Disponibilidade (nao bloqueia; apenas alerta).
   if (product.availableFrom != null && startDate < product.availableFrom) {
@@ -1061,6 +1200,18 @@ export function priceProduct(request: PriceRequest): PricedItem {
   if (freeUnits) {
     // Faixa/bruto pela quantidade contratada, usando o template vigente no inicio.
     const idx = templateIndexAt(templates, startDate);
+    // Esta trilha NAO faz transicao de template. Era caminho morto (ninguem
+    // preenchia freeUnits); virou o caminho normal de toda promocao de semanas
+    // gratis — que sao as reservas longas, as que mais atravessam virada de
+    // tabela. Avisa em vez de cobrar tudo pela tabela velha em silencio.
+    if (unit === "week" && templates.length > 1) {
+      const idxFim = templateIndexAt(templates, addDays(startDate, quantity * 7));
+      if (idxFim !== idx) {
+        warnings.push(
+          "Periodo atravessa troca de tabela de preco, mas a promocao de unidades gratuitas cobra tudo pela tabela do inicio.",
+        );
+      }
+    }
     const tiers = (idx >= 0 ? templates[idx] : templates[0])?.tiers ?? [];
     const fu = applyFreeUnits({
       tiers,
@@ -1160,9 +1311,23 @@ export function priceProduct(request: PriceRequest): PricedItem {
     accommodation: ehAcomodacao ? round2(grossAmount + seasonalResult.total) : seasonalResult.total,
     insurance: 0,
     fees: feesResult.total,
+    // A linha FUNDIDA (matricula multi-curso) responde por todos os ids que ela
+    // absorveu, com o valor da linha — senao a isencao de matricula sumiria
+    // justamente na cotacao de dois cursos.
+    feeAmountById: Object.fromEntries(
+      feesResult.fees.flatMap((l) =>
+        (l.feeId != null ? [l.feeId] : (l.mergedFeeIds ?? [])).map((id) => [id, l.amount] as const),
+      ),
+    ),
     total: round2(grossAmount + feesResult.total + seasonalResult.total),
   };
-  const promoResult = applyPromotions(promotions, bases, context);
+  const promoResult = applyPromotions(
+    promotions,
+    bases,
+    context,
+    escolhaGratis ? [escolhaGratis.promo] : [],
+  );
+  warnings.push(...promoResult.warnings);
   // Descontos de unidades gratuitas somam aos descontos de promocao.
   const discounts: DiscountLine[] = [...freeUnitsDiscounts, ...promoResult.discounts];
   const totalDiscounts = sumMoney(discounts.map((d) => d.amount));

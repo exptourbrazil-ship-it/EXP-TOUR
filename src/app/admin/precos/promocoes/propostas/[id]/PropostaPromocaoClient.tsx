@@ -47,6 +47,7 @@ export default function PropostaPromocaoClient({
     applies_to: str(entrada.applies_to) || "tuition",
     applies_to_ref_id: str(entrada.applies_to_ref_id),
     min_quantity: str(entrada.min_quantity),
+    max_quantity: str(entrada.max_quantity),
     max_discount_amount: str(entrada.max_discount_amount),
     is_stackable: entrada.is_stackable === true,
     booking_from: str(entrada.booking_from),
@@ -80,6 +81,7 @@ export default function PropostaPromocaoClient({
         applies_to: f.applies_to,
         applies_to_ref_id: f.applies_to === "specific_product" ? f.applies_to_ref_id || null : null,
         min_quantity: f.min_quantity === "" ? null : Number(f.min_quantity),
+        max_quantity: f.max_quantity === "" ? null : Number(f.max_quantity),
         max_discount_amount: f.max_discount_amount === "" ? null : Number(f.max_discount_amount.replace(",", ".")),
         is_stackable: f.is_stackable,
         booking_from: f.booking_from || null,
@@ -190,6 +192,11 @@ export default function PropostaPromocaoClient({
         </Campo>
         <Campo campo="min_quantity" label="Mínimo (semanas)">
           <input className={input} inputMode="numeric" value={f.min_quantity} onChange={(e) => set("min_quantity", e.target.value)} />
+        </Campo>
+        {/* Sem o máximo, uma promoção de FAIXA lida da price list ("de 12 a 23
+            semanas") virava "a partir de 12" ao ser aprovada. */}
+        <Campo campo="max_quantity" label="Máximo (semanas)">
+          <input className={input} inputMode="numeric" value={f.max_quantity} onChange={(e) => set("max_quantity", e.target.value)} />
         </Campo>
         <Campo campo="booking_from" label="Reservar a partir de">
           <input className={input} type="date" value={f.booking_from} onChange={(e) => set("booking_from", e.target.value)} />

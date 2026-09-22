@@ -296,13 +296,18 @@ export async function loadPricingInputs(
   const { data: promoRows } = await supabase
     .from("promotion")
     .select(
-      "id, name, promo_type, value, applies_to, applies_to_ref_id, min_quantity, max_discount_amount, is_stackable, priority, booking_from, booking_until, travel_from, travel_until, status, campus_id",
+      "id, name, promo_type, value, free_units_semantics, applies_to, applies_to_ref_id, min_quantity, max_quantity, max_discount_amount, is_stackable, priority, booking_from, booking_until, travel_from, travel_until, status, campus_id",
     )
     .eq("tenant_id", tenantId)
     .eq("supplier_id", campus.supplier_id)
     .eq("status", "active")
     .is("archived_at", null)
-    .or(`campus_id.is.null,campus_id.eq.${campus.id}`);
+    .or(`campus_id.is.null,campus_id.eq.${campus.id}`)
+    // Ordem DETERMINISTA: sem isto, duas promocoes de mesma prioridade eram
+    // desempatadas pela ordem que o Postgres devolvesse, e duas cotacoes
+    // identicas podiam sair com precos diferentes.
+    .order("priority", { ascending: true })
+    .order("id", { ascending: true });
 
   const promoIds = (promoRows ?? []).map((p: any) => p.id);
   const targetsByPromo = new Map<string, PromotionTarget[]>();
@@ -324,7 +329,9 @@ export async function loadPricingInputs(
     value: toNumOrUndef(p.value),
     appliesTo: p.applies_to,
     appliesToRefId: p.applies_to_ref_id ?? undefined,
+    freeUnitsSemantics: p.free_units_semantics ?? undefined,
     minQuantity: p.min_quantity ?? undefined,
+    maxQuantity: p.max_quantity ?? undefined,
     maxDiscountAmount: toNumOrUndef(p.max_discount_amount),
     isStackable: Boolean(p.is_stackable),
     priority: p.priority ?? 100,

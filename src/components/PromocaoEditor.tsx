@@ -61,6 +61,7 @@ export default function PromocaoEditor({
     applies_to: p.applies_to ?? "tuition",
     applies_to_ref_id: p.applies_to_ref_id ?? "",
     min_quantity: p.min_quantity ?? "",
+    max_quantity: p.max_quantity ?? "",
     max_discount_amount: p.max_discount_amount != null ? String(p.max_discount_amount) : "",
     is_stackable: !!p.is_stackable,
     priority: p.priority != null ? String(p.priority) : "100",
@@ -100,6 +101,7 @@ export default function PromocaoEditor({
       promo_type: campo.promo_type,
       applies_to: campo.applies_to,
       min_quantity: num(campo.min_quantity),
+      max_quantity: num(campo.max_quantity),
       max_discount_amount: num(campo.max_discount_amount),
       is_stackable: campo.is_stackable,
       priority: num(campo.priority),
@@ -208,6 +210,12 @@ export default function PromocaoEditor({
           ) : null}
           <Campo label="Quantidade mínima (opcional)" erro={falhaDe("min_quantity")}>
             <input type="number" min={0} value={campo.min_quantity} onChange={(e) => set("min_quantity", e.target.value)} className={inp} />
+          </Campo>
+          {/* Mínima + máxima desenham um INTERVALO. Sem o teto, duas faixas de
+              preço promocional ("1 a 11 semanas" e "12 a 23") se sobrepõem:
+              quem contrata 20 satisfaz as duas. */}
+          <Campo label="Quantidade máxima (opcional)" erro={falhaDe("max_quantity")}>
+            <input type="number" min={0} value={campo.max_quantity} onChange={(e) => set("max_quantity", e.target.value)} className={inp} />
           </Campo>
           <Campo label="Prioridade" erro={falhaDe("priority")}>
             <input type="number" min={0} value={campo.priority} onChange={(e) => set("priority", e.target.value)} className={inp} />

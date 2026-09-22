@@ -20,6 +20,7 @@ import {
   applyFees,
   isPromotionApplicable,
   applyPromotions,
+  escolherUnidadesGratuitas,
   applySeasonalAdjustments,
   priceProduct,
   type Tier,
@@ -28,6 +29,7 @@ import {
   type FeeContext,
   type Promotion,
   type PromoContext,
+  type PromoBases,
   type PriceRequest,
   type SeasonalAdjustment,
 } from "./pricing.ts";
@@ -984,4 +986,149 @@ test("matricula multi-curso combina a flag das taxas que fundiu", () => {
   assert.ok(linha);
   assert.equal(linha.feeId, undefined, "linha fundida nao tem uma origem unica");
   assert.equal(linha.isRefundable, false, "uma nao reembolsavel torna a linha nao reembolsavel");
+});
+
+// ── Promocoes: faixa fechada, isencao de taxa e semanas gratis ──────────────
+// Tres lacunas que so apareceram ao cadastrar o folheto promocional da VanWest:
+// a aba de promocoes oferecia seis tipos e o motor implementava dois; nao havia
+// TETO de quantidade (so "a partir de"); e as semanas gratis existiam no motor
+// mas nada as ligava a tabela de promocoes.
+function promoBase_(over: Partial<Promotion> = {}): Promotion {
+  return {
+    name: "Promo",
+    promoType: "percent_off",
+    value: 10,
+    appliesTo: "tuition",
+    isStackable: false,
+    priority: 100,
+    status: "active",
+    targets: [],
+    ...over,
+  };
+}
+const CTX_: PromoContext = { quoteDate: "2026-09-22", startDate: "2026-11-02", billableQuantity: 12 };
+
+test("promocao com teto de quantidade nao se aplica acima dele", () => {
+  const p = promoBase_({ maxQuantity: 12 });
+  assert.equal(isPromotionApplicable(p, { ...CTX_, billableQuantity: 12 }), true); // inclusivo
+  assert.equal(isPromotionApplicable(p, { ...CTX_, billableQuantity: 13 }), false);
+});
+
+// Sem o teto, duas faixas de preco promocional ("1 a 11 semanas" e "12 a 23")
+// se sobrepoem: quem contrata 20 semanas satisfaz as duas.
+test("min + max desenham um INTERVALO fechado, sem sobreposicao entre faixas", () => {
+  const faixa1 = promoBase_({ name: "1-11", minQuantity: 1, maxQuantity: 11 });
+  const faixa2 = promoBase_({ name: "12-23", minQuantity: 12, maxQuantity: 23 });
+  const q = (n: number) => ({ ...CTX_, billableQuantity: n });
+  assert.deepEqual(
+    [8, 12, 30].map((n) => [isPromotionApplicable(faixa1, q(n)), isPromotionApplicable(faixa2, q(n))]),
+    [[true, false], [false, true], [false, false]],
+  );
+});
+
+test("waive_fee isenta UMA taxa pelo id, sem tocar nas demais", () => {
+  const bases: PromoBases = {
+    tuition: 4680, accommodation: 0, insurance: 0, fees: 415, total: 5095,
+    feeAmountById: { material: 240, matricula: 175 },
+  };
+  const r = applyPromotions(
+    [promoBase_({ name: "Material grátis", promoType: "waive_fee", appliesTo: "specific_fee", appliesToRefId: "material" })],
+    bases,
+    CTX_,
+  );
+  assert.equal(r.totalDiscount, 240);
+  assert.equal(r.discounts[0].appliesTo, "specific_fee");
+});
+
+test("waive_fee de taxa que nao entrou na conta nao gera linha", () => {
+  const bases: PromoBases = { tuition: 100, accommodation: 0, insurance: 0, fees: 0, total: 100, feeAmountById: {} };
+  const r = applyPromotions(
+    [promoBase_({ promoType: "waive_fee", appliesTo: "specific_fee", appliesToRefId: "inexistente" })],
+    bases,
+    CTX_,
+  );
+  assert.equal(r.discounts.length, 0);
+});
+
+// Um fixed_off de 50 sobre uma taxa de 20 viraria credito de 30 para o aluno.
+test("desconto nunca passa da propria base", () => {
+  const bases: PromoBases = { tuition: 100, accommodation: 0, insurance: 0, fees: 20, total: 120, feeAmountById: { m: 20 } };
+  const r = applyPromotions(
+    [promoBase_({ promoType: "fixed_off", value: 50, appliesTo: "specific_fee", appliesToRefId: "m" })],
+    bases,
+    CTX_,
+  );
+  assert.equal(r.totalDiscount, 20);
+});
+
+test("free_units sai da tabela de promocoes; a mais generosa vence o empate", () => {
+  const p4 = promoBase_({ name: "4 grátis", promoType: "free_units", value: 4, minQuantity: 24 });
+  const p2 = promoBase_({ name: "2 grátis", promoType: "free_units", value: 2, minQuantity: 12 });
+  const esc = (ps: Promotion[], n: number) =>
+    escolherUnidadesGratuitas(ps, { ...CTX_, billableQuantity: n }, { kind: "program", quantity: n });
+  assert.deepEqual(esc([p4, p2], 12)?.freeUnits, { units: 2, semantics: "bonus_on_top" });
+  assert.deepEqual(esc([p2, p4], 24)?.freeUnits, { units: 4, semantics: "bonus_on_top" });
+  assert.equal(esc([p4, p2], 4), undefined);
+});
+
+// As promocoes vem do FORNECEDOR, nao do produto: sem conferir o alvo, "4
+// semanas gratis de curso" daria 4 semanas de casa de familia do mesmo campus.
+test("free_units de curso nao vaza para a acomodacao do mesmo campus", () => {
+  const p = promoBase_({ promoType: "free_units", value: 4, appliesTo: "tuition", minQuantity: 24 });
+  const ctx = { ...CTX_, billableQuantity: 24 };
+  assert.ok(escolherUnidadesGratuitas([p], ctx, { kind: "program", quantity: 24 }));
+  assert.equal(escolherUnidadesGratuitas([p], ctx, { kind: "accommodation", quantity: 24 }), undefined);
+});
+
+// Com discount_on_booked, 4 gratis em 2 semanas cobradas dá quantidade -2 e
+// valor NEGATIVO — credito para o estudante, sem nenhum aviso.
+test("free_units maior que a quantidade contratada e recusada, com aviso", () => {
+  const avisos: string[] = [];
+  const p = promoBase_({ promoType: "free_units", value: 4, freeUnitsSemantics: "discount_on_booked" });
+  const r = escolherUnidadesGratuitas([p], { ...CTX_, billableQuantity: 2 }, { kind: "program", quantity: 2, warnings: avisos });
+  assert.equal(r, undefined);
+  assert.equal(avisos.length, 1);
+});
+
+// is_stackable=false precisa valer TAMBEM entre a promocao de semanas gratis e
+// as demais: "4 semanas gratis OU 10% off", nunca os dois.
+test("free_units nao empilhavel bloqueia as demais promocoes", () => {
+  const bases: PromoBases = { tuition: 1000, accommodation: 0, insurance: 0, fees: 0, total: 1000 };
+  const gratis = promoBase_({ id: "g", name: "4 grátis", promoType: "free_units", value: 4, isStackable: false });
+  const dez = promoBase_({ id: "d", name: "10% off", promoType: "percent_off", value: 10, isStackable: false });
+  assert.equal(applyPromotions([dez], bases, CTX_, [gratis]).discounts.length, 0);
+  assert.equal(applyPromotions([dez], bases, CTX_).discounts.length, 1);
+});
+
+// Nada limitava a SOMA dos descontos: duas isencoes empilhaveis sobre a mesma
+// taxa deixavam o liquido negativo em silencio.
+test("soma dos descontos nao passa do valor da cotacao", () => {
+  const bases: PromoBases = { tuition: 0, accommodation: 0, insurance: 0, fees: 400, total: 400, feeAmountById: { m: 240 } };
+  const r = applyPromotions(
+    [
+      promoBase_({ id: "a", name: "Todas as taxas", promoType: "waive_fee", appliesTo: "fees", isStackable: true, priority: 1 }),
+      promoBase_({ id: "b", name: "Material", promoType: "waive_fee", appliesTo: "specific_fee", appliesToRefId: "m", isStackable: true, priority: 2 }),
+    ],
+    bases,
+    CTX_,
+  );
+  assert.equal(r.totalDiscount, 400);
+  assert.equal(r.warnings.length, 1);
+});
+
+test("promocao de semanas gratis chega ao bruto: contrata 24, recebe 28", () => {
+  const r = priceProduct({
+    product: { currency: "CAD", kind: "program" },
+    startDate: "2026-11-02",
+    quantity: 24,
+    unit: "week",
+    templates: [{ name: "ESL 30", tiers: [{ minQuantity: 1, unitPrice: 450 }, { minQuantity: 24, unitPrice: 435 }], validFrom: null, validUntil: null }],
+    transitionRule: "split_by_period",
+    fees: [],
+    promotions: [promoBase_({ name: "4 semanas grátis", promoType: "free_units", value: 4, minQuantity: 24 })],
+    context: { quoteDate: "2026-09-22", startDate: "2026-11-02", billableQuantity: 24 },
+  });
+  assert.equal(r.deliveredQuantity, 28);
+  assert.equal(r.billableQuantity, 24);
+  assert.equal(r.grossAmount, 24 * 435);
 });

@@ -40,6 +40,7 @@ export type PromocaoCore = {
   applies_to: AppliesTo;
   applies_to_ref_id: string | null;
   min_quantity: number | null;
+  max_quantity: number | null;
   max_discount_amount: number | null;
   is_stackable: boolean;
   priority: number;
@@ -157,6 +158,10 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
       falhas.push({ campo: "value", erro: "valor obrigatório (> 0) para este tipo de promoção" });
     } else if (promoType === "percent_off" && n > 100) {
       falhas.push({ campo: "value", erro: "percentual não pode passar de 100" });
+    } else if (promoType === "free_units" && !Number.isInteger(n)) {
+      // "2,5 semanas grátis" viraria entrega de 26,5 semanas e data de fim
+      // quebrada no meio de um dia.
+      falhas.push({ campo: "value", erro: "unidades gratuitas precisam ser um número inteiro" });
     } else {
       value = round4(n);
     }
@@ -166,6 +171,16 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
   let semantics: (typeof FREE_UNITS_SEMANTICS)[number] | null = null;
   if (promoType === "free_units") {
     semantics = reqEnum(raw.free_units_semantics, FREE_UNITS_SEMANTICS, "free_units_semantics", falhas);
+  }
+
+  // waive_fee desconta a BASE INTEIRA. Com applies_to='total' ou 'tuition' isso
+  // zera a cotação — o curso sai de graça por um clique errado no combo. O tipo
+  // só faz sentido sobre taxa.
+  if (promoType === "waive_fee" && !["fees", "specific_fee"].includes(appliesTo)) {
+    falhas.push({
+      campo: "applies_to",
+      erro: "isenção só se aplica a taxas (todas as taxas ou uma taxa específica)",
+    });
   }
 
   // applies_to_ref_id: obrigatorio quando o alvo e especifico (taxa/produto).
@@ -178,6 +193,13 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
   }
 
   const minQuantity = optIntNaoNeg(raw.min_quantity, "min_quantity", falhas);
+  // Teto INCLUSIVO. Existe para a promocao poder ser um INTERVALO ("de 12 a 23
+  // semanas"); so com o minimo, duas faixas de preco se sobrepoem na mesma
+  // cotacao e o motor aplicaria as duas.
+  const maxQuantity = optIntNaoNeg(raw.max_quantity, "max_quantity", falhas);
+  if (minQuantity != null && maxQuantity != null && maxQuantity < minQuantity) {
+    falhas.push({ campo: "max_quantity", erro: "deve ser >= min_quantity" });
+  }
   const maxDiscountRaw = optNumNaoNeg(raw.max_discount_amount, "max_discount_amount", falhas);
   const maxDiscount = maxDiscountRaw === null ? null : round2(maxDiscountRaw);
   const priority = optIntNaoNeg(raw.priority, "priority", falhas) ?? 100;
@@ -226,6 +248,7 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
     applies_to: appliesTo,
     applies_to_ref_id: refId,
     min_quantity: minQuantity,
+    max_quantity: maxQuantity,
     max_discount_amount: maxDiscount,
     is_stackable: optBool(raw.is_stackable, false),
     priority,

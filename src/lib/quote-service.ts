@@ -1256,7 +1256,8 @@ export type OptionTotal = { optionId: string; currency: string; total: number };
  * associado (via priceProductFromDb) e atualiza os campos do quote_item.
  * Retorna os totais brutos por opcao.
  *
- * NB: nao recalcula quote_item_fee/quote_discount nesta fatia (o breakdown do
+ * NB: nao recalcula quote_item_fee nesta fatia; os descontos AUTOMATICOS sim
+ * (o breakdown do
  * item ja reflete o novo calculo). TODO: sincronizar taxas/descontos.
  */
 export async function recalculateQuote(
@@ -1348,14 +1349,35 @@ export async function recalculateQuote(
         .eq("tenant_id", args.tenantId)
         .eq("quote_item_id", item.id)
         .eq("basis", "seasonal");
+      // Descontos AUTOMATICOS do item sao refeitos junto. So os sazonais eram
+      // refeitos, e isso bastava enquanto quase todo desconto vinha de
+      // temporada. Com promocao de faixa, isencao de taxa e semanas gratis, uma
+      // promocao que expira ou muda de faixa deixava a linha VELHA cobrada: o
+      // bruto era atualizado e o desconto nao, e o total seguia errado a favor
+      // do cliente ate ser congelado na emissao. Desconto MANUAL e do
+      // consultor e nao pode ser apagado.
       await supabase
         .from("quote_discount")
         .delete()
         .eq("tenant_id", args.tenantId)
         .eq("quote_item_id", item.id)
-        .eq("applies_to", "accommodation")
-        .eq("is_manual", false)
-        .is("promotion_id", null);
+        .eq("is_manual", false);
+      for (const disc of priced.discounts) {
+        await supabase.from("quote_discount").insert({
+          tenant_id: args.tenantId,
+          quote_option_id: option.id,
+          quote_item_id: item.id,
+          promotion_id: disc.promotionId ?? null,
+          valid_until: disc.validUntil ?? null,
+          name: disc.name,
+          discount_type: "fixed",
+          value: disc.amount,
+          applies_to: disc.appliesTo,
+          amount: disc.amount,
+          currency: priced.currency,
+          is_manual: false,
+        });
+      }
       await gravarLinhasSazonais(supabase, {
         tenantId: args.tenantId,
         optionId: option.id,
