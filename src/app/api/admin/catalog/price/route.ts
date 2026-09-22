@@ -9,6 +9,7 @@ import {
   okData,
   hojeSaoPauloISO,
   isIsoDate,
+  validarOptionalFeeIds,
 } from "@/lib/catalog-route";
 
 export const runtime = "nodejs";
@@ -41,6 +42,12 @@ export async function POST(request: Request) {
   if (!dur.ok) return bad(dur.erro);
   if (!unit) return bad("Informe unit.");
   if (!isIsoDate(quoteDate)) return bad("quoteDate invalido (AAAA-MM-DD).");
+  // Taxas opcionais marcadas pelo consultor. Um id que nao seja de taxa
+  // opcional DESTE produto e simplesmente ignorado pelo servico (a lista de
+  // candidatas ja vem filtrada por tenant e campus), entao nao da para forcar
+  // cobranca de taxa alheia por aqui.
+  const taxas = validarOptionalFeeIds(b.optionalFeeIds);
+  if (!taxas.ok) return bad(taxas.erro);
 
   try {
     const supabase = getSupabase();
@@ -54,6 +61,7 @@ export async function POST(request: Request) {
       quoteDate,
       nationalityCode,
       studentContext,
+      optionalFeeIds: taxas.ids,
     });
     return okData(priced);
   } catch (err) {

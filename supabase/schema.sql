@@ -2204,6 +2204,10 @@ create table if not exists quote_item (
   quantity numeric(10,2) not null, delivered_quantity numeric(10,2) not null,
   unit text not null, unit_price numeric(14,2) not null, gross_amount numeric(14,2) not null,
   currency char(3) not null, price_breakdown jsonb not null default '{}', sort int not null default 0,
+  -- Taxas NAO obrigatorias que o consultor incluiu neste item. Gravadas para o
+  -- recalculo do rascunho nao derrubar a escolha e fazer o price_breakdown
+  -- divergir das linhas ja cobradas.
+  optional_fee_ids uuid[],
   created_at timestamptz not null default now(), updated_at timestamptz
 );
 create index if not exists idx_quote_item_option on quote_item(quote_option_id, sort);

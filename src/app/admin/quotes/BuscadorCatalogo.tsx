@@ -32,8 +32,18 @@ import {
 } from "@/lib/catalog-busca";
 import { fmtData, labelSemanas, segundasDisponiveis } from "@/app/orcamento/shared";
 
+/** Taxa NAO obrigatoria do produto: oferecida, ainda fora da conta. */
+type TaxaOpcional = { id: string; name: string; amount: number; currency: string };
+
 type PrecoCard =
-  | { ok: true; grossAmount: number; netAmount: number; currency: string; warnings: string[] }
+  | {
+      ok: true;
+      grossAmount: number;
+      netAmount: number;
+      currency: string;
+      warnings: string[];
+      optionalFees: TaxaOpcional[];
+    }
   | { ok: false; error: string };
 
 type RespostaPreco = {
@@ -43,6 +53,7 @@ type RespostaPreco = {
   netAmount?: number;
   currency?: string;
   warnings?: string[];
+  optionalFees?: TaxaOpcional[];
   error?: string;
 };
 
@@ -105,12 +116,16 @@ export default function BuscadorCatalogo({
   const [soDoCampus, setSoDoCampus] = useState(true);
 
   const [precos, setPrecos] = useState<Record<string, PrecoCard>>({});
+  // Taxas opcionais marcadas pelo consultor, por produto. Entram na CHAVE do
+  // preco: sem isso o card mostraria um valor e o POST gravaria outro.
+  const [taxasEscolhidas, setTaxasEscolhidas] = useState<Record<string, string[]>>({});
   const [precificando, setPrecificando] = useState(false);
   const [adicionando, setAdicionando] = useState(false);
 
   const chavePreco = useCallback(
-    (id: string, qtd: number, unit: string) => `${id}|${inicio}|${qtd}|${unit}`,
-    [inicio],
+    (id: string, qtd: number, unit: string) =>
+      `${id}|${inicio}|${qtd}|${unit}|${[...(taxasEscolhidas[id] ?? [])].sort().join(",")}`,
+    [inicio, taxasEscolhidas],
   );
 
   /** Quantidade default de um produto do passo 3, na unidade dele. */
@@ -237,6 +252,7 @@ export default function BuscadorCatalogo({
               startDate: inicio,
               quantity: qtd,
               unit: item.unit,
+              optionalFeeIds: taxasEscolhidas[item.id] ?? [],
             })),
           }),
         });
@@ -256,6 +272,7 @@ export default function BuscadorCatalogo({
                   netAmount: Number(r.netAmount ?? 0),
                   currency: r.currency ?? "",
                   warnings: r.warnings ?? [],
+                  optionalFees: r.optionalFees ?? [],
                 }
               : { ok: false, error: r?.error || "Sem preço." };
         }
@@ -280,7 +297,7 @@ export default function BuscadorCatalogo({
         setPrecificando(false);
       }
     }
-  }, [passo, naTela, precos, chavePreco, inicio, qtdDoCard]);
+  }, [passo, naTela, precos, chavePreco, inicio, qtdDoCard, taxasEscolhidas]);
 
   // ——— Carrinho ————————————————————————————————————————————————
   const carrinho: ItemCarrinho[] = useMemo(() => {
@@ -344,6 +361,18 @@ export default function BuscadorCatalogo({
     setQtdServico((s) => ({ ...s, [item.id]: v }));
   }
 
+  /** Marca/desmarca uma taxa opcional do produto. Muda a chave do preco, entao
+   *  o card e o total sao recalculados pelo motor, nao somados na tela. */
+  function alternarTaxa(produtoId: string, feeId: string) {
+    setTaxasEscolhidas((atual) => {
+      const marcadas = atual[produtoId] ?? [];
+      const nova = marcadas.includes(feeId)
+        ? marcadas.filter((x) => x !== feeId)
+        : [...marcadas, feeId];
+      return { ...atual, [produtoId]: nova };
+    });
+  }
+
   // ——— Gravacao ————————————————————————————————————————————————
   async function adicionarCarrinho() {
     if (carrinho.length === 0 || adicionando) return;
@@ -364,6 +393,7 @@ export default function BuscadorCatalogo({
             startDate: inicio,
             quantity: c.qtd,
             unit: c.item.unit,
+            optionalFeeIds: taxasEscolhidas[c.item.id] ?? [],
           }),
         });
         const json = await res.json().catch(() => null);
@@ -447,6 +477,8 @@ export default function BuscadorCatalogo({
             {passo === 4 ? (
               <Revisao
                 carrinho={carrinho}
+                taxasEscolhidas={taxasEscolhidas}
+                onAlternarTaxa={alternarTaxa}
                 inicio={inicio}
                 precoDe={precoDe}
                 totalPorMoeda={totalPorMoeda}
@@ -897,12 +929,16 @@ function Revisao({
   precoDe,
   totalPorMoeda,
   onRemover,
+  taxasEscolhidas,
+  onAlternarTaxa,
 }: {
   carrinho: ItemCarrinho[];
   inicio: string;
   precoDe: (c: ItemCarrinho) => PrecoCard | undefined;
   totalPorMoeda: { acc: Record<string, number>; incompleto: boolean };
   onRemover: (id: string) => void;
+  taxasEscolhidas: Record<string, string[]>;
+  onAlternarTaxa: (produtoId: string, feeId: string) => void;
 }) {
   return (
     <div className="mx-auto max-w-3xl">
@@ -945,6 +981,31 @@ function Revisao({
                   ) : null}
                 </div>
               </div>
+
+              {/* Taxas NAO obrigatorias do produto: ficam FORA da conta ate
+                  alguem marcar. Marcar muda a chave do preco, entao o valor
+                  acima e o total sao refeitos pelo motor — a tela nunca soma
+                  por conta propria. */}
+              {p && p.ok && p.optionalFees.length > 0 ? (
+                <div className="mt-3 border-t border-neutral-100 pt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                    Serviços opcionais
+                  </p>
+                  <div className="mt-1.5 flex flex-col gap-1.5">
+                    {p.optionalFees.map((t) => (
+                      <label key={t.id} className="flex items-center gap-2 text-xs text-neutral-700">
+                        <input
+                          type="checkbox"
+                          checked={(taxasEscolhidas[c.item.id] ?? []).includes(t.id)}
+                          onChange={() => onAlternarTaxa(c.item.id, t.id)}
+                        />
+                        <span>{t.name}</span>
+                        <span className="text-neutral-500">{fmtMoeda(t.amount, t.currency)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </li>
           );
         })}

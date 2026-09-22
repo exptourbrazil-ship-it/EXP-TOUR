@@ -9,6 +9,7 @@ import {
   okData,
   hojeSaoPauloISO,
   isIsoDate,
+  validarOptionalFeeIds,
 } from "@/lib/catalog-route";
 
 export const runtime = "nodejs";
@@ -29,7 +30,7 @@ const MAX_QUANTIDADE: Record<string, number> = { week: 104, month: 24, day: 730,
 const LIMITE_LOTES = 120;
 const JANELA_SEGUNDOS = 60;
 
-type Pedido = { productId: string; startDate: string; quantity: number; unit: string };
+type Pedido = { productId: string; startDate: string; quantity: number; unit: string; optionalFeeIds?: string[] };
 
 // POST /api/admin/catalog/price-batch — precifica VARIOS produtos de uma vez,
 // pelo mesmo motor de /api/admin/catalog/price (faixas, taxas, descontos). E o
@@ -76,7 +77,9 @@ export async function POST(request: Request) {
     const dur = validarDuracao(it.quantity, unit);
     if (!dur.ok) return bad(dur.erro);
     if (dur.quantidade > teto) return bad(`Quantidade acima do maximo (${teto} ${unit}).`);
-    pedidos.push({ productId, startDate, quantity: dur.quantidade, unit });
+    const taxas = validarOptionalFeeIds(it.optionalFeeIds);
+    if (!taxas.ok) return bad(taxas.erro);
+    pedidos.push({ productId, startDate, quantity: dur.quantidade, unit, optionalFeeIds: taxas.ids });
   }
 
   try {
@@ -105,6 +108,7 @@ export async function POST(request: Request) {
             unit: pedido.unit,
             quoteDate,
             nationalityCode,
+            optionalFeeIds: pedido.optionalFeeIds,
           });
           return {
             productId: pedido.productId,
@@ -113,6 +117,8 @@ export async function POST(request: Request) {
             netAmount: priced.netAmount,
             averageUnitPrice: priced.averageUnitPrice,
             currency: priced.currency,
+            // A tela precisa saber o que NAO entrou na conta para poder oferecer.
+            optionalFees: priced.optionalFees ?? [],
             warnings: priced.warnings ?? [],
           };
         } catch (err) {

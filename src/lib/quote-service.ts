@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/pricing";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { priceProductFromDb } from "@/lib/catalog-service";
+import { MAX_TAXAS_OPCIONAIS } from "@/lib/catalog-route";
 import { validarDuracao } from "@/lib/duracao";
 import { sanitizarHtml } from "@/lib/produto-conteudo";
 import { tamanhoVisivel, textoParaHtmlSimples } from "@/lib/texto-html";
@@ -452,6 +453,8 @@ export type AddQuoteItemArgs = {
   unit: string;
   quoteDate: string;
   nationalityCode?: string;
+  /** Taxas opcionais que o consultor escolheu incluir neste item (fee.id). */
+  optionalFeeIds?: string[];
 };
 
 /**
@@ -516,6 +519,11 @@ export async function addQuoteItem(
   // duracao mora aqui tambem.
   const dur = validarDuracao(args.quantity, args.unit);
   if (!dur.ok) throw new Error(dur.erro);
+  // Teto tambem AQUI, e nao so na rota: este servico e chamado pela conversao
+  // de lead e por scripts. Mesmo motivo de validarDuracao acima.
+  if ((args.optionalFeeIds?.length ?? 0) > MAX_TAXAS_OPCIONAIS) {
+    throw new Error(`Maximo de ${MAX_TAXAS_OPCIONAIS} taxas opcionais por item.`);
+  }
 
   // Valida posse da opcao.
   const { data: option, error: optErr } = await supabase
@@ -538,6 +546,7 @@ export async function addQuoteItem(
     unit: args.unit,
     quoteDate: args.quoteDate,
     nationalityCode: args.nationalityCode,
+    optionalFeeIds: args.optionalFeeIds,
   });
 
   // Snapshot congelado do produto (produto + conteudo multilingue).
@@ -637,6 +646,10 @@ export async function addQuoteItem(
       gross_amount: priced.grossAmount,
       currency: priced.currency,
       price_breakdown: priced.breakdown,
+      // A escolha de taxas opcionais fica GRAVADA no item. Sem isso, o
+      // recalculo do rascunho refaria o preco sem elas e o price_breakdown
+      // (rastro auditavel) passaria a divergir das linhas ja cobradas.
+      optional_fee_ids: args.optionalFeeIds?.length ? args.optionalFeeIds : null,
       sort,
     })
     .select("id")
@@ -1276,11 +1289,15 @@ export async function recalculateQuote(
   const totals: OptionTotal[] = [];
 
   for (const option of options ?? []) {
-    const { data: items } = await supabase
+    const { data: items, error: itensErr } = await supabase
       .from("quote_item")
-      .select("id, product_id, start_date, quantity, unit, currency, gross_amount")
+      .select("id, product_id, start_date, quantity, unit, currency, gross_amount, optional_fee_ids")
       .eq("tenant_id", args.tenantId)
       .eq("quote_option_id", option.id);
+    // ERRO NAO PODE VIRAR LISTA VAZIA: sem esta checagem, uma coluna ausente
+    // (migracao nao aplicada) devolvia data=null, o laco nao rodava e a opcao
+    // saia com total ZERO, em silencio, numa tela de dinheiro.
+    if (itensErr) throw new Error(`Falha ao carregar itens da opcao: ${itensErr.message}`);
 
     let total = 0;
     let currency = "BRL";
@@ -1300,6 +1317,11 @@ export async function recalculateQuote(
         unit: item.unit,
         quoteDate,
         nationalityCode,
+        // Repassa a escolha gravada para o price_breakdown (rastro auditavel)
+        // continuar refletindo as taxas opcionais que o consultor incluiu. As
+        // LINHAS de quote_item_fee nao sao refeitas aqui (ver nota da funcao);
+        // sem este repasse o rastro passaria a divergir do que esta cobrado.
+        optionalFeeIds: (item.optional_fee_ids as string[] | null) ?? undefined,
       });
 
       await supabase

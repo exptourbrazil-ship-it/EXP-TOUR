@@ -25,6 +25,7 @@ import {
   type SeasonalAdjustment,
   type SeasonalProration,
 } from "@/lib/pricing";
+import { separarTaxas, type TaxaNormalizada } from "@/lib/taxa-opcional";
 import {
   resolveMarket,
   evaluateEligibility,
@@ -109,7 +110,17 @@ export type LoadPricingArgs = {
   nationalityCode?: string;
   /** Sobrepoe o charge_in_tiers derivado do template quando informado. */
   chargeInTiers?: boolean;
+  /**
+   * Taxas NAO obrigatorias que o consultor escolheu incluir (fee.id). So estas
+   * entram no preco; as demais opcionais voltam em `optionalFees` para a tela
+   * oferecer. Sem isto, uma taxa marcada como opcional no hub era cobrada de
+   * todo estudante do mesmo jeito — a marca existia na tela e nao no calculo.
+   */
+  optionalFeeIds?: string[];
 };
+
+/** Taxa opcional disponivel para o produto, ainda NAO cobrada. */
+export type TaxaOpcional = TaxaNormalizada;
 
 /**
  * Carrega do banco (produto, campus, templates de preco vigentes, taxas,
@@ -245,7 +256,7 @@ export async function loadPricingInputs(
   const { data: feesByKind } = await supabase
     .from("fee")
     .select(
-      "id, name, fee_type, charge_basis, amount, currency, is_refundable, price_template_id, applies_to_kinds, valid_from, valid_until, archived_at",
+      "id, name, fee_type, charge_basis, amount, currency, is_refundable, is_mandatory, price_template_id, applies_to_kinds, valid_from, valid_until, archived_at",
     )
     .eq("tenant_id", tenantId)
     .eq("campus_id", campus.id)
@@ -262,7 +273,7 @@ export async function loadPricingInputs(
     const { data } = await supabase
       .from("fee")
       .select(
-        "id, name, fee_type, charge_basis, amount, currency, is_refundable, price_template_id, applies_to_kinds, valid_from, valid_until, archived_at",
+        "id, name, fee_type, charge_basis, amount, currency, is_refundable, is_mandatory, price_template_id, applies_to_kinds, valid_from, valid_until, archived_at",
       )
       .eq("tenant_id", tenantId)
       .in("id", linkedFeeIds)
@@ -273,21 +284,13 @@ export async function loadPricingInputs(
   // Une por id (dedupe), mantem so as com amount fixo e vigentes na data.
   const feeById = new Map<string, any>();
   for (const f of [...(feesByKind ?? []), ...feesByProduct]) feeById.set(f.id, f);
-  const fees: Fee[] = [];
-  for (const f of feeById.values()) {
-    if (f.amount == null) continue; // fora do escopo v1 (price_template_id)
-    if (f.valid_from != null && startDate < f.valid_from) continue;
-    if (f.valid_until != null && startDate > f.valid_until) continue;
-    fees.push({
-      id: f.id as string,
-      name: f.name,
-      feeType: f.fee_type,
-      chargeBasis: f.charge_basis,
-      amount: toNum(f.amount),
-      currency: (f.currency as string) ?? sourceCurrency,
-      isRefundable: f.is_refundable ?? undefined,
-    });
-  }
+  const separadas = separarTaxas([...feeById.values()], {
+    startDate,
+    moedaPadrao: sourceCurrency,
+    escolhidas: args.optionalFeeIds ?? [],
+  });
+  const fees: Fee[] = separadas.cobradas;
+  const taxasOpcionais = separadas.opcionais;
 
   // 6) Promocoes ativas do fornecedor do campus ---------------------------
   const { data: promoRows } = await supabase
@@ -470,6 +473,9 @@ export async function loadPricingInputs(
   if (avisosSazonais.length > 0) {
     (request as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais = avisosSazonais;
   }
+  if (taxasOpcionais.length > 0) {
+    (request as PriceRequest & { __taxasOpcionais?: TaxaOpcional[] }).__taxasOpcionais = taxasOpcionais;
+  }
 
   return request;
 }
@@ -484,15 +490,25 @@ export type PriceProductArgs = LoadPricingArgs & {
 };
 
 /**
+ * Item precificado + as taxas opcionais que NAO entraram na conta. O motor puro
+ * nao conhece obrigatoriedade (e dado de catalogo, nao de calculo); quem separa
+ * e esta camada, e devolve a lista para a tela poder oferecer.
+ */
+export type PricedItemComOpcionais = PricedItem & { optionalFees?: TaxaOpcional[] };
+
+/**
  * Carrega os insumos, chama o motor de preco puro e concatena aos warnings do
  * item os avisos de elegibilidade (evaluateEligibility sobre eligibility_rule).
  */
 export async function priceProductFromDb(
   supabase: SupabaseClient,
   args: PriceProductArgs,
-): Promise<PricedItem> {
+): Promise<PricedItemComOpcionais> {
   const request = await loadPricingInputs(supabase, args);
-  const priced = priceProduct(request);
+  const priced: PricedItemComOpcionais = priceProduct(request);
+
+  const taxasOpcionais = (request as PriceRequest & { __taxasOpcionais?: TaxaOpcional[] }).__taxasOpcionais;
+  if (taxasOpcionais) priced.optionalFees = taxasOpcionais;
 
   const avisosSazonais = (request as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais;
   if (avisosSazonais) priced.warnings.push(...avisosSazonais);

@@ -10,6 +10,7 @@ import {
   hojeSaoPauloISO,
   isIsoDate,
   optionBelongsToQuote,
+  validarOptionalFeeIds,
 } from "@/lib/catalog-route";
 
 export const runtime = "nodejs";
@@ -58,6 +59,10 @@ export async function POST(
   if (!dur.ok) return bad(dur.erro);
   if (dur.quantidade > teto) return bad(`Quantidade acima do maximo (${teto} ${unit}).`);
   if (!isIsoDate(quoteDate)) return bad("quoteDate invalido (AAAA-MM-DD).");
+  // Sem isto a escolha do consultor nunca chegava ao servico: a taxa opcional
+  // saia da conta e NAO havia como recoloca-la.
+  const taxas = validarOptionalFeeIds(b.optionalFeeIds);
+  if (!taxas.ok) return bad(taxas.erro);
 
   try {
     const supabase = getSupabase();
@@ -68,7 +73,7 @@ export async function POST(
     }
     const result = await addQuoteItem(
       supabase,
-      { tenantId, optionId, productId, startDate, quantity, unit, quoteDate, nationalityCode },
+      { tenantId, optionId, productId, startDate, quantity, unit, quoteDate, nationalityCode, optionalFeeIds: taxas.ids },
       { usuario: g.usuario, ip: g.ip },
     );
     return okData(result);

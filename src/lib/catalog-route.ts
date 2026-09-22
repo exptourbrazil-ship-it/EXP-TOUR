@@ -155,3 +155,31 @@ export async function optionBelongsToQuote(
     .maybeSingle();
   return !!data;
 }
+
+/**
+ * Ids de taxas OPCIONAIS que o consultor marcou. Recusa em vez de truncar: a
+ * lista silenciosamente cortada deixaria uma taxa de fora da conta com a
+ * resposta parecendo normal — o padrao "degradar em silencio" que nao se usa em
+ * dinheiro. Formato UUID conferido aqui porque a coluna de destino e uuid[] e
+ * uma string qualquer viraria um erro generico de gravacao la na frente.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const MAX_TAXAS_OPCIONAIS = 50;
+
+export function validarOptionalFeeIds(
+  raw: unknown,
+): { ok: true; ids: string[] | undefined } | { ok: false; erro: string } {
+  if (raw === undefined || raw === null) return { ok: true, ids: undefined };
+  if (!Array.isArray(raw)) return { ok: false, erro: "optionalFeeIds deve ser uma lista." };
+  if (raw.length > MAX_TAXAS_OPCIONAIS) {
+    return { ok: false, erro: `Maximo de ${MAX_TAXAS_OPCIONAIS} taxas opcionais por item.` };
+  }
+  const ids: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string" || !UUID.test(v)) {
+      return { ok: false, erro: "optionalFeeIds deve conter apenas ids validos." };
+    }
+    ids.push(v);
+  }
+  return { ok: true, ids: ids.length ? ids : undefined };
+}
