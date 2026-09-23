@@ -31,6 +31,40 @@ export default async function PrecosPage() {
 
       <UploadPriceList />
 
+      {/* Leitura do que ja esta publicado, agrupado por carga horaria (a tabela
+          como objeto, os cursos como etiquetas) — o jeito como a escola de fato
+          precifica. */}
+      <div
+        style={{
+          border: "1px solid var(--p-line)",
+          borderRadius: 12,
+          background: "#fff",
+          padding: "14px 16px",
+          marginTop: 16,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div>
+          <strong style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16 }}>
+            Tabelas por carga horária
+          </strong>
+          <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 13, margin: "4px 0 0", maxWidth: "58ch" }}>
+            Confira os preços publicados hoje agrupados por aulas por semana e formato de aula, e quais
+            cursos estão em cada tabela.
+          </p>
+        </div>
+        <Link
+          href="/fornecedor/precos/tabelas"
+          style={{ color: "var(--p-accent-ink)", textDecoration: "none", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}
+        >
+          Ver tabelas →
+        </Link>
+      </div>
+
       <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "24px 0 12px" }}>
         Seus envios
       </h2>
