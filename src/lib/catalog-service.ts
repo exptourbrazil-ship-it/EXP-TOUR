@@ -208,7 +208,7 @@ export async function loadPricingInputs(
     let q = supabase
       .from("price_template")
       .select(
-        "id, name, currency, charge_in_tiers, market_id, valid_from, valid_until, status, price_tier(min_quantity, unit_price, sort)",
+        "id, name, currency, charge_in_tiers, market_id, valid_from, valid_until, status, price_basis, price_tier(min_quantity, unit_price, sort)",
       )
       .eq("tenant_id", tenantId)
       .in("id", templateIds)
@@ -240,6 +240,9 @@ export async function loadPricingInputs(
         .sort((a: any, b: any) => a.minQuantity - b.minQuantity),
       validFrom: r.valid_from ?? null,
       validUntil: r.valid_until ?? null,
+      // 'fixed' = preco de pacote fechado (nao multiplica pela quantidade no
+      // motor); demais valores (ou ausente) preservam o calculo historico.
+      ...(r.price_basis === "fixed" ? { priceBasis: "fixed" as const } : {}),
     }));
 
     if (chosen.length > 0) {

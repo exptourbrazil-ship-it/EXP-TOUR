@@ -18,12 +18,28 @@
 /** Faixa de preco por quantidade minima. */
 export type Tier = { minQuantity: number; unitPrice: number };
 
+/**
+ * Base de cobranca do template (espelha `price_template.price_basis`, secao
+ * 3.6). Hoje so 'fixed' muda o calculo no motor: as demais ('duration',
+ * 'quantity', 'per_person') preservam o comportamento historico (flat ou
+ * progressivo, sempre `unitPrice x quantity`).
+ */
+export type PriceBasis = "duration" | "quantity" | "fixed" | "per_person";
+
 /** Template de preco com janela de vigencia (datas ISO 'YYYY-MM-DD', nulo = aberto). */
 export type Template = {
   name?: string;
   tiers: Tier[];
   validFrom?: string | null;
   validUntil?: string | null;
+  /**
+   * 'fixed' = preco de PACOTE FECHADO: o valor da faixa aplicavel (por
+   * min_quantity) e o total, sem multiplicar pela quantidade contratada (ex.:
+   * internship/volunteering da Twin Group, onde 750 EUR vale o mesmo para 4 ou
+   * 20 semanas). Ausente/demais valores = comportamento historico
+   * (`unitPrice x quantity`).
+   */
+  priceBasis?: PriceBasis;
 };
 
 /** Estrategia de precificacao quando ha transicao de template no periodo. */
@@ -57,6 +73,12 @@ export type FreeUnitsResult = {
   grossAmount: number;
   discountAmount: number;
   netAmount: number;
+  /**
+   * Presente quando a promocao de unidades gratuitas foi IGNORADA por nao
+   * fazer sentido para o produto (ex.: discount_on_booked em price_basis=
+   * 'fixed', ver applyFreeUnits). O chamador deve levar isto para `warnings`.
+   */
+  warning?: string;
 };
 
 /** Regra de agregacao de taxa de matricula entre multiplos itens. */
@@ -406,13 +428,32 @@ export function priceProgressive(tiers: Tier[], quantity: number): number {
   return round2(total);
 }
 
-/** Despacha entre flat e progressive conforme charge_in_tiers. */
+/**
+ * Precificacao de PACOTE FECHADO (price_basis='fixed'): o preco e o unitPrice
+ * da faixa aplicavel, SEM multiplicar pela quantidade — e um valor total, nao
+ * uma tarifa por unidade. `tierQuantity` segue a mesma logica de priceFlat
+ * (faixa escolhida pela quantidade TOTAL contratada, nao pelo segmento).
+ */
+export function priceFixed(tiers: Tier[], quantity: number, tierQuantity?: number): number {
+  const q = tierQuantity ?? quantity;
+  return round2(tierFor(tiers, q).unitPrice);
+}
+
+/**
+ * Despacha entre flat, progressive e fixed. `priceBasis === 'fixed'` vence
+ * qualquer valor de `chargeInTiers` (pacote fechado nao tem nocao de
+ * progressivo). Ausente/demais valores preservam o despacho historico.
+ */
 export function priceTier(
   tiers: Tier[],
   quantity: number,
   chargeInTiers: boolean,
-  tierQuantity?: number
+  tierQuantity?: number,
+  priceBasis?: PriceBasis
 ): number {
+  if (priceBasis === "fixed") {
+    return priceFixed(tiers, quantity, tierQuantity);
+  }
   return chargeInTiers
     ? priceProgressive(tiers, quantity)
     : priceFlat(tiers, quantity, tierQuantity);
@@ -477,7 +518,7 @@ export function calcWithTransition(params: {
       );
     }
     const tpl = templates[idx];
-    const amount = priceTier(tpl.tiers, weeks, chargeInTiers, totalQuantity);
+    const amount = priceTier(tpl.tiers, weeks, chargeInTiers, totalQuantity, tpl.priceBasis);
     const segment: PriceSegment = {
       templateIndex: idx,
       templateName: tpl.name,
@@ -490,6 +531,27 @@ export function calcWithTransition(params: {
   }
 
   // split_by_period: segmenta por template vigente na data de inicio de cada semana.
+  // EXCECAO: price_basis='fixed' nao tem "preco por segmento" pra somar entre
+  // templates — cobrar em pedacos por template diferente somaria PACOTES
+  // INTEIROS (ex.: 750 do template antigo + 900 do template novo = 1650 em
+  // vez de UM pacote). Um pacote fechado nao se divide: ancora num template
+  // so, o vigente no inicio (mesmo comportamento de use_start_date_price).
+  const idxAncoraFixa = templateIndexAt(templates, startDate);
+  if (idxAncoraFixa >= 0 && templates[idxAncoraFixa].priceBasis === "fixed") {
+    const tpl = templates[idxAncoraFixa];
+    const amount = priceTier(tpl.tiers, weeks, chargeInTiers, totalQuantity, tpl.priceBasis);
+    const segment: PriceSegment = {
+      templateIndex: idxAncoraFixa,
+      templateName: tpl.name,
+      startDate,
+      weeks,
+      // Pacote fechado nao tem preco unitario por semana (ver priceFixed).
+      unitPrice: null,
+      amount,
+    };
+    return { amount, segments: [segment], totalQuantity };
+  }
+
   const segments: PriceSegment[] = [];
   let runStart = 0;
   let runIdx = -2; // sentinela: nada aberto ainda
@@ -498,7 +560,7 @@ export function calcWithTransition(params: {
     const tpl = templates[idx];
     const segWeeks = toWeekExclusive - fromWeek;
     // Cada segmento e precificado pelo seu template usando a FAIXA do total.
-    const amount = priceTier(tpl.tiers, segWeeks, chargeInTiers, totalQuantity);
+    const amount = priceTier(tpl.tiers, segWeeks, chargeInTiers, totalQuantity, tpl.priceBasis);
     segments.push({
       templateIndex: idx,
       templateName: tpl.name,
@@ -652,13 +714,15 @@ export function applyFreeUnits(params: {
   chargeInTiers?: boolean;
   /** Faixa a usar no lugar de N (ver Promotion.freeUnitsTierQuantity). */
   tierQuantity?: number;
+  /** price_basis do template escolhido (ver Template.priceBasis). */
+  priceBasis?: PriceBasis;
 }): FreeUnitsResult {
   const { tiers, bookedQuantity: n, freeUnits: f, semantics } = params;
   const chargeInTiers = params.chargeInTiers ?? false;
   // Cobra N unidades, mas pela faixa de `tierQuantity` quando a promocao manda.
   const qFaixa = params.tierQuantity ?? n;
 
-  const grossAmount = priceTier(tiers, n, chargeInTiers, qFaixa);
+  const grossAmount = priceTier(tiers, n, chargeInTiers, qFaixa, params.priceBasis);
   const tierUnit = tierFor(tiers, qFaixa).unitPrice;
 
   if (semantics === "bonus_on_top") {
@@ -672,6 +736,25 @@ export function applyFreeUnits(params: {
   }
 
   // discount_on_booked
+  // price_basis='fixed': `tierUnit` aqui e o preco do PACOTE INTEIRO (nao um
+  // valor por semana, ver priceFixed) — multiplicar isso por `f` semanas
+  // gratis nao desconta uma FRACAO do pacote, desconta multiplos do pacote
+  // inteiro, o que pode derrubar o liquido abaixo de zero (2 semanas gratis x
+  // 750 = 1500 de "desconto" sobre um pacote de 750). "Semanas gratis" nao
+  // tem sentido conceitual para um pacote fechado (Internship/Volunteering
+  // nao tem preco por semana pra descontar): ignora a promocao com um aviso
+  // em vez de calcular um valor negativo/absurdo em silencio.
+  if (params.priceBasis === "fixed") {
+    return {
+      billableQuantity: n,
+      deliveredQuantity: n,
+      grossAmount,
+      discountAmount: 0,
+      netAmount: grossAmount,
+      warning:
+        "Semanas gratis nao se aplicam a produto de preco fixo (price_basis=fixed); promocao ignorada.",
+    };
+  }
   const discountAmount = round2(f * tierUnit);
   return {
     billableQuantity: n - f,
@@ -1324,7 +1407,8 @@ export function priceProduct(request: PriceRequest): PricedItem {
         );
       }
     }
-    const tiers = (idx >= 0 ? templates[idx] : templates[0])?.tiers ?? [];
+    const templateEscolhido = idx >= 0 ? templates[idx] : templates[0];
+    const tiers = templateEscolhido?.tiers ?? [];
     const fu = applyFreeUnits({
       tiers,
       bookedQuantity: quantity,
@@ -1332,6 +1416,7 @@ export function priceProduct(request: PriceRequest): PricedItem {
       semantics: freeUnits.semantics,
       chargeInTiers,
       tierQuantity: freeUnits.tierQuantity,
+      priceBasis: templateEscolhido?.priceBasis,
     });
     billableQuantity = fu.billableQuantity;
     deliveredQuantity = fu.deliveredQuantity;
@@ -1342,6 +1427,9 @@ export function priceProduct(request: PriceRequest): PricedItem {
         amount: fu.discountAmount,
         appliesTo: "tuition",
       });
+    }
+    if (fu.warning) {
+      warnings.push(fu.warning);
     }
     breakdown = { source: "free_units", freeUnits: fu };
   } else {
