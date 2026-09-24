@@ -38,15 +38,20 @@ export default function TabelaPrecoEditor({
   produtos,
   markets,
   inicial,
+  voltarHref,
 }: {
   campi: CampusOpt[];
   produtos: ProdutoOpt[];
   markets: MarketOpt[];
   inicial?: TabelaInicial;
+  // Para onde ir ao salvar/cancelar — preserva o contexto de campus quando a
+  // navegação veio de dentro do hub do fornecedor. Padrão: listagem global.
+  voltarHref?: string;
 }) {
   const router = useRouter();
   const edicao = !!inicial?.id;
   const t = inicial?.template ?? {};
+  const destinoAoVoltar = voltarHref ?? "/admin/precos/tabelas";
 
   const [campo, setCampo] = useState<Record<string, any>>({
     campus_id: t.campus_id ?? (campi[0]?.id ?? ""),
@@ -123,7 +128,7 @@ export default function TabelaPrecoEditor({
         setSalvando(false);
         return;
       }
-      router.push("/admin/precos/tabelas");
+      router.push(destinoAoVoltar);
       router.refresh();
     } catch {
       setErroGeral("Falha de rede ao salvar.");
@@ -250,7 +255,7 @@ export default function TabelaPrecoEditor({
         <button type="submit" disabled={salvando} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-60">
           {salvando ? "Salvando…" : edicao ? "Salvar alterações" : "Criar tabela"}
         </button>
-        <button type="button" onClick={() => router.push("/admin/precos/tabelas")} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">
+        <button type="button" onClick={() => router.push(destinoAoVoltar)} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">
           Cancelar
         </button>
       </div>

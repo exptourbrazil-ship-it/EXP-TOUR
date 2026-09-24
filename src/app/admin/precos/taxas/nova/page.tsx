@@ -16,10 +16,10 @@ export const dynamic = "force-dynamic";
 export default async function NovaTaxaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ produto?: string }>;
+  searchParams: Promise<{ produto?: string; campus_id?: string }>;
 }) {
   await exigirCapacidade("fornecedores.gerir", "/admin/precos/taxas/nova");
-  const { produto: produtoId } = await searchParams;
+  const { produto: produtoId, campus_id: campusId } = await searchParams;
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
@@ -34,15 +34,21 @@ export default async function NovaTaxaPage({
   const alvo = produtoId ? produtos.find((p) => p.id === produtoId) : undefined;
   const inicial = alvo ? { fee: { campus_id: alvo.campusId }, product_ids: [alvo.id] } : undefined;
 
+  // Contexto de campus: vem do produto (prefill) ou direto da querystring —
+  // propagado ao "voltar" para não jogar o usuário na listagem global.
+  const campusContexto = alvo?.campusId ?? campusId ?? null;
+  const voltarHref = campusContexto ? `/admin/precos/taxas?campus_id=${campusContexto}` : "/admin/precos/taxas";
+
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/precos/taxas" className="text-sm text-brand-golddark hover:underline">← Taxas</Link>
+      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">← Taxas</Link>
       <h1 className="mb-4 mt-1 font-serif text-2xl text-brand">Nova taxa</h1>
       <TaxaEditor
         campi={campi}
         produtos={produtos.map((p) => ({ id: p.id, name: p.name, kind: p.kind, campusId: p.campusId }))}
         templates={tabelas.map((t) => ({ id: t.id, name: t.name, currency: t.currency, campusId: t.campusId }))}
         inicial={inicial}
+        voltarHref={voltarHref}
       />
     </div>
   );

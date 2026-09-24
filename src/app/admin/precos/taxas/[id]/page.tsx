@@ -15,11 +15,14 @@ export const dynamic = "force-dynamic";
 // só leitura aqui — pertence ao fluxo de aprovação em /admin/precos.
 export default async function EditarTaxaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ campus_id?: string }>;
 }) {
   const { id } = await params;
   await exigirCapacidade("fornecedores.gerir", `/admin/precos/taxas/${id}`);
+  const { campus_id: campusIdParam } = await searchParams;
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -35,9 +38,14 @@ export default async function EditarTaxaPage({
     listarTabelasPrecoAdmin(supabase, tenantId),
   ]);
 
+  // Contexto de campus: prioriza a querystring (veio do hub do fornecedor) e
+  // cai para o campus da própria taxa — o "voltar" preserva o escopo.
+  const campusContexto = campusIdParam ?? (taxa.fee.campus_id as string | undefined) ?? null;
+  const voltarHref = campusContexto ? `/admin/precos/taxas?campus_id=${campusContexto}` : "/admin/precos/taxas";
+
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/precos/taxas" className="text-sm text-brand-golddark hover:underline">← Taxas</Link>
+      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">← Taxas</Link>
       <h1 className="mb-4 mt-1 font-serif text-2xl text-brand">
         {taxa.gerida ? "Taxa" : "Editar taxa"}
         <span className="text-neutral-400"> — {String(taxa.fee.name ?? "")}</span>
@@ -54,6 +62,7 @@ export default async function EditarTaxaPage({
           produtos={produtos.map((p) => ({ id: p.id, name: p.name, kind: p.kind, campusId: p.campusId }))}
           templates={tabelas.map((t) => ({ id: t.id, name: t.name, currency: t.currency, campusId: t.campusId }))}
           inicial={{ id, fee: taxa.fee, product_ids: taxa.product_ids }}
+          voltarHref={voltarHref}
         />
       )}
     </div>

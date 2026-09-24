@@ -33,12 +33,18 @@ export default function SecaoPrecosTaxas({
   precos,
   taxas,
   productId,
+  campusId,
 }: {
   precos: PrecoVinculado[];
   taxas: TaxaVinculada[];
   productId: string;
+  // Campus do produto atual — propagado na querystring para as telas de
+  // tabela/taxa manterem o usuário no contexto da escola (nunca cair na
+  // listagem global de todas as escolas). Ausente = comportamento antigo.
+  campusId?: string | null;
 }) {
-  const q = `?produto=${productId}`;
+  const q = campusId ? `?produto=${productId}&campus_id=${campusId}` : `?produto=${productId}`;
+  const qCampus = campusId ? `?campus_id=${campusId}` : "";
   return (
     <div className="space-y-8">
       {/* Preço */}
@@ -85,7 +91,7 @@ export default function SecaoPrecosTaxas({
                     </td>
                     <td className="px-4 py-2">{STATUS_LABEL[p.status] ?? p.status}</td>
                     <td className="px-4 py-2 text-right">
-                      <Link href={`/admin/precos/tabelas/${p.id}`} className="text-brand-golddark hover:underline">
+                      <Link href={`/admin/precos/tabelas/${p.id}${qCampus}`} className="text-brand-golddark hover:underline">
                         {p.gerida ? "Ver →" : "Editar →"}
                       </Link>
                     </td>
@@ -139,7 +145,7 @@ export default function SecaoPrecosTaxas({
                     </td>
                     <td className="px-4 py-2">{t.isMandatory ? "Sim" : "Não"}</td>
                     <td className="px-4 py-2 text-right">
-                      <Link href={`/admin/precos/taxas/${t.id}`} className="text-brand-golddark hover:underline">
+                      <Link href={`/admin/precos/taxas/${t.id}${qCampus}`} className="text-brand-golddark hover:underline">
                         {t.gerida ? "Ver →" : "Editar →"}
                       </Link>
                     </td>
