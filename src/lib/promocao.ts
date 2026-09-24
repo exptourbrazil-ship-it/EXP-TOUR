@@ -188,6 +188,19 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
     });
   }
 
+  // override_price SUBSTITUI o bruto do produto (src/lib/pricing.ts,
+  // escolherPrecoPromocional): o motor só a enxerga quando applies_to=
+  // 'specific_product' com applies_to_ref_id casado. Sem essa exigência aqui, a
+  // IA de leitura podia gravar uma "promoção ativa" com applies_to='tuition'
+  // (fallback quando não casa o produto) que nunca desconta nada — o admin
+  // publica achando que valeu, e o preço promocional nunca chega na cotação.
+  if (promoType === "override_price" && appliesTo !== "specific_product") {
+    falhas.push({
+      campo: "applies_to",
+      erro: "preço promocional (override_price) exige um curso específico casado — sem isso o motor nunca aplica",
+    });
+  }
+
   // applies_to_ref_id: obrigatorio quando o alvo e especifico (taxa/produto).
   let refId: string | null = optStrOuNull(raw.applies_to_ref_id);
   if (EXIGEM_REF.includes(appliesTo) && !refId) {
@@ -256,7 +269,11 @@ export function validarPromocao(entrada: unknown): Resultado<PromocaoNormalizada
     max_quantity: maxQuantity,
     free_units_tier_quantity: tierQuantity,
     max_discount_amount: maxDiscount,
-    is_stackable: optBool(raw.is_stackable, false),
+    // override_price já É a tabela cheia da campanha (o preço final
+    // pretendido pela escola); empilhar outro desconto por cima seria quase
+    // sempre erro de cadastro, não intenção — trava em false, não confia no
+    // campo de entrada para este tipo.
+    is_stackable: promoType === "override_price" ? false : optBool(raw.is_stackable, false),
     priority,
     booking_from: bookingFrom,
     booking_until: bookingUntil,

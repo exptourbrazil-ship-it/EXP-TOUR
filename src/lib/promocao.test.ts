@@ -130,3 +130,29 @@ test("resumoPromocoes agrega por status", () => {
   ]);
   assert.deepEqual(r, { total: 5, ativas: 2, rascunhos: 1, expiradas: 1 });
 });
+
+// ── override_price: exige alvo casado, e nunca empilha (achados da revisão) ──
+
+test("override_price exige applies_to='specific_product' — sem isso o motor nunca aplica", () => {
+  const r = validarPromocao(base({ promo_type: "override_price", value: 220, applies_to: "tuition" }));
+  assert.ok(campos(r).includes("applies_to"));
+});
+
+test("override_price com specific_product e ref_id normaliza", () => {
+  const r = validarPromocao(base({
+    promo_type: "override_price", value: 220, applies_to: "specific_product", applies_to_ref_id: "prod-1",
+  }));
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.equal(r.valor.promotion.applies_to_ref_id, "prod-1");
+});
+
+test("override_price ignora is_stackable=true da entrada — trava em false", () => {
+  const r = validarPromocao(base({
+    promo_type: "override_price", value: 220, applies_to: "specific_product", applies_to_ref_id: "prod-1",
+    is_stackable: true,
+  }));
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.equal(r.valor.promotion.is_stackable, false);
+});

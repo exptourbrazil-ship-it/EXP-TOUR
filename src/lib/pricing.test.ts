@@ -21,6 +21,7 @@ import {
   isPromotionApplicable,
   applyPromotions,
   escolherUnidadesGratuitas,
+  escolherPrecoPromocional,
   applySeasonalAdjustments,
   priceProduct,
   type Tier,
@@ -1131,4 +1132,250 @@ test("promocao de semanas gratis chega ao bruto: contrata 24, recebe 28", () => 
   assert.equal(r.deliveredQuantity, 28);
   assert.equal(r.billableQuantity, 24);
   assert.equal(r.grossAmount, 24 * 435);
+});
+
+// ---------------------------------------------------------------------------
+// OVERRIDE_PRICE: tabela de preco promocional paralela (secao 3.6)
+// ---------------------------------------------------------------------------
+// Cenario real (LSI): "Business English 30" em Cambridge custa 495/450/425/385
+// por faixa no preco regular, mas quem matricula ate 30/06/2026 paga 220/semana
+// (1-23 semanas) ou 190/semana (24+) — cada faixa e uma LINHA separada de
+// promotion, com o proprio minQuantity/maxQuantity/value.
+
+const OVERRIDE_TIERS: Tier[] = [
+  { minQuantity: 1, unitPrice: 495 },
+  { minQuantity: 9, unitPrice: 450 },
+  { minQuantity: 13, unitPrice: 425 },
+  { minQuantity: 24, unitPrice: 385 },
+];
+const OVERRIDE_TEMPLATE: Template = {
+  name: "Business English 30",
+  tiers: OVERRIDE_TIERS,
+  validFrom: null,
+  validUntil: null,
+};
+const OVERRIDE_PRODUCT_ID = "prod-cambridge-be30";
+
+function overridePromo(over: Partial<Promotion> = {}): Promotion {
+  return promoBase_({
+    promoType: "override_price",
+    appliesTo: "specific_product",
+    appliesToRefId: OVERRIDE_PRODUCT_ID,
+    bookingUntil: "2026-06-30",
+    isStackable: false,
+    ...over,
+  });
+}
+
+const OVERRIDE_CTX: PromoContext = {
+  quoteDate: "2026-05-01",
+  startDate: "2026-09-01",
+  billableQuantity: 10,
+  nationalityCode: "br",
+  productId: OVERRIDE_PRODUCT_ID,
+};
+
+// Faixa 1: 1-23 semanas a 220/semana. Faixa 2: 24+ semanas a 190/semana.
+const OVERRIDE_FAIXA_1 = overridePromo({
+  id: "override-1-23",
+  name: "Override 1-23",
+  value: 220,
+  minQuantity: 1,
+  maxQuantity: 23,
+});
+const OVERRIDE_FAIXA_2 = overridePromo({
+  id: "override-24-mais",
+  name: "Override 24+",
+  value: 190,
+  minQuantity: 24,
+});
+
+test("escolherPrecoPromocional: escolhe a faixa cuja quantidade cabe (1-23)", () => {
+  const r = escolherPrecoPromocional(
+    [OVERRIDE_FAIXA_1, OVERRIDE_FAIXA_2],
+    { ...OVERRIDE_CTX, billableQuantity: 10 },
+  );
+  assert.equal(r?.id, "override-1-23");
+  assert.equal(r?.value, 220);
+});
+
+test("escolherPrecoPromocional: troca de faixa em 30 semanas (24+)", () => {
+  const r = escolherPrecoPromocional(
+    [OVERRIDE_FAIXA_1, OVERRIDE_FAIXA_2],
+    { ...OVERRIDE_CTX, billableQuantity: 30 },
+  );
+  assert.equal(r?.id, "override-24-mais");
+  assert.equal(r?.value, 190);
+});
+
+test("escolherPrecoPromocional: fora da janela de booking_until nao aplica", () => {
+  const r = escolherPrecoPromocional(
+    [OVERRIDE_FAIXA_1],
+    { ...OVERRIDE_CTX, billableQuantity: 10, quoteDate: "2026-07-15" }, // apos 2026-06-30
+  );
+  assert.equal(r, undefined);
+});
+
+test("escolherPrecoPromocional: fora do alvo de nacionalidade nao aplica", () => {
+  const faixa = overridePromo({
+    id: "override-br",
+    value: 220,
+    minQuantity: 1,
+    maxQuantity: 23,
+    targets: [{ dimension: "nationality", value: "br" }],
+  });
+  const r = escolherPrecoPromocional([faixa], { ...OVERRIDE_CTX, billableQuantity: 10, nationalityCode: "pt" });
+  assert.equal(r, undefined);
+});
+
+test("escolherPrecoPromocional: quantidade fora de qualquer faixa cadastrada nao aplica", () => {
+  // Auckland: so ha faixa ate 12 semanas; 50 semanas nao acha override nenhum.
+  const auckland = overridePromo({ id: "auck", value: 300, minQuantity: 1, maxQuantity: 12 });
+  const r = escolherPrecoPromocional([auckland], { ...OVERRIDE_CTX, billableQuantity: 50 });
+  assert.equal(r, undefined);
+});
+
+test("escolherPrecoPromocional: faixas sobrepostas por erro de cadastro desempatam por priority e id", () => {
+  const a = overridePromo({ id: "a-menor-id", value: 100, minQuantity: 1, maxQuantity: 30, priority: 5 });
+  const b = overridePromo({ id: "b-maior-id", value: 999, minQuantity: 1, maxQuantity: 30, priority: 5 });
+  // Entrada fora de ordem para provar que o desempate nao depende da ordem do array.
+  const r1 = escolherPrecoPromocional([b, a], { ...OVERRIDE_CTX, billableQuantity: 10 });
+  assert.equal(r1?.id, "a-menor-id");
+  const r2 = escolherPrecoPromocional([a, b], { ...OVERRIDE_CTX, billableQuantity: 10 });
+  assert.equal(r2?.id, "a-menor-id");
+});
+
+test("escolherPrecoPromocional: appliesToRefId de outro produto nao aplica", () => {
+  const outroProduto = overridePromo({ appliesToRefId: "prod-outro" });
+  const r = escolherPrecoPromocional([outroProduto], { ...OVERRIDE_CTX, billableQuantity: 10 });
+  assert.equal(r, undefined);
+});
+
+function buildOverrideRequest(over: Partial<PriceRequest> = {}): PriceRequest {
+  return {
+    product: { currency: "GBP", kind: "program" },
+    startDate: "2026-09-01",
+    quantity: 10,
+    unit: "week",
+    templates: [OVERRIDE_TEMPLATE],
+    transitionRule: "split_by_period",
+    fees: [],
+    promotions: [OVERRIDE_FAIXA_1, OVERRIDE_FAIXA_2],
+    context: { ...OVERRIDE_CTX, billableQuantity: 10 },
+    ...over,
+  };
+}
+
+test("priceProduct: override_price substitui o preco tiered por completo (10 semanas -> 2200)", () => {
+  const r = priceProduct(buildOverrideRequest());
+  assert.equal(r.grossAmount, 2200); // 10 x 220, ignora qualquer price_tier
+  assert.equal(r.netAmount, 2200);
+  assert.equal(r.billableQuantity, 10);
+  assert.equal(r.deliveredQuantity, 10);
+  assert.equal((r.breakdown as { source?: string }).source, "override_price");
+});
+
+test("priceProduct: override_price troca de faixa em 30 semanas -> 5700", () => {
+  const r = priceProduct(
+    buildOverrideRequest({ quantity: 30, context: { ...OVERRIDE_CTX, billableQuantity: 30 } }),
+  );
+  assert.equal(r.grossAmount, 5700); // 30 x 190
+  assert.equal(r.netAmount, 5700);
+});
+
+test("priceProduct: fora da janela de booking_until volta ao preco regular tiered", () => {
+  const r = priceProduct(
+    buildOverrideRequest({ context: { ...OVERRIDE_CTX, billableQuantity: 10, quoteDate: "2026-07-15" } }),
+  );
+  // Preco regular flat: faixa de 10 (minQuantity=9) => 450/semana.
+  assert.equal(r.grossAmount, 4500);
+  assert.equal((r.breakdown as { source?: string }).source, "transition");
+});
+
+test("priceProduct: fora do alvo de nacionalidade volta ao preco regular tiered", () => {
+  const faixaBr = overridePromo({
+    id: "override-br",
+    value: 220,
+    minQuantity: 1,
+    maxQuantity: 23,
+    targets: [{ dimension: "nationality", value: "br" }],
+  });
+  const r = priceProduct(
+    buildOverrideRequest({
+      promotions: [faixaBr],
+      context: { ...OVERRIDE_CTX, billableQuantity: 10, nationalityCode: "pt" },
+    }),
+  );
+  assert.equal(r.grossAmount, 4500); // preco regular, override nao bateu no alvo
+});
+
+test("priceProduct: quantidade fora de qualquer faixa (Auckland ate 12) volta ao preco regular", () => {
+  const auckland = overridePromo({ id: "auck", value: 300, minQuantity: 1, maxQuantity: 12 });
+  const r = priceProduct(
+    buildOverrideRequest({
+      quantity: 50,
+      promotions: [auckland],
+      context: { ...OVERRIDE_CTX, billableQuantity: 50 },
+    }),
+  );
+  // Preco regular flat: faixa de 50 (minQuantity=24) => 385/semana.
+  assert.equal(r.grossAmount, 50 * 385);
+});
+
+test("priceProduct: override_price nao gera desconto — netAmount === grossAmount (sem fees)", () => {
+  const r = priceProduct(buildOverrideRequest());
+  assert.equal(r.discounts.length, 0);
+  assert.equal(r.netAmount, r.grossAmount);
+});
+
+test("priceProduct: override_price (nao empilhavel) bloqueia promocao percentual subsequente", () => {
+  const percentual = promoBase_({
+    id: "pct-total",
+    name: "10% off total",
+    promoType: "percent_off",
+    value: 10,
+    appliesTo: "total",
+    isStackable: false,
+    priority: 50,
+  });
+  const r = priceProduct(
+    buildOverrideRequest({ promotions: [OVERRIDE_FAIXA_1, percentual] }),
+  );
+  assert.equal(r.discounts.length, 0); // o percentual nao incide sobre o valor ja promocional
+  assert.equal(r.netAmount, r.grossAmount);
+  assert.equal(r.grossAmount, 2200);
+});
+
+// ── override_price: alarme de sanidade contra moeda/ordem de grandeza errada ──
+// (achado da revisao: override_price substitui o bruto inteiro, sem teto
+// relativo a base como os demais tipos — um erro de cadastro produziria um
+// preco absurdo em silencio. O motor nao tem como saber a moeda certa, mas
+// pode comparar contra o preco regular tiered da MESMA quantidade e avisar.)
+
+test("priceProduct: override_price com valor plausivel (perto do regular) nao gera aviso de sanidade", () => {
+  // 10 semanas: regular tiered = 495*8+450*2 = 4860 (faixas 1/9). Override 220
+  // (faixa 1-23) = 2200 -> razao 0.45, dentro do teto [0.15,4].
+  const r = priceProduct(buildOverrideRequest());
+  assert.ok(!r.warnings.some((w) => w.includes("muito diferente do preco regular")));
+});
+
+test("priceProduct: override_price com ordem de grandeza absurda (moeda/decimal errado) gera aviso, mas nao bloqueia", () => {
+  const faixaErrada = overridePromo({ id: "errado", value: 22000, minQuantity: 1, maxQuantity: 23 });
+  const r = priceProduct(buildOverrideRequest({ promotions: [faixaErrada] }));
+  // O preco promocional ainda e aplicado (o motor nao pode adivinhar a moeda
+  // certa) — so avisa, para o humano conferir antes de publicar a cotacao.
+  assert.equal(r.grossAmount, 220000); // 10 x 22000, aplicado mesmo assim
+  assert.ok(r.warnings.some((w) => w.includes("muito diferente do preco regular")));
+});
+
+test("priceProduct: aviso de sanidade e pulado quando nao ha cobertura de template para comparar", () => {
+  const faixaErrada = overridePromo({ id: "errado", value: 22000, minQuantity: 1, maxQuantity: 23 });
+  const r = priceProduct(buildOverrideRequest({
+    promotions: [faixaErrada],
+    templates: [{ ...OVERRIDE_TEMPLATE, validFrom: "2027-01-01" }], // nao cobre 2026-09-01
+  }));
+  assert.equal(r.grossAmount, 220000);
+  // Sem base regular para comparar, o alarme nao pode nem confirmar nem
+  // descartar — fica calado em vez de travar a cotacao com um erro novo.
+  assert.ok(!r.warnings.some((w) => w.includes("muito diferente do preco regular")));
 });

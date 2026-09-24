@@ -151,7 +151,15 @@ export function avisosDaPromocao(p: PromocaoExtraida, hoje: string, extras: stri
   if (p.reserva_de && p.reserva_ate && p.reserva_de > p.reserva_ate) avisos.push("janela de reserva invertida (início depois do fim)");
   if (p.viagem_de && p.viagem_ate && p.viagem_de > p.viagem_ate) avisos.push("janela de viagem invertida (início depois do fim)");
   if ((p.aplica_a === "specific_product" || p.aplica_a === "specific_fee" || p.alvo_nome) && !extras.some((e) => e.startsWith("alvo:"))) {
-    avisos.push(`alvo específico "${p.alvo_nome ?? "?"}" não encontrado no catálogo — proposta aplicada ao curso em geral`);
+    // override_price so existe no motor casado a um produto (substitui o bruto
+    // do item; sem alvo o validador agora RECUSA a proposta, nao a aplica "ao
+    // curso em geral" como os demais tipos) — aviso proprio, mais forte, para
+    // nao deixar o admin achar que basta publicar assim mesmo.
+    avisos.push(
+      p.tipo === "override_price"
+        ? `curso "${p.alvo_nome ?? "?"}" não encontrado no catálogo — preço promocional (override_price) EXIGE o curso casado; sem isso a proposta não pode ser publicada`
+        : `alvo específico "${p.alvo_nome ?? "?"}" não encontrado no catálogo — proposta aplicada ao curso em geral`,
+    );
   }
   return [...avisos, ...extras.filter((e) => !e.startsWith("alvo:"))];
 }

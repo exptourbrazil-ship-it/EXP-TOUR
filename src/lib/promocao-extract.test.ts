@@ -79,3 +79,27 @@ test("P6 avisos: prazo vencido, sem prazo, tipo/valor ausentes, alvo nao encontr
   assert.ok(!comAlvo.some((a) => a.startsWith("alvo:")));
   assert.ok(comAlvo.some((a) => a.includes("já existe")));
 });
+
+test("avisosDaPromocao: override_price sem alvo casado ganha aviso proprio (motor nunca aplica sem produto)", () => {
+  const hoje = "2026-01-01";
+  const [semAlvo] = normalizarPromocoesExtraidas([{
+    nome: "Preco promocional", tipo: "override_price", valor: 220,
+    aplica_a: "specific_product", alvo_nome: "General English", reserva_ate: "2026-12-31",
+  }]);
+  const av = avisosDaPromocao(semAlvo, hoje);
+  assert.ok(av.some((a) => a.includes("EXIGE o curso casado")));
+  // O aviso generico dos demais tipos ("aplicada ao curso em geral") NAO se
+  // aplica aqui — seria falso: override_price sem alvo nunca desconta nada.
+  assert.ok(!av.some((a) => a.includes("aplicada ao curso em geral")));
+});
+
+test("entradaPromocaoProposta: override_price sem alvo casado cai em applies_to='tuition' e o validador recusa", () => {
+  const [semAlvo] = normalizarPromocoesExtraidas([{
+    nome: "Preco promocional", tipo: "override_price", valor: 220, aplica_a: "specific_product",
+    alvo_nome: "General English", reserva_ate: "2026-12-31",
+  }]);
+  const entrada = entradaPromocaoProposta(semAlvo, { supplierId: "sup-1", campusId: null });
+  assert.equal(entrada.applies_to, "tuition");
+  const r = validarPromocao(entrada);
+  assert.ok(!r.ok);
+});

@@ -604,6 +604,46 @@ export function escolherUnidadesGratuitas(
   };
 }
 
+/**
+ * Escolhe a promocao de PRECO PROMOCIONAL (override_price) aplicavel a ESTE
+ * produto e ESTA quantidade. Ao contrario de free_units, override_price NAO
+ * desconta sobre o preco calculado: e uma tabela de preco paralela ("Business
+ * English 30 custa 220/semana ate 30/06/2026" em vez de 495/450/425/385) — cada
+ * FAIXA de quantidade e uma LINHA separada de promotion, com seu proprio
+ * minQuantity/maxQuantity/value.
+ *
+ * DECISAO: reaproveita isPromotionApplicable inteira (janelas de booking/
+ * travel, targets e a faixa min/maxQuantity) em vez de reimplementar o
+ * confronto de faixa aqui. Isso so e seguro porque `ctx.billableQuantity` ja
+ * chega preenchido com a quantidade CONTRATADA antes deste ponto — e assim que
+ * catalog-service.ts monta o PromoContext (`billableQuantity: quantity`) e e
+ * assim que priceProduct recebe `request.context`. Se um dia a quantidade de
+ * faixa precisar divergir da contratada (como free_units/freeUnitsTierQuantity
+ * faz), quem chamar esta funcao precisa montar um ctx com o billableQuantity
+ * certo, do mesmo jeito que applyPromotions ja faz com `ctxFaixa`.
+ *
+ * Desempate: menor priority vence; empate de priority (faixas sobrepostas por
+ * erro de cadastro, que nao deveria acontecer) desempata por id — sem isto o
+ * motor quebraria ou a ordem do banco decidiria o preco.
+ */
+export function escolherPrecoPromocional(
+  promotions: Promotion[],
+  ctx: PromoContext,
+  opts: { productId?: string } = {},
+): Promotion | undefined {
+  const productId = opts.productId ?? ctx.productId;
+  if (productId == null) return undefined;
+  const candidatas = promotions
+    .filter((p) => p.promoType === "override_price")
+    .filter((p) => p.appliesTo === "specific_product" && p.appliesToRefId === productId)
+    .filter((p) => p.value != null && p.value > 0)
+    .filter((p) => isPromotionApplicable(p, ctx))
+    .sort(
+      (a, b) => a.priority - b.priority || (a.id ?? "").localeCompare(b.id ?? ""),
+    );
+  return candidatas[0];
+}
+
 export function applyFreeUnits(params: {
   tiers: Tier[];
   bookedQuantity: number;
@@ -853,8 +893,8 @@ function promoBase(promo: Promotion, bases: PromoBases): number {
  *
  * Tipos suportados: percent_off (value = percentual, ex.: 30 = 30%), fixed_off
  * (value = valor absoluto) e waive_fee (desconta a base inteira — com
- * appliesTo='specific_fee' isenta UMA taxa). free_units e resolvido antes, no
- * bruto (priceProduct). free_product e override_price seguem fora do escopo.
+ * appliesTo='specific_fee' isenta UMA taxa). free_units e override_price sao
+ * resolvidos antes, no bruto (priceProduct). free_product segue fora do escopo.
  */
 export function applyPromotions(
   promotions: Promotion[],
@@ -887,6 +927,7 @@ export function applyPromotions(
   const ALVOS_DE_PRECO: PromoAppliesTo[] = ["tuition", "accommodation", "insurance"];
   for (const promo of sorted) {
     if (promo.promoType === "free_units") continue; // resolvida antes do bruto
+    if (promo.promoType === "override_price") continue; // idem: resolvida antes do bruto
     if (applied.some((p) => p.id != null && p.id === promo.id)) continue;
     const ctxDaVez =
       ctxFaixa && ALVOS_DE_PRECO.includes(promo.appliesTo) ? ctxFaixa : ctx;
@@ -910,8 +951,8 @@ export function applyPromotions(
       // appliesTo='specific_fee' isenta uma taxa; com 'fees', todas.
       amount = round2(base);
     } else {
-      // Fora deste escopo: free_units (tratado antes do bruto, em
-      // priceProduct), free_product e override_price.
+      // Fora deste escopo: free_units e override_price (tratados antes do
+      // bruto, em priceProduct) e free_product.
       continue;
     }
 
@@ -1155,8 +1196,9 @@ export function applySeasonalAdjustments(params: {
 
 /**
  * Precifica um item de cotacao (secao 4.1) seguindo a sequencia da secao 4.2:
- * disponibilidade -> bruto (com/sem unidades gratuitas, respeitando a transicao
- * de template) -> taxas -> promocoes -> medias/arredondamento -> conversao.
+ * disponibilidade -> bruto (override_price, ou com/sem unidades gratuitas
+ * respeitando a transicao de template) -> taxas -> promocoes ->
+ * medias/arredondamento -> conversao.
  *
  * E PURA: recebe tudo ja carregado (templates, fees, promotions, fx) e nao toca
  * banco. Gera `warnings` em vez de lancar; a UNICA excecao e o buraco de
@@ -1178,9 +1220,14 @@ export function priceProduct(request: PriceRequest): PricedItem {
   const chargeInTiers = request.chargeInTiers ?? false;
   const currency = product.currency;
   const warnings: string[] = [];
-  // `request.freeUnits` explicito continua vencendo (usado por testes e pelo
-  // preview); na ausencia dele, a tabela de promocoes responde.
-  const escolhaGratis = request.freeUnits
+  // override_price (tabela de preco promocional paralela) vence qualquer outra
+  // trilha de bruto: se aplica, nem unidades gratuitas nem transicao de
+  // template entram em jogo para este item (ver escolherPrecoPromocional).
+  const escolhaOverride = escolherPrecoPromocional(promotions, context);
+  // `request.freeUnits` explicito continua vencendo sobre a tabela de
+  // promocoes (usado por testes e pelo preview); mas nada disso importa quando
+  // ha override_price aplicavel.
+  const escolhaGratis = escolhaOverride || request.freeUnits
     ? undefined
     : escolherUnidadesGratuitas(promotions, context, {
         // Sem kind conhecido, so promocao de alvo 'total' passa — falha fechada:
@@ -1189,7 +1236,9 @@ export function priceProduct(request: PriceRequest): PricedItem {
         quantity,
         warnings,
       });
-  const freeUnits = request.freeUnits ?? escolhaGratis?.freeUnits;
+  const freeUnits = escolhaOverride
+    ? undefined
+    : request.freeUnits ?? escolhaGratis?.freeUnits;
 
   // 1) Disponibilidade (nao bloqueia; apenas alerta).
   if (product.availableFrom != null && startDate < product.availableFrom) {
@@ -1213,7 +1262,8 @@ export function priceProduct(request: PriceRequest): PricedItem {
     );
   }
 
-  // 2) Bruto. Duas trilhas: unidades gratuitas ou transicao de template.
+  // 2) Bruto. Tres trilhas: override_price, unidades gratuitas ou transicao
+  // de template — nesta ordem de precedencia.
   let billableQuantity: number;
   let deliveredQuantity: number;
   let grossAmount: number;
@@ -1221,7 +1271,45 @@ export function priceProduct(request: PriceRequest): PricedItem {
   // Desconto ja embutido em applyFreeUnits (semantica discount_on_booked).
   const freeUnitsDiscounts: DiscountLine[] = [];
 
-  if (freeUnits) {
+  if (escolhaOverride) {
+    // override_price: o preco unitario da PROMOCAO substitui o do template por
+    // completo. Nao ha faixa progressiva nem transicao — o valor bruto e
+    // simplesmente value x quantidade contratada.
+    billableQuantity = quantity;
+    deliveredQuantity = quantity;
+    grossAmount = round2((escolhaOverride.value ?? 0) * quantity);
+    breakdown = { source: "override_price", promotionId: escolhaOverride.id };
+
+    // Sanidade: override_price nao tem moeda propria nem teto relativo a base
+    // (ele SUBSTITUI o bruto, nao desconta dele) — um valor cadastrado na
+    // moeda errada ou com ordem de grandeza errada (ex.: centavos em vez de
+    // unidade) produziria um preco absurdo em silencio. Compara contra o
+    // preco tiered regular da MESMA quantidade so para este alerta; se o
+    // calculo regular falhar (buraco de cobertura), a comparacao e pulada —
+    // isto e so um alarme, nunca pode virar um bloqueio novo.
+    try {
+      const regular = calcWithTransition({
+        startDate,
+        weeks: quantity,
+        templates,
+        strategy: transitionRule,
+        chargeInTiers,
+        bookingDate: request.bookingDate,
+      });
+      if (regular.amount > 0) {
+        const razao = grossAmount / regular.amount;
+        if (razao < 0.15 || razao > 4) {
+          warnings.push(
+            `Preco promocional (${grossAmount} ${currency}) muito diferente do preco regular para a mesma quantidade (${regular.amount} ${currency}) — confira moeda e valor cadastrados na promocao "${escolhaOverride.name}".`,
+          );
+        }
+      }
+    } catch {
+      // Sem cobertura de template para comparar — nao e o problema desta
+      // promocao, e o aviso de bloqueio correspondente so aparece na trilha
+      // normal (quando NAO ha override_price aplicavel).
+    }
+  } else if (freeUnits) {
     // Faixa/bruto pela quantidade contratada, usando o template vigente no inicio.
     const idx = templateIndexAt(templates, startDate);
     // Esta trilha NAO faz transicao de template. Era caminho morto (ninguem
@@ -1358,7 +1446,11 @@ export function priceProduct(request: PriceRequest): PricedItem {
     promotions,
     bases,
     context,
-    escolhaGratis ? [escolhaGratis.promo] : [],
+    // A promocao ja resolvida (override_price OU free_units, nunca as duas)
+    // entra como "ja aplicada": bloqueia reconsideracao dela mesma no loop e
+    // impede outra promocao nao-empilhavel de incidir sobre um valor que ja E
+    // promocional.
+    escolhaOverride ? [escolhaOverride] : escolhaGratis ? [escolhaGratis.promo] : [],
     freeUnits?.tierQuantity != null
       ? { ...context, billableQuantity: freeUnits.tierQuantity }
       : undefined,
