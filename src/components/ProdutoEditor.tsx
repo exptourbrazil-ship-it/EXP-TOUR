@@ -56,6 +56,196 @@ export type ProdutoInicial = {
 
 type ItemPacote = { item_product_id: string; quantity: string; unit: string; is_optional: boolean };
 
+// ── Grade de horários (timetable) ───────────────────────────────────────────
+// Shape canônico persistido em program_detail.timetable (jsonb): array de dias,
+// cada um com blocos { inicio, fim, descricao, isIntervalo? }. Ver também o
+// parser tolerante em src/lib/produto-conteudo.ts (le esse shape e o antigo,
+// de strings soltas, para os poucos registros legados).
+const DIAS_SEMANA = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"] as const;
+type DiaSemana = (typeof DIAS_SEMANA)[number];
+type BlocoAulaEdit = { inicio: string; fim: string; descricao: string; isIntervalo: boolean };
+type TimetableEdit = Record<DiaSemana, BlocoAulaEdit[]>;
+
+function timetableVazio(): TimetableEdit {
+  const t = {} as TimetableEdit;
+  for (const d of DIAS_SEMANA) t[d] = [];
+  return t;
+}
+
+// Hidrata o estado da UI a partir do jsonb salvo (shape novo OU o antigo, objeto
+// { "Segunda": ["08:30-10:10", ...] }). Tolerante: entrada desconhecida vira
+// grade vazia em vez de quebrar a tela.
+function hidratarTimetable(raw: unknown): TimetableEdit {
+  const out = timetableVazio();
+  const diaParaSigla: Record<string, DiaSemana> = {
+    segunda: "Seg", "segunda-feira": "Seg", monday: "Seg", seg: "Seg",
+    terça: "Ter", terca: "Ter", "terça-feira": "Ter", tuesday: "Ter", ter: "Ter",
+    quarta: "Qua", "quarta-feira": "Qua", wednesday: "Qua", qua: "Qua",
+    quinta: "Qui", "quinta-feira": "Qui", thursday: "Qui", qui: "Qui",
+    sexta: "Sex", "sexta-feira": "Sex", friday: "Sex", sex: "Sex",
+    sábado: "Sáb", sabado: "Sáb", saturday: "Sáb", sab: "Sáb", sáb: "Sáb",
+    domingo: "Dom", sunday: "Dom", dom: "Dom",
+  };
+  const siglaDe = (dia: string): DiaSemana | null => {
+    const k = dia.trim().toLowerCase();
+    if ((DIAS_SEMANA as readonly string[]).includes(dia.trim() as DiaSemana)) return dia.trim() as DiaSemana;
+    return diaParaSigla[k] ?? null;
+  };
+  const parseBlocoStr = (s: string): BlocoAulaEdit => {
+    const m = s.trim().match(/^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\s*(.*)$/);
+    if (m) return { inicio: m[1], fim: m[2], descricao: m[3].trim() || "Aula", isIntervalo: false };
+    return { inicio: "", fim: "", descricao: s.trim(), isIntervalo: false };
+  };
+  const parseBlocoObj = (x: any): BlocoAulaEdit | null => {
+    if (typeof x === "string") return x.trim() ? parseBlocoStr(x) : null;
+    if (x && typeof x === "object") {
+      const inicio = String(x.inicio ?? x.start ?? "").trim();
+      const fim = String(x.fim ?? x.end ?? "").trim();
+      const descricao = String(x.descricao ?? x.description ?? x.nome ?? "").trim();
+      if (!inicio && !fim && !descricao) return null;
+      return { inicio, fim, descricao, isIntervalo: !!x.isIntervalo };
+    }
+    return null;
+  };
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const dia = siglaDe(String((item as any).dia ?? (item as any).day ?? ""));
+      if (!dia) continue;
+      const blocosRaw = Array.isArray((item as any).blocos ?? (item as any).slots ?? (item as any).horarios)
+        ? ((item as any).blocos ?? (item as any).slots ?? (item as any).horarios)
+        : [];
+      out[dia] = blocosRaw.map(parseBlocoObj).filter((b: BlocoAulaEdit | null): b is BlocoAulaEdit => b !== null);
+    }
+  } else if (raw && typeof raw === "object") {
+    for (const [diaRaw, v] of Object.entries(raw as Record<string, unknown>)) {
+      const dia = siglaDe(diaRaw);
+      if (!dia || !Array.isArray(v)) continue;
+      out[dia] = v.map(parseBlocoObj).filter((b: BlocoAulaEdit | null): b is BlocoAulaEdit => b !== null);
+    }
+  }
+  return out;
+}
+
+// Serializa para o shape canônico (array de dias) — só entra no payload de
+// salvar quando houver ao menos um bloco em algum dia.
+function serializarTimetable(t: TimetableEdit): Array<{ dia: string; blocos: BlocoAulaEdit[] }> | undefined {
+  const dias = DIAS_SEMANA
+    .map((d) => ({ dia: d, blocos: t[d].filter((b) => b.inicio || b.fim || b.descricao.trim()) }))
+    .filter((d) => d.blocos.length > 0);
+  return dias.length ? dias : undefined;
+}
+
+function GradeHorarios({ valor, set }: { valor: TimetableEdit; set: (t: TimetableEdit) => void }) {
+  const [diaAtivo, setDiaAtivo] = useState<DiaSemana>("Seg");
+  const [copiarDe, setCopiarDe] = useState<DiaSemana>("Seg");
+
+  const blocos = valor[diaAtivo];
+  const setBlocos = (novos: BlocoAulaEdit[]) => set({ ...valor, [diaAtivo]: novos });
+
+  const diasComDados = DIAS_SEMANA.filter((d) => valor[d].length > 0);
+
+  return (
+    <div className="sm:col-span-2">
+      <Rotulo>Grade de horários (timetable)</Rotulo>
+      <div className="mb-2 flex flex-wrap gap-1">
+        {DIAS_SEMANA.map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => setDiaAtivo(d)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              d === diaAtivo
+                ? "bg-brand text-brand-cream"
+                : valor[d].length > 0
+                  ? "border border-brand/40 bg-white text-brand"
+                  : "border border-neutral-300 bg-white text-neutral-500"
+            }`}
+          >
+            {d}
+            {valor[d].length > 0 ? ` (${valor[d].length})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {blocos.length === 0 ? (
+        <p className="mb-2 text-xs text-neutral-500">Nenhum horário cadastrado para {diaAtivo}.</p>
+      ) : (
+        <div className="mb-2 space-y-1.5">
+          {blocos.map((b, i) => {
+            const invalido = b.inicio && b.fim && b.fim <= b.inicio;
+            return (
+              <div key={i} className="rounded-lg border border-neutral-200 bg-white p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="time"
+                    value={b.inicio}
+                    onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)))}
+                    className={`${inp} w-28`}
+                  />
+                  <span className="text-xs text-neutral-500">até</span>
+                  <input
+                    type="time"
+                    value={b.fim}
+                    onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, fim: e.target.value } : x)))}
+                    className={`${inp} w-28`}
+                  />
+                  <input
+                    value={b.descricao}
+                    onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, descricao: e.target.value } : x)))}
+                    placeholder="Ex.: General English Morning, Intervalo…"
+                    className={`${inp} min-w-[180px] flex-1`}
+                  />
+                  <label className="flex items-center gap-1 text-xs text-neutral-600">
+                    <input
+                      type="checkbox"
+                      checked={b.isIntervalo}
+                      onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, isIntervalo: e.target.checked } : x)))}
+                    />
+                    Intervalo
+                  </label>
+                  <button type="button" onClick={() => setBlocos(blocos.filter((_, j) => j !== i))} className="text-xs text-red-600 hover:underline">
+                    Remover
+                  </button>
+                </div>
+                {invalido ? <Ajuda erro>O horário de fim não pode ser antes do início.</Ajuda> : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setBlocos([...blocos, { inicio: "", fim: "", descricao: "", isIntervalo: false }])}
+          className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-brand"
+        >
+          + Adicionar linha
+        </button>
+        {diasComDados.length > 0 ? (
+          <span className="flex items-center gap-1 text-xs text-neutral-600">
+            Copiar de:
+            <select value={copiarDe} onChange={(e) => setCopiarDe(e.target.value as DiaSemana)} className="rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs">
+              {diasComDados.filter((d) => d !== diaAtivo).map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={copiarDe === diaAtivo || valor[copiarDe].length === 0}
+              onClick={() => setBlocos(valor[copiarDe].map((b) => ({ ...b })))}
+              className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 font-medium text-brand disabled:opacity-40"
+            >
+              Copiar
+            </button>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function ProdutoEditor({
   campi,
   produtos,
@@ -116,6 +306,7 @@ export default function ProdutoEditor({
     valid_until: det.valid_until ?? "",
     pricing_mode: det.pricing_mode ?? "sum_of_items",
   });
+  const [timetable, setTimetable] = useState<TimetableEdit>(() => hidratarTimetable(det.timetable));
   const [itens, setItens] = useState<ItemPacote[]>(
     (inicial?.itens ?? []).map((it: any) => ({
       item_product_id: it.item_product_id ?? "",
@@ -144,6 +335,7 @@ export default function ProdutoEditor({
           grades: campo.grades ? String(campo.grades).split(",").map((s: string) => s.trim()).filter(Boolean) : undefined,
           lessons_per_week: num(campo.lessons_per_week), hours_per_week: num(campo.hours_per_week),
           is_pathway: campo.is_pathway, includes_activities: campo.includes_activities,
+          timetable: serializarTimetable(timetable),
         };
       case "accommodation":
         return {
@@ -292,6 +484,7 @@ export default function ProdutoEditor({
             <Campo label="Séries/anos (separados por vírgula)" className="sm:col-span-2"><input value={campo.grades} onChange={(e) => set("grades", e.target.value)} className={inp} placeholder="Ex.: 9, 10, 11" /></Campo>
             <Check label="É pathway" v={campo.is_pathway} set={(x) => set("is_pathway", x)} />
             <Check label="Inclui atividades" v={campo.includes_activities} set={(x) => set("includes_activities", x)} />
+            <GradeHorarios valor={timetable} set={setTimetable} />
           </Grid>
         </Secao>
       )}
