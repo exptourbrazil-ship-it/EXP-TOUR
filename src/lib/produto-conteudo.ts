@@ -428,7 +428,7 @@ function parseBlocoAula(x: unknown): BlocoAula | null {
   if (isObj(x)) {
     const inicio = optStrOuNull(x.inicio ?? x.start);
     const fim = optStrOuNull(x.fim ?? x.end);
-    const descricao = optStrOuNull(x.descricao ?? x.description ?? x.nome) ?? "";
+    const descricao = (optStrOuNull(x.descricao ?? x.description ?? x.nome) ?? "").slice(0, MAX_TEXTO_CURTO);
     const isIntervalo = typeof x.isIntervalo === "boolean" ? x.isIntervalo : undefined;
     if (!inicio && !fim && !descricao) return null;
     return { inicio, fim, descricao, isIntervalo };

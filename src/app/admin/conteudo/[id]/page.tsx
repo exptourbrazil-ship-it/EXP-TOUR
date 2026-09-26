@@ -80,6 +80,31 @@ export default async function AdminConteudoRevisaoPage({
           </div>
         ) : null}
 
+        {prog && prog.timetable.length > 0 ? (
+          <div className="mt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Grade de horários</p>
+            <ul className="mt-1 space-y-1 text-sm text-neutral-800">
+              {prog.timetable.map((t, i) => (
+                <li key={i}>
+                  <span className="text-neutral-400">{t.dia}: </span>
+                  <span className="inline-flex flex-wrap gap-x-3 gap-y-0.5">
+                    {t.blocos.map((b, j) => {
+                      const ehIntervalo = b.isIntervalo ?? b.descricao.toLowerCase().includes("intervalo");
+                      const horario = b.inicio && b.fim ? `${b.inicio}–${b.fim}` : null;
+                      return (
+                        <span key={j} className={ehIntervalo ? "italic text-neutral-400" : undefined}>
+                          {horario ? `${horario} ` : ""}
+                          {b.descricao}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {ficha && ficha.midias.length > 0 ? (
           <div className="mt-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Mídia ({ficha.midias.length})</p>
