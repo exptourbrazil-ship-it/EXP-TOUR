@@ -820,11 +820,25 @@ function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
           {prog.timetable.length > 0 ? (
             <div className="mt-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Grade de horários</p>
-              <ul className="mt-1 space-y-0.5 text-sm text-[color:var(--p-ink)]">
+              <ul className="mt-1 space-y-1 text-sm text-[color:var(--p-ink)]">
                 {prog.timetable.map((t, i) => (
                   <li key={i}>
                     <span className="text-[color:var(--p-muted)]">{t.dia}: </span>
-                    {t.blocos.join(" · ")}
+                    <span className="inline-flex flex-wrap gap-x-3 gap-y-0.5">
+                      {t.blocos.map((b, j) => {
+                        const ehIntervalo = b.isIntervalo ?? b.descricao.toLowerCase().includes("intervalo");
+                        const horario = b.inicio && b.fim ? `${b.inicio}–${b.fim}` : null;
+                        return (
+                          <span
+                            key={j}
+                            className={ehIntervalo ? "italic text-[color:var(--p-muted)]" : undefined}
+                          >
+                            {horario ? `${horario} ` : ""}
+                            {b.descricao}
+                          </span>
+                        );
+                      })}
+                    </span>
                   </li>
                 ))}
               </ul>

@@ -235,6 +235,49 @@ test("detalhesDoSnapshot: programa gera Quick Info e timetable, com labels pt-BR
   assert.equal(d.programa!.timetable.length, 1);
   assert.equal(d.programa!.timetable[0].dia, "Segunda");
   assert.equal(d.programa!.timetable[0].blocos.length, 2);
+  // Shape antigo (string "HH:MM-HH:MM"): parser separa inicio/fim e usa "Aula"
+  // como descricao (nao ha nome no dado legado).
+  assert.equal(d.programa!.timetable[0].blocos[0].inicio, "08:30");
+  assert.equal(d.programa!.timetable[0].blocos[0].fim, "10:10");
+  assert.equal(d.programa!.timetable[0].blocos[0].descricao, "Aula");
+});
+
+test("detalhesDoSnapshot: timetable no shape novo (estruturado, array de dias)", () => {
+  const d = detalhesDoSnapshot({
+    programDetail: {
+      timetable: [
+        {
+          dia: "Segunda",
+          blocos: [
+            { inicio: "08:30", fim: "10:10", descricao: "General English Morning" },
+            { inicio: "10:10", fim: "10:30", descricao: "Intervalo", isIntervalo: true },
+            { inicio: "10:30", fim: "12:00", descricao: "Communication Skills" },
+          ],
+        },
+      ],
+    },
+  });
+  assert.ok(d.programa);
+  assert.equal(d.programa!.timetable.length, 1);
+  const blocos = d.programa!.timetable[0].blocos;
+  assert.equal(blocos.length, 3);
+  assert.equal(blocos[0].descricao, "General English Morning");
+  assert.equal(blocos[1].isIntervalo, true);
+  assert.equal(blocos[2].inicio, "10:30");
+});
+
+test("detalhesDoSnapshot: timetable misto/vazio não quebra (dia sem blocos válidos é descartado)", () => {
+  const d = detalhesDoSnapshot({
+    programDetail: {
+      timetable: [
+        { dia: "Terça", blocos: [] },
+        { dia: "Quarta", blocos: [{ inicio: "", fim: "", descricao: "" }] },
+        { dia: "", blocos: [{ inicio: "08:00", fim: "09:00", descricao: "Aula" }] },
+      ],
+    },
+  });
+  // Nenhum item sobrevive: dia sem blocos, bloco totalmente vazio, ou dia vazio.
+  assert.equal(d.programa, null);
 });
 
 test("detalhesDoSnapshot: acomodação mapeia enums para pt-BR e dias da semana", () => {

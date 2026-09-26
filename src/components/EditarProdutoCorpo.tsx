@@ -125,7 +125,12 @@ export default async function EditarProdutoCorpo({
             label: "Preços & Taxas",
             conteudo: (
               <div className="space-y-8">
-                <SecaoPrecosTaxas precos={vinculos.precos} taxas={vinculos.taxas} productId={productId} />
+                <SecaoPrecosTaxas
+                  precos={vinculos.precos}
+                  taxas={vinculos.taxas}
+                  productId={productId}
+                  campusId={campusId || null}
+                />
                 {kind === "accommodation" ? (
                   <SecaoSazonal
                     productId={productId}

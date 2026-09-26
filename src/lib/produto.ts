@@ -96,7 +96,11 @@ export type ProgramDetalhe = {
   hours_per_week: number | null;
   is_pathway: boolean | null;
   includes_activities: boolean | null;
-  timetable: Record<string, unknown> | null;
+  // Grade de horarios: array de dias [{ dia, blocos:[{inicio,fim,descricao}] }]
+  // (shape novo, ver src/lib/produto-conteudo.ts) ou o shape antigo (objeto
+  // { "Segunda": ["08:30-10:10"] }) para registros legados. Jsonb livre aqui —
+  // a normalizacao/leitura fica a cargo de quem monta a UI e do parser tolerante.
+  timetable: Record<string, unknown> | unknown[] | null;
 };
 
 export type AccommodationDetalhe = {
@@ -257,7 +261,7 @@ function validarPrograma(raw: Record<string, unknown>, falhas: Falha[]): Program
     hours_per_week: optNumNaoNeg(raw.hours_per_week, "hours_per_week", falhas),
     is_pathway: optBool(raw.is_pathway),
     includes_activities: optBool(raw.includes_activities),
-    timetable: isObj(raw.timetable) ? raw.timetable : null,
+    timetable: isObj(raw.timetable) || Array.isArray(raw.timetable) ? raw.timetable : null,
   };
 }
 

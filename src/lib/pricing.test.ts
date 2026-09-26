@@ -11,6 +11,7 @@ import {
   tierFor,
   priceFlat,
   priceProgressive,
+  priceFixed,
   priceTier,
   calcWithTransition,
   applyFreeUnits,
@@ -177,6 +178,147 @@ test("use_booking_date_price precifica pelo template vigente na emissao", () => 
   assert.equal(r.amount, 5950); // 10 x 595 (faixa do total no template B)
 });
 
+// ---------------------------------------------------------------------------
+// price_basis='fixed': preco de pacote fechado (nao escala com a quantidade)
+// ---------------------------------------------------------------------------
+
+// Template de pacote fechado (ex.: Twin Group Dublin Internship, 750 EUR,
+// faixa unica 4-26 semanas). unitPrice aqui JA e o preco TOTAL do pacote.
+const TEMPLATE_FIXED: Template = {
+  name: "Internship pacote fechado",
+  priceBasis: "fixed",
+  validFrom: null,
+  validUntil: null,
+  tiers: [{ minQuantity: 4, unitPrice: 750 }],
+};
+
+test("priceFixed: preco do pacote nao multiplica pela quantidade", () => {
+  assert.equal(priceFixed(TEMPLATE_FIXED.tiers, 4), 750);
+  assert.equal(priceFixed(TEMPLATE_FIXED.tiers, 20), 750);
+});
+
+test("priceTier despacha para priceFixed quando priceBasis='fixed', ignorando chargeInTiers", () => {
+  assert.equal(priceTier(TEMPLATE_FIXED.tiers, 4, false, undefined, "fixed"), 750);
+  assert.equal(priceTier(TEMPLATE_FIXED.tiers, 20, true, undefined, "fixed"), 750);
+});
+
+test("fixed: calcWithTransition (use_start_date_price) da o mesmo total para 4 e 20 semanas", () => {
+  const r4 = calcWithTransition({
+    startDate: "2026-05-25",
+    weeks: 4,
+    templates: [TEMPLATE_FIXED],
+    strategy: "use_start_date_price",
+    chargeInTiers: false,
+  });
+  const r20 = calcWithTransition({
+    startDate: "2026-05-25",
+    weeks: 20,
+    templates: [TEMPLATE_FIXED],
+    strategy: "use_start_date_price",
+    chargeInTiers: false,
+  });
+  assert.equal(r4.amount, 750);
+  assert.equal(r20.amount, 750);
+});
+
+test("fixed: priceProduct nao escala o bruto com a quantidade (4 x 20 semanas, mesmo template)", () => {
+  const baseRequest: Omit<PriceRequest, "quantity"> = {
+    product: { currency: "EUR" },
+    startDate: "2026-05-25",
+    unit: "week",
+    templates: [TEMPLATE_FIXED],
+    transitionRule: "use_start_date_price",
+    chargeInTiers: false,
+    fees: [],
+    promotions: [],
+    context: { quoteDate: "2026-01-01", startDate: "2026-05-25", billableQuantity: 0 },
+  };
+  const p4 = priceProduct({ ...baseRequest, quantity: 4 });
+  const p20 = priceProduct({ ...baseRequest, quantity: 20 });
+  assert.equal(p4.grossAmount, 750);
+  assert.equal(p20.grossAmount, 750);
+  assert.equal(p4.netAmount, 750);
+  assert.equal(p20.netAmount, 750);
+  assert.deepEqual(p4.warnings, []);
+  assert.deepEqual(p20.warnings, []);
+});
+
+test("fixed: respeita a transicao de vigencia do template (troca de tabela pela data de inicio)", () => {
+  const fixedA: Template = {
+    name: "Pacote A",
+    priceBasis: "fixed",
+    validFrom: null,
+    validUntil: "2026-06-14",
+    tiers: [{ minQuantity: 4, unitPrice: 750 }],
+  };
+  const fixedB: Template = {
+    name: "Pacote B",
+    priceBasis: "fixed",
+    validFrom: "2026-06-15",
+    validUntil: null,
+    tiers: [{ minQuantity: 4, unitPrice: 900 }],
+  };
+  const antes = calcWithTransition({
+    startDate: "2026-05-25",
+    weeks: 10,
+    templates: [fixedA, fixedB],
+    strategy: "use_start_date_price",
+    chargeInTiers: false,
+  });
+  const depois = calcWithTransition({
+    startDate: "2026-06-20",
+    weeks: 10,
+    templates: [fixedA, fixedB],
+    strategy: "use_start_date_price",
+    chargeInTiers: false,
+  });
+  assert.equal(antes.amount, 750);
+  assert.equal(depois.amount, 900);
+});
+
+test("fixed: split_by_period nao soma pacotes de templates diferentes (ancora no template do inicio)", () => {
+  // Reserva atravessa a virada de tabela (fixedA ate 14/06, fixedB a partir de
+  // 15/06): sem a excecao, cada segmento seria precificado como um pacote
+  // INTEIRO e a soma daria 750+900=1650 por uma unica internship. Correto e
+  // cobrar UM pacote so, pelo template vigente no inicio.
+  const fixedA: Template = {
+    name: "Pacote A",
+    priceBasis: "fixed",
+    validFrom: null,
+    validUntil: "2026-06-14",
+    tiers: [{ minQuantity: 4, unitPrice: 750 }],
+  };
+  const fixedB: Template = {
+    name: "Pacote B",
+    priceBasis: "fixed",
+    validFrom: "2026-06-15",
+    validUntil: null,
+    tiers: [{ minQuantity: 4, unitPrice: 900 }],
+  };
+  const r = calcWithTransition({
+    startDate: "2026-05-25",
+    weeks: 10,
+    templates: [fixedA, fixedB],
+    strategy: "split_by_period",
+    chargeInTiers: false,
+  });
+  assert.equal(r.amount, 750);
+  assert.equal(r.segments.length, 1);
+  assert.equal(r.segments[0].amount, 750);
+  assert.equal(r.segments[0].unitPrice, null);
+});
+
+test("fixed: 'quantity' explicito e ausencia de priceBasis nao regridem (comportamento historico continua multiplicando)", () => {
+  // Mesmos tiers/quantidade do T1 (BASE_TIERS, 10 semanas): sem priceBasis, ou
+  // com priceBasis='duration'/'quantity', o resultado tem que ser IDENTICO ao
+  // flat historico (5750,00) — mudanca aditiva, nunca regressiva.
+  assert.equal(priceTier(BASE_TIERS, 10, false), 5750);
+  assert.equal(priceTier(BASE_TIERS, 10, false, undefined, undefined), 5750);
+  assert.equal(priceTier(BASE_TIERS, 10, false, undefined, "duration"), 5750);
+  assert.equal(priceTier(BASE_TIERS, 10, false, undefined, "quantity"), 5750);
+  assert.equal(priceTier(BASE_TIERS, 10, true, undefined, "duration"), 5790);
+});
+
 test("periodo sem template vigente lanca erro bloqueante (warning)", () => {
   // Buraco de cobertura: template A so ate 2026-06-14 e B so a partir de 2026-07-01.
   const templateBGap: Template = { ...TEMPLATE_B, validFrom: "2026-07-01" };
@@ -244,6 +386,77 @@ test("bonus_on_top x discount_on_booked diferem em billable/delivered", () => {
   assert.equal(discount.deliveredQuantity, 20);
   assert.equal(discount.billableQuantity, 16);
   assert.notEqual(bonus.netAmount, discount.netAmount);
+});
+
+test("fixed: discount_on_booked ignora a promocao (nunca liquido negativo) e avisa", () => {
+  // Sem a correcao, tierUnit e o preco do PACOTE INTEIRO (750), entao 2
+  // "semanas gratis" descontariam 1500 de um pacote de 750 -> liquido -750.
+  const TIERS_FIXED = [{ minQuantity: 4, unitPrice: 750 }];
+  const r = applyFreeUnits({
+    tiers: TIERS_FIXED,
+    bookedQuantity: 4,
+    freeUnits: 2,
+    semantics: "discount_on_booked",
+    priceBasis: "fixed",
+  });
+  assert.equal(r.grossAmount, 750);
+  assert.equal(r.discountAmount, 0);
+  assert.equal(r.netAmount, 750);
+  assert.ok(r.netAmount >= 0);
+  assert.equal(r.billableQuantity, 4);
+  assert.equal(r.deliveredQuantity, 4);
+  assert.match(r.warning ?? "", /price_basis=fixed/);
+});
+
+test("fixed: bonus_on_top continua funcionando normalmente (sem desconto, sem aviso)", () => {
+  // bonus_on_top nao desconta nada (so entrega mais), entao nao tem o mesmo
+  // bug numerico — nao deve ser bloqueado.
+  const TIERS_FIXED = [{ minQuantity: 4, unitPrice: 750 }];
+  const r = applyFreeUnits({
+    tiers: TIERS_FIXED,
+    bookedQuantity: 4,
+    freeUnits: 2,
+    semantics: "bonus_on_top",
+    priceBasis: "fixed",
+  });
+  assert.equal(r.grossAmount, 750);
+  assert.equal(r.discountAmount, 0);
+  assert.equal(r.netAmount, 750);
+  assert.equal(r.warning, undefined);
+});
+
+test("fixed: priceProduct carrega o aviso de free_units ignorado para warnings (sem liquido negativo)", () => {
+  const promoGratis: Promotion = {
+    ...PROMO_BASE,
+    promoType: "free_units",
+    appliesTo: "total",
+    value: 2,
+    freeUnitsSemantics: "discount_on_booked",
+    targets: [],
+  };
+  const TEMPLATE_FIXED_LOCAL: Template = {
+    name: "Internship pacote fechado",
+    priceBasis: "fixed",
+    validFrom: null,
+    validUntil: null,
+    tiers: [{ minQuantity: 4, unitPrice: 750 }],
+  };
+  const r = priceProduct({
+    product: { currency: "EUR", kind: "program" },
+    startDate: "2026-05-25",
+    quantity: 4,
+    unit: "week",
+    templates: [TEMPLATE_FIXED_LOCAL],
+    transitionRule: "use_start_date_price",
+    chargeInTiers: false,
+    fees: [],
+    promotions: [promoGratis],
+    context: { quoteDate: "2026-01-01", startDate: "2026-05-25", billableQuantity: 4 },
+  });
+  assert.equal(r.grossAmount, 750);
+  assert.equal(r.netAmount, 750);
+  assert.ok(r.netAmount >= 0);
+  assert.ok(r.warnings.some((w) => /price_basis=fixed/.test(w)));
 });
 
 // ---------------------------------------------------------------------------

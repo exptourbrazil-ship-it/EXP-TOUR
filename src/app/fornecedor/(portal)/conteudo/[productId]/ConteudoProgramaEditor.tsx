@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  DIAS_SEMANA,
+  hidratarTimetable,
+  serializarTimetable,
+  type DiaSemana,
+  type BlocoAulaEdit,
+  type TimetableEdit,
+} from "@/lib/timetable-editor";
 
 // Editor do conteúdo de um curso pela escola (Fase B1). Carrega/cria o rascunho
 // via /api/fornecedor/conteudo (acao "iniciar"), edita conteúdo por locale +
@@ -46,6 +54,126 @@ const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 6
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
 const vazioConteudo = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", is_machine_translated: false });
 
+// ── Grade de horários (timetable) ───────────────────────────────────────────
+// Tipos/parsing (shape canônico de program_detail.timetable) vêm de
+// src/lib/timetable-editor.ts, compartilhado com o editor do admin (mesma
+// lógica; UI própria aqui por causa do estilo --p-* do portal do fornecedor).
+function GradeHorarios({ valor, set }: { valor: TimetableEdit; set: (t: TimetableEdit) => void }) {
+  const [diaAtivo, setDiaAtivo] = useState<DiaSemana>("Seg");
+  const [copiarDe, setCopiarDe] = useState<DiaSemana>("Seg");
+
+  const blocos = valor[diaAtivo];
+  const setBlocos = (novos: BlocoAulaEdit[]) => set({ ...valor, [diaAtivo]: novos });
+
+  const diasComDados = DIAS_SEMANA.filter((d) => valor[d].length > 0);
+
+  return (
+    <div>
+      <div style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {DIAS_SEMANA.map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => setDiaAtivo(d)}
+            style={{
+              borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: d === diaAtivo ? "1px solid var(--p-cta)" : "1px solid var(--p-line)",
+              background: d === diaAtivo ? "var(--p-cta)" : "#fff",
+              color: d === diaAtivo ? "var(--p-cta-fg)" : valor[d].length > 0 ? "var(--p-accent-ink)" : "var(--p-muted)",
+            }}
+          >
+            {d}
+            {valor[d].length > 0 ? ` (${valor[d].length})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {blocos.length === 0 ? (
+        <p style={{ marginBottom: 8, fontSize: 12, color: "var(--p-muted)" }}>Nenhum horário cadastrado para {diaAtivo}.</p>
+      ) : (
+        <div style={{ marginBottom: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          {blocos.map((b, i) => {
+            const invalido = b.inicio && b.fim && b.fim <= b.inicio;
+            return (
+              <div key={i} style={{ border: "1px solid var(--p-line)", borderRadius: 8, background: "#fff", padding: 8 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="time"
+                    value={b.inicio}
+                    onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)))}
+                    style={{ ...inp, width: 112 }}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--p-muted)" }}>até</span>
+                  <input
+                    type="time"
+                    value={b.fim}
+                    onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, fim: e.target.value } : x)))}
+                    style={{ ...inp, width: 112 }}
+                  />
+                  <input
+                    value={b.descricao}
+                    onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, descricao: e.target.value } : x)))}
+                    placeholder="Ex.: General English Morning, Intervalo…"
+                    style={{ ...inp, minWidth: 180, flex: 1 }}
+                  />
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--p-ink)" }}>
+                    <input
+                      type="checkbox"
+                      checked={b.isIntervalo}
+                      onChange={(e) => setBlocos(blocos.map((x, j) => (j === i ? { ...x, isIntervalo: e.target.checked } : x)))}
+                    />
+                    Intervalo
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setBlocos(blocos.filter((_, j) => j !== i))}
+                    style={{ fontSize: 12, color: "#b91c1c", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    Remover
+                  </button>
+                </div>
+                {invalido ? <p style={{ marginTop: 4, fontSize: 11, color: "#b91c1c" }}>O horário de fim não pode ser antes do início.</p> : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => setBlocos([...blocos, { inicio: "", fim: "", descricao: "", isIntervalo: false }])}
+          style={{ border: "1px solid var(--p-line)", background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, color: "var(--p-ink)", cursor: "pointer" }}
+        >
+          + Adicionar linha
+        </button>
+        {diasComDados.length > 0 ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--p-ink)" }}>
+            Copiar de:
+            <select
+              value={copiarDe}
+              onChange={(e) => setCopiarDe(e.target.value as DiaSemana)}
+              style={{ ...inp, width: "auto", padding: "4px 8px" }}
+            >
+              {diasComDados.filter((d) => d !== diaAtivo).map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={copiarDe === diaAtivo || valor[copiarDe].length === 0}
+              onClick={() => setBlocos(valor[copiarDe].map((b) => ({ ...b })))}
+              style={{ border: "1px solid var(--p-line)", background: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, color: "var(--p-ink)", cursor: "pointer", opacity: (copiarDe === diaAtivo || valor[copiarDe].length === 0) ? 0.4 : 1 }}
+            >
+              Copiar
+            </button>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function ConteudoProgramaEditor({ productId }: { productId: string }) {
   const [id, setId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("draft");
@@ -66,6 +194,7 @@ export default function ConteudoProgramaEditor({ productId }: { productId: strin
     education_type: "", subject: "", language: "", delivery_method: "", format: "",
     grades: "", lessons_per_week: "", hours_per_week: "", is_pathway: false, includes_activities: false,
   });
+  const [timetable, setTimetable] = useState<TimetableEdit>(() => hidratarTimetable(undefined));
 
   const editavel = status === "draft";
 
@@ -117,6 +246,7 @@ export default function ConteudoProgramaEditor({ productId }: { productId: strin
       hours_per_week: pd.hours_per_week != null ? String(pd.hours_per_week) : "",
       is_pathway: !!pd.is_pathway, includes_activities: !!pd.includes_activities,
     });
+    setTimetable(hidratarTimetable(pd.timetable));
   }
 
   function montarPayload() {
@@ -128,6 +258,7 @@ export default function ConteudoProgramaEditor({ productId }: { productId: strin
         delivery_method: prog.delivery_method || undefined, format: prog.format, grades: prog.grades,
         lessons_per_week: prog.lessons_per_week || undefined, hours_per_week: prog.hours_per_week || undefined,
         is_pathway: prog.is_pathway, includes_activities: prog.includes_activities,
+        timetable: serializarTimetable(timetable),
       },
     };
   }
@@ -258,6 +389,10 @@ export default function ConteudoProgramaEditor({ productId }: { productId: strin
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--p-ink)" }}>
             <input type="checkbox" checked={prog.includes_activities} onChange={(e) => setP({ includes_activities: e.target.checked })} /> Inclui atividades
           </label>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <label style={lbl}>Grade de horários</label>
+          <GradeHorarios valor={timetable} set={setTimetable} />
         </div>
       </fieldset>
 

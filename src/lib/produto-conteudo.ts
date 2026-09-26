@@ -347,7 +347,11 @@ export function fichaDoSnapshot(content: unknown, locale: ContentLocale = "pt-BR
 // escola é sanitizada; o resto é texto (o React escapa no render).
 
 export type QuickInfoLinha = { rotulo: string; valor: string };
-export type BlocoTimetable = { dia: string; blocos: string[] };
+// Bloco de aula estruturado (shape novo do timetable): inicio/fim "HH:MM" e
+// descricao livre (nome da aula, ou "Intervalo"). isIntervalo e so um atalho
+// visual; na ausencia dele o render tambem detecta pela descricao.
+export type BlocoAula = { inicio: string | null; fim: string | null; descricao: string; isIntervalo?: boolean };
+export type BlocoTimetable = { dia: string; blocos: BlocoAula[] };
 export type DetalhesPrograma = { quickInfo: QuickInfoLinha[]; timetable: BlocoTimetable[] };
 export type DetalhesAcomodacao = { linhas: QuickInfoLinha[] };
 export type NacionalidadeLinha = { pais: string; percentual: number };
@@ -402,12 +406,42 @@ function pushLinha(linhas: QuickInfoLinha[], rotulo: string, valor: unknown) {
   if (v) linhas.push({ rotulo, valor: v });
 }
 
-// Parser tolerante do timetable jsonb (shape não fixado ainda): aceita um objeto
-// { "Segunda": ["08:30-10:10", ...], ... } ou um array [{ dia, blocos:[...] }].
+// Parser tolerante do timetable jsonb. Shape canônico (fixado nesta função):
+// array de dias `[{ dia, blocos: [{ inicio, fim, descricao, isIntervalo? }] }]`
+// — vem do editor em src/components/ProdutoEditor.tsx. Compatível com o shape
+// antigo, ainda presente em alguns registros de carga manual: objeto
+// `{ "Segunda": ["08:30-10:10", ...] }` com blocos como string livre "HH:MM-HH:MM"
+// (ou qualquer texto — vira uma descrição sem horário estruturado).
+function parseBlocoAula(x: unknown): BlocoAula | null {
+  if (typeof x === "string") {
+    const s = x.trim();
+    if (!s) return null;
+    // Tenta separar "08:30-10:10" (ou "08:30–10:10") em inicio/fim; o resto vira
+    // descrição. Se não casar o padrão, a string toda vira descrição.
+    const m = s.match(/^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\s*(.*)$/);
+    if (m) {
+      const [, inicio, fim, resto] = m;
+      return { inicio, fim, descricao: resto.trim() || "Aula" };
+    }
+    return { inicio: null, fim: null, descricao: s };
+  }
+  if (isObj(x)) {
+    const inicio = optStrOuNull(x.inicio ?? x.start);
+    const fim = optStrOuNull(x.fim ?? x.end);
+    const descricao = (optStrOuNull(x.descricao ?? x.description ?? x.nome) ?? "").slice(0, MAX_TEXTO_CURTO);
+    const isIntervalo = typeof x.isIntervalo === "boolean" ? x.isIntervalo : undefined;
+    if (!inicio && !fim && !descricao) return null;
+    return { inicio, fim, descricao, isIntervalo };
+  }
+  return null;
+}
+
 function parseTimetable(raw: unknown): BlocoTimetable[] {
   const out: BlocoTimetable[] = [];
-  const asBlocos = (v: unknown): string[] =>
-    Array.isArray(v) ? v.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean).slice(0, 20) : [];
+  const asBlocos = (v: unknown): BlocoAula[] =>
+    Array.isArray(v)
+      ? v.map(parseBlocoAula).filter((b): b is BlocoAula => b !== null).slice(0, 20)
+      : [];
   if (Array.isArray(raw)) {
     for (const item of raw) {
       if (!isObj(item)) continue;

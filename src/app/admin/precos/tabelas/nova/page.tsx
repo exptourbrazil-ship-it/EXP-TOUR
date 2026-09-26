@@ -16,10 +16,10 @@ export const dynamic = "force-dynamic";
 export default async function NovaTabelaPrecoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ produto?: string }>;
+  searchParams: Promise<{ produto?: string; campus_id?: string }>;
 }) {
   await exigirCapacidade("fornecedores.gerir", "/admin/precos/tabelas/nova");
-  const { produto: produtoId } = await searchParams;
+  const { produto: produtoId, campus_id: campusId } = await searchParams;
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
@@ -35,15 +35,21 @@ export default async function NovaTabelaPrecoPage({
   const alvo = produtoId ? produtos.find((p) => p.id === produtoId) : undefined;
   const inicial = alvo ? { template: { campus_id: alvo.campusId }, product_ids: [alvo.id] } : undefined;
 
+  // Contexto de campus: vem do produto (prefill) ou direto da querystring —
+  // propagado ao "voltar" para não jogar o usuário na listagem global.
+  const campusContexto = alvo?.campusId ?? campusId ?? null;
+  const voltarHref = campusContexto ? `/admin/precos/tabelas?campus_id=${campusContexto}` : "/admin/precos/tabelas";
+
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/precos/tabelas" className="text-sm text-brand-golddark hover:underline">← Tabelas de preço</Link>
+      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">← Tabelas de preço</Link>
       <h1 className="mb-4 mt-1 font-serif text-2xl text-brand">Nova tabela de preço</h1>
       <TabelaPrecoEditor
         campi={campi}
         produtos={produtos.map((p) => ({ id: p.id, name: p.name, kind: p.kind, campusId: p.campusId }))}
         markets={markets}
         inicial={inicial}
+        voltarHref={voltarHref}
       />
     </div>
   );
