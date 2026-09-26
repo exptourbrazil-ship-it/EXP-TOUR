@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { t, statusConteudoLabel, localeConteudoLabel, textosEditorConteudo } from "@/lib/fornecedor-i18n";
+import { t, statusConteudoLabel, localeConteudoLabel, textosEditorConteudo, textosLocalizacaoContatoCampus } from "@/lib/fornecedor-i18n";
 import MidiaPreview from "@/components/MidiaPreview";
 
 // Editor do conteúdo de uma escola (Fase B2). Carrega/cria o rascunho via
@@ -14,6 +14,15 @@ const LOCALES = ["pt-BR", "en", "es"] as const;
 type ConteudoForm = { description_html: string; highlights: string; highlights_footer: string; is_machine_translated: boolean };
 type MidiaForm = { url: string; kind: string; caption: string };
 type NacForm = { pais: string; percentual: string };
+export type InfoCampusForm = {
+  address: string | null;
+  postal_code: string | null;
+  city: string | null;
+  region: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+};
 
 const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16 };
 const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "var(--p-ink)", boxSizing: "border-box", fontFamily: "var(--p-body)" };
@@ -22,7 +31,15 @@ const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 6
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
 const vazio = (): ConteudoForm => ({ description_html: "", highlights: "", highlights_footer: "", is_machine_translated: false });
 
-export default function ConteudoEscolaEditor({ campusId, idioma }: { campusId: string; idioma?: string }) {
+export default function ConteudoEscolaEditor({
+  campusId,
+  idioma,
+  infoInicial,
+}: {
+  campusId: string;
+  idioma?: string;
+  infoInicial?: InfoCampusForm;
+}) {
   const [id, setId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("draft");
   const [rejectReason, setRejectReason] = useState<string | null>(null);
@@ -42,9 +59,26 @@ export default function ConteudoEscolaEditor({ campusId, idioma }: { campusId: s
   const [accreditations, setAccreditations] = useState("");
   const [nacs, setNacs] = useState<NacForm[]>([]);
 
+  const [info, setInfo] = useState<InfoCampusForm>(
+    () =>
+      infoInicial ?? {
+        address: null,
+        postal_code: null,
+        city: null,
+        region: null,
+        phone: null,
+        email: null,
+        website: null,
+      },
+  );
+  const [salvandoInfo, setSalvandoInfo] = useState(false);
+  const [erroInfo, setErroInfo] = useState<string | null>(null);
+  const [okInfo, setOkInfo] = useState(false);
+
   const editavel = status === "draft";
   const TX = textosEditorConteudo(idioma);
   const LOCALE_LABEL = localeConteudoLabel(idioma);
+  const TI = textosLocalizacaoContatoCampus(idioma);
   const T = t(idioma, {
     pt: {
       sobreAEscola: "Sobre a escola",
@@ -64,7 +98,7 @@ export default function ConteudoEscolaEditor({ campusId, idioma }: { campusId: s
       brochura: "brochura",
     },
     en: {
-      sobreAEscola: "About the school",
+      sobreAEscola: "About the campus",
       descricaoHtml: "Description (simple HTML)",
       destaques: "Highlights (one per line)",
       rodapeDestaques: "Highlights footer",
@@ -163,6 +197,30 @@ export default function ConteudoEscolaEditor({ campusId, idioma }: { campusId: s
     finally { setSalvando(false); }
   }
 
+  async function salvarInfo() {
+    setSalvandoInfo(true);
+    setErroInfo(null);
+    setOkInfo(false);
+    try {
+      const r = await fetch("/api/fornecedor/campus-info", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campusId, ...info }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) {
+        setErroInfo(j?.error?.message || TI.erroGenerico);
+        return;
+      }
+      setInfo(j.data);
+      setOkInfo(true);
+    } catch {
+      setErroInfo(TI.falhaConexao);
+    } finally {
+      setSalvandoInfo(false);
+    }
+  }
+
   if (carregando) return <p style={{ color: "var(--p-muted)", fontSize: 14 }}>{TX.carregando}</p>;
   if (erro && !id) return <p style={{ color: "#b91c1c", fontSize: 14 }}>{erro}</p>;
 
@@ -190,6 +248,51 @@ export default function ConteudoEscolaEditor({ campusId, idioma }: { campusId: s
       ) : null}
       {erro ? <div style={{ ...box, borderColor: "#fca5a5", background: "#fef2f2", color: "#991b1b", fontSize: 14 }}>{erro}</div> : null}
       {okMsg ? <div style={{ ...box, borderColor: "#86efac", background: "#f0fdf4", color: "var(--p-success-ink)", fontSize: 14 }}>{okMsg}</div> : null}
+
+      {/* Localizacao e contato — gravacao DIRETA, sem fluxo de rascunho/aprovacao
+          (diferente das secoes abaixo, sempre editavel independente do status). */}
+      <fieldset style={box}>
+        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{TI.titulo}</legend>
+        <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 12px" }}>{TI.subtitulo}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={lbl}>{TI.endereco}</label>
+            <input value={info.address ?? ""} onChange={(e) => setInfo((s) => ({ ...s, address: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>{TI.cidade}</label>
+            <input value={info.city ?? ""} onChange={(e) => setInfo((s) => ({ ...s, city: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>{TI.regiao}</label>
+            <input value={info.region ?? ""} onChange={(e) => setInfo((s) => ({ ...s, region: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>{TI.cep}</label>
+            <input value={info.postal_code ?? ""} onChange={(e) => setInfo((s) => ({ ...s, postal_code: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>{TI.telefone}</label>
+            <input value={info.phone ?? ""} onChange={(e) => setInfo((s) => ({ ...s, phone: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>{TI.email}</label>
+            <input type="email" value={info.email ?? ""} onChange={(e) => setInfo((s) => ({ ...s, email: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>{TI.site}</label>
+            <input value={info.website ?? ""} onChange={(e) => setInfo((s) => ({ ...s, website: e.target.value }))} placeholder="https://" style={inp} />
+          </div>
+        </div>
+        {erroInfo ? <p style={{ color: "#b91c1c", fontSize: 13, margin: "10px 0 0" }}>{erroInfo}</p> : null}
+        {okInfo ? <p style={{ color: "var(--p-success-ink)", fontSize: 13, margin: "10px 0 0" }}>{TI.salvo}</p> : null}
+        <div style={{ marginTop: 12 }}>
+          <button type="button" onClick={salvarInfo} disabled={salvandoInfo}
+            style={{ border: "none", background: "var(--p-cta)", color: "var(--p-cta-fg)", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: salvandoInfo ? 0.6 : 1 }}>
+            {salvandoInfo ? TI.salvando : TI.salvar}
+          </button>
+        </div>
+      </fieldset>
 
       {/* Sobre a escola por locale */}
       <fieldset style={box} disabled={!editavel}>

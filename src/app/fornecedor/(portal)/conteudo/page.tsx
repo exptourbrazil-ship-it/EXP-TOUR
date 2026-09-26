@@ -4,12 +4,15 @@ import { getServiceClient } from "@/lib/fornecedor-dados";
 import { listarProgramas } from "@/lib/catalog-disponibilidade";
 import { listarConteudoDoFornecedor } from "@/lib/content-submission-service";
 import { t, statusConteudoLabel } from "@/lib/fornecedor-i18n";
+import NovoCursoForm from "./NovoCursoForm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Conteúdo dos cursos (Fase B1): a escola descreve cada programa (descrição,
-// destaques, mídia, ficha) e envia; a EXP Tour aprova. Escopado ao supplier.
+// Aba "Cursos" (rótulo; conceito interno continua "conteúdo"): a escola cria o
+// curso (rascunho oculto — ver NovoCursoForm), descreve cada um (descrição,
+// destaques, mídia, ficha) e envia; a EXP Tour aprova o conteúdo E publica o
+// curso (ver content-admin-service.aprovarConteudoPeloAdmin). Escopado ao supplier.
 export default async function ConteudoFornecedorPage() {
   const sessao = await exigirFornecedor("/fornecedor/conteudo");
   const supabase = getServiceClient();
@@ -25,9 +28,9 @@ export default async function ConteudoFornecedorPage() {
 
   const T = t(sessao.language, {
     pt: {
-      titulo: "Conteúdo dos cursos",
+      titulo: "Cursos",
       subtitulo:
-        "Descreva cada curso (descrição, destaques, o que inclui, fotos/vídeo e a ficha) — é o que o estudante vê na cotação. Você edita um rascunho e envia; a EXP Tour aprova e publica.",
+        "Cadastre seus cursos e descreva cada um (descrição, destaques, o que inclui, fotos/vídeo e a ficha) — é o que o estudante vê na cotação. Você edita um rascunho e envia; a EXP Tour aprova e publica.",
       nenhumCurso: "Nenhum curso cadastrado ainda.",
       curso: "Curso",
       conteudo: "Conteúdo",
@@ -36,9 +39,9 @@ export default async function ConteudoFornecedorPage() {
       editarConteudo: "Editar conteúdo →",
     },
     en: {
-      titulo: "Course content",
+      titulo: "Courses",
       subtitulo:
-        "Describe each course (description, highlights, what's included, photos/video and details) — this is what students see in the quote. Edit a draft and submit it; EXP Tour approves and publishes it.",
+        "Register your courses and describe each one (description, highlights, what's included, photos/video and details) — this is what students see in the quote. Edit a draft and submit it; EXP Tour approves and publishes it.",
       nenhumCurso: "No courses registered yet.",
       curso: "Course",
       conteudo: "Content",
@@ -54,6 +57,8 @@ export default async function ConteudoFornecedorPage() {
       <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         {T.subtitulo}
       </p>
+
+      <NovoCursoForm idioma={sessao.language} />
 
       {programas.length === 0 ? (
         <p style={{ color: "var(--p-muted)", fontSize: 14 }}>{T.nenhumCurso}</p>

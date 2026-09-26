@@ -35,11 +35,11 @@ export default async function EscolasFornecedorPage() {
       editarConteudo: "Editar conteúdo →",
     },
     en: {
-      titulo: "School content",
+      titulo: "Campus content",
       subtitulo:
-        "Describe each campus (about the school, highlights, photos, facilities, accreditations and nationality mix). Edit a draft and submit it; EXP Tour approves and publishes it.",
-      nenhumaEscola: "No schools registered yet.",
-      escola: "School",
+        "Describe each campus (about it, highlights, photos, facilities, accreditations and nationality mix). Edit a draft and submit it; EXP Tour approves and publishes it.",
+      nenhumaEscola: "No campus registered yet.",
+      escola: "Campus",
       conteudo: "Content",
       semConteudo: "No content",
       ver: "View →",

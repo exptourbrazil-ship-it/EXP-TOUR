@@ -43,10 +43,15 @@ export default function DisponibilidadeClient({
   endpoint,
   supplierId,
   programas,
+  permitirCriar = true,
 }: {
   endpoint: string;
   supplierId?: string;
   programas: Programa[];
+  // false no Portal do Fornecedor: a criação de curso mudou pra aba "Cursos"
+  // (rascunho oculto até aprovação — ver NovoCursoForm). O admin mantém a
+  // criação aqui (publica na hora), por isso o default é true.
+  permitirCriar?: boolean;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
@@ -122,19 +127,22 @@ export default function DisponibilidadeClient({
         </div>
       ) : null}
 
-      {/* Novo programa */}
-      <div style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 18 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#042f1b", marginBottom: 10 }}>Novo programa</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome (ex.: General English)" style={inp(220)} />
-          <input value={idioma} onChange={(e) => setIdioma(e.target.value)} placeholder="Idioma (ex.: en)" style={inp(120)} />
-          <input value={durMin} onChange={(e) => setDurMin(e.target.value)} placeholder="Dur. mín (sem)" style={inp(110)} inputMode="numeric" />
-          <input value={durMax} onChange={(e) => setDurMax(e.target.value)} placeholder="Dur. máx (sem)" style={inp(110)} inputMode="numeric" />
-          <button type="button" onClick={criarPrograma} disabled={ocupado} style={btnPrim(ocupado)}>
-            Adicionar
-          </button>
+      {/* Novo programa (só quando permitirCriar — hoje só no admin; no portal a
+          criação de curso mora na aba "Cursos") */}
+      {permitirCriar ? (
+        <div style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#042f1b", marginBottom: 10 }}>Novo programa</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome (ex.: General English)" style={inp(220)} />
+            <input value={idioma} onChange={(e) => setIdioma(e.target.value)} placeholder="Idioma (ex.: en)" style={inp(120)} />
+            <input value={durMin} onChange={(e) => setDurMin(e.target.value)} placeholder="Dur. mín (sem)" style={inp(110)} inputMode="numeric" />
+            <input value={durMax} onChange={(e) => setDurMax(e.target.value)} placeholder="Dur. máx (sem)" style={inp(110)} inputMode="numeric" />
+            <button type="button" onClick={criarPrograma} disabled={ocupado} style={btnPrim(ocupado)}>
+              Adicionar
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {programas.length === 0 ? (
         <p style={{ color: "#6b7280", fontSize: 14 }}>Nenhum programa ainda. Cadastre o primeiro acima.</p>

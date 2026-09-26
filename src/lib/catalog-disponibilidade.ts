@@ -186,12 +186,22 @@ export async function listarProgramasComIntakes(
   return programas.map((p) => ({ ...p, intakes: porProduto.get(p.id) ?? [] }));
 }
 
+// Opcoes de criacao: por padrao o produto nasce RASCUNHO OCULTO (status=draft,
+// visibility=hidden) — existe no banco (pode receber conteudo/preco), mas nao
+// aparece em busca/cotacao ate a EXP Tour aprovar o conteudo (ver
+// content-admin-service.aprovarConteudoPeloAdmin, que promove pra
+// active/internal na 1a aprovacao). O admin (api/admin/disponibilidade) passa
+// {status:"active", visibility:"internal"} pra preservar o comportamento
+// anterior (publicacao imediata pela equipe).
+export type OpcoesCriacaoProduto = { status?: string; visibility?: string };
+
 // Cria um programa (self-service da escola). source='supplier'.
 export async function criarPrograma(
   supabase: SupabaseClient,
   supplierId: string,
   tenantId: string,
-  dados: ProgramaDados
+  dados: ProgramaDados,
+  opcoes: OpcoesCriacaoProduto = {}
 ): Promise<string> {
   const campusId = await garantirCampusDoFornecedor(supabase, supplierId, tenantId);
   const { data: prod, error } = await supabase
@@ -202,8 +212,8 @@ export async function criarPrograma(
       kind: "program",
       name: dados.name,
       source: "supplier",
-      visibility: "internal",
-      status: "active",
+      visibility: opcoes.visibility ?? "hidden",
+      status: opcoes.status ?? "draft",
       default_unit: "week",
       min_duration: dados.minDuration,
       max_duration: dados.maxDuration,
@@ -398,12 +408,14 @@ export async function listarAcomodacoesComPeriodos(
   return acomodacoes.map((a) => ({ ...a, periodos: porProduto.get(a.id) ?? [] }));
 }
 
-// Cria uma acomodacao (self-service da escola). source='supplier'.
+// Cria uma acomodacao (self-service da escola). source='supplier'. Mesma regra
+// de rascunho oculto por padrao — ver OpcoesCriacaoProduto acima.
 export async function criarAcomodacao(
   supabase: SupabaseClient,
   supplierId: string,
   tenantId: string,
-  dados: AcomodacaoDados
+  dados: AcomodacaoDados,
+  opcoes: OpcoesCriacaoProduto = {}
 ): Promise<string> {
   const campusId = await garantirCampusDoFornecedor(supabase, supplierId, tenantId);
   const { data: prod, error } = await supabase
@@ -414,8 +426,8 @@ export async function criarAcomodacao(
       kind: "accommodation",
       name: dados.name,
       source: "supplier",
-      visibility: "internal",
-      status: "active",
+      visibility: opcoes.visibility ?? "hidden",
+      status: opcoes.status ?? "draft",
       default_unit: "week",
     })
     .select("id")

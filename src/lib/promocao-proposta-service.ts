@@ -178,6 +178,81 @@ export async function criarPropostasPromocao(
   return out;
 }
 
+// ── Criação MANUAL pelo fornecedor (sem material/IA) ────────────────────────
+// A escola monta a proposta do zero no proprio portal (aba Preços) e ela entra
+// na MESMA fila do admin — so aprovarPropostaPromocao publica (nunca grava
+// promotion viva direto). supplier_id e SEMPRE o da sessao (nunca aceito do
+// corpo). A tabela promotion_submission NAO tem status 'draft' (so
+// pending_admin/processing/approved/rejected — diferente de price_submission);
+// a proposta nasce 'pending_admin' e a escola ainda pode corrigi-la enquanto o
+// admin nao comecou a revisar (ver atualizarPropostaFornecedor).
+export async function criarPropostaFornecedor(
+  supabase: SupabaseClient,
+  args: { tenantId: string; supplierId: string; entrada: Record<string, unknown>; actor: string },
+): Promise<{ ok: true; id: string } | { ok: false; erro: string; falhas?: Falha[] }> {
+  const entrada = { ...args.entrada, supplier_id: args.supplierId };
+  const v = validarPromocao(entrada);
+  if (!v.ok) return { ok: false, erro: ERRO_LABEL.validacao, falhas: v.falhas };
+
+  const { data, error } = await supabase
+    .from("promotion_submission")
+    .insert({
+      tenant_id: args.tenantId,
+      supplier_id: args.supplierId,
+      campus_id: v.valor.promotion.campus_id,
+      source_material_id: null,
+      source_filename: null,
+      extracted: {},
+      entrada: { ...v.valor.promotion, targets: v.valor.targets },
+      avisos: [],
+      status: "pending_admin",
+      created_by: args.actor,
+      submitted_by: args.actor,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    if (error) console.error("[promocao-proposta] criar (fornecedor):", error.message);
+    return { ok: false, erro: "Falha ao enviar a proposta." };
+  }
+  return { ok: true, id: (data as { id: string }).id };
+}
+
+// Edita a proposta ENQUANTO 'pending_admin' — o admin ainda nao comecou a
+// revisar (nao ha 'processing'/'approved'/'rejected'). Reconfere posse
+// (supplier_id da sessao) e trava por status na propria mutacao, mesma defesa
+// em profundidade das demais telas do fornecedor.
+export async function atualizarPropostaFornecedor(
+  supabase: SupabaseClient,
+  args: { tenantId: string; supplierId: string; id: string; entrada: Record<string, unknown> },
+): Promise<{ ok: true } | { ok: false; erro: string; falhas?: Falha[] }> {
+  const atual = await obterPropostaPromocao(supabase, args.tenantId, args.id);
+  if (!atual || atual.supplierId !== args.supplierId) return { ok: false, erro: "Proposta não encontrada." };
+  if (atual.status !== "pending_admin") {
+    return { ok: false, erro: "Esta proposta já está em análise ou foi decidida — não é mais editável." };
+  }
+
+  const entrada = { ...args.entrada, supplier_id: args.supplierId };
+  const v = validarPromocao(entrada);
+  if (!v.ok) return { ok: false, erro: ERRO_LABEL.validacao, falhas: v.falhas };
+
+  const { data, error } = await supabase
+    .from("promotion_submission")
+    .update({
+      campus_id: v.valor.promotion.campus_id,
+      entrada: { ...v.valor.promotion, targets: v.valor.targets },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", args.id)
+    .eq("tenant_id", args.tenantId)
+    .eq("supplier_id", args.supplierId) // defesa em profundidade (posse na propria mutacao)
+    .eq("status", "pending_admin")
+    .select("id");
+  if (error) return { ok: false, erro: "Falha ao salvar as alterações." };
+  if (!data || data.length === 0) return { ok: false, erro: "Esta proposta já está em análise ou foi decidida." };
+  return { ok: true };
+}
+
 // Destrava propostas presas em 'processing' (claim obsoleto). Escopo tenant (+ id).
 // Chamado na aprovacao/recusa (por id) e pelo cron (tenant inteiro) — nunca em render.
 export async function liberarProcessingObsoleto(supabase: SupabaseClient, tenantId: string, id?: string): Promise<void> {

@@ -4,6 +4,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizarPriceListExtraido, contarItens, type PriceListExtraido } from "@/lib/price-list-extract";
 
+// Rascunho vazio (mesma forma normalizada) para a criacao manual — sem PDF,
+// sem IA. A escola preenche do zero no mesmo PriceListEditor.
+function priceListVazio(): PriceListExtraido {
+  return normalizarPriceListExtraido({});
+}
+
 export type SubmissionStatus = "draft" | "pending_admin" | "approved" | "rejected";
 
 export type SubmissionResumo = {
@@ -71,6 +77,25 @@ export async function criarSubmission(
     .single();
   if (error || !data) return { ok: false, erro: "Falha ao registrar o price list." };
   return { ok: true, id: data.id as string };
+}
+
+// Irma de criarSubmission: cria um rascunho VAZIO, sem PDF/IA — a escola monta a
+// tabela de preco do zero no mesmo editor (PriceListEditor). Mesma linha no
+// banco, so difere a origem dos dados (nenhum arquivo, extract_status="manual").
+export async function criarSubmissionManual(
+  supabase: SupabaseClient,
+  entrada: { tenantId: string; supplierId: string; campusId: string | null; createdBy: string }
+): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
+  return criarSubmission(supabase, {
+    tenantId: entrada.tenantId,
+    supplierId: entrada.supplierId,
+    campusId: entrada.campusId,
+    sourceStoragePath: null,
+    sourceFilename: null,
+    extracted: priceListVazio(),
+    extractStatus: "manual",
+    createdBy: entrada.createdBy,
+  });
 }
 
 // Submissions do fornecedor (mais recentes primeiro).

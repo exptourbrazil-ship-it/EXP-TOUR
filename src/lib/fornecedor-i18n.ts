@@ -131,7 +131,7 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
     },
     en: {
       titulo: "Brand",
-      subtitulo: "These appear in the student's proposal: the site icon next to the school name and the social links as clickable icons. Leave blank whatever your school doesn't have.",
+      subtitulo: "These appear in the student's proposal: the site icon next to the campus name and the social links as clickable icons. Leave blank whatever your campus doesn't have.",
       icone: "Site icon (favicon)",
       salvar: "Save",
       salvando: "Saving…",
@@ -140,6 +140,48 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
       avisoValidacao: "The address needs to be from the network's own site — an Instagram link in the Facebook field is rejected, so the icon doesn't send the student somewhere else.",
       carregando: "Loading…",
       erroCarregar: "Could not load the brand data.",
+    },
+  });
+}
+
+// Textos do bloco "Localizacao e contato" do editor de conteudo de escola
+// (ConteudoEscolaEditor) — campus.address/postal_code/city/region/phone/
+// email/website. Mesmo padrao de decisao da tela "Marca": metadado
+// operacional, sem fluxo de aprovacao, gravacao DIRETA e separada do
+// salvar/enviar do rascunho de conteudo.
+export function textosLocalizacaoContatoCampus(idioma: string | null | undefined) {
+  return t(idioma, {
+    pt: {
+      titulo: "Localização e contato",
+      subtitulo: "Endereço e contato da escola — usados internamente e, quando preenchidos, na proposta do estudante. Diferente do conteúdo acima, isto é salvo direto, sem precisar de aprovação da EXP Tour.",
+      endereco: "Endereço",
+      cep: "CEP / Postal code",
+      cidade: "Cidade",
+      regiao: "Região / Estado / Província",
+      telefone: "Telefone",
+      email: "E-mail",
+      site: "Site",
+      salvar: "Salvar",
+      salvando: "Salvando…",
+      salvo: "Salvo ✓",
+      erroGenerico: "Não foi possível salvar.",
+      falhaConexao: "Falha de conexão.",
+    },
+    en: {
+      titulo: "Location and contact",
+      subtitulo: "The campus's address and contact details — used internally and, when filled in, on the student's proposal. Unlike the content above, this is saved right away, with no EXP Tour approval needed.",
+      endereco: "Address",
+      cep: "Postal code",
+      cidade: "City",
+      regiao: "Region / State / Province",
+      telefone: "Phone",
+      email: "Email",
+      site: "Website",
+      salvar: "Save",
+      salvando: "Saving…",
+      salvo: "Saved ✓",
+      erroGenerico: "Could not save.",
+      falhaConexao: "Connection failed.",
     },
   });
 }

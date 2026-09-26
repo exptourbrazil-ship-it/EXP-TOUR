@@ -23,6 +23,7 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
       extraidoOk: "Rascunho extraído do PDF pela IA. Revise e corrija antes de aprovar.",
       semIa: "Extração automática indisponível — preencha os itens manualmente.",
       falhaExtracao: "Não foi possível ler o PDF automaticamente — preencha os itens manualmente.",
+      manual: "Tabela em branco — adicione os programas, acomodações e taxas.",
     },
     en: {
       voltar: "← Back to Pricing",
@@ -30,6 +31,7 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
       extraidoOk: "Draft extracted from the PDF by AI. Review and correct it before approving.",
       semIa: "Automatic extraction unavailable — fill in the items manually.",
       falhaExtracao: "Could not read the PDF automatically — fill in the items manually.",
+      manual: "Blank table — add the programs, accommodations and fees.",
     },
   });
 
@@ -48,7 +50,9 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
           ? T.extraidoOk
           : sub.extractStatus === "sem_ia"
             ? T.semIa
-            : T.falhaExtracao}
+            : sub.extractStatus === "manual"
+              ? T.manual
+              : T.falhaExtracao}
       </p>
 
       <PriceListEditor id={sub.id} status={sub.status} extracted={sub.extracted} language={sessao.language} />

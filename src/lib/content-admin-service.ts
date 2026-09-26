@@ -155,6 +155,30 @@ export async function aprovarConteudoPeloAdmin(
     }
   }
 
+  // 1a aprovação de um produto criado self-service pelo fornecedor (nasceu
+  // status=draft/visibility=hidden — ver OpcoesCriacaoProduto em
+  // catalog-disponibilidade.ts): promove pra active/internal (ainda NAO
+  // quotable/sellable — isso é outra decisão do admin, ex.: publicar preço).
+  // Produto que já estava active (cadastrado pelo admin ou fluxo anterior) não
+  // é tocado. Guarda por status/visibility atuais (idempotente).
+  const { data: produtoAtual } = await supabase
+    .from("product")
+    .select("status, visibility")
+    .eq("id", det.productId)
+    .maybeSingle();
+  if ((produtoAtual as { status?: string } | null)?.status === "draft" && (produtoAtual as { visibility?: string } | null)?.visibility === "hidden") {
+    const { error: ePromo } = await supabase
+      .from("product")
+      .update({ status: "active", visibility: "internal" })
+      .eq("id", det.productId)
+      .eq("status", "draft")
+      .eq("visibility", "hidden");
+    if (ePromo) {
+      console.error("[content-admin] promover produto pos-aprovacao falhou:", ePromo.message);
+      return { ok: false, erro: "Conteúdo materializado, mas falha ao publicar o produto." };
+    }
+  }
+
   // Marca approved guardado por status (anti-corrida): 0 linhas = já processado.
   const { data: aprovadas, error: eStatus } = await supabase
     .from("content_submission")
