@@ -161,7 +161,7 @@ const EXP_TOUR: TenantBrand = {
 };
 
 // Forio (Manual da Marca v1.1): light-first, sem gradientes, Inter 400/500.
-// Sky Indigo (#7080F4) e EXCLUSIVO do logo/Altus — nao entra na UI.
+// Sky Indigo (#7080F4) e EXCLUSIVO do logo/Chat da Forio — nao entra na UI.
 const FORIO: TenantBrand = {
   slug: "forio",
   theme: "forio",
