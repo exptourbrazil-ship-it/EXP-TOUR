@@ -11,12 +11,15 @@ import {
   validarConteudoProduto,
   validarProgramDetail,
   validarAccommodationDetail,
+  validarDisponibilidadeProduto,
   type ConteudoLocale,
   type MidiaItem,
   type ProgramDetailNormalizado,
   type AccommodationDetailNormalizado,
+  type DisponibilidadeNormalizada,
   type Falha,
 } from "@/lib/produto-conteudo";
+import { validarElegibilidade, type RegraNorm } from "@/lib/elegibilidade";
 
 export type ContentStatus = "draft" | "pending_admin" | "approved" | "rejected";
 export type ProductContentKind = "program" | "accommodation";
@@ -26,6 +29,18 @@ export type ConteudoPayload = {
   media: MidiaItem[];
   programDetail?: ProgramDetailNormalizado;
   accommodationDetail?: AccommodationDetailNormalizado;
+  // Duração/janela do PRODUTO (min_duration/max_duration/available_from/
+  // available_until — colunas de `product`, nao de program_detail/
+  // accommodation_detail). Opcional: submissions antigas nao tem esse bloco, e
+  // o admin so aplica em `product` quando ele estiver presente (ver
+  // content-admin-service.aprovarConteudoPeloAdmin).
+  disponibilidade?: DisponibilidadeNormalizada;
+  // Regras de ELEGIBILIDADE propostas pelo fornecedor (eligibility_rule) — só
+  // para kind='program' (é conceito de curso). Mesmo padrão de decisão de
+  // `disponibilidade`: bloco OPCIONAL (ausência != "limpar regras existentes");
+  // o admin SUBSTITUI o conjunto de regras do produto só quando o bloco está
+  // presente no payload (ver content-admin-service.aprovarConteudoPeloAdmin).
+  elegibilidade?: RegraNorm[];
 };
 
 export type ContentSubmissionResumo = {
@@ -53,14 +68,30 @@ export function validarPayloadConteudo(
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const cm = validarConteudoProduto({ product_id: productId, content: o.content, media: o.media });
   if (!cm.ok) return { ok: false, falhas: cm.falhas };
+  // Bloco de duração/disponibilidade do PRODUTO: so entra no payload quando o
+  // chamador o envia (ausencia != "limpar" — ver comentario no tipo ConteudoPayload).
+  let disponibilidade: DisponibilidadeNormalizada | undefined;
+  if (o.disponibilidade !== undefined) {
+    const dv = validarDisponibilidadeProduto(o.disponibilidade);
+    if (!dv.ok) return { ok: false, falhas: dv.falhas };
+    disponibilidade = dv.valor;
+  }
   if (kind === "accommodation") {
     const ad = validarAccommodationDetail(o.accommodationDetail);
     if (!ad.ok) return { ok: false, falhas: ad.falhas };
-    return { ok: true, valor: { content: cm.valor.content, media: cm.valor.media, accommodationDetail: ad.valor } };
+    return { ok: true, valor: { content: cm.valor.content, media: cm.valor.media, accommodationDetail: ad.valor, disponibilidade } };
   }
   const pd = validarProgramDetail(o.programDetail);
   if (!pd.ok) return { ok: false, falhas: pd.falhas };
-  return { ok: true, valor: { content: cm.valor.content, media: cm.valor.media, programDetail: pd.valor } };
+  // Elegibilidade: só para curso (kind==='program'). Mesmo padrão de
+  // `disponibilidade` — bloco só entra no payload quando o chamador o envia.
+  let elegibilidade: RegraNorm[] | undefined;
+  if (o.elegibilidade !== undefined) {
+    const ev = validarElegibilidade({ product_id: productId, regras: o.elegibilidade });
+    if (!ev.ok) return { ok: false, falhas: ev.falhas };
+    elegibilidade = ev.valor.regras;
+  }
+  return { ok: true, valor: { content: cm.valor.content, media: cm.valor.media, programDetail: pd.valor, disponibilidade, elegibilidade } };
 }
 
 // Posse: o produto tem que ser do KIND pedido e de um campus do fornecedor.
@@ -83,9 +114,10 @@ async function produtoDoFornecedor(
 
 // Lê o conteúdo VIVO do produto para semear o rascunho inicial.
 async function conteudoVivo(supabase: SupabaseClient, productId: string, kind: ProductContentKind): Promise<ConteudoPayload> {
-  const [{ data: content }, { data: media }] = await Promise.all([
+  const [{ data: content }, { data: media }, { data: produto }] = await Promise.all([
     supabase.from("product_content").select("locale, description_html, highlights, inclusions, exclusions, not_ideal_for, is_machine_translated").eq("product_id", productId),
     supabase.from("product_media").select("url, kind, sort, caption").eq("product_id", productId).order("sort"),
+    supabase.from("product").select("min_duration, max_duration, available_from, available_until").eq("id", productId).maybeSingle(),
   ]);
   let detail: Record<string, unknown> = {};
   if (kind === "accommodation") {
@@ -94,8 +126,17 @@ async function conteudoVivo(supabase: SupabaseClient, productId: string, kind: P
   } else {
     const { data } = await supabase.from("program_detail").select("education_type, subject, language, delivery_method, format, institution_type, grades, lessons_per_week, hours_per_week, is_pathway, includes_activities, timetable").eq("product_id", productId).maybeSingle();
     detail = { programDetail: data ?? {} };
+    // Elegibilidade viva (eligibility_rule) — só para curso. Semeia o rascunho
+    // com as regras JÁ CADASTRADAS (pelo admin ou por um envio anterior), para
+    // o fornecedor não começar do zero e não apagar regras sem perceber.
+    const { data: regras } = await supabase
+      .from("eligibility_rule")
+      .select("group_index, attribute, operator, value, is_blocking")
+      .eq("product_id", productId);
+    detail = { ...detail, elegibilidade: regras ?? [] };
   }
-  const norm = validarPayloadConteudo(productId, { content: content ?? [], media: media ?? [], ...detail }, kind);
+  const disponibilidade = (produto as { min_duration?: number | null; max_duration?: number | null; available_from?: string | null; available_until?: string | null } | null) ?? {};
+  const norm = validarPayloadConteudo(productId, { content: content ?? [], media: media ?? [], disponibilidade, ...detail }, kind);
   return norm.ok ? norm.valor : payloadVazio(kind);
 }
 

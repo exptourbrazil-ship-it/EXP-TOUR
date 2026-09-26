@@ -47,6 +47,12 @@ const DIAS = (idioma: string | undefined) => t(idioma, {
 type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; not_ideal_for: string; is_machine_translated: boolean };
 type MidiaForm = { url: string; kind: string; caption: string };
 type FichaForm = { accommodation_type: string; room_type: string; bathroom_type: string; meal_plan: string; distance_to_campus_minutes: string; check_in_weekday: string; check_out_weekday: string };
+// Duração/disponibilidade do PRODUTO (min_duration/max_duration em SEMANAS +
+// available_from/available_until — colunas de `product`, nao de
+// accommodation_detail). Vai no MESMO rascunho de conteúdo; o admin aplica em
+// `product` na aprovação (content-admin-service.aprovarConteudoPeloAdmin).
+type DisponibilidadeForm = { min_duration: string; max_duration: string; available_from: string; available_until: string };
+const vazioDisponibilidade = (): DisponibilidadeForm => ({ min_duration: "", max_duration: "", available_from: "", available_until: "" });
 
 const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16 };
 const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "var(--p-ink)", boxSizing: "border-box", fontFamily: "var(--p-body)" };
@@ -72,6 +78,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
   });
   const [midias, setMidias] = useState<MidiaForm[]>([]);
   const [ficha, setFicha] = useState<FichaForm>({ accommodation_type: "", room_type: "", bathroom_type: "", meal_plan: "", distance_to_campus_minutes: "", check_in_weekday: "", check_out_weekday: "" });
+  const [disp, setDisp] = useState<DisponibilidadeForm>(vazioDisponibilidade());
 
   const editavel = status === "draft";
   const TX = textosEditorConteudo(idioma);
@@ -93,6 +100,11 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       checkIn: "Check-in",
       checkOut: "Check-out",
       fotosVideos: "Fotos e vídeos",
+      duracaoDisponibilidade: "Duração e disponibilidade",
+      duracaoMin: "Duração mín. (semanas)",
+      duracaoMax: "Duração máx. (semanas)",
+      disponivelDe: "Disponível de",
+      disponivelAte: "Disponível até",
     },
     en: {
       descricaoEPoliticas: "Description and policies",
@@ -110,6 +122,11 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       checkIn: "Check-in",
       checkOut: "Check-out",
       fotosVideos: "Photos and videos",
+      duracaoDisponibilidade: "Duration and availability",
+      duracaoMin: "Min. duration (weeks)",
+      duracaoMax: "Max. duration (weeks)",
+      disponivelDe: "Available from",
+      disponivelAte: "Available until",
     },
   });
 
@@ -148,6 +165,13 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       meal_plan: ad.meal_plan ?? "", distance_to_campus_minutes: ad.distance_to_campus_minutes != null ? String(ad.distance_to_campus_minutes) : "",
       check_in_weekday: ad.check_in_weekday != null ? String(ad.check_in_weekday) : "", check_out_weekday: ad.check_out_weekday != null ? String(ad.check_out_weekday) : "",
     });
+    const dp = p.disponibilidade ?? {};
+    setDisp({
+      min_duration: dp.min_duration != null ? String(dp.min_duration) : "",
+      max_duration: dp.max_duration != null ? String(dp.max_duration) : "",
+      available_from: dp.available_from ?? "",
+      available_until: dp.available_until ?? "",
+    });
   }
 
   function montarPayload() {
@@ -159,6 +183,10 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
         bathroom_type: ficha.bathroom_type || undefined, meal_plan: ficha.meal_plan || undefined,
         distance_to_campus_minutes: ficha.distance_to_campus_minutes || undefined,
         check_in_weekday: ficha.check_in_weekday || undefined, check_out_weekday: ficha.check_out_weekday || undefined,
+      },
+      disponibilidade: {
+        min_duration: disp.min_duration || undefined, max_duration: disp.max_duration || undefined,
+        available_from: disp.available_from || undefined, available_until: disp.available_until || undefined,
       },
     };
   }
@@ -196,6 +224,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
   const c = porLocale[aba];
   const setLoc = (patch: Partial<ConteudoForm>) => setPorLocale((s) => ({ ...s, [aba]: { ...s[aba], ...patch } }));
   const setF = (patch: Partial<FichaForm>) => setFicha((s) => ({ ...s, ...patch }));
+  const setD = (patch: Partial<DisponibilidadeForm>) => setDisp((s) => ({ ...s, ...patch }));
   const sel = (opts: { v: string; t: string }[], val: string, on: (v: string) => void) => (
     <select value={val} onChange={(e) => on(e.target.value)} style={inp} disabled={!editavel}>
       {opts.map((o) => <option key={o.v} value={o.v}>{o.t}</option>)}
@@ -261,6 +290,17 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
           <div />
           <div><label style={lbl}>{T.checkIn}</label>{sel(DIAS(idioma), ficha.check_in_weekday, (v) => setF({ check_in_weekday: v }))}</div>
           <div><label style={lbl}>{T.checkOut}</label>{sel(DIAS(idioma), ficha.check_out_weekday, (v) => setF({ check_out_weekday: v }))}</div>
+        </div>
+      </fieldset>
+
+      {/* Duração e disponibilidade (min_duration/max_duration/available_from/available_until em `product`) */}
+      <fieldset style={box} disabled={!editavel}>
+        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.duracaoDisponibilidade}</legend>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><label style={lbl}>{T.duracaoMin}</label><input value={disp.min_duration} onChange={(e) => setD({ min_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
+          <div><label style={lbl}>{T.duracaoMax}</label><input value={disp.max_duration} onChange={(e) => setD({ max_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
+          <div><label style={lbl}>{T.disponivelDe}</label><input type="date" value={disp.available_from} onChange={(e) => setD({ available_from: e.target.value })} style={inp} /></div>
+          <div><label style={lbl}>{T.disponivelAte}</label><input type="date" value={disp.available_until} onChange={(e) => setD({ available_until: e.target.value })} style={inp} /></div>
         </div>
       </fieldset>
 

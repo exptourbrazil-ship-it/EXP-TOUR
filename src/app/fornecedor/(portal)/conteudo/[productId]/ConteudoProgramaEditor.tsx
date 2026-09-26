@@ -11,6 +11,7 @@ import {
 } from "@/lib/timetable-editor";
 import { t, statusConteudoLabel, localeConteudoLabel, textosEditorConteudo } from "@/lib/fornecedor-i18n";
 import MidiaPreview from "@/components/MidiaPreview";
+import { ELIG_ATTRIBUTES, ELIG_OPERATORS, ONSHORE_VALUES } from "@/lib/elegibilidade";
 
 // Editor do conteúdo de um curso pela escola (Fase B1). Carrega/cria o rascunho
 // via /api/fornecedor/conteudo (acao "iniciar"), edita conteúdo por locale +
@@ -59,6 +60,69 @@ type ProgramaForm = {
   education_type: string; subject: string; language: string; delivery_method: string; format: string;
   grades: string; lessons_per_week: string; hours_per_week: string; is_pathway: boolean; includes_activities: boolean;
 };
+// Duração/disponibilidade do PRODUTO (min_duration/max_duration em SEMANAS +
+// available_from/available_until — colunas de `product`, nao de
+// program_detail). Vai no MESMO rascunho de conteúdo; o admin aplica em
+// `product` na aprovação (content-admin-service.aprovarConteudoPeloAdmin).
+type DisponibilidadeForm = { min_duration: string; max_duration: string; available_from: string; available_until: string };
+const vazioDisponibilidade = (): DisponibilidadeForm => ({ min_duration: "", max_duration: "", available_from: "", available_until: "" });
+
+// ── Elegibilidade (eligibility_rule) ─────────────────────────────────────────
+// Regras propostas pela escola (kind agnóstico às abas de locale — é uma
+// propriedade do CURSO). Mesma semântica do editor do admin
+// (src/components/ElegibilidadeEditor.tsx): mesmo group_index = E; grupos
+// diferentes = OU. A validação real (motor puro) é do servidor; aqui só
+// montamos o `value` cru conforme atributo/operador.
+type RegraEligForm = {
+  group_index: string;
+  attribute: string;
+  operator: string;
+  is_blocking: boolean;
+  vSingle: string;
+  vMin: string;
+  vMax: string;
+  vList: string;
+  vBool: boolean;
+};
+
+function regraEligParaForm(r: any): RegraEligForm {
+  const base: RegraEligForm = {
+    group_index: String(r.group_index ?? 0),
+    attribute: r.attribute ?? "nationality",
+    operator: r.operator ?? "eq",
+    is_blocking: !!r.is_blocking,
+    vSingle: "", vMin: "", vMax: "", vList: "", vBool: false,
+  };
+  const v = r.value;
+  if (r.operator === "between" && Array.isArray(v)) {
+    base.vMin = String(v[0] ?? "");
+    base.vMax = String(v[1] ?? "");
+  } else if ((r.operator === "in" || r.operator === "not_in") && Array.isArray(v)) {
+    base.vList = v.join(", ");
+  } else if (r.attribute === "has_visa") {
+    base.vBool = v === true;
+  } else {
+    base.vSingle = v == null ? "" : String(v);
+  }
+  return base;
+}
+
+function novaRegraElig(): RegraEligForm {
+  return { group_index: "0", attribute: "nationality", operator: "eq", is_blocking: false, vSingle: "", vMin: "", vMax: "", vList: "", vBool: false };
+}
+
+function valorRegraElig(r: RegraEligForm): unknown {
+  if (r.attribute === "has_visa") return r.vBool;
+  switch (r.operator) {
+    case "between":
+      return [r.vMin, r.vMax];
+    case "in":
+    case "not_in":
+      return r.vList.split(",").map((s) => s.trim()).filter(Boolean);
+    default:
+      return r.vSingle;
+  }
+}
 
 const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16 };
 const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "var(--p-ink)", boxSizing: "border-box", fontFamily: "var(--p-body)" };
@@ -212,6 +276,21 @@ function GradeHorarios({ valor, set, idioma }: { valor: TimetableEdit; set: (t: 
   );
 }
 
+const ATTR_LABEL = (idioma: string | undefined) => t(idioma, {
+  pt: {
+    age_at_start: "Idade no início", nationality: "Nacionalidade", residence_country: "País de residência",
+    language_level: "Nível de idioma", education_level: "Nível de ensino", onshore_status: "Onshore/Offshore", has_visa: "Tem visto",
+  } as Record<string, string>,
+  en: {
+    age_at_start: "Age at start", nationality: "Nationality", residence_country: "Country of residence",
+    language_level: "Language level", education_level: "Education level", onshore_status: "Onshore/Offshore", has_visa: "Has visa",
+  } as Record<string, string>,
+});
+const OP_LABEL = (idioma: string | undefined) => t(idioma, {
+  pt: { between: "entre", in: "em", not_in: "fora de", gte: ">=", lte: "<=", eq: "=" } as Record<string, string>,
+  en: { between: "between", in: "in", not_in: "not in", gte: ">=", lte: "<=", eq: "=" } as Record<string, string>,
+});
+
 export default function ConteudoProgramaEditor({ productId, idioma }: { productId: string; idioma?: string }) {
   const [id, setId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("draft");
@@ -233,6 +312,8 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
     grades: "", lessons_per_week: "", hours_per_week: "", is_pathway: false, includes_activities: false,
   });
   const [timetable, setTimetable] = useState<TimetableEdit>(() => hidratarTimetable(undefined));
+  const [disp, setDisp] = useState<DisponibilidadeForm>(vazioDisponibilidade());
+  const [regrasElig, setRegrasElig] = useState<RegraEligForm[]>([]);
 
   const editavel = status === "draft";
   const TX = textosEditorConteudo(idioma);
@@ -257,6 +338,23 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       incluiAtividades: "Inclui atividades",
       gradeHorarios: "Grade de horários",
       fotosVideos: "Fotos e vídeos",
+      duracaoDisponibilidade: "Duração e disponibilidade",
+      duracaoMin: "Duração mín. (semanas)",
+      duracaoMax: "Duração máx. (semanas)",
+      disponivelDe: "Disponível de",
+      disponivelAte: "Disponível até",
+      elegibilidade: "Elegibilidade",
+      elegibilidadeAjuda: "Regras que definem quem pode cotar este curso — proposta enviada para a EXP Tour revisar. Mesmo grupo = todas as condições precisam valer; grupos diferentes = basta uma. \"Bloqueante\" impede a emissão da cotação (senão é só um aviso).",
+      elegibilidadeVazia: "Sem regras propostas — o curso seria elegível para todos.",
+      grupo: "grupo",
+      bloqueante: "bloqueante",
+      adicionarRegra: "+ Adicionar regra",
+      valorPlaceholder: "valor",
+      listaPlaceholder: "valores separados por vírgula",
+      onshorePlaceholder: "onshore, offshore",
+      selecione: "Selecione…",
+      sim: "Sim",
+      nao: "Não",
     },
     en: {
       descricaoELista: "Description and lists",
@@ -277,6 +375,23 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       incluiAtividades: "Includes activities",
       gradeHorarios: "Class schedule",
       fotosVideos: "Photos and videos",
+      duracaoDisponibilidade: "Duration and availability",
+      duracaoMin: "Min. duration (weeks)",
+      duracaoMax: "Max. duration (weeks)",
+      disponivelDe: "Available from",
+      disponivelAte: "Available until",
+      elegibilidade: "Eligibility",
+      elegibilidadeAjuda: "Rules that define who can quote this course — sent to EXP Tour for review. Same group = all conditions must hold; different groups = any one is enough. \"Blocking\" prevents the quote from being issued (otherwise it's just a warning).",
+      elegibilidadeVazia: "No rules proposed — the course would be eligible for everyone.",
+      grupo: "group",
+      bloqueante: "blocking",
+      adicionarRegra: "+ Add rule",
+      valorPlaceholder: "value",
+      listaPlaceholder: "comma-separated values",
+      onshorePlaceholder: "onshore, offshore",
+      selecione: "Select…",
+      sim: "Yes",
+      nao: "No",
     },
   });
 
@@ -329,6 +444,14 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       is_pathway: !!pd.is_pathway, includes_activities: !!pd.includes_activities,
     });
     setTimetable(hidratarTimetable(pd.timetable));
+    const dp = p.disponibilidade ?? {};
+    setDisp({
+      min_duration: dp.min_duration != null ? String(dp.min_duration) : "",
+      max_duration: dp.max_duration != null ? String(dp.max_duration) : "",
+      available_from: dp.available_from ?? "",
+      available_until: dp.available_until ?? "",
+    });
+    setRegrasElig(Array.isArray(p.elegibilidade) ? p.elegibilidade.map(regraEligParaForm) : []);
   }
 
   function montarPayload() {
@@ -342,6 +465,17 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
         is_pathway: prog.is_pathway, includes_activities: prog.includes_activities,
         timetable: serializarTimetable(timetable),
       },
+      disponibilidade: {
+        min_duration: disp.min_duration || undefined, max_duration: disp.max_duration || undefined,
+        available_from: disp.available_from || undefined, available_until: disp.available_until || undefined,
+      },
+      elegibilidade: regrasElig.map((r) => ({
+        group_index: Number(r.group_index) || 0,
+        attribute: r.attribute,
+        operator: r.attribute === "has_visa" ? "eq" : r.operator,
+        value: valorRegraElig(r),
+        is_blocking: r.is_blocking,
+      })),
     };
   }
 
@@ -393,6 +527,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
   const c = porLocale[aba];
   const setLoc = (patch: Partial<ConteudoForm>) => setPorLocale((s) => ({ ...s, [aba]: { ...s[aba], ...patch } }));
   const setP = (patch: Partial<ProgramaForm>) => setProg((s) => ({ ...s, ...patch }));
+  const setD = (patch: Partial<DisponibilidadeForm>) => setDisp((s) => ({ ...s, ...patch }));
 
   return (
     <div>
@@ -476,6 +611,83 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
           <label style={lbl}>{T.gradeHorarios}</label>
           <GradeHorarios valor={timetable} set={setTimetable} idioma={idioma} />
         </div>
+      </fieldset>
+
+      {/* Duração e disponibilidade (min_duration/max_duration/available_from/available_until em `product`) */}
+      <fieldset style={box} disabled={!editavel}>
+        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.duracaoDisponibilidade}</legend>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><label style={lbl}>{T.duracaoMin}</label><input value={disp.min_duration} onChange={(e) => setD({ min_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
+          <div><label style={lbl}>{T.duracaoMax}</label><input value={disp.max_duration} onChange={(e) => setD({ max_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
+          <div><label style={lbl}>{T.disponivelDe}</label><input type="date" value={disp.available_from} onChange={(e) => setD({ available_from: e.target.value })} style={inp} /></div>
+          <div><label style={lbl}>{T.disponivelAte}</label><input type="date" value={disp.available_until} onChange={(e) => setD({ available_until: e.target.value })} style={inp} /></div>
+        </div>
+      </fieldset>
+
+      {/* Elegibilidade (eligibility_rule) */}
+      <fieldset style={box} disabled={!editavel}>
+        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.elegibilidade}</legend>
+        <p style={{ marginTop: 0, marginBottom: 10, fontSize: 12, color: "var(--p-muted)" }}>{T.elegibilidadeAjuda}</p>
+        {regrasElig.length === 0 ? (
+          <p style={{ marginBottom: 10, fontSize: 13, color: "var(--p-muted)" }}>{T.elegibilidadeVazia}</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+            {regrasElig.map((r, i) => {
+              const isVisa = r.attribute === "has_visa";
+              const isOnshore = r.attribute === "onshore_status";
+              const op = isVisa ? "eq" : r.operator;
+              const upd = (patch: Partial<RegraEligForm>) => setRegrasElig((a) => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              return (
+                <div key={i} style={{ border: "1px solid var(--p-line)", borderRadius: 8, background: "#fff", padding: 8 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{T.grupo}</span>
+                    <input type="number" min={0} value={r.group_index} onChange={(e) => upd({ group_index: e.target.value })} style={{ ...inp, width: 60 }} />
+                    <select value={r.attribute} onChange={(e) => upd({ attribute: e.target.value })} style={{ ...inp, width: 170 }}>
+                      {ELIG_ATTRIBUTES.map((a) => <option key={a} value={a}>{ATTR_LABEL(idioma)[a] ?? a}</option>)}
+                    </select>
+                    {!isVisa ? (
+                      <select value={r.operator} onChange={(e) => upd({ operator: e.target.value })} style={{ ...inp, width: 110 }}>
+                        {ELIG_OPERATORS.map((o) => <option key={o} value={o}>{OP_LABEL(idioma)[o] ?? o}</option>)}
+                      </select>
+                    ) : <span style={{ fontSize: 12, color: "var(--p-muted)" }}>=</span>}
+
+                    {isVisa ? (
+                      <select value={r.vBool ? "1" : "0"} onChange={(e) => upd({ vBool: e.target.value === "1" })} style={{ ...inp, width: 100 }}>
+                        <option value="1">{T.sim}</option>
+                        <option value="0">{T.nao}</option>
+                      </select>
+                    ) : op === "between" ? (
+                      <>
+                        <input type="number" placeholder="mín" value={r.vMin} onChange={(e) => upd({ vMin: e.target.value })} style={{ ...inp, width: 80 }} />
+                        <input type="number" placeholder="máx" value={r.vMax} onChange={(e) => upd({ vMax: e.target.value })} style={{ ...inp, width: 80 }} />
+                      </>
+                    ) : op === "in" || op === "not_in" ? (
+                      <input value={r.vList} onChange={(e) => upd({ vList: e.target.value })} style={{ ...inp, flex: 1, minWidth: 140 }} placeholder={isOnshore ? T.onshorePlaceholder : T.listaPlaceholder} />
+                    ) : isOnshore ? (
+                      <select value={r.vSingle} onChange={(e) => upd({ vSingle: e.target.value })} style={{ ...inp, width: 140 }}>
+                        <option value="">{T.selecione}</option>
+                        {ONSHORE_VALUES.map((v) => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    ) : (
+                      <input value={r.vSingle} onChange={(e) => upd({ vSingle: e.target.value })} style={{ ...inp, flex: 1, minWidth: 140 }} placeholder={T.valorPlaceholder} />
+                    )}
+
+                    <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--p-ink)" }}>
+                      <input type="checkbox" checked={r.is_blocking} onChange={(e) => upd({ is_blocking: e.target.checked })} /> {T.bloqueante}
+                    </label>
+                    <button type="button" onClick={() => setRegrasElig((a) => a.filter((_, j) => j !== i))} style={{ fontSize: 12, color: "#b91c1c", background: "none", border: "none", cursor: "pointer" }}>
+                      {TX.remover}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <button type="button" onClick={() => setRegrasElig((a) => [...a, novaRegraElig()])}
+          style={{ border: "1px solid var(--p-line)", background: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 13, color: "var(--p-ink)", cursor: "pointer" }}>
+          {T.adicionarRegra}
+        </button>
       </fieldset>
 
       {/* Mídia */}
