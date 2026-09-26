@@ -6,7 +6,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { salvarConteudoProduto } from "@/lib/produto-conteudo-admin-service";
-import { validarProgramDetail, validarAccommodationDetail, type ProgramDetailNormalizado, type AccommodationDetailNormalizado } from "@/lib/produto-conteudo";
+import {
+  validarProgramDetail,
+  validarAccommodationDetail,
+  validarDisponibilidadeProduto,
+  type ProgramDetailNormalizado,
+  type AccommodationDetailNormalizado,
+  type DisponibilidadeNormalizada,
+} from "@/lib/produto-conteudo";
+import { validarElegibilidade } from "@/lib/elegibilidade";
+import { salvarElegibilidade, ElegibilidadeAdminErro } from "@/lib/elegibilidade-admin-service";
 
 export type ContentKind = "program" | "accommodation";
 
@@ -89,6 +98,20 @@ function linhaProgramDetail(productId: string, pd: ProgramDetailNormalizado) {
   };
 }
 
+// Update parcial de `product` (só os 4 campos de duração/disponibilidade — nunca
+// status/visibility/name/kind/campus_id, que o fornecedor não pode tocar por
+// este caminho). undefined em cada campo mantém o valor atual (patch, não
+// substituição total) — mas aqui gravamos sempre os 4 juntos porque
+// DisponibilidadeNormalizada já normaliza ausência para null explícito.
+function linhaDisponibilidadeProduto(dp: DisponibilidadeNormalizada) {
+  return {
+    min_duration: dp.min_duration,
+    max_duration: dp.max_duration,
+    available_from: dp.available_from,
+    available_until: dp.available_until,
+  };
+}
+
 function linhaAccommodationDetail(productId: string, ad: AccommodationDetailNormalizado) {
   return {
     product_id: productId,
@@ -111,7 +134,8 @@ export async function aprovarConteudoPeloAdmin(
   id: string,
   adminUser: string,
   ip?: string | null,
-): Promise<{ ok: boolean; erro?: string }> {
+  justificativaElegibilidade?: string,
+): Promise<{ ok: boolean; erro?: string; codigo?: "justificativa_elegibilidade_obrigatoria" }> {
   const det = await obterConteudoDetalheAdmin(supabase, tenantId, id);
   if (!det) return { ok: false, erro: "Conteúdo não encontrado." };
   if (det.status !== "pending_admin") return { ok: false, erro: "Este conteúdo não está pendente de aprovação." };
@@ -124,6 +148,49 @@ export async function aprovarConteudoPeloAdmin(
   const adv = det.kind === "accommodation" ? validarAccommodationDetail(payload.accommodationDetail) : null;
   if (pdv && !pdv.ok) return { ok: false, erro: "A ficha do curso está inválida. Peça um novo envio à escola." };
   if (adv && !adv.ok) return { ok: false, erro: "A ficha da acomodação está inválida. Peça um novo envio à escola." };
+
+  // Bloco de duração/disponibilidade (min_duration/max_duration/available_from/
+  // available_until — colunas de `product`). Ausente em submissions antigas
+  // (criadas antes deste bloco existir): nesse caso não mexe em `product`.
+  const disponibilidadeRaw = (payload as { disponibilidade?: unknown }).disponibilidade;
+  const dv = disponibilidadeRaw !== undefined ? validarDisponibilidadeProduto(disponibilidadeRaw) : null;
+  if (dv && !dv.ok) return { ok: false, erro: "A duração/disponibilidade está inválida. Peça um novo envio à escola." };
+
+  // Regras de ELEGIBILIDADE propostas (eligibility_rule) — só para curso.
+  // Ausente em submissions antigas/sem proposta: nesse caso não mexe nas
+  // regras já cadastradas (ver comentário no tipo ConteudoPayload).
+  const elegibilidadeRaw = (payload as { elegibilidade?: unknown }).elegibilidade;
+  const ev = det.kind === "program" && elegibilidadeRaw !== undefined
+    ? validarElegibilidade({ product_id: det.productId, regras: elegibilidadeRaw })
+    : null;
+  if (ev && !ev.ok) return { ok: false, erro: "As regras de elegibilidade estão inválidas. Peça um novo envio à escola." };
+
+  // Materializa a elegibilidade proposta ANTES de qualquer outra escrita: se a
+  // proposta remove uma regra bloqueante sem justificativa, `salvarElegibilidade`
+  // recusa (ElegibilidadeAdminErro) — feito primeiro pra aprovação nunca deixar
+  // conteúdo/mídia/ficha/duração já publicados quando essa barreira travar.
+  if (ev && ev.ok) {
+    try {
+      await salvarElegibilidade(supabase, {
+        tenantId,
+        actor: adminUser,
+        ip: ip ?? null,
+        productId: det.productId,
+        regras: ev.valor.regras,
+        justificativa: justificativaElegibilidade,
+      });
+    } catch (e) {
+      if (e instanceof ElegibilidadeAdminErro && e.codigo === "justificativa_obrigatoria") {
+        return {
+          ok: false,
+          erro: "Esta proposta remove uma regra de elegibilidade bloqueante — informe uma justificativa para aprovar.",
+          codigo: "justificativa_elegibilidade_obrigatoria",
+        };
+      }
+      console.error("[content-admin] materializar elegibilidade falhou:", e instanceof Error ? e.message : e);
+      return { ok: false, erro: "Falha ao materializar as regras de elegibilidade." };
+    }
+  }
 
   // Materializa conteúdo + mídia (valida posse por tenant lá dentro + auditoria própria).
   try {
@@ -152,6 +219,41 @@ export async function aprovarConteudoPeloAdmin(
     if (error) {
       console.error("[content-admin] upsert accommodation_detail falhou:", error.message);
       return { ok: false, erro: "Falha ao materializar a ficha da acomodação." };
+    }
+  }
+
+  // Materializa a duração/disponibilidade em `product` (só os 4 campos — ver
+  // linhaDisponibilidadeProduto). Feito no mesmo passo que o resto do conteúdo,
+  // antes da promoção de status/visibility abaixo, que também escreve em product.
+  if (dv && dv.ok) {
+    const { error } = await supabase.from("product").update(linhaDisponibilidadeProduto(dv.valor)).eq("id", det.productId);
+    if (error) {
+      console.error("[content-admin] atualizar disponibilidade do produto falhou:", error.message);
+      return { ok: false, erro: "Falha ao materializar a duração/disponibilidade." };
+    }
+  }
+
+  // 1a aprovação de um produto criado self-service pelo fornecedor (nasceu
+  // status=draft/visibility=hidden — ver OpcoesCriacaoProduto em
+  // catalog-disponibilidade.ts): promove pra active/internal (ainda NAO
+  // quotable/sellable — isso é outra decisão do admin, ex.: publicar preço).
+  // Produto que já estava active (cadastrado pelo admin ou fluxo anterior) não
+  // é tocado. Guarda por status/visibility atuais (idempotente).
+  const { data: produtoAtual } = await supabase
+    .from("product")
+    .select("status, visibility")
+    .eq("id", det.productId)
+    .maybeSingle();
+  if ((produtoAtual as { status?: string } | null)?.status === "draft" && (produtoAtual as { visibility?: string } | null)?.visibility === "hidden") {
+    const { error: ePromo } = await supabase
+      .from("product")
+      .update({ status: "active", visibility: "internal" })
+      .eq("id", det.productId)
+      .eq("status", "draft")
+      .eq("visibility", "hidden");
+    if (ePromo) {
+      console.error("[content-admin] promover produto pos-aprovacao falhou:", ePromo.message);
+      return { ok: false, erro: "Conteúdo materializado, mas falha ao publicar o produto." };
     }
   }
 

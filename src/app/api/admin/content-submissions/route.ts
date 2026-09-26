@@ -41,8 +41,11 @@ export async function POST(request: Request) {
   const ip = obterIp(request);
 
   if (acao === "aprovar") {
-    const r = await aprovarConteudoPeloAdmin(supabase, tenantId, id, adminUser, ip);
-    return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 400 });
+    const justificativaElegibilidade = typeof body?.justificativaElegibilidade === "string" ? body.justificativaElegibilidade.trim() : undefined;
+    const r = await aprovarConteudoPeloAdmin(supabase, tenantId, id, adminUser, ip, justificativaElegibilidade);
+    return r.ok
+      ? NextResponse.json({ ok: true })
+      : NextResponse.json({ ok: false, erro: r.erro, codigo: r.codigo }, { status: 400 });
   }
   if (acao === "rejeitar") {
     const motivo = typeof body?.motivo === "string" ? body.motivo.trim() : "";

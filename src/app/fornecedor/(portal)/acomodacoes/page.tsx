@@ -3,6 +3,7 @@ import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { listarProdutosDoFornecedor, listarConteudoDoFornecedor } from "@/lib/content-submission-service";
 import { t, statusConteudoLabel } from "@/lib/fornecedor-i18n";
+import NovaAcomodacaoForm from "./NovaAcomodacaoForm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,8 @@ export default async function AcomodacoesFornecedorPage() {
       <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         {T.subtitulo}
       </p>
+
+      <NovaAcomodacaoForm idioma={sessao.language} />
 
       {produtos.length === 0 ? (
         <p style={{ color: "var(--p-muted)", fontSize: 14 }}>{T.nenhumaAcomodacao}</p>

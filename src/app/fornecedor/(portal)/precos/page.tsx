@@ -4,6 +4,7 @@ import { getServiceClient } from "@/lib/fornecedor-dados";
 import { listarSubmissionsDoFornecedor } from "@/lib/price-submission-service";
 import { t } from "@/lib/fornecedor-i18n";
 import UploadPriceList from "./UploadPriceList";
+import NovaTabelaPreco from "./NovaTabelaPreco";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,9 @@ export default async function PrecosPage() {
       tabelasTitulo: "Tabelas por carga horária",
       tabelasTexto: "Confira os preços publicados hoje agrupados por aulas por semana e formato de aula, e quais cursos estão em cada tabela.",
       verTabelas: "Ver tabelas →",
+      promocoesTitulo: "Promoções",
+      promocoesTexto: "Proponha descontos, semanas grátis ou isenção de taxa para seus cursos e acomodações. A EXP Tour revisa e publica.",
+      verPromocoes: "Ver promoções →",
       seusEnvios: "Seus envios",
       nenhumEnvio: "Nenhum price list enviado ainda.",
       arquivo: "Arquivo",
@@ -49,6 +53,9 @@ export default async function PrecosPage() {
       tabelasTitulo: "Tables by weekly hours",
       tabelasTexto: "Check today's published prices grouped by lessons per week and lesson format, and which courses are in each table.",
       verTabelas: "View tables →",
+      promocoesTitulo: "Promotions",
+      promocoesTexto: "Propose discounts, free weeks or fee waivers for your courses and accommodation. EXP Tour reviews and publishes them.",
+      verPromocoes: "View promotions →",
       seusEnvios: "Your submissions",
       nenhumEnvio: "No price list submitted yet.",
       arquivo: "File",
@@ -72,7 +79,14 @@ export default async function PrecosPage() {
         {T.intro}
       </p>
 
-      <UploadPriceList language={sessao.language} />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "stretch" }}>
+        <div style={{ flex: "1 1 320px" }}>
+          <UploadPriceList language={sessao.language} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <NovaTabelaPreco language={sessao.language} />
+        </div>
+      </div>
 
       {/* Leitura do que ja esta publicado, agrupado por carga horaria (a tabela
           como objeto, os cursos como etiquetas) — o jeito como a escola de fato
@@ -104,6 +118,38 @@ export default async function PrecosPage() {
           style={{ color: "var(--p-accent-ink)", textDecoration: "none", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}
         >
           {T.verTabelas}
+        </Link>
+      </div>
+
+      {/* Promoções são conceitualmente parte de precificação (desconto/isenção
+          sobre o preço) — sub-seção desta aba, não um item novo no menu. */}
+      <div
+        style={{
+          border: "1px solid var(--p-line)",
+          borderRadius: 12,
+          background: "#fff",
+          padding: "14px 16px",
+          marginTop: 12,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div>
+          <strong style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16 }}>
+            {T.promocoesTitulo}
+          </strong>
+          <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 13, margin: "4px 0 0", maxWidth: "58ch" }}>
+            {T.promocoesTexto}
+          </p>
+        </div>
+        <Link
+          href="/fornecedor/precos/promocoes"
+          style={{ color: "var(--p-accent-ink)", textDecoration: "none", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}
+        >
+          {T.verPromocoes}
         </Link>
       </div>
 

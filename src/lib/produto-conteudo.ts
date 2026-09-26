@@ -710,3 +710,67 @@ export function validarAccommodationDetail(raw: unknown): Resultado<Accommodatio
   if (falhas.length) return { ok: false, falhas };
   return { ok: true, valor };
 }
+
+// ── Validação da DISPONIBILIDADE (duração/janela) do produto ────────────────
+// Bloco proposto pelo fornecedor para editar min_duration/max_duration (em
+// SEMANAS — mesma unidade usada na criação do produto, ver
+// catalog-disponibilidade.ts/NovoCursoForm) e available_from/available_until
+// (colunas de `product`, ver supabase/schema.sql). Kind-agnostico: vale tanto
+// para curso quanto para acomodação. Tudo opcional (produto sem limite/janela
+// definida é válido); só falha em número/data mal formados. É o MESMO padrao
+// dos outros blocos deste arquivo — puro, sem rede/DB.
+export type DisponibilidadeNormalizada = {
+  min_duration: number | null;
+  max_duration: number | null;
+  available_from: string | null;
+  available_until: string | null;
+};
+
+const MAX_DURACAO_SEMANAS = 520; // ~10 anos: teto de sanidade, nao regra de negocio
+
+function optDataOuNull(raw: unknown, campo: string, falhas: Falha[]): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    falhas.push({ campo, erro: "data inválida (use AAAA-MM-DD)" });
+    return null;
+  }
+  return s;
+}
+
+function optDuracaoOuNull(raw: unknown, campo: string, falhas: Falha[]): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    falhas.push({ campo, erro: "deve ser um número inteiro ≥ 0" });
+    return null;
+  }
+  if (n > MAX_DURACAO_SEMANAS) {
+    falhas.push({ campo, erro: `máximo ${MAX_DURACAO_SEMANAS} semanas` });
+    return null;
+  }
+  return n;
+}
+
+export function validarDisponibilidadeProduto(raw: unknown): Resultado<DisponibilidadeNormalizada> {
+  const falhas: Falha[] = [];
+  const o = isObj(raw) ? raw : {};
+
+  const minDuration = optDuracaoOuNull(o.min_duration, "min_duration", falhas);
+  const maxDuration = optDuracaoOuNull(o.max_duration, "max_duration", falhas);
+  if (minDuration != null && maxDuration != null && minDuration > maxDuration) {
+    falhas.push({ campo: "max_duration", erro: "duração máxima não pode ser menor que a mínima" });
+  }
+
+  const availableFrom = optDataOuNull(o.available_from, "available_from", falhas);
+  const availableUntil = optDataOuNull(o.available_until, "available_until", falhas);
+  if (availableFrom && availableUntil && availableUntil < availableFrom) {
+    falhas.push({ campo: "available_until", erro: "data final não pode ser antes da inicial" });
+  }
+
+  if (falhas.length) return { ok: false, falhas };
+  return {
+    ok: true,
+    valor: { min_duration: minDuration, max_duration: maxDuration, available_from: availableFrom, available_until: availableUntil },
+  };
+}

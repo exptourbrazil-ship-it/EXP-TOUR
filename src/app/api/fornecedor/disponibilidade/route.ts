@@ -13,9 +13,13 @@ import {
   salvarPeriodo,
   removerPeriodo,
 } from "@/lib/catalog-disponibilidade";
+import { checarELimitar } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
+const MAX_CRIACAO = Number(process.env.RATE_LIMIT_FORNECEDOR_CRIACAO || "30");
 
 // Endpoint unico da Disponibilidade no Portal do Fornecedor. Despacha por `acao`:
 // criar_programa | arquivar_programa | salvar_intake | remover_intake.
@@ -43,6 +47,9 @@ export async function POST(request: Request) {
 
   try {
     if (acao === "criar_programa") {
+      if (!(await checarELimitar(supabase, `fornecedor-criacao:${sessao.supplierUserId}`, MAX_CRIACAO, JANELA_SEG))) {
+        return NextResponse.json({ ok: false, erro: "Muitas operações em pouco tempo. Aguarde alguns minutos." }, { status: 429 });
+      }
       const v = validarPrograma(body);
       if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
       const id = await criarPrograma(supabase, supplierId, tenantId, v.dados);
@@ -81,6 +88,9 @@ export async function POST(request: Request) {
     }
 
     if (acao === "criar_acomodacao") {
+      if (!(await checarELimitar(supabase, `fornecedor-criacao:${sessao.supplierUserId}`, MAX_CRIACAO, JANELA_SEG))) {
+        return NextResponse.json({ ok: false, erro: "Muitas operações em pouco tempo. Aguarde alguns minutos." }, { status: 429 });
+      }
       const v = validarAcomodacao(body);
       if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
       const id = await criarAcomodacao(supabase, supplierId, tenantId, v.dados);

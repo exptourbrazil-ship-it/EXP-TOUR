@@ -23,14 +23,23 @@ export default async function ConteudoEscolaPage({
   const campus = campi.find((c) => c.id === campusId);
   if (!campus) notFound();
 
+  // Endereco/contato (campus.address/postal_code/city/region/phone/email/website):
+  // valores atuais para semear o bloco "Localizacao e contato" do editor client.
+  // Posse ja confirmada acima via listarCampiDoFornecedor (escopado ao supplier).
+  const { data: infoCampus } = await supabase
+    .from("campus")
+    .select("address, postal_code, city, region, phone, email, website")
+    .eq("id", campusId)
+    .maybeSingle();
+
   const T = t(sessao.language, {
     pt: {
       voltar: "← Voltar às escolas",
       subtitulo: "Descreva a escola para a cotação. Salve o rascunho quando quiser e envie para a EXP Tour aprovar.",
     },
     en: {
-      voltar: "← Back to schools",
-      subtitulo: "Describe the school for the quote. Save the draft whenever you like and submit it for EXP Tour to approve.",
+      voltar: "← Back to campus",
+      subtitulo: "Describe the campus for the quote. Save the draft whenever you like and submit it for EXP Tour to approve.",
     },
   });
 
@@ -45,7 +54,19 @@ export default async function ConteudoEscolaPage({
       <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         {T.subtitulo}
       </p>
-      <ConteudoEscolaEditor campusId={campusId} idioma={sessao.language} />
+      <ConteudoEscolaEditor
+        campusId={campusId}
+        idioma={sessao.language}
+        infoInicial={{
+          address: infoCampus?.address ?? null,
+          postal_code: infoCampus?.postal_code ?? null,
+          city: infoCampus?.city ?? null,
+          region: infoCampus?.region ?? null,
+          phone: infoCampus?.phone ?? null,
+          email: infoCampus?.email ?? null,
+          website: infoCampus?.website ?? null,
+        }}
+      />
     </div>
   );
 }

@@ -45,10 +45,15 @@ export default function AcomodacaoClient({
   endpoint,
   supplierId,
   acomodacoes,
+  permitirCriar = true,
 }: {
   endpoint: string;
   supplierId?: string;
   acomodacoes: Acomodacao[];
+  // false no Portal do Fornecedor: a criação de acomodação mudou pra aba
+  // "Acomodações" (rascunho oculto até aprovação — ver NovaAcomodacaoForm). O
+  // admin mantém a criação aqui (publica na hora), por isso o default é true.
+  permitirCriar?: boolean;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
@@ -115,31 +120,34 @@ export default function AcomodacaoClient({
         </div>
       ) : null}
 
-      {/* Nova acomodacao */}
-      <div style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 18 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#042f1b", marginBottom: 10 }}>Nova acomodação</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome (ex.: Homestay standard)" style={inp(220)} />
-          <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoAcomodacao)} style={inp(180)}>
-            {TIPOS_ACOMODACAO.map((t) => (
-              <option key={t} value={t}>
-                {TIPO_ACOMODACAO_LABEL[t]}
-              </option>
-            ))}
-          </select>
-          <select value={regime} onChange={(e) => setRegime(e.target.value)} style={inp(170)}>
-            <option value="">Regime (opcional)</option>
-            {REGIMES_ACOMODACAO.map((r) => (
-              <option key={r} value={r}>
-                {REGIME_ACOMODACAO_LABEL[r]}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={criar} disabled={ocupado} style={btnPrim(ocupado)}>
-            Adicionar
-          </button>
+      {/* Nova acomodacao (só quando permitirCriar — hoje só no admin; no portal
+          a criação mora na aba "Acomodações") */}
+      {permitirCriar ? (
+        <div style={{ border: "1px solid #d8ccb4", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#042f1b", marginBottom: 10 }}>Nova acomodação</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome (ex.: Homestay standard)" style={inp(220)} />
+            <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoAcomodacao)} style={inp(180)}>
+              {TIPOS_ACOMODACAO.map((t) => (
+                <option key={t} value={t}>
+                  {TIPO_ACOMODACAO_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <select value={regime} onChange={(e) => setRegime(e.target.value)} style={inp(170)}>
+              <option value="">Regime (opcional)</option>
+              {REGIMES_ACOMODACAO.map((r) => (
+                <option key={r} value={r}>
+                  {REGIME_ACOMODACAO_LABEL[r]}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={criar} disabled={ocupado} style={btnPrim(ocupado)}>
+              Adicionar
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {acomodacoes.length === 0 ? (
         <p style={{ color: "#6b7280", fontSize: 14 }}>Nenhuma acomodação ainda. Cadastre a primeira acima.</p>

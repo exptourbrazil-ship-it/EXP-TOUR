@@ -54,7 +54,10 @@ export async function POST(request: Request) {
     if (acao === "criar_programa") {
       const v = validarPrograma(body);
       if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
-      const id = await criarPrograma(supabase, supplierId, tenantId, v.dados);
+      // Admin cria já publicado (status=active/visibility=internal) — comportamento
+      // anterior preservado; o rascunho oculto por padrão é só para o self-service
+      // do fornecedor (ver OpcoesCriacaoProduto em catalog-disponibilidade.ts).
+      const id = await criarPrograma(supabase, supplierId, tenantId, v.dados, { status: "active", visibility: "internal" });
       return NextResponse.json({ ok: true, id });
     }
     if (acao === "arquivar_programa") {
@@ -84,7 +87,8 @@ export async function POST(request: Request) {
     if (acao === "criar_acomodacao") {
       const v = validarAcomodacao(body);
       if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
-      const id = await criarAcomodacao(supabase, supplierId, tenantId, v.dados);
+      // Mesma preservação do comportamento anterior (publicação imediata pela equipe).
+      const id = await criarAcomodacao(supabase, supplierId, tenantId, v.dados, { status: "active", visibility: "internal" });
       return NextResponse.json({ ok: true, id });
     }
     if (acao === "arquivar_acomodacao") {

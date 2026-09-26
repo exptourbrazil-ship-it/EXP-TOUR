@@ -5,7 +5,7 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { garantirCampusDoFornecedor } from "@/lib/catalog-disponibilidade";
 import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao, TAMANHO_MAXIMO_BYTES } from "@/lib/upload-seguro";
 import { extrairPriceListPdf, normalizarPriceListExtraido } from "@/lib/price-list-extract";
-import { criarSubmission, atualizarExtracted, aprovarPelaEscola } from "@/lib/price-submission-service";
+import { criarSubmission, criarSubmissionManual, atualizarExtracted, aprovarPelaEscola } from "@/lib/price-submission-service";
 import { checarELimitar } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -30,6 +30,32 @@ export async function POST(request: Request) {
   if (!contentType.includes("multipart/form-data")) {
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
     const acao = String(body?.acao || "");
+
+    // Criacao manual (sem PDF/IA): a escola monta a tabela do zero no editor.
+    if (acao === "criar_manual") {
+      if (!(await checarELimitar(supabase, `fornecedor-pricelist:${sessao.supplierUserId}`, MAX_UPLOAD, JANELA_SEG))) {
+        return NextResponse.json({ ok: false, erro: "Muitas operações em pouco tempo. Aguarde alguns minutos." }, { status: 429 });
+      }
+      let tenantId: string;
+      let campusId: string;
+      try {
+        tenantId = await tenantIdAtual(supabase);
+        campusId = await garantirCampusDoFornecedor(supabase, sessao.supplierId, tenantId);
+      } catch (err) {
+        return NextResponse.json(
+          { ok: false, erro: err instanceof Error ? err.message : "Falha ao preparar o catálogo." },
+          { status: 500 }
+        );
+      }
+      const r = await criarSubmissionManual(supabase, {
+        tenantId,
+        supplierId: sessao.supplierId,
+        campusId,
+        createdBy: sessao.email,
+      });
+      return r.ok ? NextResponse.json({ ok: true, id: r.id }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 500 });
+    }
+
     const id = String(body?.id || "");
     if (!id) return NextResponse.json({ ok: false, erro: "Price list ausente." }, { status: 400 });
 

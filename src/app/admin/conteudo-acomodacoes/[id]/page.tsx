@@ -30,6 +30,11 @@ export default async function AdminConteudoAcomodacaoRevisaoPage({
   const ficha = fichaDoSnapshot(payload.content, "pt-BR", payload.media);
   const acom = detalhesDoSnapshot({ accommodationDetail: payload.accommodationDetail }, "pt-BR").acomodacao;
   const pendente = det.status === "pending_admin";
+  // Duração/disponibilidade proposta — aplicada em `product` na aprovação.
+  const disp = (payload.disponibilidade && typeof payload.disponibilidade === "object" ? payload.disponibilidade : null) as
+    | { min_duration?: number | null; max_duration?: number | null; available_from?: string | null; available_until?: string | null }
+    | null;
+  const temDisp = !!disp && (disp.min_duration != null || disp.max_duration != null || disp.available_from || disp.available_until);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -80,6 +85,18 @@ export default async function AdminConteudoAcomodacaoRevisaoPage({
                 <li key={i}><a href={m.url} target="_blank" rel="noopener noreferrer nofollow" className="text-brand-golddark underline">{m.caption || m.kind} — {m.url}</a></li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {temDisp ? (
+          <div className="mt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Duração e disponibilidade (aplicada ao produto na aprovação)</p>
+            <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+              <div><dt className="text-[11px] uppercase tracking-wide text-neutral-400">Duração mín.</dt><dd className="text-neutral-800">{disp?.min_duration != null ? `${disp.min_duration} sem.` : "—"}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-neutral-400">Duração máx.</dt><dd className="text-neutral-800">{disp?.max_duration != null ? `${disp.max_duration} sem.` : "—"}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-neutral-400">Disponível de</dt><dd className="text-neutral-800">{disp?.available_from || "—"}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-neutral-400">Disponível até</dt><dd className="text-neutral-800">{disp?.available_until || "—"}</dd></div>
+            </dl>
           </div>
         ) : null}
       </div>
