@@ -5,6 +5,8 @@ Plano de execução para o Claude Code, derivado do "Anexo I — Diagnóstico Fo
 traduz o método em itens de código, **um por vez, com testes e commit a cada
 passo**, no padrão do [`plano-desenvolvimento-v2.md`](./plano-desenvolvimento-v2.md).
 
+**Execução:** decidido em 26/09/2026 que o Maurício implementa a conversa e o motor no repositório do Chat da Forio; o portal entrega catálogo, preço, cotação e revisão. Ver `handoff-diagnostico-chat-forio.md`, Seção 3, para a divisão item a item.
+
 **Status:** decisões fechadas com Rodrigo em 26/09/2026 (Seção 0). Resta uma
 pendência (plataforma do chat) que só bloqueia o item 2.2.
 
