@@ -91,13 +91,12 @@ e o portal sincroniza por evento. Unidirecional, sempre.
 
 ## 4. Contrato de API entre chat e portal (proposta)
 
-Autenticação: chave por tenant no header `Authorization: Bearer <chave>`.
-Rate limit fechado. Sem PII em log. Todas as rotas em `/api/public/`.
+Autenticação: `Authorization: Bearer <CHAT_API_KEY>` (variável do deploy do portal; Rodrigo entrega o valor ao Maurício por canal seguro). Sem a variável a rota recusa com 503; chave errada, 401; 120 chamadas por minuto por IP. Respostas sempre `{ ok, data }` ou `{ ok: false, error: { code, message } }`. Base: `https://<portal>/api/public/`.
 
 | Rota | Direção | Para quê |
 |---|---|---|
-| `GET /api/public/preco/faixa?destino=&semanas=` | chat → portal | Faixa p25/mediana/p75 em BRL e na moeda, com o que inclui. Escape de preço antes do diagnóstico. |
-| `POST /api/public/preco/opcoes` | chat → portal | Entrada: destino, semanas, mês de início, acomodação, orçamento, filtros do motor (perfil de turma, nível mínimo, intensidade, padrão A×B). Saída: até 3 opções com preço real e atributos, mais os motivos de exclusão das alternativas óbvias (para a justificativa). |
+| `GET /api/public/preco/faixa?destino=&semanas=` | chat → portal | **Entregue (26/09).** Faixa p25/mediana/p75 na moeda e em BRL, amostra e o que inclui. `destino` aceita português ("Londres", "Inglaterra", "Malta"); sem destino devolve a faixa de cada país. `semanas` aproxima para 2, 4, 8 ou 12. Atualizada por cron diário depois do câmbio. |
+| `POST /api/public/preco/opcoes` | chat → portal | **Entregue (26/09).** Corpo: `{ destino?, semanas, acomodacao?: homestay\|residence\|none, seguro?, orcamentoMaxBrl?, termo?, limite?: 1..3 }`. Saída: até 3 opções (uma por escola, mais barata primeiro) com linhas itemizadas, total na moeda e em BRL, links da escola e do programa, mais `excluidas` por motivo (fora da duração, acima do orçamento, fora do destino, sem câmbio, limite). Filtros de perfil de turma / nível / intensidade ainda não filtram (item 0.6) e voltam em `filtrosNaoSuportados`. |
 | `POST /api/public/diagnostico` | chat → portal | Diagnóstico estruturado (modelo da Seção 2 do plano): perfil, respostas, situações com âncora e lacuna, restrições, status `parcial` ou `concluido`, opções escolhidas. Idempotente por `diagnostico_id` do chat. Cria ou atualiza lead (dedupe por e-mail/telefone) e, se concluído, cotação em rascunho. |
 | `GET /api/public/diagnostico/[id]` | chat → portal | Retomada: o chat recupera o que já foi coletado para continuar a conversa. |
 | `POST /api/public/nivelamento` | chat → portal | M2: grava medição T0/T1/T2 com instrumento e nível. |
