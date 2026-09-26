@@ -109,7 +109,22 @@ export type OpcaoPreco = {
   programaUrl: string | null;
 };
 
-export type MotivoExclusao = "fora_da_duracao" | "acima_do_orcamento" | "sem_cambio" | "fora_do_destino" | "limite";
+export type MotivoExclusao =
+  | "fora_da_duracao"
+  | "acima_do_orcamento"
+  | "sem_cambio"
+  | "fora_do_destino"
+  | "formato_nao_presencial"
+  | "limite";
+
+// Programas que nao sao "curso presencial em grupo" (online, particular 1:1)
+// ficam de fora por padrao: o Chat da Forio esta montando um plano de imersao,
+// e "1:1 online" aparecendo como a opcao mais barata de Londres e ruido, nao
+// escolha. Entram so quando o termo pedido menciona esse formato.
+const RE_NAO_PRESENCIAL = /\bonline\b|\bone[- ]to[- ]one\b|\b1\s*:\s*1\b|\bprivate\b|\bparticular\b|\bindividual\b/i;
+export function formatoNaoPresencial(p: ProgramaOrcavel): boolean {
+  return RE_NAO_PRESENCIAL.test(p.courseName);
+}
 
 export type ResultadoOpcoes = {
   opcoes: OpcaoPreco[];
@@ -132,7 +147,7 @@ export function montarOpcoes(
   const semanas = Math.max(1, Math.floor(Number(pedido.semanas) || 0));
   const limite = Math.min(LIMITE_OPCOES, Math.max(1, Math.floor(pedido.limite ?? LIMITE_OPCOES)));
   const excluidas: Record<MotivoExclusao, number> = {
-    fora_da_duracao: 0, acima_do_orcamento: 0, sem_cambio: 0, fora_do_destino: 0, limite: 0,
+    fora_da_duracao: 0, acima_do_orcamento: 0, sem_cambio: 0, fora_do_destino: 0, formato_nao_presencial: 0, limite: 0,
   };
 
   const destino = pedido.destino ? resolverDestino(pedido.destino, programas) : null;
@@ -148,6 +163,9 @@ export function montarOpcoes(
       continue; // termo e filtro brando: nao conta como exclusao "justificavel"
     }
     if (!aceitaSemanas(p, semanas)) { excluidas.fora_da_duracao += 1; continue; }
+    if (formatoNaoPresencial(p) && !(termo && RE_NAO_PRESENCIAL.test(termo))) {
+      excluidas.formato_nao_presencial += 1; continue;
+    }
 
     const accomOn = pedido.acomodacao !== "none" && !!p.accom && Number(p.accom[pedido.acomodacao as "homestay" | "residence"] || 0) > 0;
     const orc = montarOrcamento(p, {
@@ -183,10 +201,14 @@ export function montarOpcoes(
     });
   }
 
+  // Ranking: quem tem a acomodacao pedida vem antes de quem nao tem (uma opcao
+  // "sem acomodacao" nao e comparavel em preco com uma completa); depois, mais
+  // barata primeiro em BRL (ou na moeda, sem cambio).
+  const temAcom = (o: OpcaoPreco) => (pedido.acomodacao === "none" ? 0 : o.linhas.some((l) => l.chave === "acomodacao") ? 0 : 1);
   candidatas.sort((a, b) => {
     const ka = a.totalBrl ?? Number.MAX_SAFE_INTEGER;
     const kb = b.totalBrl ?? Number.MAX_SAFE_INTEGER;
-    return ka - kb || a.totalMoeda - b.totalMoeda || a.curso.localeCompare(b.curso, "pt-BR");
+    return temAcom(a) - temAcom(b) || ka - kb || a.totalMoeda - b.totalMoeda || a.curso.localeCompare(b.curso, "pt-BR");
   });
 
   const escolasVistas = new Set<string>();

@@ -1,6 +1,6 @@
 import { guardChatApi, chatErro, chatOk } from "@/lib/chat-api-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
-import { bucketMaisProximo, SEMANAS_FAIXA } from "@/lib/faixa-preco";
+import { bucketMaisProximo, calcularFaixas, SEMANAS_FAIXA, type FaixaDerivada } from "@/lib/faixa-preco";
 import { resolverDestino } from "@/lib/preco-publico";
 import { carregarCatalogoOrcamento } from "@/lib/orcamento-catalogo";
 
@@ -34,9 +34,10 @@ export async function GET(request: Request) {
 
     let filtro: { nivel: "pais" | "cidade"; destino: string } | null = null;
     let destinoResolvido: ReturnType<typeof resolverDestino> = null;
+    let catalogo: Awaited<ReturnType<typeof carregarCatalogoOrcamento>> | null = null;
     if (destinoTexto) {
       // Resolve o texto contra o catalogo real (cidades/paises existentes).
-      const catalogo = await carregarCatalogoOrcamento();
+      catalogo = await carregarCatalogoOrcamento();
       destinoResolvido = resolverDestino(destinoTexto, catalogo.programas);
       if (!destinoResolvido) {
         return chatErro("Destino não encontrado no catálogo.", "destino_nao_encontrado", 404);
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     const { data, error } = await q.order("destino");
     if (error) throw new Error(`Falha ao ler faixa_preco: ${error.message}`);
 
-    const faixas = (data ?? []).map((r: any) => ({
+    let faixas = (data ?? []).map((r: any) => ({
       nivel: r.nivel,
       destino: r.destino,
       pais: r.pais,
@@ -72,8 +73,24 @@ export async function GET(request: Request) {
       atualizadoEm: r.atualizado_em,
     }));
 
+    // Sem linha publicada (cron ainda nao rodou, ou destino/bucket novo):
+    // calcula AO VIVO do catalogo, com a mesma funcao pura do cron. Nao
+    // persiste — o cron continua sendo o dono da tabela.
     if (faixas.length === 0) {
-      return chatErro("Sem faixa publicada para esse destino e duração.", "sem_faixa", 404);
+      catalogo = catalogo ?? (await carregarCatalogoOrcamento());
+      const aoVivo = calcularFaixas(catalogo.programas, catalogo.cambio, [semanas]).filter((f: FaixaDerivada) =>
+        filtro ? f.nivel === filtro.nivel && f.destino === filtro.destino : f.nivel === "pais",
+      );
+      faixas = aoVivo
+        .map((f) => ({
+          nivel: f.nivel, destino: f.destino, pais: f.pais, semanas: f.semanas, moeda: f.moeda,
+          p25: f.p25, mediana: f.mediana, p75: f.p75, p25Brl: f.p25Brl, medianaBrl: f.medianaBrl, p75Brl: f.p75Brl,
+          amostra: f.amostra, inclui: f.inclui, origem: "ao_vivo", dataCambio: catalogo!.dataCambio, atualizadoEm: new Date().toISOString(),
+        }))
+        .sort((a, b) => a.destino.localeCompare(b.destino));
+    }
+    if (faixas.length === 0) {
+      return chatErro("Sem faixa para esse destino e duração.", "sem_faixa", 404);
     }
 
     return chatOk({
