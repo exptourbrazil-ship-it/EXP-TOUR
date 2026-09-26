@@ -94,7 +94,7 @@ O bloqueio financeiro do perfil Participante é requisito da Cláusula 5.4.4 e �
 | Contrato | Via integral, Quadro Resumo, Anexos e **certificado de auditoria**, com download. **Único item que exige ambiente de acesso permanente** | 17.3, 18.2.1 |
 | Arrependimento | **Botão específico**, disponível durante os 7 dias | 8.2 |
 | Cancelamento | Canal com identificação de Contratante e Programa, e memória de cálculo | 9.1.2, 9.3 |
-| Suporte | Altus e acesso ao WhatsApp de atendimento humano | 2.4.g |
+| Suporte | Chat da Forio e acesso ao WhatsApp de atendimento humano | 2.4.g |
 | Certificado e depoimento | Após conclusão | 16.1 |
 
 ### 3.3. Vocabulário travado na interface
@@ -206,7 +206,7 @@ Nem tudo é software.
 
 **Horizonte de venda por escola.** Data até a qual há preço confirmado. Vender além disso transfere para a Forio o risco de reajuste, que a Cláusula 6.1.1 declara que ela absorve.
 
-**Horário do atendimento humano.** A Cláusula 2.4.g fala em canais e horários divulgados. Enquanto não houver horário definido, nada pode divulgar prazo de resposta, e o Altus tem instrução de nunca estimar.
+**Horário do atendimento humano.** A Cláusula 2.4.g fala em canais e horários divulgados. Enquanto não houver horário definido, nada pode divulgar prazo de resposta, e o Chat da Forio tem instrução de nunca estimar.
 
 ---
 
@@ -420,17 +420,17 @@ Como a escola é avisada de imediato, a retratação depois do passo 6 fica suje
 
 ## 7-F. Agentes de retaguarda
 
-Correção do desenho anterior: os agentes especializados **não têm contato com o cliente**. O cliente vê a Área do Cliente, o Altus e o WhatsApp, e nada além disso.
+Correção do desenho anterior: os agentes especializados **não têm contato com o cliente**. O cliente vê a Área do Cliente, o Chat da Forio e o WhatsApp, e nada além disso.
 
 Os agentes são **camada de retaguarda**, e a função deles é exatamente a camada detectiva da seção 7-D: encontrar o erro que o controle preventivo deixou passar, antes que ele chegue ao cliente.
 
-**Consequência boa:** sem contato com o cliente, os limites regulatórios que eu havia levantado desaparecem. Não há aconselhamento migratório, não há corretagem de seguro, não há atuação como instituição de câmbio. Um agente que confere se a apólice cobre o mínimo do destino não está intermediando seguro, está conferindo um campo. Por isso o contrato foi revertido para mencionar apenas o Altus.
+**Consequência boa:** sem contato com o cliente, os limites regulatórios que eu havia levantado desaparecem. Não há aconselhamento migratório, não há corretagem de seguro, não há atuação como instituição de câmbio. Um agente que confere se a apólice cobre o mínimo do destino não está intermediando seguro, está conferindo um campo. Por isso o contrato foi revertido para mencionar apenas o Chat da Forio.
 
 ### 7-F.1. Os agentes e o que cada um verifica
 
 | Agente | Verifica | Aciona |
 |---|---|---|
-| Documentação | Checklist completo do destino, validade de passaporte contra a exigência do país, **consistência de nome, data de nascimento e passaporte entre todos os documentos** | Alerta ao consultor e ao cliente pelo Altus |
+| Documentação | Checklist completo do destino, validade de passaporte contra a exigência do país, **consistência de nome, data de nascimento e passaporte entre todos os documentos** | Alerta ao consultor e ao cliente pelo Chat da Forio |
 | Financeiro | PTAX aplicada confere com a do dia, alíquota de IOF vigente, taxa de 5%, valor cobrado igual ao simulado, imputação na ordem da Cláusula 7.8 | Bloqueia recibo divergente |
 | Vistos | Requisitos publicados do consulado, janelas de validade de documento, **prazo para apresentação da carta de recusa** conforme o Anexo III | Tarefa com prazo, na forma da Cláusula 10.3.1 |
 | Passagens | Datas do bilhete compatíveis com as do Programa, compra posterior à confirmação e ao visto | Alerta |
@@ -447,7 +447,7 @@ O último é o mais importante e é o que costuma não existir. Sem ele, os outr
 
 **Achado presume abrangência.** Divergência encontrada não é caso isolado. Dispara varredura retroativa até a última verificação limpa, na forma da regra de escalonamento da seção 7-D.
 
-**Sem canal com o cliente.** Se um achado precisa chegar ao cliente, chega **pelo Altus ou pelo consultor**, nunca pelo agente. O cliente tem três portas: Área do Cliente, Altus e WhatsApp. Abrir uma quarta desfaz o desenho.
+**Sem canal com o cliente.** Se um achado precisa chegar ao cliente, chega **pelo Chat da Forio ou pelo consultor**, nunca pelo agente. O cliente tem três portas: Área do Cliente, Chat da Forio e WhatsApp. Abrir uma quarta desfaz o desenho.
 
 ---
 

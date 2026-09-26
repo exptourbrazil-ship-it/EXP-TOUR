@@ -1473,7 +1473,7 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
         </p>
       )}
 
-      {/* CTAs: falar com o Altus AI (chat) + WhatsApp */}
+      {/* CTAs: falar com o Chat da Forio (chat) + WhatsApp */}
       {a.chatUrl || waUrl ? (
         <div className="mt-5 flex flex-wrap gap-2">
           {a.chatUrl ? (
@@ -1483,7 +1483,7 @@ function AboutUs({ dados }: { dados: PublicQuote }) {
               rel="noopener noreferrer"
               className="inline-flex min-h-[44px] items-center rounded-xl bg-[color:var(--p-cta)] px-5 py-3 text-sm font-medium text-[color:var(--p-cta-fg)]"
             >
-              Falar com o Altus AI
+              Falar com o Chat da Forio
             </a>
           ) : null}
           {waUrl ? (

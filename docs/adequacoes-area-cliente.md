@@ -47,7 +47,7 @@ src/app). Legenda: **EXISTE** / **PARCIAL** / **FALTA**.
 | Saldo, Datas, Histórico/recibos, Documentos, Arrependimento (botão), Certificado+depoimento | **EXISTE** | — |
 | Status do processo em tempo real (visto/carta em pipeline) | **PARCIAL** | Status binário (enviado/não), não multi-estágio. |
 | Certificado de auditoria no Contrato | **PARCIAL** | Há hash/registro de aceite; não um certificado formal separado. |
-| Suporte com Altus | **PARCIAL** | WhatsApp existe; "Altus" não existe no código. |
+| Suporte com Chat da Forio | **PARCIAL** | WhatsApp existe; "Chat da Forio" não existe no código. |
 
 ### Cancelamento, SLA, PDF, agentes (spec 1, seções 4, 7-C, 7-D, 7-E, 7-F)
 
