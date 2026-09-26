@@ -3,11 +3,33 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { TIPOS_DOCUMENTO } from "@/lib/documentos";
+import { t } from "@/lib/fornecedor-i18n";
 
 // Formulario de envio de documento pela escola (Portal do Parceiro). Posta
 // multipart para /api/fornecedor/documentos/upload (que reconfere a posse do
 // contrato) e atualiza a lista ao concluir.
-export default function UploadDocumento({ contratoId }: { contratoId: string }) {
+export default function UploadDocumento({ contratoId, language }: { contratoId: string; language: string }) {
+  const T = t(language, {
+    pt: {
+      selecioneArquivo: "Selecione um arquivo (PDF, JPG, PNG ou WEBP).",
+      falhaEnviar: "Falha ao enviar o documento.",
+      documentoEnviado: "Documento enviado.",
+      erroRede: "Erro de rede. Tente novamente.",
+      enviarDocumento: "Enviar um documento",
+      enviando: "Enviando…",
+      enviar: "Enviar",
+    },
+    en: {
+      selecioneArquivo: "Select a file (PDF, JPG, PNG or WEBP).",
+      falhaEnviar: "Failed to send the document.",
+      documentoEnviado: "Document sent.",
+      erroRede: "Connection error. Please try again.",
+      enviarDocumento: "Send a document",
+      enviando: "Sending…",
+      enviar: "Send",
+    },
+  });
+
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [tipo, setTipo] = useState(TIPOS_DOCUMENTO[0].valor);
@@ -17,7 +39,7 @@ export default function UploadDocumento({ contratoId }: { contratoId: string }) 
 
   async function enviar() {
     if (!arquivo) {
-      setMsg({ tipo: "erro", texto: "Selecione um arquivo (PDF, JPG, PNG ou WEBP)." });
+      setMsg({ tipo: "erro", texto: T.selecioneArquivo });
       return;
     }
     setEnviando(true);
@@ -30,15 +52,15 @@ export default function UploadDocumento({ contratoId }: { contratoId: string }) 
       const res = await fetch("/api/fornecedor/documentos/upload", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setMsg({ tipo: "erro", texto: json.error || "Falha ao enviar o documento." });
+        setMsg({ tipo: "erro", texto: json.error || T.falhaEnviar });
       } else {
-        setMsg({ tipo: "ok", texto: "Documento enviado." });
+        setMsg({ tipo: "ok", texto: T.documentoEnviado });
         setArquivo(null);
         if (inputRef.current) inputRef.current.value = "";
         router.refresh();
       }
     } catch {
-      setMsg({ tipo: "erro", texto: "Erro de rede. Tente novamente." });
+      setMsg({ tipo: "erro", texto: T.erroRede });
     } finally {
       setEnviando(false);
     }
@@ -47,7 +69,7 @@ export default function UploadDocumento({ contratoId }: { contratoId: string }) 
   return (
     <div style={{ marginTop: 14, borderTop: "1px solid var(--p-line)", paddingTop: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-ink)", marginBottom: 8 }}>
-        Enviar um documento
+        {T.enviarDocumento}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <select
@@ -83,7 +105,7 @@ export default function UploadDocumento({ contratoId }: { contratoId: string }) 
             opacity: enviando ? 0.6 : 1,
           }}
         >
-          {enviando ? "Enviando…" : "Enviar"}
+          {enviando ? T.enviando : T.enviar}
         </button>
       </div>
       {msg ? (

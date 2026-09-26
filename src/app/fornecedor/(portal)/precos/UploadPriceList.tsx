@@ -2,19 +2,39 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { t } from "@/lib/fornecedor-i18n";
 
 // Upload do price list (PDF). Envia multipart; ao concluir, leva para a tela de
 // revisao do rascunho recem-criado.
-export default function UploadPriceList() {
+export default function UploadPriceList({ language }: { language: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState(null as { tipo: "ok" | "erro"; texto: string } | null);
 
+  const T = t(language, {
+    pt: {
+      titulo: "Enviar price list (PDF)",
+      selecioneArquivo: "Selecione o PDF do price list.",
+      falhaEnviar: "Falha ao enviar o price list.",
+      erroRede: "Erro de rede. Tente novamente.",
+      enviando: "Enviando e lendo…",
+      enviar: "Enviar e extrair",
+    },
+    en: {
+      titulo: "Upload price list (PDF)",
+      selecioneArquivo: "Select the price list PDF.",
+      falhaEnviar: "Failed to upload the price list.",
+      erroRede: "Connection error. Please try again.",
+      enviando: "Uploading and reading…",
+      enviar: "Upload and extract",
+    },
+  });
+
   async function enviar() {
     if (!arquivo) {
-      setMsg({ tipo: "erro", texto: "Selecione o PDF do price list." });
+      setMsg({ tipo: "erro", texto: T.selecioneArquivo });
       return;
     }
     setEnviando(true);
@@ -25,14 +45,14 @@ export default function UploadPriceList() {
       const res = await fetch("/api/fornecedor/price-list", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setMsg({ tipo: "erro", texto: json.erro || "Falha ao enviar o price list." });
+        setMsg({ tipo: "erro", texto: json.erro || T.falhaEnviar });
         return;
       }
       setArquivo(null);
       if (inputRef.current) inputRef.current.value = "";
       router.push(`/fornecedor/precos/${json.id}`);
     } catch {
-      setMsg({ tipo: "erro", texto: "Erro de rede. Tente novamente." });
+      setMsg({ tipo: "erro", texto: T.erroRede });
     } finally {
       setEnviando(false);
     }
@@ -40,7 +60,7 @@ export default function UploadPriceList() {
 
   return (
     <div style={{ border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-ink)", marginBottom: 8 }}>Enviar price list (PDF)</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-ink)", marginBottom: 8 }}>{T.titulo}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <input
           ref={inputRef}
@@ -64,7 +84,7 @@ export default function UploadPriceList() {
             opacity: enviando ? 0.6 : 1,
           }}
         >
-          {enviando ? "Enviando e lendo…" : "Enviar e extrair"}
+          {enviando ? T.enviando : T.enviar}
         </button>
       </div>
       {msg ? (

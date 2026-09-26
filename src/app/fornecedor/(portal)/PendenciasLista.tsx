@@ -1,21 +1,37 @@
 import Link from "next/link";
-import type { Pendencia, Severidade } from "@/lib/fornecedor-pendencias";
+import type { Pendencia, Severidade, TipoPendencia } from "@/lib/fornecedor-pendencias";
+import { t } from "@/lib/fornecedor-i18n";
 
 // Estilo por severidade (cor de borda/fundo + rotulo). Estados sempre
 // icone + cor + texto (marca: dourado so para atencao; vermelho so urgente).
-const ESTILO: Record<Severidade, { cor: string; fundo: string; rotulo: string }> = {
-  urgente: { cor: "#b91c1c", fundo: "#fdf2f2", rotulo: "Urgente" },
-  atencao: { cor: "var(--p-accent-ink)", fundo: "var(--p-accent-soft)", rotulo: "Atenção" },
-  info: { cor: "var(--p-success-ink)", fundo: "var(--p-success-soft)", rotulo: "Info" },
+const CORES_SEVERIDADE: Record<Severidade, { cor: string; fundo: string }> = {
+  urgente: { cor: "#b91c1c", fundo: "#fdf2f2" },
+  atencao: { cor: "var(--p-accent-ink)", fundo: "var(--p-accent-soft)" },
+  info: { cor: "var(--p-success-ink)", fundo: "var(--p-success-soft)" },
 };
 
-function subtexto(p: Pendencia): string {
+// Pendencia.titulo (de fornecedor-pendencias.ts) vem sempre em PT — o motor de
+// pendencias e puro/testado e nao muda. Em "en" a lista usa este mapa (por
+// tipo) em vez de p.titulo, sem tocar no motor.
+const TITULO_EN: Record<TipoPendencia, string> = {
+  nova_matricula: "New student — review details and documents",
+  loa_pendente: "Submit the Letter of Acceptance (LOA)",
+  documento_devolvido: "Document returned — fix and resend",
+  docs_viagem: "Travel documents available to download",
+};
+
+function subtexto(p: Pendencia, idioma: string | null | undefined): string {
+  const en = idioma !== "pt";
   const partes: string[] = [];
   if (p.estudanteNome) partes.push(p.estudanteNome);
   if (p.tipo === "loa_pendente" && p.idadeDias != null) {
-    partes.push(`há ${p.idadeDias} ${p.idadeDias === 1 ? "dia" : "dias"} · prazo D+${p.prazoDias}`);
+    partes.push(
+      en
+        ? `${p.idadeDias} ${p.idadeDias === 1 ? "day" : "days"} ago · due D+${p.prazoDias}`
+        : `há ${p.idadeDias} ${p.idadeDias === 1 ? "dia" : "dias"} · prazo D+${p.prazoDias}`
+    );
   } else if (p.tipo === "nova_matricula" && p.idadeDias != null) {
-    partes.push(`há ${p.idadeDias} ${p.idadeDias === 1 ? "dia" : "dias"}`);
+    partes.push(en ? `${p.idadeDias} ${p.idadeDias === 1 ? "day" : "days"} ago` : `há ${p.idadeDias} ${p.idadeDias === 1 ? "dia" : "dias"}`);
   }
   return partes.join(" · ");
 }
@@ -25,16 +41,24 @@ function subtexto(p: Pendencia): string {
 export default function PendenciasLista({
   pendencias,
   comLinkEstudante = false,
+  language,
 }: {
   pendencias: Pendencia[];
   comLinkEstudante?: boolean;
+  language?: string;
 }) {
   if (pendencias.length === 0) return null;
+
+  const ROTULO_SEVERIDADE = t(language, {
+    pt: { urgente: "Urgente", atencao: "Atenção", info: "Info" },
+    en: { urgente: "Urgent", atencao: "Attention", info: "Info" },
+  });
 
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
       {pendencias.map((p, i) => {
-        const e = ESTILO[p.severidade];
+        const e = CORES_SEVERIDADE[p.severidade];
+        const titulo = language !== "pt" ? TITULO_EN[p.tipo] : p.titulo;
         const linha = (
           <div
             style={{
@@ -50,9 +74,9 @@ export default function PendenciasLista({
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: "var(--p-ink)", fontSize: 14, fontWeight: 600 }}>{p.titulo}</div>
-              {subtexto(p) ? (
-                <div style={{ color: "var(--p-muted)", fontSize: 12 }}>{subtexto(p)}</div>
+              <div style={{ color: "var(--p-ink)", fontSize: 14, fontWeight: 600 }}>{titulo}</div>
+              {subtexto(p, language) ? (
+                <div style={{ color: "var(--p-muted)", fontSize: 12 }}>{subtexto(p, language)}</div>
               ) : null}
             </div>
             <span
@@ -65,7 +89,7 @@ export default function PendenciasLista({
                 letterSpacing: 0.5,
               }}
             >
-              {e.rotulo}
+              {ROTULO_SEVERIDADE[p.severidade]}
             </span>
           </div>
         );
