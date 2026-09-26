@@ -77,3 +77,27 @@ test("montarOpcoes: acomodacao pedida que o campus nao tem -> opcao sai sem a li
   assert.equal(r.opcoes.length, 1);
   assert.ok(!r.opcoes[0].linhas.some((l) => l.chave === "acomodacao"));
 });
+
+test("montarOpcoes: online e 1:1 ficam de fora por padrao; entram se o termo pedir", () => {
+  const cat = [
+    prog({ id: "on", courseName: "1:1 online training", wfee: 100 }),
+    prog({ id: "one", courseName: "One-to-one English", wfee: 120 }),
+    prog({ id: "grp", courseName: "General English", wfee: 300 }),
+  ];
+  const r = montarOpcoes({ semanas: 4, acomodacao: "homestay", seguro: true }, cat, cambio, "d");
+  assert.deepEqual(r.opcoes.map((o) => o.programaId), ["grp"]);
+  assert.equal(r.excluidas.formato_nao_presencial, 2);
+  const r2 = montarOpcoes({ semanas: 4, acomodacao: "homestay", seguro: true, termo: "online" }, cat, cambio, "d");
+  assert.deepEqual(r2.opcoes.map((o) => o.programaId), ["on"]);
+});
+
+test("montarOpcoes: com acomodacao pedida, programa com acomodacao vem antes do mais barato sem", () => {
+  const cat = [
+    prog({ id: "sem", accom: null, wfee: 100, school: "S1" }),
+    prog({ id: "com", accom: { homestay: 200 }, wfee: 300, school: "S2" }),
+  ];
+  const r = montarOpcoes({ semanas: 4, acomodacao: "homestay", seguro: true }, cat, cambio, "d");
+  assert.deepEqual(r.opcoes.map((o) => o.programaId), ["com", "sem"]);
+  const r2 = montarOpcoes({ semanas: 4, acomodacao: "none", seguro: true }, cat, cambio, "d");
+  assert.deepEqual(r2.opcoes.map((o) => o.programaId), ["sem", "com"]);
+});
