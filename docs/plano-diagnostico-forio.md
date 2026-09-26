@@ -333,8 +333,8 @@ ser pessoal e não uma tabela de nível.
 
 Regra de redação: o alvo de cada situação deve coincidir com o nível da 4ª ou
 5ª âncora daquela situação. Nas três situações exemplificadas no Anexo isso
-dá reunião = 4, negociar = 4 (âncora "negocio com naturalidade"; 5 é
-influenciar), apresentar = 4. Situações das profissões (Tecnologia, Jurídico,
+dá reunião = 4, negociar = 5 (âncora "negocio e influencio sem perder autoridade"; 4 é
+"negocio com naturalidade, perco nuance"), apresentar = 4. Situações das profissões (Tecnologia, Jurídico,
 Saúde, Comercial) seguem o mesmo critério e são revisadas por Rodrigo no seed
 do item 0.1.
 
@@ -422,11 +422,11 @@ profissão. A frase-insight do cruzamento entra só na devolutiva completa.
 ### 7.6 Nível-alvo por situação, biblioteca completa (proposta)
 
 Regra: 3 = tarefa com tempo para preparar ou de recepção; 4 = tempo real, com
-imprevisto; 5 = discordar ou influenciar sob tensão. Núcleo comum na Seção 6.
+imprevisto; 5 = negociar, discordar ou influenciar sob tensão (decisão de Rodrigo, 26/09: negociação é 5). Núcleo comum na Seção 6.
 
 | Grupo | Situação | Alvo |
 |---|---|---|
-| Núcleo | Negociar preço, prazo ou contrato | 4 |
+| Núcleo | Negociar preço, prazo ou contrato | 5 |
 | Tecnologia | Daily e cerimônias ágeis | 3 |
 | Tecnologia | Code review e discussão técnica escrita | 3 |
 | Tecnologia | Explicar decisão de arquitetura a stakeholder | 4 |
@@ -434,7 +434,7 @@ imprevisto; 5 = discordar ou influenciar sob tensão. Núcleo comum na Seção 6
 | Tecnologia | Entrevista técnica internacional | 4 |
 | Jurídico | Ler e interpretar contrato | 3 |
 | Jurídico | Redigir cláusula ou parecer | 4 |
-| Jurídico | Negociar termos com contraparte estrangeira | 4 |
+| Jurídico | Negociar termos com contraparte estrangeira | 5 |
 | Jurídico | Conference call com correspondente | 4 |
 | Jurídico | Vocabulário de common law | 3 |
 | Saúde | Vocabulário clínico e anamnese | 3 |
@@ -443,7 +443,52 @@ imprevisto; 5 = discordar ou influenciar sob tensão. Núcleo comum na Seção 6
 | Saúde | Ler e discutir literatura científica | 3 |
 | Saúde | Exame de proficiência para registro | 4 |
 | Comercial | Pitch e apresentação de proposta | 4 |
-| Comercial | Negociação comercial | 4 |
+| Comercial | Negociação comercial | 5 |
 | Comercial | Relacionamento e follow-up com cliente | 3 |
 | Comercial | Feedback e conversa difícil com o time | 5 |
 | Comercial | Representar a empresa em feira | 4 |
+
+### 7.7 Cobertura de áreas (evitar vazamento de quem não é Tecnologia, Jurídico, Saúde ou Comercial)
+
+Preocupação levantada em 26/09/2026: com quatro grupos profissionais, quem
+vem de outra área cai fora do "sob medida". A resposta é estrutural, em três
+camadas, e não uma lista infinita de profissões.
+
+**Camada 1: ninguém fica sem situação.** O núcleo comum (9 situações) é
+apresentado a **toda** profissão. Os grupos só acrescentam de 4 a 5 situações
+específicas. Assim, "Outra área" nunca produz conversa vazia.
+
+**Camada 2: famílias, não cargos.** A pergunta de profissão é um seletor de
+**famílias** (máximo 12 + "outra"), não de título de cargo. Famílias iniciais
+para o M1 e suas situações específicas (alvo entre parênteses):
+
+| Família | Situações específicas |
+|---|---|
+| Tecnologia | as 5 já listadas |
+| Jurídico | as 5 já listadas |
+| Saúde | as 5 já listadas |
+| Comercial e vendas | as 5 já listadas |
+| Liderança e gestão | Reunião de resultado com matriz ou board (4); feedback e conversa difícil (5); alinhar prioridades com par estrangeiro (4); representar a empresa em evento (4) |
+| Finanças e contabilidade | Explicar resultado e variação para a matriz (4); call de auditoria ou due diligence (4); ler norma e relatório técnico em inglês (3); defender orçamento ou provisão (5) |
+| Engenharia, indústria e operações | Reunião técnica com fornecedor ou matriz (4); ler especificação e norma (3); auditoria ou visita de planta com estrangeiro (4); reportar incidente e plano de ação (4) |
+| Marketing, produto e comunicação | Apresentar estratégia ou roadmap (4); alinhar com agência ou time global (4); escrever briefing e copy em inglês (3); discutir métricas e defender prioridade (5) |
+| RH e pessoas | Entrevistar candidato em inglês (4); conduzir onboarding ou treinamento (4); conversa sensível com colaborador estrangeiro (5); ler e explicar política global (3) |
+| Educação e pesquisa | Apresentar trabalho em congresso (4); escrever artigo ou abstract (3); dar aula ou orientar em inglês (4); participar de banca ou revisão por pares (5) |
+| Empreendedor e founder | Pitch para investidor (4); negociar com fornecedor ou parceiro estrangeiro (5); atender cliente estrangeiro (4); construir rede em evento (3) |
+| Outra área | só o núcleo comum + campo livre "o que você faz" |
+
+Redação das âncoras dessas famílias: mesmo padrão de 5 frases, revisado por
+Rodrigo, no seed do item 0.1. É conteúdo, não código: cada família nova é um
+insert.
+
+**Camada 3: a biblioteca cresce pelo dado, não por palpite.** Quem escolhe
+"Outra área" descreve a profissão em texto livre; o campo fica gravado em
+`diagnostico.profissao_texto`. Relatório mensal no admin lista os textos
+agrupados; família com 10 ou mais ocorrências no mês vira candidata a entrar
+na biblioteca. Foi assim que o Anexo definiu o ativo: cada diagnóstico melhora
+o seguinte.
+
+Regra de honestidade na conversa: para "Outra área", a devolutiva diz que a
+leitura foi feita pelas situações comuns a todo profissional e que a call
+aprofunda o contexto específico. Sob medida não é fingir cobertura; é dizer o
+que foi medido.
