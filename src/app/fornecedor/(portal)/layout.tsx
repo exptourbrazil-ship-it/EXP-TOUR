@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { brandDoFornecedor } from "@/lib/fornecedor-brand";
-import { FORNECEDOR_NAV } from "@/lib/fornecedor-nav";
+import { FORNECEDOR_NAV, textoNavFornecedor } from "@/lib/fornecedor-nav";
 import LogoutButton from "../LogoutButton";
 
 export const runtime = "nodejs";
@@ -65,7 +65,9 @@ export default async function PortalLayout({ children }: { children: React.React
           {brand.logo === "forio" ? (
             <LogoForio />
           ) : (
-            <span style={{ fontFamily: "var(--p-heading)", fontSize: 20 }}>EXP Tour · Portal do Parceiro</span>
+            <span style={{ fontFamily: "var(--p-heading)", fontSize: 20 }}>
+              {sessao.language === "pt" ? "EXP Tour · Portal do Parceiro" : "EXP Tour · Partner Portal"}
+            </span>
           )}
           <nav style={{ display: "flex", gap: 16, fontSize: 14, flexWrap: "wrap" }}>
             {FORNECEDOR_NAV.map((n) => (
@@ -75,14 +77,14 @@ export default async function PortalLayout({ children }: { children: React.React
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--p-nav)", textDecoration: "none" }}
               >
                 <IconeNav d={n.icone} />
-                {n.label}
+                {textoNavFornecedor(n, sessao.language).label}
               </Link>
             ))}
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 13, opacity: 0.85 }}>{supplier?.display_name || sessao.email}</span>
-          <LogoutButton />
+          <LogoutButton language={sessao.language} />
         </div>
       </header>
 

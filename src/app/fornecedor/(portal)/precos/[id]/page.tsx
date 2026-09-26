@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { obterSubmissionDoFornecedor } from "@/lib/price-submission-service";
+import { t } from "@/lib/fornecedor-i18n";
 import PriceListEditor from "../PriceListEditor";
 
 export const runtime = "nodejs";
@@ -15,25 +16,42 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
   const sub = await obterSubmissionDoFornecedor(supabase, sessao.supplierId, id);
   if (!sub) notFound();
 
+  const T = t(sessao.language, {
+    pt: {
+      voltar: "← Voltar para Preços",
+      tituloFallback: "Price list",
+      extraidoOk: "Rascunho extraído do PDF pela IA. Revise e corrija antes de aprovar.",
+      semIa: "Extração automática indisponível — preencha os itens manualmente.",
+      falhaExtracao: "Não foi possível ler o PDF automaticamente — preencha os itens manualmente.",
+    },
+    en: {
+      voltar: "← Back to Pricing",
+      tituloFallback: "Price list",
+      extraidoOk: "Draft extracted from the PDF by AI. Review and correct it before approving.",
+      semIa: "Automatic extraction unavailable — fill in the items manually.",
+      falhaExtracao: "Could not read the PDF automatically — fill in the items manually.",
+    },
+  });
+
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
         <Link href="/fornecedor/precos" style={{ color: "var(--p-accent-ink)", fontSize: 13, textDecoration: "none" }}>
-          ← Voltar para Preços
+          {T.voltar}
         </Link>
       </div>
       <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 24, margin: "0 0 4px" }}>
-        {sub.sourceFilename || "Price list"}
+        {sub.sourceFilename || T.tituloFallback}
       </h1>
       <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 16px" }}>
         {sub.extractStatus === "ok"
-          ? "Rascunho extraído do PDF pela IA. Revise e corrija antes de aprovar."
+          ? T.extraidoOk
           : sub.extractStatus === "sem_ia"
-            ? "Extração automática indisponível — preencha os itens manualmente."
-            : "Não foi possível ler o PDF automaticamente — preencha os itens manualmente."}
+            ? T.semIa
+            : T.falhaExtracao}
       </p>
 
-      <PriceListEditor id={sub.id} status={sub.status} extracted={sub.extracted} />
+      <PriceListEditor id={sub.id} status={sub.status} extracted={sub.extracted} language={sessao.language} />
     </div>
   );
 }

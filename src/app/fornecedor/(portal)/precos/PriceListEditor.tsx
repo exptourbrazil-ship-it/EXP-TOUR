@@ -10,6 +10,7 @@ import {
   type PriceListExtraido,
   type FaixaPreco,
 } from "@/lib/price-list-extract";
+import { t } from "@/lib/fornecedor-i18n";
 
 // Editor do rascunho do price list. Enquanto 'draft' a escola edita, salva e
 // aprova (envia para a EXP Tour). Nos demais status, so leitura.
@@ -17,16 +18,73 @@ export default function PriceListEditor({
   id,
   status,
   extracted,
+  language,
 }: {
   id: string;
   status: string;
   extracted: PriceListExtraido;
+  language: string;
 }) {
   const router = useRouter();
   const [d, setD] = useState<PriceListExtraido>(extracted);
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState(null as { tipo: "ok" | "erro"; texto: string } | null);
   const editavel = status === "draft";
+
+  const T = t(language, {
+    pt: {
+      somenteLeitura: "Este price list já foi enviado — somente leitura.",
+      falhaOperacao: "Falha na operação.",
+      erroRede: "Erro de rede. Tente novamente.",
+      rascunhoSalvo: "Rascunho salvo.",
+      confirmarAprovar: "Enviar este price list para a EXP Tour aprovar e publicar?",
+      moeda: "Moeda",
+      itens: (n: number) => `${n} item(ns)`,
+      programasTitulo: "Programas / cursos",
+      adicionarPrograma: "Adicionar programa",
+      acomodacoesTitulo: "Acomodações",
+      adicionarAcomodacao: "Adicionar acomodação",
+      taxasTitulo: "Taxas",
+      nomeTaxaPlaceholder: "Nome (ex.: Registration)",
+      tipoPlaceholder: "Tipo…",
+      valorPlaceholder: "Valor",
+      cobrancaPlaceholder: "Cobrança…",
+      remover: "remover",
+      adicionarTaxa: "Adicionar taxa",
+      salvarRascunho: "Salvar rascunho",
+      aprovarEnviar: "Aprovar e enviar à EXP Tour",
+      nomePlaceholder: "Nome",
+      aPartirDe: "a partir de",
+      mais: "→",
+      addFaixa: "+ faixa",
+    },
+    en: {
+      somenteLeitura: "This price list has already been submitted — read only.",
+      falhaOperacao: "Operation failed.",
+      erroRede: "Connection error. Please try again.",
+      rascunhoSalvo: "Draft saved.",
+      confirmarAprovar: "Submit this price list for EXP Tour to approve and publish?",
+      moeda: "Currency",
+      itens: (n: number) => `${n} item(s)`,
+      programasTitulo: "Programs / courses",
+      adicionarPrograma: "Add program",
+      acomodacoesTitulo: "Accommodations",
+      adicionarAcomodacao: "Add accommodation",
+      taxasTitulo: "Fees",
+      nomeTaxaPlaceholder: "Name (e.g., Registration)",
+      tipoPlaceholder: "Type…",
+      valorPlaceholder: "Amount",
+      cobrancaPlaceholder: "Charged…",
+      remover: "remove",
+      adicionarTaxa: "Add fee",
+      salvarRascunho: "Save draft",
+      aprovarEnviar: "Approve and submit to EXP Tour",
+      nomePlaceholder: "Name",
+      aPartirDe: "starting at",
+      mais: "→",
+      addFaixa: "+ tier",
+    },
+  });
 
   async function chamar(acao: "salvar" | "aprovar"): Promise<boolean> {
     setOcupado(true);
@@ -39,12 +97,12 @@ export default function PriceListEditor({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setMsg({ tipo: "erro", texto: json.erro || "Falha na operação." });
+        setMsg({ tipo: "erro", texto: json.erro || T.falhaOperacao });
         return false;
       }
       return true;
     } catch {
-      setMsg({ tipo: "erro", texto: "Erro de rede. Tente novamente." });
+      setMsg({ tipo: "erro", texto: T.erroRede });
       return false;
     } finally {
       setOcupado(false);
@@ -52,10 +110,10 @@ export default function PriceListEditor({
   }
 
   async function salvar() {
-    if (await chamar("salvar")) setMsg({ tipo: "ok", texto: "Rascunho salvo." });
+    if (await chamar("salvar")) setMsg({ tipo: "ok", texto: T.rascunhoSalvo });
   }
   async function aprovar() {
-    if (!confirm("Enviar este price list para a EXP Tour aprovar e publicar?")) return;
+    if (!confirm(T.confirmarAprovar)) return;
     // Salva as edicoes atuais antes de aprovar.
     if (!(await chamar("salvar"))) return;
     if (await chamar("aprovar")) router.push("/fornecedor/precos");
@@ -67,7 +125,7 @@ export default function PriceListEditor({
     <div>
       {!editavel ? (
         <div style={{ marginBottom: 14, borderRadius: 10, padding: "10px 14px", fontSize: 13, border: "1px solid var(--p-line)", background: "var(--p-accent-soft)", color: "var(--p-accent-ink)" }}>
-          Este price list já foi enviado — somente leitura.
+          {T.somenteLeitura}
         </div>
       ) : null}
       {msg ? (
@@ -77,7 +135,7 @@ export default function PriceListEditor({
       ) : null}
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <label style={{ fontSize: 13, color: "var(--p-ink)" }}>Moeda</label>
+        <label style={{ fontSize: 13, color: "var(--p-ink)" }}>{T.moeda}</label>
         <input
           value={d.currency ?? ""}
           onChange={(e) => setD({ ...d, currency: e.target.value.toUpperCase().slice(0, 3) || null })}
@@ -85,11 +143,11 @@ export default function PriceListEditor({
           disabled={!editavel}
           style={{ ...inp(80), textTransform: "uppercase" }}
         />
-        <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{totalItens} item(ns)</span>
+        <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{T.itens(totalItens)}</span>
       </div>
 
       {/* Programas */}
-      <Secao titulo="Programas / cursos">
+      <Secao titulo={T.programasTitulo}>
         {d.programs.map((p, i) => (
           <ProdutoCard
             key={`p${i}`}
@@ -98,19 +156,25 @@ export default function PriceListEditor({
             tiers={p.tiers}
             tipoLabel={null}
             editavel={editavel}
+            nomePlaceholder={T.nomePlaceholder}
+            tipoPlaceholder={T.tipoPlaceholder}
+            remover={T.remover}
+            aPartirDe={T.aPartirDe}
+            mais={T.mais}
+            addFaixa={T.addFaixa}
             onNome={(v) => setD({ ...d, programs: patch(d.programs, i, { name: v }) })}
             onUnit={(v) => setD({ ...d, programs: patch(d.programs, i, { unit: v }) })}
-            onTiers={(t) => setD({ ...d, programs: patch(d.programs, i, { tiers: t }) })}
+            onTiers={(tiers) => setD({ ...d, programs: patch(d.programs, i, { tiers }) })}
             onRemover={() => setD({ ...d, programs: d.programs.filter((_, j) => j !== i) })}
           />
         ))}
         {editavel ? (
-          <Adicionar onClick={() => setD({ ...d, programs: [...d.programs, { name: "", educationType: null, unit: "week", tiers: [] }] })} rotulo="Adicionar programa" />
+          <Adicionar onClick={() => setD({ ...d, programs: [...d.programs, { name: "", educationType: null, unit: "week", tiers: [] }] })} rotulo={T.adicionarPrograma} />
         ) : null}
       </Secao>
 
       {/* Acomodacoes */}
-      <Secao titulo="Acomodações">
+      <Secao titulo={T.acomodacoesTitulo}>
         {d.accommodations.map((a, i) => (
           <ProdutoCard
             key={`a${i}`}
@@ -120,48 +184,54 @@ export default function PriceListEditor({
             tipoValor={a.type}
             tipoOpcoes={TIPOS_ACOM}
             editavel={editavel}
+            nomePlaceholder={T.nomePlaceholder}
+            tipoPlaceholder={T.tipoPlaceholder}
+            remover={T.remover}
+            aPartirDe={T.aPartirDe}
+            mais={T.mais}
+            addFaixa={T.addFaixa}
             onNome={(v) => setD({ ...d, accommodations: patch(d.accommodations, i, { name: v }) })}
             onUnit={(v) => setD({ ...d, accommodations: patch(d.accommodations, i, { unit: v }) })}
             onTipo={(v) => setD({ ...d, accommodations: patch(d.accommodations, i, { type: v || null }) })}
-            onTiers={(t) => setD({ ...d, accommodations: patch(d.accommodations, i, { tiers: t }) })}
+            onTiers={(tiers) => setD({ ...d, accommodations: patch(d.accommodations, i, { tiers }) })}
             onRemover={() => setD({ ...d, accommodations: d.accommodations.filter((_, j) => j !== i) })}
           />
         ))}
         {editavel ? (
-          <Adicionar onClick={() => setD({ ...d, accommodations: [...d.accommodations, { name: "", type: "homestay", unit: "week", tiers: [] }] })} rotulo="Adicionar acomodação" />
+          <Adicionar onClick={() => setD({ ...d, accommodations: [...d.accommodations, { name: "", type: "homestay", unit: "week", tiers: [] }] })} rotulo={T.adicionarAcomodacao} />
         ) : null}
       </Secao>
 
       {/* Taxas */}
-      <Secao titulo="Taxas">
+      <Secao titulo={T.taxasTitulo}>
         {d.fees.map((f, i) => (
           <div key={`f${i}`} style={cardStyle}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <input value={f.name} onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { name: e.target.value }) })} placeholder="Nome (ex.: Registration)" disabled={!editavel} style={inp(200)} />
+              <input value={f.name} onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { name: e.target.value }) })} placeholder={T.nomeTaxaPlaceholder} disabled={!editavel} style={inp(200)} />
               <select value={f.feeType ?? ""} onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { feeType: e.target.value || null }) })} disabled={!editavel} style={inp(150)}>
-                <option value="">Tipo…</option>
-                {TIPOS_TAXA.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value="">{T.tipoPlaceholder}</option>
+                {TIPOS_TAXA.map((tt) => <option key={tt} value={tt}>{tt}</option>)}
               </select>
-              <input value={String(f.amount)} onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { amount: Number(e.target.value) || 0 }) })} placeholder="Valor" inputMode="decimal" disabled={!editavel} style={inp(100)} />
+              <input value={String(f.amount)} onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { amount: Number(e.target.value) || 0 }) })} placeholder={T.valorPlaceholder} inputMode="decimal" disabled={!editavel} style={inp(100)} />
               <select value={f.basis ?? ""} onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { basis: e.target.value || null }) })} disabled={!editavel} style={inp(150)}>
-                <option value="">Cobrança…</option>
+                <option value="">{T.cobrancaPlaceholder}</option>
                 {BASES_TAXA.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
               {editavel ? (
-                <button type="button" onClick={() => setD({ ...d, fees: d.fees.filter((_, j) => j !== i) })} style={btnRemover}>remover</button>
+                <button type="button" onClick={() => setD({ ...d, fees: d.fees.filter((_, j) => j !== i) })} style={btnRemover}>{T.remover}</button>
               ) : null}
             </div>
           </div>
         ))}
         {editavel ? (
-          <Adicionar onClick={() => setD({ ...d, fees: [...d.fees, { name: "", feeType: "registration", amount: 0, basis: "once_per_quote", refundable: null }] })} rotulo="Adicionar taxa" />
+          <Adicionar onClick={() => setD({ ...d, fees: [...d.fees, { name: "", feeType: "registration", amount: 0, basis: "once_per_quote", refundable: null }] })} rotulo={T.adicionarTaxa} />
         ) : null}
       </Secao>
 
       {editavel ? (
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button type="button" onClick={salvar} disabled={ocupado} style={btnSec(ocupado)}>Salvar rascunho</button>
-          <button type="button" onClick={aprovar} disabled={ocupado} style={btnPrim(ocupado)}>Aprovar e enviar à EXP Tour</button>
+          <button type="button" onClick={salvar} disabled={ocupado} style={btnSec(ocupado)}>{T.salvarRascunho}</button>
+          <button type="button" onClick={aprovar} disabled={ocupado} style={btnPrim(ocupado)}>{T.aprovarEnviar}</button>
         </div>
       ) : null}
     </div>
@@ -169,49 +239,58 @@ export default function PriceListEditor({
 }
 
 function ProdutoCard({
-  nome, unit, tiers, tipoValor, tipoOpcoes, tipoLabel, editavel, onNome, onUnit, onTipo, onTiers, onRemover,
+  nome, unit, tiers, tipoValor, tipoOpcoes, tipoLabel, editavel,
+  nomePlaceholder, tipoPlaceholder, remover, aPartirDe, mais, addFaixa,
+  onNome, onUnit, onTipo, onTiers, onRemover,
 }: {
   nome: string; unit: string; tiers: FaixaPreco[];
   tipoValor?: string | null; tipoOpcoes?: string[]; tipoLabel?: string | null;
   editavel: boolean;
+  nomePlaceholder: string; tipoPlaceholder: string; remover: string;
+  aPartirDe: string; mais: string; addFaixa: string;
   onNome: (v: string) => void; onUnit: (v: string) => void; onTipo?: (v: string) => void;
   onTiers: (t: FaixaPreco[]) => void; onRemover: () => void;
 }) {
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }}>
-        <input value={nome} onChange={(e) => onNome(e.target.value)} placeholder="Nome" disabled={!editavel} style={inp(220)} />
+        <input value={nome} onChange={(e) => onNome(e.target.value)} placeholder={nomePlaceholder} disabled={!editavel} style={inp(220)} />
         {tipoOpcoes && onTipo ? (
           <select value={tipoValor ?? ""} onChange={(e) => onTipo(e.target.value)} disabled={!editavel} style={inp(160)}>
-            <option value="">Tipo…</option>
+            <option value="">{tipoPlaceholder}</option>
             {tipoOpcoes.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         ) : null}
         <select value={unit} onChange={(e) => onUnit(e.target.value)} disabled={!editavel} style={inp(110)}>
           {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
-        {editavel ? <button type="button" onClick={onRemover} style={btnRemover}>remover</button> : null}
+        {editavel ? <button type="button" onClick={onRemover} style={btnRemover}>{remover}</button> : null}
       </div>
-      <TiersEditor tiers={tiers} unit={unit} editavel={editavel} onTiers={onTiers} />
+      <TiersEditor tiers={tiers} unit={unit} editavel={editavel} onTiers={onTiers} aPartirDe={aPartirDe} mais={mais} addFaixa={addFaixa} remover={remover} />
     </div>
   );
 }
 
-function TiersEditor({ tiers, unit, editavel, onTiers }: { tiers: FaixaPreco[]; unit: string; editavel: boolean; onTiers: (t: FaixaPreco[]) => void }) {
+function TiersEditor({
+  tiers, unit, editavel, onTiers, aPartirDe, mais, addFaixa,
+}: {
+  tiers: FaixaPreco[]; unit: string; editavel: boolean; onTiers: (t: FaixaPreco[]) => void;
+  aPartirDe: string; mais: string; addFaixa: string; remover: string;
+}) {
   return (
     <div style={{ marginLeft: 4 }}>
       {tiers.map((t, i) => (
         <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, fontSize: 13 }}>
-          <span style={{ color: "var(--p-muted)" }}>a partir de</span>
+          <span style={{ color: "var(--p-muted)" }}>{aPartirDe}</span>
           <input value={String(t.minQuantity)} onChange={(e) => onTiers(patch(tiers, i, { minQuantity: Number(e.target.value) || 0 }))} inputMode="numeric" disabled={!editavel} style={inp(60)} />
-          <span style={{ color: "var(--p-muted)" }}>{unit} →</span>
+          <span style={{ color: "var(--p-muted)" }}>{unit} {mais}</span>
           <input value={String(t.unitPrice)} onChange={(e) => onTiers(patch(tiers, i, { unitPrice: Number(e.target.value) || 0 }))} inputMode="decimal" disabled={!editavel} style={inp(90)} />
           {editavel ? <button type="button" onClick={() => onTiers(tiers.filter((_, j) => j !== i))} style={btnRemover}>x</button> : null}
         </div>
       ))}
       {editavel ? (
         <button type="button" onClick={() => onTiers([...tiers, { minQuantity: 1, unitPrice: 0 }])} style={{ background: "none", border: "none", color: "var(--p-accent-ink)", fontSize: 12, cursor: "pointer", padding: 0 }}>
-          + faixa
+          {addFaixa}
         </button>
       ) : null}
     </div>

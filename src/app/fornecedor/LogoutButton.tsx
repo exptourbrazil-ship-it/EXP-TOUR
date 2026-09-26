@@ -2,12 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { t } from "@/lib/fornecedor-i18n";
 
 // Botão de sair do Portal do Fornecedor: chama /api/fornecedor/logout (limpa o
 // cookie) e volta para o login.
-export default function LogoutButton() {
+export default function LogoutButton({ language }: { language?: string }) {
   const router = useRouter();
   const [saindo, setSaindo] = useState(false);
+  const T = t(language, {
+    pt: { saindo: "Saindo...", sair: "Sair" },
+    en: { saindo: "Signing out...", sair: "Sign out" },
+  });
 
   async function sair() {
     setSaindo(true);
@@ -37,7 +42,7 @@ export default function LogoutButton() {
         opacity: saindo ? 0.7 : 1,
       }}
     >
-      {saindo ? "Saindo..." : "Sair"}
+      {saindo ? T.saindo : T.sair}
     </button>
   );
 }

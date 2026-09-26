@@ -3,16 +3,10 @@ import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { listarProgramas } from "@/lib/catalog-disponibilidade";
 import { listarConteudoDoFornecedor } from "@/lib/content-submission-service";
+import { t, statusConteudoLabel } from "@/lib/fornecedor-i18n";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const STATUS_LABEL: Record<string, { texto: string; cor: string }> = {
-  draft: { texto: "Rascunho", cor: "var(--p-accent-ink)" },
-  pending_admin: { texto: "Aguardando EXP Tour", cor: "#1d4ed8" },
-  approved: { texto: "Publicado", cor: "var(--p-success-ink)" },
-  rejected: { texto: "Devolvido", cor: "#b91c1c" },
-};
 
 // Conteúdo dos cursos (Fase B1): a escola descreve cada programa (descrição,
 // destaques, mídia, ficha) e envia; a EXP Tour aprova. Escopado ao supplier.
@@ -29,30 +23,54 @@ export default async function ConteudoFornecedorPage() {
     if (!statusPorProduto.has(s.productId)) statusPorProduto.set(s.productId, { status: s.status, rejectReason: s.rejectReason });
   }
 
+  const T = t(sessao.language, {
+    pt: {
+      titulo: "Conteúdo dos cursos",
+      subtitulo:
+        "Descreva cada curso (descrição, destaques, o que inclui, fotos/vídeo e a ficha) — é o que o estudante vê na cotação. Você edita um rascunho e envia; a EXP Tour aprova e publica.",
+      nenhumCurso: "Nenhum curso cadastrado ainda.",
+      curso: "Curso",
+      conteudo: "Conteúdo",
+      semConteudo: "Sem conteúdo",
+      ver: "Ver →",
+      editarConteudo: "Editar conteúdo →",
+    },
+    en: {
+      titulo: "Course content",
+      subtitulo:
+        "Describe each course (description, highlights, what's included, photos/video and details) — this is what students see in the quote. Edit a draft and submit it; EXP Tour approves and publishes it.",
+      nenhumCurso: "No courses registered yet.",
+      curso: "Course",
+      conteudo: "Content",
+      semConteudo: "No content",
+      ver: "View →",
+      editarConteudo: "Edit content →",
+    },
+  });
+
   return (
     <div>
-      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 4px" }}>Conteúdo dos cursos</h1>
+      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 4px" }}>{T.titulo}</h1>
       <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
-        Descreva cada curso (descrição, destaques, o que inclui, fotos/vídeo e a ficha) — é o que o
-        estudante vê na cotação. Você edita um rascunho e envia; a EXP Tour aprova e publica.
+        {T.subtitulo}
       </p>
 
       {programas.length === 0 ? (
-        <p style={{ color: "var(--p-muted)", fontSize: 14 }}>Nenhum curso cadastrado ainda.</p>
+        <p style={{ color: "var(--p-muted)", fontSize: 14 }}>{T.nenhumCurso}</p>
       ) : (
         <div style={{ border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--p-muted)", fontSize: 12 }}>
-                <th style={{ padding: "10px 14px" }}>Curso</th>
-                <th style={{ padding: "10px 14px" }}>Conteúdo</th>
+                <th style={{ padding: "10px 14px" }}>{T.curso}</th>
+                <th style={{ padding: "10px 14px" }}>{T.conteudo}</th>
                 <th style={{ padding: "10px 14px" }}></th>
               </tr>
             </thead>
             <tbody>
               {programas.map((p) => {
                 const st = statusPorProduto.get(p.id);
-                const badge = st ? STATUS_LABEL[st.status] : null;
+                const badge = st ? statusConteudoLabel(sessao.language, st.status) : null;
                 return (
                   <tr key={p.id} style={{ borderTop: "1px solid var(--p-line)", color: "var(--p-ink)" }}>
                     <td style={{ padding: "10px 14px" }}>
@@ -64,14 +82,14 @@ export default async function ConteudoFornecedorPage() {
                       ) : null}
                     </td>
                     <td style={{ padding: "10px 14px", fontWeight: 600, color: badge ? badge.cor : "var(--p-muted)" }}>
-                      {badge ? badge.texto : "Sem conteúdo"}
+                      {badge ? badge.texto : T.semConteudo}
                       {st?.status === "rejected" && st.rejectReason ? (
                         <div style={{ fontWeight: 400, fontSize: 12, color: "var(--p-muted)" }}>{st.rejectReason}</div>
                       ) : null}
                     </td>
                     <td style={{ padding: "10px 14px", textAlign: "right" }}>
                       <Link href={`/fornecedor/conteudo/${p.id}`} style={{ color: "var(--p-accent-ink)", textDecoration: "none", fontSize: 13 }}>
-                        {st?.status === "pending_admin" || st?.status === "approved" ? "Ver →" : "Editar conteúdo →"}
+                        {st?.status === "pending_admin" || st?.status === "approved" ? T.ver : T.editarConteudo}
                       </Link>
                     </td>
                   </tr>
