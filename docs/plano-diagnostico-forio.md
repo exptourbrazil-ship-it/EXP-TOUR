@@ -18,7 +18,7 @@ comentários em 26/09/2026. Não reintroduzir.
 
 | # | Decisão | Resultado |
 |---|---|---|
-| D1 | **Onde o diagnóstico roda.** | A conversa fica **dentro do Chat da Forio**. O portal é dono do motor, dos dados e do Plano, e expõe `/api/public/diagnostico/*` como ponte para o chat. A tela nativa `/diagnostico` existe como embutível e como reserva. **Pendente:** em que plataforma o Chat da Forio roda hoje (define se a ponte é tool calling, webhook ou iframe) — bloqueia só o item 2.2. |
+| D1 | **Onde o diagnóstico roda.** | A conversa fica **dentro do Chat da Forio**. O portal é dono do motor, dos dados e do Plano, e expõe `/api/public/diagnostico/*` como ponte para o chat. A tela nativa `/diagnostico` existe como embutível e como reserva. **Plataforma identificada em 26/09/2026:** o chat publicado em `www.forio.com.br/chat` é um app Next.js próprio (rota interna `/api/conversation`, PostHog), em repositório separado deste. A ponte é **tool calling**: o backend do chat recebe as ferramentas `iniciar_diagnostico`, `proxima_pergunta`, `responder`, `devolutiva`, `preco` que chamam a API do portal com chave por tenant. Alinhar com Maurício, que mantém o chat. Observação: o chat se apresenta como "Assistente Forio"; o nome decidido é **Chat da Forio**. |
 | D2 | **Bloco A sem parceira.** | Não depender de escola parceira: a Forio constrói o **próprio instrumento de nivelamento** (item 2.1). Enquanto ele não existe, o cruzamento fica `nao_medido` e o plano marca o nível como estimativa. A ressalva do Anexo (3.3) continua valendo: instrumento interno sustenta acompanhamento individual, não campanha agregada. |
 | D3 | **Plano Forio × cotação.** | Confirmado: **um único documento**. O chat apresenta **até três opções**; o Plano Forio é a aba "Seu plano" da cotação; o **Anexo III tem um só programa e um só preço**, o escolhido. |
 | D4 | **Número de perguntas.** | Quanto menos, melhor. O que não pode cair é a **percepção de personalização**. Caminho mínimo de 5 perguntas; âncora só para situações que "acontecem hoje", máximo 4; devolutiva com valor antes do fim; o motor conta e corta em 12. |
@@ -337,3 +337,113 @@ dá reunião = 4, negociar = 4 (âncora "negocio com naturalidade"; 5 é
 influenciar), apresentar = 4. Situações das profissões (Tecnologia, Jurídico,
 Saúde, Comercial) seguem o mesmo critério e são revisadas por Rodrigo no seed
 do item 0.1.
+
+---
+
+## 7. Fórmulas do motor (proposta para revisão)
+
+Tudo abaixo é determinístico e vira `src/lib/diagnostico-motor.ts` com testes.
+Níveis são números de 1 a 5 com meio degrau (3,5). Âncoras redigidas como
+faixa ("1 a 2", "4 a 5") mapeiam para o ponto médio (1,5 e 4,5).
+
+### 7.1 Nível estimado (N), a partir das âncoras
+
+```
+peso(situação)  = 2 se "acontece hoje", 1 se "nos próximos 12 meses"
+N               = Σ peso × nível_da_âncora  /  Σ peso        (só situações com âncora respondida)
+N arredondado ao meio degrau mais próximo (0,5)
+```
+
+Como se apresenta: N inteiro → "nível 3, Funcional"; N com meio → "entre 3 e
+4: Funcional, avançando para Profissional". Nunca CEFR.
+
+Confiança, gravada com o diagnóstico e escrita no plano:
+
+| Âncoras respondidas | Rótulo | Efeito |
+|---|---|---|
+| 3 ou mais | estimativa | plano sai normal |
+| 1 ou 2 | estimativa preliminar | plano sai; call refina |
+| 0 (só "não tenho certeza") | a medir | plano sem nível; convite ao nivelamento vira obrigatório |
+
+Situação selecionada **sem âncora** ("não tenho certeza" ou não perguntada,
+por causa do limite de 4): `nível_atual = N`, marcada `estimado = true`.
+
+### 7.2 Lacuna e prioridade (Anexo 4.4, com desempate)
+
+```
+lacuna(s)      = nível_alvo(s) − nível_atual(s)          (negativo vira 0)
+prioridade(s)  = lacuna(s) × peso(s)
+```
+
+Lacunas nomeadas: as 3 maiores prioridades com `lacuna > 0`. Desempate, nesta
+ordem: maior lacuna → "hoje" antes de "12 meses" → menor nível atual → ordem
+da biblioteca. Se houver menos de 3 com lacuna, o plano nomeia menos. Se
+nenhuma, o plano diz isso e recomenda manutenção ou meta de nível 5.
+
+### 7.3 Nível-alvo do programa e trava de duração (Anexo, Seção 2)
+
+```
+alvo_bruto = maior nível_alvo entre as lacunas nomeadas
+S = semanas disponíveis (Fase 1)
+
+S < 4          → alvo_programa = N        (sem promessa de nível: promete fechar as lacunas nomeadas)
+4 ≤ S < 12     → alvo_programa = min(alvo_bruto, N + 0,5)
+12 ≤ S < 24    → alvo_programa = min(alvo_bruto, N + 1)
+S ≥ 24         → alvo_programa = min(alvo_bruto, N + 1,5)
+sempre ≤ 5
+```
+
+Quando `alvo_bruto > alvo_programa`, o plano escreve em duas etapas: "neste
+programa, até X; a lacuna Y pede uma segunda fase". É a regra de honestidade
+em código, e é o gancho natural da manutenção e da recompra.
+
+### 7.4 Cruzamento A × B (Anexo 4.5)
+
+```
+d = T0 − N              (T0 = nivelamento objetivo, na Escada)
+d ≥ +0,5   → alto_baixo   "teste alto, autoavaliação baixa": exposição, velocidade, confiança
+d ≤ −0,5   → baixo_alto   "teste baixo, autoavaliação alta": base frágil, teto próximo
+senão      → alinhado     lacuna genuína de nível
+sem T0     → nao_medido   plano marca N como estimativa
+```
+
+Efeito no motor de recomendação: `alto_baixo` filtra turma ≤ 8 e perfil
+executivo/profissional com foco em produção oral; `baixo_alto` exige duração
+≥ 12 semanas e curso de base antes de conteúdo profissional; `alinhado` e
+`nao_medido` seguem a Escada.
+
+### 7.5 Devolutiva parcial (depois da 3ª pergunta)
+
+Com objetivo, janela e profissão ainda não há N. A devolutiva parcial é a
+leitura da **janela contra o objetivo**: "com 4 semanas, o realista é fechar
+lacunas específicas, não subir um nível inteiro", e a lista das situações da
+profissão. A frase-insight do cruzamento entra só na devolutiva completa.
+
+### 7.6 Nível-alvo por situação, biblioteca completa (proposta)
+
+Regra: 3 = tarefa com tempo para preparar ou de recepção; 4 = tempo real, com
+imprevisto; 5 = discordar ou influenciar sob tensão. Núcleo comum na Seção 6.
+
+| Grupo | Situação | Alvo |
+|---|---|---|
+| Núcleo | Negociar preço, prazo ou contrato | 4 |
+| Tecnologia | Daily e cerimônias ágeis | 3 |
+| Tecnologia | Code review e discussão técnica escrita | 3 |
+| Tecnologia | Explicar decisão de arquitetura a stakeholder | 4 |
+| Tecnologia | Documentação técnica | 3 |
+| Tecnologia | Entrevista técnica internacional | 4 |
+| Jurídico | Ler e interpretar contrato | 3 |
+| Jurídico | Redigir cláusula ou parecer | 4 |
+| Jurídico | Negociar termos com contraparte estrangeira | 4 |
+| Jurídico | Conference call com correspondente | 4 |
+| Jurídico | Vocabulário de common law | 3 |
+| Saúde | Vocabulário clínico e anamnese | 3 |
+| Saúde | Comunicação com paciente | 4 |
+| Saúde | Apresentação de caso e discussão com equipe | 4 |
+| Saúde | Ler e discutir literatura científica | 3 |
+| Saúde | Exame de proficiência para registro | 4 |
+| Comercial | Pitch e apresentação de proposta | 4 |
+| Comercial | Negociação comercial | 4 |
+| Comercial | Relacionamento e follow-up com cliente | 3 |
+| Comercial | Feedback e conversa difícil com o time | 5 |
+| Comercial | Representar a empresa em feira | 4 |
