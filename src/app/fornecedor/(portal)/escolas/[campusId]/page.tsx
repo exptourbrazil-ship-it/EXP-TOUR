@@ -34,8 +34,8 @@ export default async function ConteudoEscolaPage({
 
   const T = t(sessao.language, {
     pt: {
-      voltar: "← Voltar às escolas",
-      subtitulo: "Descreva a escola para a cotação. Salve o rascunho quando quiser e envie para a EXP Tour aprovar.",
+      voltar: "← Voltar aos campi",
+      subtitulo: "Descreva o campus para a cotação. Salve o rascunho quando quiser e envie para a EXP Tour aprovar.",
     },
     en: {
       voltar: "← Back to campus",

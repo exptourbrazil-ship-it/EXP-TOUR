@@ -24,12 +24,45 @@ export type InfoCampusForm = {
   website: string | null;
 };
 
-const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16 };
+const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16, scrollMarginTop: 88 };
 const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "var(--p-ink)", boxSizing: "border-box", fontFamily: "var(--p-body)" };
 const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "var(--p-muted)", marginBottom: 4 };
 
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
 const vazio = (): ConteudoForm => ({ description_html: "", highlights: "", highlights_footer: "", is_machine_translated: false });
+
+// Sumário de âncoras no topo — mesma ideia dos outros 2 editores de conteúdo
+// (curso/acomodação): o editor de um campus empilha 5 blocos (Localização,
+// Sobre, Estrutura, Nacionalidades, Mídia) num scroll só.
+function SumarioAncoras({ itens }: { itens: { id: string; texto: string }[] }) {
+  return (
+    <nav aria-label="Sumário" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+      {itens.map((it) => (
+        <a
+          key={it.id}
+          href={`#${it.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(it.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          style={{
+            border: "1px solid var(--p-line)",
+            borderRadius: 999,
+            padding: "5px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--p-accent-ink)",
+            background: "var(--p-accent-soft)",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {it.texto}
+        </a>
+      ))}
+    </nav>
+  );
+}
 
 export default function ConteudoEscolaEditor({
   campusId,
@@ -81,7 +114,7 @@ export default function ConteudoEscolaEditor({
   const TI = textosLocalizacaoContatoCampus(idioma);
   const T = t(idioma, {
     pt: {
-      sobreAEscola: "Sobre a escola",
+      sobreAEscola: "Sobre o campus",
       descricaoHtml: "Descrição (HTML simples)",
       destaques: "Destaques (um por linha)",
       rodapeDestaques: "Rodapé dos destaques",
@@ -96,6 +129,11 @@ export default function ConteudoEscolaEditor({
       nenhumaMidiaEscola: "Nenhuma mídia. Referencie por URL.",
       foto: "foto",
       brochura: "brochura",
+      sumarioLocalizacao: "Localização e contato",
+      sumarioSobre: "Sobre o campus",
+      sumarioEstrutura: "Estrutura e acreditações",
+      sumarioNacionalidades: "Mix de nacionalidades",
+      sumarioMidia: "Fotos e vídeos",
     },
     en: {
       sobreAEscola: "About the campus",
@@ -113,6 +151,11 @@ export default function ConteudoEscolaEditor({
       nenhumaMidiaEscola: "No media yet. Reference it by URL.",
       foto: "photo",
       brochura: "brochure",
+      sumarioLocalizacao: "Location and contact",
+      sumarioSobre: "About the campus",
+      sumarioEstrutura: "Facilities and accreditations",
+      sumarioNacionalidades: "Nationality mix",
+      sumarioMidia: "Photos and videos",
     },
   });
 
@@ -249,9 +292,19 @@ export default function ConteudoEscolaEditor({
       {erro ? <div style={{ ...box, borderColor: "#fca5a5", background: "#fef2f2", color: "#991b1b", fontSize: 14 }}>{erro}</div> : null}
       {okMsg ? <div style={{ ...box, borderColor: "#86efac", background: "#f0fdf4", color: "var(--p-success-ink)", fontSize: 14 }}>{okMsg}</div> : null}
 
+      <SumarioAncoras
+        itens={[
+          { id: "localizacao", texto: T.sumarioLocalizacao },
+          { id: "sobre", texto: T.sumarioSobre },
+          { id: "estrutura", texto: T.sumarioEstrutura },
+          { id: "nacionalidades", texto: T.sumarioNacionalidades },
+          { id: "midia", texto: T.sumarioMidia },
+        ]}
+      />
+
       {/* Localizacao e contato — gravacao DIRETA, sem fluxo de rascunho/aprovacao
           (diferente das secoes abaixo, sempre editavel independente do status). */}
-      <fieldset style={box}>
+      <fieldset id="localizacao" style={box}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{TI.titulo}</legend>
         <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 12px" }}>{TI.subtitulo}</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -295,7 +348,7 @@ export default function ConteudoEscolaEditor({
       </fieldset>
 
       {/* Sobre a escola por locale */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="sobre" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.sobreAEscola}</legend>
         <div style={{ display: "flex", gap: 6, margin: "6px 0 12px" }}>
           {LOCALES.map((l) => (
@@ -320,7 +373,7 @@ export default function ConteudoEscolaEditor({
       </fieldset>
 
       {/* Estrutura / acreditações */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="estrutura" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.estruturaEAcreditacoes}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.amenities}</label><textarea value={amenities} onChange={(e) => setAmenities(e.target.value)} rows={4} style={inp} placeholder="Wi-Fi&#10;Cafeteria&#10;Sala de informática" /></div>
@@ -329,7 +382,7 @@ export default function ConteudoEscolaEditor({
       </fieldset>
 
       {/* Mix de nacionalidades */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="nacionalidades" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.mixNacionalidades}</legend>
         {nacs.length === 0 ? <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{T.nenhumaNacionalidade}</p> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
@@ -349,7 +402,7 @@ export default function ConteudoEscolaEditor({
       </fieldset>
 
       {/* Mídia */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="midia" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fotosVideosBrochuras}</legend>
         {midias.length === 0 ? <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{T.nenhumaMidiaEscola}</p> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>

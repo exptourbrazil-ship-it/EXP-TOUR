@@ -54,12 +54,46 @@ type FichaForm = { accommodation_type: string; room_type: string; bathroom_type:
 type DisponibilidadeForm = { min_duration: string; max_duration: string; available_from: string; available_until: string };
 const vazioDisponibilidade = (): DisponibilidadeForm => ({ min_duration: "", max_duration: "", available_from: "", available_until: "" });
 
-const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16 };
+const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16, scrollMarginTop: 88 };
 const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "var(--p-ink)", boxSizing: "border-box", fontFamily: "var(--p-body)" };
 const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "var(--p-muted)", marginBottom: 4 };
 
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
 const vazio = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", not_ideal_for: "", is_machine_translated: false });
+
+// Sumário de âncoras no topo — mesma ideia do editor de curso
+// (ConteudoProgramaEditor): o editor de uma acomodação também empilha 4 blocos
+// (Descrição, Ficha, Duração, Mídia) num scroll só; um sumário clicável ajuda
+// a achar onde preencher cada coisa sem reescrever para abas.
+function SumarioAncoras({ itens }: { itens: { id: string; texto: string }[] }) {
+  return (
+    <nav aria-label="Sumário" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+      {itens.map((it) => (
+        <a
+          key={it.id}
+          href={`#${it.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(it.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          style={{
+            border: "1px solid var(--p-line)",
+            borderRadius: 999,
+            padding: "5px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--p-accent-ink)",
+            background: "var(--p-accent-soft)",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {it.texto}
+        </a>
+      ))}
+    </nav>
+  );
+}
 
 export default function ConteudoAcomodacaoEditor({ productId, idioma }: { productId: string; idioma?: string }) {
   const [id, setId] = useState<string | null>(null);
@@ -96,7 +130,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       quarto: "Quarto",
       banheiro: "Banheiro",
       refeicoes: "Refeições",
-      distanciaEscola: "Distância até a escola (min)",
+      distanciaEscola: "Distância até o campus (min)",
       checkIn: "Check-in",
       checkOut: "Check-out",
       fotosVideos: "Fotos e vídeos",
@@ -105,6 +139,10 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       duracaoMax: "Duração máx. (semanas)",
       disponivelDe: "Disponível de",
       disponivelAte: "Disponível até",
+      sumarioDescricao: "Descrição e políticas",
+      sumarioFicha: "Ficha da acomodação",
+      sumarioDuracao: "Duração",
+      sumarioMidia: "Fotos e vídeos",
     },
     en: {
       descricaoEPoliticas: "Description and policies",
@@ -127,6 +165,10 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       duracaoMax: "Max. duration (weeks)",
       disponivelDe: "Available from",
       disponivelAte: "Available until",
+      sumarioDescricao: "Description and policies",
+      sumarioFicha: "Accommodation details",
+      sumarioDuracao: "Duration",
+      sumarioMidia: "Photos and videos",
     },
   });
 
@@ -252,8 +294,17 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       {erro ? <div style={{ ...box, borderColor: "#fca5a5", background: "#fef2f2", color: "#991b1b", fontSize: 14 }}>{erro}</div> : null}
       {okMsg ? <div style={{ ...box, borderColor: "#86efac", background: "#f0fdf4", color: "var(--p-success-ink)", fontSize: 14 }}>{okMsg}</div> : null}
 
+      <SumarioAncoras
+        itens={[
+          { id: "descricao", texto: T.sumarioDescricao },
+          { id: "ficha", texto: T.sumarioFicha },
+          { id: "duracao", texto: T.sumarioDuracao },
+          { id: "midia", texto: T.sumarioMidia },
+        ]}
+      />
+
       {/* Descrição por locale */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="descricao" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.descricaoEPoliticas}</legend>
         <div style={{ display: "flex", gap: 6, margin: "6px 0 12px" }}>
           {LOCALES.map((l) => (
@@ -279,7 +330,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       </fieldset>
 
       {/* Ficha (accommodation_detail) */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="ficha" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fichaAcomodacao}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.tipo}</label>{sel(ACCOM(idioma), ficha.accommodation_type, (v) => setF({ accommodation_type: v }))}</div>
@@ -294,7 +345,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       </fieldset>
 
       {/* Duração e disponibilidade (min_duration/max_duration/available_from/available_until em `product`) */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="duracao" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.duracaoDisponibilidade}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.duracaoMin}</label><input value={disp.min_duration} onChange={(e) => setD({ min_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
@@ -305,7 +356,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
       </fieldset>
 
       {/* Mídia */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="midia" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fotosVideos}</legend>
         {midias.length === 0 ? <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{TX.nenhumaMidia}</p> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>

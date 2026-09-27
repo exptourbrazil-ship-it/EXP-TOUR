@@ -119,7 +119,7 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
   return t(idioma, {
     pt: {
       titulo: "Marca",
-      subtitulo: "Aparecem na proposta do estudante: o ícone do site ao lado do nome da escola e as redes como ícones clicáveis. Deixe em branco o que sua escola não tiver.",
+      subtitulo: "Aparecem na proposta do estudante: o ícone do site ao lado do nome da escola e as redes como ícones clicáveis. Deixe em branco o que sua escola não tiver. Para texto de apresentação, contato e endereço, veja a aba \"Sobre a instituição\".",
       icone: "Ícone do site (favicon)",
       salvar: "Salvar",
       salvando: "Salvando…",
@@ -131,7 +131,7 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
     },
     en: {
       titulo: "Brand",
-      subtitulo: "These appear in the student's proposal: the site icon next to the campus name and the social links as clickable icons. Leave blank whatever your campus doesn't have.",
+      subtitulo: "These appear in the student's proposal: the site icon next to the campus name and the social links as clickable icons. Leave blank whatever your campus doesn't have. For presentation text, contact and address, see the \"About the institution\" tab.",
       icone: "Site icon (favicon)",
       salvar: "Save",
       salvando: "Saving…",
@@ -152,7 +152,7 @@ export function textosInstituicaoFornecedor(idioma: string | null | undefined) {
   return t(idioma, {
     pt: {
       titulo: "Sobre a instituição",
-      subtitulo: "Apresentação e contato principal da sua instituição como um todo — diferente da tela \"Campus\", que é por unidade.",
+      subtitulo: "Apresentação e contato principal da sua instituição como um todo — diferente da tela \"Campus\" (que é por unidade) e da tela \"Marca\" (ícone do site e redes sociais).",
       about: "Descrição institucional",
       aboutPlaceholder: "Um resumo da sua instituição: história, diferenciais, missão.",
       contato: "Contato principal",
@@ -172,7 +172,7 @@ export function textosInstituicaoFornecedor(idioma: string | null | undefined) {
     },
     en: {
       titulo: "About the institution",
-      subtitulo: "Presentation and main contact for your institution as a whole — different from the \"Campus\" screen, which is per unit.",
+      subtitulo: "Presentation and main contact for your institution as a whole — different from the \"Campus\" screen (which is per unit) and the \"Brand\" screen (site icon and social links).",
       about: "Institutional description",
       aboutPlaceholder: "A summary of your institution: history, differentiators, mission.",
       contato: "Main contact",

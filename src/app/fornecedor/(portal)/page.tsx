@@ -7,7 +7,7 @@ import {
 } from "@/lib/fornecedor-dados";
 import { contarPorSeveridade } from "@/lib/fornecedor-pendencias";
 import { listarPendentesDoFornecedor } from "@/lib/confirmacao-service";
-import { ITENS_INVENTARIO_FORNECEDOR, textoNavFornecedor } from "@/lib/fornecedor-nav";
+import { ITENS_INVENTARIO_FORNECEDOR, ITENS_INSTITUCIONAL_FORNECEDOR, textoNavFornecedor } from "@/lib/fornecedor-nav";
 import { t } from "@/lib/fornecedor-i18n";
 import PendenciasLista from "./PendenciasLista";
 import ConfirmacoesFornecedor from "./ConfirmacoesFornecedor";
@@ -41,6 +41,7 @@ export default async function PainelFornecedorPage() {
       cancelados: "Cancelados",
       verEstudantes: "Ver estudantes →",
       seuInventario: "Seu inventário",
+      perfilInstituicao: "Perfil da instituição",
       semEstudantes:
         "Ainda não há estudantes vinculados à sua instituição. Assim que os contratos forem vinculados no sistema, eles aparecem aqui.",
     },
@@ -55,6 +56,7 @@ export default async function PainelFornecedorPage() {
       cancelados: "Cancelled",
       verEstudantes: "View students →",
       seuInventario: "Your inventory",
+      perfilInstituicao: "Institution profile",
       semEstudantes:
         "No students linked to your institution yet. As soon as contracts are linked in the system, they'll show up here.",
     },
@@ -118,12 +120,42 @@ export default async function PainelFornecedorPage() {
         {T.verEstudantes}
       </Link>
 
-      {/* Inventory home (estilo Edvisor): atalhos para os verticais do fornecedor. */}
+      {/* Inventory home (estilo Edvisor): atalhos para os verticais do fornecedor,
+          um bloco por GRUPO — separa o que a escola VENDE (inventário) do
+          perfil/institucional (marca, sobre, materiais), que antes vinham
+          misturados na mesma grade sem nenhuma pista do porquê. */}
+      <BlocoAtalhos titulo={T.seuInventario} itens={ITENS_INVENTARIO_FORNECEDOR} idioma={idioma} />
+      <BlocoAtalhos titulo={T.perfilInstituicao} itens={ITENS_INSTITUCIONAL_FORNECEDOR} idioma={idioma} />
+
+      {contadores.total === 0 ? (
+        <p style={{ marginTop: 20, fontSize: 13, color: "var(--p-muted)" }}>
+          {T.semEstudantes}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// Um bloco de atalhos do Painel (um por GRUPO do menu — ver fornecedor-nav.ts).
+// Extraído para reaproveitar entre "Seu inventário" e "Perfil da instituição"
+// sem duplicar o card.
+function BlocoAtalhos({
+  titulo,
+  itens,
+  idioma,
+}: {
+  titulo: string;
+  itens: typeof ITENS_INVENTARIO_FORNECEDOR;
+  idioma: string | null | undefined;
+}) {
+  if (itens.length === 0) return null;
+  return (
+    <div>
       <h2 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 20, margin: "28px 0 12px" }}>
-        {T.seuInventario}
+        {titulo}
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-        {ITENS_INVENTARIO_FORNECEDOR.map((item) => {
+        {itens.map((item) => {
           const texto = textoNavFornecedor(item, idioma);
           return (
             <Link
@@ -167,12 +199,6 @@ export default async function PainelFornecedorPage() {
           );
         })}
       </div>
-
-      {contadores.total === 0 ? (
-        <p style={{ marginTop: 20, fontSize: 13, color: "var(--p-muted)" }}>
-          {T.semEstudantes}
-        </p>
-      ) : null}
     </div>
   );
 }

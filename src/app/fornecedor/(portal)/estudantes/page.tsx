@@ -22,6 +22,7 @@ export default async function EstudantesFornecedorPage() {
   const T = t(sessao.language, {
     pt: {
       titulo: "Estudantes",
+      subtitulo: "Os estudantes vinculados aos seus contratos, com destino, visto e um resumo por caso.",
       nenhumEstudante: "Nenhum estudante vinculado à sua instituição ainda.",
       colEstudante: "Estudante",
       colPrograma: "Programa",
@@ -34,6 +35,7 @@ export default async function EstudantesFornecedorPage() {
     },
     en: {
       titulo: "Students",
+      subtitulo: "Students linked to your contracts, with destination, visa status and a summary per case.",
       nenhumEstudante: "No students linked to your institution yet.",
       colEstudante: "Student",
       colPrograma: "Program",
@@ -48,9 +50,12 @@ export default async function EstudantesFornecedorPage() {
 
   return (
     <div>
-      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 16px" }}>
+      <h1 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 26, margin: "0 0 4px" }}>
         {T.titulo}
       </h1>
+      <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
+        {T.subtitulo}
+      </p>
 
       {estudantes.length === 0 ? (
         <div style={{ border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 20, color: "var(--p-muted)", fontSize: 14 }}>
