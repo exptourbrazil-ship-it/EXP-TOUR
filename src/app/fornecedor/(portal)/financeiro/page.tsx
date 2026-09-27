@@ -1,7 +1,10 @@
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { extratoDoFornecedor, type LinhaExtrato, type StatusRepasse } from "@/lib/extrato-fornecedor";
+import { listarContasBancariasFornecedor } from "@/lib/supplier-bank-service";
+import { tenantIdAtual } from "@/lib/catalog-service";
 import { t } from "@/lib/fornecedor-i18n";
+import ContaBancariaFornecedorClient from "./ContaBancariaFornecedorClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +102,8 @@ export default async function FinanceiroPage() {
   const sessao = await exigirFornecedor("/fornecedor/financeiro");
   const supabase = getServiceClient();
   const extrato = await extratoDoFornecedor(supabase, sessao.supplierId);
+  const tenantId = await tenantIdAtual(supabase);
+  const contasBancarias = await listarContasBancariasFornecedor(supabase, tenantId, sessao.supplierId);
   const T = construirTextos(sessao.language);
 
   const moedasPrev = Object.keys(extrato.previstoPorMoeda).sort();
@@ -215,6 +220,10 @@ export default async function FinanceiroPage() {
       <p style={{ color: "var(--p-muted)", fontSize: 12, marginTop: 14 }}>
         {T.rodape}
       </p>
+
+      <div style={{ marginTop: 28, borderTop: "1px solid var(--p-line)", paddingTop: 20 }}>
+        <ContaBancariaFornecedorClient idioma={sessao.language} contasIniciais={contasBancarias} />
+      </div>
     </div>
   );
 }

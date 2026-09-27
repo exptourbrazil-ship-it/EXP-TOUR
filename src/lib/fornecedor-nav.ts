@@ -40,6 +40,7 @@ const IC = {
   acomodacao: "M3 21h18M4 21V7l8-4 8 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4",
   financeiro: "M12 3v18M8 7h6a3 3 0 0 1 0 6H8m0 0h8",
   marca: "M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20M2 12h20M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z",
+  instituicao: "M3 21h18M6 21V10l6-4 6 4v11M10 21v-5h4v5",
 } as const;
 
 // Ordem de exibição: Painel (Alunos, topo) → Estudantes → Inventário → Financeiro.
@@ -52,6 +53,7 @@ export const FORNECEDOR_NAV: FornecedorNavItem[] = [
   { href: "/fornecedor/escolas", label: "Escolas", labelEn: "Campus", grupo: "Inventário", icone: IC.escola, descricao: "Sobre a escola, fotos, estrutura e acreditações.", descricaoEn: "About the campus, photos, facilities and accreditations." },
   { href: "/fornecedor/acomodacoes", label: "Acomodações", labelEn: "Accommodation", grupo: "Inventário", icone: IC.acomodacao, descricao: "Descrição, políticas e ficha das acomodações.", descricaoEn: "Description, policies and details of the accommodation." },
   { href: "/fornecedor/marca", label: "Marca", labelEn: "Brand", grupo: "Inventário", icone: IC.marca, descricao: "Ícone do site e redes sociais, usados na proposta do estudante.", descricaoEn: "Site icon and social links, used in the student's proposal." },
+  { href: "/fornecedor/instituicao", label: "Sobre a instituição", labelEn: "About the institution", grupo: "Inventário", icone: IC.instituicao, descricao: "Descrição, contato principal e endereço da matriz da instituição.", descricaoEn: "Description, main contact and head office address of the institution." },
   { href: "/fornecedor/materiais", label: "Materiais", labelEn: "Materials", grupo: "Inventário", icone: IC.materiais, descricao: "Documentos e materiais para os estudantes.", descricaoEn: "Documents and materials for students." },
   { href: "/fornecedor/financeiro", label: "Financeiro", labelEn: "Finance", grupo: "Financeiro", icone: IC.financeiro, descricao: "Seu extrato de repasses e comprovantes.", descricaoEn: "Your payout statement and receipts." },
 ];

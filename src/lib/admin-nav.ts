@@ -84,6 +84,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "financeiro.ver",
   },
   {
+    href: "/admin/contas-bancarias",
+    label: "Contas bancárias",
+    descricao: "Propostas de conta bancária dos fornecedores para o repasse",
+    icone: ICONES.financeiro,
+    capacidade: "financeiro.ver",
+  },
+  {
     href: "/admin/documentos",
     label: "Documentos",
     descricao: "Aprovar, rejeitar e enviar documentos",
@@ -244,6 +251,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/viagem": "Clientes",
   "/admin/financeiro": "Financeiro",
   "/admin/contas-a-pagar": "Financeiro",
+  "/admin/contas-bancarias": "Financeiro",
   "/admin/antecipacoes": "Financeiro",
   "/admin/cambio": "Financeiro",
   "/admin/documentos": "Operação",
