@@ -14,6 +14,15 @@ function fmtFaixas(tiers: { minQuantity: number; unitPrice: number }[], unit: st
   return tiers.map((t) => `≥${t.minQuantity} ${unit}: ${moeda || ""} ${t.unitPrice}`).join(" · ");
 }
 
+// Escopo da taxa: aprovar sem ver isso e a taxa "geral" passar a cobrar de
+// TODO o catalogo do campus sem ninguem ter escolhido isso conscientemente
+// (ver price-admin-service.ts::materializar — fail-closed por padrao).
+function escopoTaxa(f: { productId?: string | null; escopo?: "geral" | null }): string {
+  if (f.productId) return "vinculada a um curso/acomodação específico";
+  if (f.escopo === "geral") return "GERAL — aplica a todos os cursos/acomodações do campus";
+  return "sem escopo definido — não vai aparecer em nenhuma cotação até ser revisada";
+}
+
 export default async function AdminPrecoDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await exigirCapacidade("fornecedores.gerir", `/admin/precos/${id}`);
@@ -55,7 +64,11 @@ export default async function AdminPrecoDetalhePage({ params }: { params: Promis
       {e.fees.length > 0 ? (
         <Secao titulo="Taxas">
           {e.fees.map((f, i) => (
-            <Linha key={`f${i}`} nome={f.name} detalhe={`${moeda || ""} ${f.amount}${f.feeType ? ` · ${f.feeType}` : ""}`} />
+            <Linha
+              key={`f${i}`}
+              nome={f.name}
+              detalhe={`${moeda || ""} ${f.amount}${f.feeType ? ` · ${f.feeType}` : ""} · ${escopoTaxa(f)}`}
+            />
           ))}
         </Secao>
       ) : null}

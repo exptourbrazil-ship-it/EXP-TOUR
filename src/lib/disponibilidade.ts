@@ -224,3 +224,47 @@ export function validarPrograma(e: ProgramaEntrada): ResultadoPrograma {
     },
   };
 }
+
+// ── Campus (novo, self-service da escola) ──────────────────────────────────
+// So a IDENTIDADE minima (nome/pais/cidade/regiao) — moeda/fuso NAO sao
+// pedidos aqui (ficam com default sensato em criarCampus, catalog-
+// disponibilidade.ts; o admin ajusta na aprovacao). Espelha validarCampus
+// (src/lib/campus.ts, usado pelo admin), mas com um subconjunto de campos —
+// o motor completo (com status/moeda/fuso obrigatorios) nao serve pro
+// formulario enxuto do fornecedor.
+export type CampusEntrada = {
+  name?: unknown;
+  countryCode?: unknown;
+  city?: unknown;
+  region?: unknown;
+};
+export type CampusFornecedorDados = {
+  name: string;
+  countryCode: string;
+  city: string;
+  region: string | null;
+};
+export type ResultadoCampusFornecedor = { ok: true; dados: CampusFornecedorDados } | { ok: false; erro: string };
+
+export function validarCampusFornecedor(e: CampusEntrada): ResultadoCampusFornecedor {
+  const name = texto(e.name);
+  if (!name) return { ok: false, erro: "Informe o nome do campus." };
+
+  const city = texto(e.city);
+  if (!city) return { ok: false, erro: "Informe a cidade do campus." };
+
+  const countryCode = texto(e.countryCode).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(countryCode)) {
+    return { ok: false, erro: "Informe o país em ISO-2 (ex.: CA, IE, AU)." };
+  }
+
+  return {
+    ok: true,
+    dados: {
+      name: name.slice(0, 200),
+      countryCode,
+      city: city.slice(0, 120),
+      region: texto(e.region).slice(0, 120) || null,
+    },
+  };
+}

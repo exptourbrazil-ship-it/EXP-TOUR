@@ -7,6 +7,7 @@ import {
   dataIsoValida,
   validarAcomodacao,
   validarPeriodo,
+  validarCampusFornecedor,
 } from "./disponibilidade.ts";
 
 test("dataIsoValida aceita AAAA-MM-DD real e rejeita o resto", () => {
@@ -102,4 +103,25 @@ test("validarIntake: capacidade NUMERICA (vinda de service) e preservada, nao de
   const zero = validarIntake({ startDate: "2026-03-02", capacity: 0 });
   assert.ok(zero.ok);
   if (zero.ok) assert.equal(zero.dados.capacity, 0);
+});
+
+test("validarCampusFornecedor: aceita identidade minima e normaliza pais/regiao", () => {
+  const r = validarCampusFornecedor({ name: "  Connect — Downtown  ", countryCode: "ca", city: "Toronto", region: "  ON  " });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.deepEqual(r.dados, { name: "Connect — Downtown", countryCode: "CA", city: "Toronto", region: "ON" });
+  }
+});
+
+test("validarCampusFornecedor: regiao e opcional (vazio -> null)", () => {
+  const r = validarCampusFornecedor({ name: "Unidade Centro", countryCode: "IE", city: "Dublin" });
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.dados.region, null);
+});
+
+test("validarCampusFornecedor: rejeita nome/cidade ausentes e pais fora do ISO-2", () => {
+  assert.equal(validarCampusFornecedor({ countryCode: "CA", city: "Toronto" }).ok, false); // sem nome
+  assert.equal(validarCampusFornecedor({ name: "X", countryCode: "CA" }).ok, false); // sem cidade
+  assert.equal(validarCampusFornecedor({ name: "X", countryCode: "CAN", city: "Toronto" }).ok, false); // ISO-3, nao ISO-2
+  assert.equal(validarCampusFornecedor({ name: "X", countryCode: "", city: "Toronto" }).ok, false); // sem pais
 });

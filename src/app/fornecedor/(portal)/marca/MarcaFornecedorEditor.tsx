@@ -14,6 +14,7 @@ import { textosMarcaFornecedor, redeLabelFornecedor } from "@/lib/fornecedor-i18
 
 export type MarcaInicial = {
   faviconUrl: string | null;
+  logoUrl: string | null;
   social: { rede: Rede; url: string }[];
 };
 
@@ -28,6 +29,8 @@ export default function MarcaFornecedorEditor({ inicial, idioma }: { inicial: Ma
 
   const [favicon, setFavicon] = useState(inicial.faviconUrl ?? "");
   const [faviconFalhou, setFaviconFalhou] = useState(false);
+  const [logo, setLogo] = useState(inicial.logoUrl ?? "");
+  const [logoFalhou, setLogoFalhou] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
     for (const r of REDES) m[r] = inicial.social.find((s) => s.rede === r)?.url ?? "";
@@ -49,6 +52,7 @@ export default function MarcaFornecedorEditor({ inicial, idioma }: { inicial: Ma
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           faviconUrl: favicon.trim(),
+          logoUrl: logo.trim(),
           social: REDES.map((rede) => ({ rede, url: urls[rede] ?? "" })).filter((r) => r.url.trim() !== ""),
         }),
       });
@@ -58,7 +62,12 @@ export default function MarcaFornecedorEditor({ inicial, idioma }: { inicial: Ma
         setFavicon(json.data.faviconUrl ?? "");
         setFaviconFalhou(false);
       }
-      if (json?.data?.aviso) setAviso(json.data.aviso);
+      if (json?.data?.logoUrl !== undefined) {
+        setLogo(json.data.logoUrl ?? "");
+        setLogoFalhou(false);
+      }
+      const avisos = [json?.data?.aviso, json?.data?.avisoLogo].filter(Boolean).join(" ");
+      if (avisos) setAviso(avisos);
       setSalvo(true);
       router.refresh();
     } catch (e: any) {
@@ -105,6 +114,28 @@ export default function MarcaFornecedorEditor({ inicial, idioma }: { inicial: Ma
             value={favicon}
             onChange={(e) => { setFavicon(e.target.value); setFaviconFalhou(false); }}
             placeholder="https://www.suaescola.com/favicon.ico"
+            style={inp}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <label style={lbl}>{T.logo}</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {logo.trim() && !logoFalhou ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logo.trim()}
+              alt=""
+              style={{ height: 32, maxWidth: 120, flexShrink: 0, borderRadius: 4, objectFit: "contain" }}
+              onError={() => setLogoFalhou(true)}
+            />
+          ) : null}
+          <input
+            type="url"
+            value={logo}
+            onChange={(e) => { setLogo(e.target.value); setLogoFalhou(false); }}
+            placeholder={T.logoPlaceholder}
             style={inp}
           />
         </div>

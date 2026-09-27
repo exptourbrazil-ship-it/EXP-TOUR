@@ -95,7 +95,10 @@ export function validarPayloadConteudo(
 }
 
 // Posse: o produto tem que ser do KIND pedido e de um campus do fornecedor.
-async function produtoDoFornecedor(
+// Exportada: reaproveitada por outras fatias do portal do fornecedor que
+// recebem um productId e precisam da MESMA checagem (ex.: "Preço" dentro do
+// editor de curso, em price-list/route.ts) — nunca reimplementar a checagem.
+export async function produtoDoFornecedor(
   supabase: SupabaseClient,
   supplierId: string,
   productId: string,

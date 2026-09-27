@@ -2,7 +2,8 @@
 // sempre pelo supplierId. Nada de preco vivo aqui: guarda o RASCUNHO (jsonb) e
 // o fluxo de aprovacao; a materializacao em preco active fica na fatia do Admin.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizarPriceListExtraido, contarItens, type PriceListExtraido } from "@/lib/price-list-extract";
+import { normalizarPriceListExtraido, contarItens, type PriceListExtraido, type TaxaExtraida } from "@/lib/price-list-extract";
+import { produtoDoFornecedor } from "@/lib/content-submission-service";
 
 // Rascunho vazio (mesma forma normalizada) para a criacao manual — sem PDF,
 // sem IA. A escola preenche do zero no mesmo PriceListEditor.
@@ -82,20 +83,60 @@ export async function criarSubmission(
 // Irma de criarSubmission: cria um rascunho VAZIO, sem PDF/IA — a escola monta a
 // tabela de preco do zero no mesmo editor (PriceListEditor). Mesma linha no
 // banco, so difere a origem dos dados (nenhum arquivo, extract_status="manual").
+//
+// `prefill` (opcional): usado pelo atalho "+ Propor preço para este curso" de
+// dentro do editor de um curso/acomodação já existente — em vez da escola
+// digitar tudo de novo, o rascunho já nasce com UM item apontando para aquele
+// productId (nome/tipo/unidade herdados do catálogo). O restante do fluxo
+// (revisar, adicionar faixas, aprovar) é o mesmo de sempre.
 export async function criarSubmissionManual(
   supabase: SupabaseClient,
-  entrada: { tenantId: string; supplierId: string; campusId: string | null; createdBy: string }
+  entrada: {
+    tenantId: string;
+    supplierId: string;
+    campusId: string | null;
+    createdBy: string;
+    prefill?: { productId: string; kind: "program" | "accommodation"; name: string; unit?: string; educationType?: string | null; type?: string | null };
+  }
 ): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
+  const extracted = priceListVazio();
+  if (entrada.prefill) {
+    const { productId, kind, name, unit, educationType, type } = entrada.prefill;
+    if (kind === "accommodation") {
+      extracted.accommodations.push({ name, type: type ?? null, unit: unit || "week", tiers: [], productId });
+    } else {
+      extracted.programs.push({ name, educationType: educationType ?? null, unit: unit || "week", tiers: [], productId });
+    }
+  }
   return criarSubmission(supabase, {
     tenantId: entrada.tenantId,
     supplierId: entrada.supplierId,
     campusId: entrada.campusId,
     sourceStoragePath: null,
     sourceFilename: null,
-    extracted: priceListVazio(),
+    extracted,
     extractStatus: "manual",
     createdBy: entrada.createdBy,
   });
+}
+
+// Preço VIGENTE (só leitura) de um produto do catálogo, para exibir dentro do
+// editor de um curso/acomodação da escola. Reaproveita a mesma leitura do
+// admin (produto-admin-service.listarVinculosDoProduto — vínculo por
+// price_template_product/fee_product) — a posse (produto é deste supplier) é
+// conferida ANTES pelo chamador (rota da API), esta função só busca por
+// productId+tenantId.
+export async function obterPrecoVigenteDoProduto(
+  supabase: SupabaseClient,
+  tenantId: string,
+  productId: string
+): Promise<{ precos: import("@/lib/produto-admin-service").PrecoVinculado[]; taxas: import("@/lib/produto-admin-service").TaxaVinculada[] }> {
+  const { listarVinculosDoProduto } = await import("@/lib/produto-admin-service");
+  const { precos, taxas } = await listarVinculosDoProduto(supabase, tenantId, productId);
+  // "Vigente" para a escola = só o que está active (rascunho/expirada não
+  // interessa nesta leitura resumida; o detalhe completo continua na tela de
+  // Tabelas por carga horária).
+  return { precos: precos.filter((p) => p.status === "active"), taxas };
 }
 
 // Submissions do fornecedor (mais recentes primeiro).
@@ -126,6 +167,43 @@ export async function obterSubmissionDoFornecedor(
   return { ...mapResumo(data), extracted: normalizarPriceListExtraido((data as any).extracted) };
 }
 
+// Reconfere posse de todo `productId` embutido no rascunho antes de gravar —
+// defesa em profundidade: a garantia REAL contra vincular preco ao produto de
+// OUTRO fornecedor esta no re-check por campus_id em price-admin-service.ts
+// (materializar), que nao confia no productId do jsonb. Mas o rascunho em si
+// (gravado aqui, so enquanto draft) tambem nao deve reter um productId que o
+// fornecedor nao possui — um UUID adulterado (de outra escola) e limpo (vira
+// null) em vez de travar o salvamento inteiro.
+async function limparProductIdsNaoPossuidos(supabase: SupabaseClient, supplierId: string, extracted: PriceListExtraido): Promise<PriceListExtraido> {
+  const checar = async <T extends { productId?: string | null }>(itens: T[], kind: "program" | "accommodation"): Promise<T[]> =>
+    Promise.all(
+      itens.map(async (item) => {
+        if (!item.productId) return item;
+        const ok = await produtoDoFornecedor(supabase, supplierId, item.productId, kind);
+        return ok ? item : { ...item, productId: null };
+      })
+    );
+  // Taxa nao tem "kind" proprio (pode vincular a curso OU acomodacao) — tenta
+  // as duas antes de limpar. Mesmo padrao de defesa em profundidade dos itens
+  // acima; a garantia real continua no re-check por campus_id em
+  // price-admin-service.ts (materializar).
+  const checarTaxa = async (itens: TaxaExtraida[]) =>
+    Promise.all(
+      itens.map(async (item) => {
+        if (!item.productId) return item;
+        const okPrograma = await produtoDoFornecedor(supabase, supplierId, item.productId, "program");
+        const okAcomodacao = okPrograma || (await produtoDoFornecedor(supabase, supplierId, item.productId, "accommodation"));
+        return okAcomodacao ? item : { ...item, productId: null };
+      })
+    );
+  return {
+    ...extracted,
+    programs: await checar(extracted.programs, "program"),
+    accommodations: await checar(extracted.accommodations, "accommodation"),
+    fees: await checarTaxa(extracted.fees),
+  };
+}
+
 // Salva a edicao do rascunho (so enquanto draft). Normaliza antes de gravar.
 export async function atualizarExtracted(
   supabase: SupabaseClient,
@@ -137,7 +215,7 @@ export async function atualizarExtracted(
   if (!atual) return { ok: false, erro: "Price list não encontrado." };
   if (atual.status !== "draft") return { ok: false, erro: "Este price list não está mais em rascunho." };
 
-  const extracted = normalizarPriceListExtraido(extractedRaw);
+  const extracted = await limparProductIdsNaoPossuidos(supabase, supplierId, normalizarPriceListExtraido(extractedRaw));
   const { error } = await supabase
     .from("price_submission")
     .update({ extracted, currency: extracted.currency, updated_at: new Date().toISOString() })

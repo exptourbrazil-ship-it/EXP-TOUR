@@ -7,6 +7,12 @@ export type PlanoProduto = {
   kind: "program" | "accommodation";
   name: string;
   unit: string;
+  // Vínculo opcional a um product.id JÁ EXISTENTE (propagado do item extraído —
+  // ver price-list-extract.ProgramaExtraido/AcomodacaoExtraida). Quando presente
+  // (e a posse for confirmada pelo serviço, no mesmo tenant/campus do
+  // submission), o servico REAPROVEITA o produto em vez de criar um novo —
+  // só publica a tabela de preço/faixas e vincula via price_template_product.
+  productId: string | null;
   // detalhe especifico (program_detail / accommodation_detail), sem product_id.
   detail: Record<string, unknown>;
   template: {
@@ -27,6 +33,16 @@ export type PlanoTaxa = {
   amount: number;
   currency: string;
   is_mandatory: boolean;
+  // Vínculo opcional a um product.id JÁ EXISTENTE (mesmo padrão de
+  // PlanoProduto.productId) — quando presente e a posse for confirmada pelo
+  // serviço, a taxa é publicada vinculada a ESTE produto (fee_product) em vez
+  // de solta.
+  productId: string | null;
+  // "geral" = a escola ESCOLHEU explicitamente que a taxa vale para todo o
+  // campus (sem productId). Ausente/null = ainda não definido — a
+  // materialização trata como fail-closed (taxa some da cotação até alguém
+  // decidir o escopo), nunca assume "geral" por omissão.
+  escopo: "geral" | null;
 };
 
 export type PlanoMaterializacao = { produtos: PlanoProduto[]; taxas: PlanoTaxa[] };
@@ -51,6 +67,7 @@ function planoDeProduto(
     kind,
     name: item.name,
     unit: item.unit,
+    productId: item.productId ?? null,
     detail,
     template: {
       name: item.name,
@@ -73,7 +90,9 @@ function planoDeTaxa(t: TaxaExtraida, currency: string): PlanoTaxa {
     charge_basis: t.basis || "once_per_quote",
     amount: t.amount,
     currency,
-    is_mandatory: true,
+    is_mandatory: t.mandatory ?? true,
+    productId: t.productId ?? null,
+    escopo: t.escopo === "geral" ? "geral" : null,
   };
 }
 

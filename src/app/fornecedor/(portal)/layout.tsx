@@ -42,7 +42,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   const supabase = getServiceClient();
   const [{ data: supplier }, brand] = await Promise.all([
-    supabase.from("supplier").select("display_name").eq("id", sessao.supplierId).maybeSingle(),
+    supabase.from("supplier").select("display_name, logo_url").eq("id", sessao.supplierId).maybeSingle(),
     brandDoFornecedor(supabase, sessao.supplierId),
   ]);
 
@@ -83,6 +83,14 @@ export default async function PortalLayout({ children }: { children: React.React
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {supplier?.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={supplier.logo_url}
+              alt=""
+              style={{ height: 28, maxWidth: 140, objectFit: "contain", flexShrink: 0 }}
+            />
+          ) : null}
           <span style={{ fontSize: 13, opacity: 0.85 }}>{supplier?.display_name || sessao.email}</span>
           <LogoutButton language={sessao.language} />
         </div>

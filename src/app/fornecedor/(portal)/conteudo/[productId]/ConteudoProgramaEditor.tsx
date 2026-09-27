@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DIAS_SEMANA,
   hidratarTimetable,
@@ -315,6 +316,188 @@ function GradeHorarios({ valor, set, idioma }: { valor: TimetableEdit; set: (t: 
   );
 }
 
+// ── Preço (leitura + atalho para propor) ────────────────────────────────────
+// Espelha, no portal do fornecedor, o que a aba "Preços & Taxas" já mostra no
+// editor do ADMIN (SecaoPrecosTaxas.tsx) para o mesmo produto — mesma fonte de
+// dado (price_template_product), só que aqui é 100% leitura (a escola não edita
+// tabela direto) e o botão de ação cria uma PROPOSTA pendente de aprovação em
+// vez de publicar. Ver /api/fornecedor/price-list (ação "vigente_produto" e
+// "criar_manual" com `prefill`).
+type PrecoVigente = { id: string; name: string; currency: string; unit: string; validFrom: string; validUntil: string | null };
+type TaxaVigente = { id: string; name: string; feeType: string; chargeBasis: string; amount: number | null; currency: string | null; isMandatory: boolean; gerida: boolean };
+
+function fmtDataPreco(d: string | null): string {
+  if (!d) return "—";
+  const [a, m, dia] = d.split("-");
+  return dia ? `${dia}/${m}/${a}` : d;
+}
+
+const UNIT_LABEL_PRECO: Record<string, string> = { week: "semana", day: "dia", month: "mês", session: "sessão", unit: "unidade" };
+const FEE_TYPE_LABEL_PT: Record<string, string> = {
+  registration: "Matrícula", material: "Material", bank: "Bancária", placement: "Colocação",
+  service: "Serviço", courier: "Correio", courier_of_documents: "Envio de documentos", custom: "Outra",
+};
+const FEE_TYPE_LABEL_EN: Record<string, string> = {
+  registration: "Registration", material: "Material", bank: "Bank", placement: "Placement",
+  service: "Service", courier: "Courier", courier_of_documents: "Document courier", custom: "Other",
+};
+
+function SecaoPreco({
+  productId,
+  nomePrograma,
+  idioma,
+}: {
+  productId: string;
+  nomePrograma: string;
+  idioma?: string;
+}) {
+  const router = useRouter();
+  const [carregando, setCarregando] = useState(true);
+  const [precos, setPrecos] = useState<PrecoVigente[]>([]);
+  const [taxas, setTaxas] = useState<TaxaVigente[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+  const [propondo, setPropondo] = useState(false);
+
+  const T = t(idioma, {
+    pt: {
+      precoAtual: "Preço vigente",
+      semPreco: "Este curso ainda não tem preço vigente no catálogo.",
+      verTabelas: "Ver tabelas completas →",
+      propor: "+ Propor preço para este curso",
+      propondo: "Criando proposta…",
+      avisoProposta: "Vira uma proposta de tabela de preço, pendente de aprovação da EXP Tour — igual a qualquer price list que você envia.",
+      erroCarregar: "Não foi possível carregar o preço vigente.",
+      erroPropor: "Falha ao criar a proposta de preço.",
+      unidade: (u: string) => `por ${UNIT_LABEL_PRECO[u] ?? u}`,
+      vigencia: (de: string, ate: string) => `${de} → ${ate}`,
+      semFim: "sem fim",
+      taxasVinculadas: "Taxas vinculadas a este curso",
+      semTaxas: "Nenhuma taxa vinculada a este curso.",
+      obrigatoria: "Obrigatória",
+      opcional: "Opcional",
+      porTabela: "por tabela",
+    },
+    en: {
+      precoAtual: "Active price",
+      semPreco: "This course has no active price in the catalog yet.",
+      verTabelas: "View full tables →",
+      propor: "+ Propose a price for this course",
+      propondo: "Creating proposal…",
+      avisoProposta: "This becomes a price table proposal, pending EXP Tour's approval — same as any price list you submit.",
+      erroCarregar: "Could not load the active price.",
+      erroPropor: "Failed to create the price proposal.",
+      unidade: (u: string) => `per ${u}`,
+      vigencia: (de: string, ate: string) => `${de} → ${ate}`,
+      semFim: "no end date",
+      taxasVinculadas: "Fees linked to this course",
+      semTaxas: "No fees linked to this course.",
+      obrigatoria: "Mandatory",
+      opcional: "Optional",
+      porTabela: "per table",
+    },
+  });
+  const FEE_TYPE_LABEL = idioma === "en" ? FEE_TYPE_LABEL_EN : FEE_TYPE_LABEL_PT;
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/fornecedor/price-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ acao: "vigente_produto", productId, kind: "program" }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!vivo) return;
+        if (r.ok && j.ok) {
+          setPrecos(j.precos ?? []);
+          setTaxas(j.taxas ?? []);
+        } else {
+          setErro(j?.erro || T.erroCarregar);
+        }
+      } catch {
+        if (vivo) setErro(T.erroCarregar);
+      } finally {
+        if (vivo) setCarregando(false);
+      }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId]);
+
+  async function proporPreco() {
+    setPropondo(true);
+    setErro(null);
+    try {
+      const r = await fetch("/api/fornecedor/price-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "criar_manual", prefill: { productId, kind: "program", name: nomePrograma, unit: "week" } }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) {
+        setErro(j?.erro || T.erroPropor);
+        setPropondo(false);
+        return;
+      }
+      router.push(`/fornecedor/precos/${j.id}`);
+    } catch {
+      setErro(T.erroPropor);
+      setPropondo(false);
+    }
+  }
+
+  return (
+    <div>
+      <h4 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 14, margin: "0 0 8px" }}>{T.precoAtual}</h4>
+      {erro ? <p style={{ fontSize: 13, color: "#b91c1c", margin: "0 0 10px" }}>{erro}</p> : null}
+      {carregando ? (
+        <p style={{ fontSize: 13, color: "var(--p-muted)" }}>…</p>
+      ) : precos.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--p-muted)", margin: "0 0 10px" }}>{T.semPreco}</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          {precos.map((p) => (
+            <div key={p.id} style={{ border: "1px solid var(--p-line)", borderRadius: 8, background: "#fff", padding: "8px 10px", fontSize: 13, color: "var(--p-ink)" }}>
+              <strong>{p.name}</strong> — {p.currency} {T.unidade(p.unit)}
+              <span style={{ color: "var(--p-muted)" }}> · {T.vigencia(fmtDataPreco(p.validFrom), p.validUntil ? fmtDataPreco(p.validUntil) : T.semFim)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h4 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 14, margin: "0 0 8px" }}>{T.taxasVinculadas}</h4>
+      {carregando ? null : taxas.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--p-muted)", margin: "0 0 10px" }}>{T.semTaxas}</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          {taxas.map((tx) => (
+            <div key={tx.id} style={{ border: "1px solid var(--p-line)", borderRadius: 8, background: "#fff", padding: "8px 10px", fontSize: 13, color: "var(--p-ink)" }}>
+              <strong>{tx.name}</strong>
+              <span style={{ color: "var(--p-muted)" }}>
+                {" "}· {FEE_TYPE_LABEL[tx.feeType] ?? tx.feeType} · {tx.amount != null ? `${tx.currency ?? ""} ${tx.amount.toFixed(2)}`.trim() : T.porTabela} · {tx.isMandatory ? T.obrigatoria : T.opcional}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+        <a href="/fornecedor/precos/tabelas" style={{ fontSize: 13, color: "var(--p-accent-ink)", textDecoration: "none" }}>{T.verTabelas}</a>
+        <button
+          type="button"
+          onClick={proporPreco}
+          disabled={propondo}
+          style={{ border: "1px solid var(--p-line)", background: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, color: "var(--p-ink)", cursor: propondo ? "default" : "pointer", opacity: propondo ? 0.6 : 1 }}
+        >
+          {propondo ? T.propondo : T.propor}
+        </button>
+      </div>
+      <p style={{ marginTop: 8, marginBottom: 0, fontSize: 12, color: "var(--p-muted)" }}>{T.avisoProposta}</p>
+    </div>
+  );
+}
+
 const ATTR_LABEL = (idioma: string | undefined) => t(idioma, {
   pt: {
     age_at_start: "Idade no início", nationality: "Nacionalidade", residence_country: "País de residência",
@@ -330,7 +513,7 @@ const OP_LABEL = (idioma: string | undefined) => t(idioma, {
   en: { between: "between", in: "in", not_in: "not in", gte: ">=", lte: "<=", eq: "=" } as Record<string, string>,
 });
 
-export default function ConteudoProgramaEditor({ productId, idioma }: { productId: string; idioma?: string }) {
+export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma }: { productId: string; nomePrograma: string; idioma?: string }) {
   const [id, setId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("draft");
   const [rejectReason, setRejectReason] = useState<string | null>(null);
@@ -397,6 +580,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       sumarioSobre: "Sobre o curso",
       sumarioFicha: "Ficha e horários",
       sumarioDuracao: "Duração",
+      sumarioPreco: "Preço",
       sumarioElegibilidade: "Elegibilidade",
       sumarioMidia: "Fotos e vídeos",
     },
@@ -439,6 +623,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       sumarioSobre: "About the course",
       sumarioFicha: "Details and schedule",
       sumarioDuracao: "Duration",
+      sumarioPreco: "Price",
       sumarioElegibilidade: "Eligibility",
       sumarioMidia: "Photos and videos",
     },
@@ -604,6 +789,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
           { id: "sobre", texto: T.sumarioSobre },
           { id: "ficha", texto: T.sumarioFicha },
           { id: "duracao", texto: T.sumarioDuracao },
+          { id: "preco", texto: T.sumarioPreco },
           { id: "elegibilidade", texto: T.sumarioElegibilidade },
           { id: "midia", texto: T.sumarioMidia },
         ]}
@@ -682,6 +868,14 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
           <div><label style={lbl}>{T.disponivelAte}</label><input type="date" value={disp.available_until} onChange={(e) => setD({ available_until: e.target.value })} style={inp} /></div>
         </div>
       </fieldset>
+
+      {/* Preço — leitura do vigente + atalho para propor. Fora do fieldset
+          disabled={!editavel}: é uma peça independente do rascunho de conteúdo
+          (content_submission), com seu próprio fluxo (price_submission) — não
+          fica travada quando o conteúdo já foi enviado/aprovado. */}
+      <div id="preco" style={box}>
+        <SecaoPreco productId={productId} nomePrograma={nomePrograma} idioma={idioma} />
+      </div>
 
       {/* Elegibilidade (eligibility_rule) */}
       <fieldset id="elegibilidade" style={box} disabled={!editavel}>

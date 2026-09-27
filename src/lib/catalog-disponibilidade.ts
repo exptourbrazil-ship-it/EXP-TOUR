@@ -13,6 +13,7 @@ import type {
   AcomodacaoDados,
   PeriodoDados,
   StatusPeriodo,
+  CampusFornecedorDados,
 } from "@/lib/disponibilidade";
 
 export type Programa = {
@@ -101,6 +102,66 @@ export async function garantirCampusDoFornecedor(
   }
   if (!criado) throw new Error("Falha ao provisionar o campus do fornecedor.");
   return criado.id as string;
+}
+
+export type ResultadoCriarCampus =
+  | { ok: true; id: string }
+  | { ok: false; erro: string; codigo?: "rascunho_duplicado" };
+
+// Cria um NOVO campus explicito (self-service da escola, ex.: segunda unidade)
+// como RASCUNHO (status='draft') — mesmo padrao de curso/acomodacao: existe no
+// banco (o fornecedor ja preenche conteudo), mas so vira 'active' na 1a
+// aprovacao de conteudo pelo admin (campus-content-admin-service.
+// aprovarConteudoCampusPeloAdmin, que confere o status atual antes de promover).
+// So pede identidade minima (nome/pais/cidade/regiao); moeda/fuso ficam com
+// default (USD/UTC) ate o admin ajustar — nao bloqueiam nada em rascunho (ver
+// a regra de placeholder em validarCampus, so exigida quando status != 'draft').
+//
+// POSSE dupla: o fornecedor precisa ser do tenant vigente (mesma checagem de
+// garantirCampusDoFornecedor). SO PODE existir 1 campus em rascunho por
+// fornecedor (idx_campus_supplier_draft) — inclusive o placeholder que
+// garantirCampusDoFornecedor auto-provisiona na 1a criacao de curso/acomodacao.
+// Se ja houver um rascunho, a criacao e recusada (nao sobrescreve silenciosamente).
+export async function criarCampus(
+  supabase: SupabaseClient,
+  supplierId: string,
+  tenantId: string,
+  dados: CampusFornecedorDados
+): Promise<ResultadoCriarCampus> {
+  const { data: sup } = await supabase.from("supplier").select("tenant_id").eq("id", supplierId).maybeSingle();
+  if (!sup) return { ok: false, erro: "Fornecedor não encontrado." };
+  if ((sup as { tenant_id?: string }).tenant_id !== tenantId) {
+    return { ok: false, erro: "Fornecedor de outro tenant." };
+  }
+
+  const { data: criado, error } = await supabase
+    .from("campus")
+    .insert({
+      tenant_id: tenantId,
+      supplier_id: supplierId,
+      name: dados.name,
+      country_code: dados.countryCode,
+      city: dados.city,
+      region: dados.region,
+      timezone: "UTC",
+      base_currency: "USD",
+      status: "draft",
+    })
+    .select("id")
+    .single();
+
+  if (error || !criado) {
+    // Indice unico parcial idx_campus_supplier_draft: so 1 rascunho por fornecedor.
+    if ((error as { code?: string } | null)?.code === "23505") {
+      return {
+        ok: false,
+        codigo: "rascunho_duplicado",
+        erro: "Você já tem um campus em rascunho aguardando conteúdo/aprovação — finalize-o antes de criar outro.",
+      };
+    }
+    return { ok: false, erro: `Falha ao criar o campus: ${error?.message ?? "sem retorno"}` };
+  }
+  return { ok: true, id: criado.id as string };
 }
 
 async function campusIdsDoFornecedor(supabase: SupabaseClient, supplierId: string): Promise<string[]> {

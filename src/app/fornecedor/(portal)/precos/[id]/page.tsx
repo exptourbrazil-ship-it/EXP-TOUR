@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { obterSubmissionDoFornecedor } from "@/lib/price-submission-service";
+import { listarProdutosDoFornecedor } from "@/lib/content-submission-service";
 import { t } from "@/lib/fornecedor-i18n";
 import PriceListEditor from "../PriceListEditor";
 
@@ -15,6 +16,18 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
   const supabase = getServiceClient();
   const sub = await obterSubmissionDoFornecedor(supabase, sessao.supplierId, id);
   if (!sub) notFound();
+
+  // Cursos/acomodações do fornecedor, para o vínculo opcional de TAXA a um
+  // produto específico (mesmo padrão do "+ Propor preço", mas escolhido aqui
+  // pela escola em vez de vir pré-preenchido).
+  const [programas, acomodacoes] = await Promise.all([
+    listarProdutosDoFornecedor(supabase, sessao.supplierId, "program"),
+    listarProdutosDoFornecedor(supabase, sessao.supplierId, "accommodation"),
+  ]);
+  const produtosDoFornecedor = [
+    ...programas.map((p) => ({ ...p, kind: "program" as const })),
+    ...acomodacoes.map((p) => ({ ...p, kind: "accommodation" as const })),
+  ];
 
   const T = t(sessao.language, {
     pt: {
@@ -55,7 +68,13 @@ export default async function PriceListDetalhePage({ params }: { params: Promise
               : T.falhaExtracao}
       </p>
 
-      <PriceListEditor id={sub.id} status={sub.status} extracted={sub.extracted} language={sessao.language} />
+      <PriceListEditor
+        id={sub.id}
+        status={sub.status}
+        extracted={sub.extracted}
+        language={sessao.language}
+        produtosDoFornecedor={produtosDoFornecedor}
+      />
     </div>
   );
 }

@@ -8,6 +8,10 @@ export const MIDIA_MAX_BYTES = 10 * 1024 * 1024;
 export const MIDIA_MAX_TENTATIVAS = 5;
 /** Teto proprio do favicon: e um icone. Acima disso, quase certo que nao e um. */
 export const FAVICON_MAX_BYTES = 512 * 1024;
+/** Teto proprio da logo da instituicao: maior que o favicon (aparece no cabecalho
+ * do portal e na proposta em tamanho maior), mas ainda bem abaixo do teto generico
+ * de foto de campus (MIDIA_MAX_BYTES). */
+export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 
 const EXT_POR_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -142,6 +146,18 @@ export function caminhoStorageFavicon(supplierId: string, impressao: string, ext
   // icone velho na proposta por meses, sem jeito de invalidar.
   const chave = impressao.replace(/[^a-f0-9]/gi, "").slice(0, 16) || "0";
   return `fornecedor/${supplierId}/favicon-${chave}.${ext}`;
+}
+
+/**
+ * Caminho da LOGO da instituicao no bucket. Mesmo padrao do favicon (um objeto
+ * por fornecedor, impressao do conteudo no caminho para invalidar o cache de um
+ * ano ao trocar), so que sob outro prefixo — favicon e logo sao colunas e usos
+ * diferentes (favicon_url = icone pequeno do <head>/proposta; logo_url = imagem
+ * maior do cabecalho do portal).
+ */
+export function caminhoStorageLogo(supplierId: string, impressao: string, ext: string): string {
+  const chave = impressao.replace(/[^a-f0-9]/gi, "").slice(0, 16) || "0";
+  return `fornecedor/${supplierId}/logo-${chave}.${ext}`;
 }
 
 /** URL publica de um objeto do bucket publico. */

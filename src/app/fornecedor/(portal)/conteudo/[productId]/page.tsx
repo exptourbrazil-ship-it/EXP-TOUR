@@ -45,7 +45,7 @@ export default async function ConteudoProgramaPage({
       <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         {T.subtitulo}
       </p>
-      <ConteudoProgramaEditor productId={productId} idioma={sessao.language} />
+      <ConteudoProgramaEditor productId={productId} nomePrograma={programa.name} idioma={sessao.language} />
     </div>
   );
 }

@@ -1,7 +1,9 @@
 // Aprovação/rejeição pelo ADMIN do conteúdo de ESCOLA proposto pelo fornecedor
 // (Fase B2). SERVER-ONLY. Aprovar MATERIALIZA em campus_content (por locale) +
 // campus_media (substitui) + colunas amenities/accreditations/nationality_mix do
-// campus. Posse por tenant. Espelha content-admin-service (curso).
+// campus, e promove o campus de 'draft' pra 'active' na 1a aprovacao (quando ele
+// nasceu self-service — ver criarCampus em catalog-disponibilidade.ts). Posse por
+// tenant. Espelha content-admin-service (curso).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { validarCampusContentPayload, type CampusContentPayload } from "@/lib/campus-conteudo";
@@ -131,6 +133,24 @@ export async function aprovarConteudoCampusPeloAdmin(
       console.error("[campus-content-admin] restauracao falhou:", err instanceof Error ? err.message : err);
     }
     return { ok: false, erro: "Falha ao materializar o conteúdo da escola." };
+  }
+
+  // 1a aprovacao de um campus criado self-service pelo fornecedor (nasce
+  // status='draft' — ver criarCampus em catalog-disponibilidade.ts): promove pra
+  // 'active' na 1a aprovacao de conteudo. Campus que ja era 'active' (cadastrado
+  // pelo admin ou provisionado antes) nao e tocado. Guarda por status atual
+  // (idempotente) — espelha a promocao de produto em content-admin-service.
+  const { data: campusAtual } = await supabase.from("campus").select("status").eq("id", det.campusId).maybeSingle();
+  if ((campusAtual as { status?: string } | null)?.status === "draft") {
+    const { error: ePromo } = await supabase
+      .from("campus")
+      .update({ status: "active" })
+      .eq("id", det.campusId)
+      .eq("status", "draft");
+    if (ePromo) {
+      console.error("[campus-content-admin] promover campus pos-aprovacao falhou:", ePromo.message);
+      return { ok: false, erro: "Conteúdo materializado, mas falha ao publicar o campus." };
+    }
   }
 
   const { data: aprovadas, error: eStatus } = await supabase

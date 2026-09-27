@@ -13,12 +13,20 @@ export type ProgramaExtraido = {
   educationType: string | null;
   unit: string; // "week" | "session" | "day" | "month"
   tiers: FaixaPreco[];
+  // Vínculo OPCIONAL a um product.id real do catálogo — preenchido quando o
+  // item nasce do "+ Propor preço" de dentro do editor de um curso já
+  // existente (nunca digitado pela escola). Ausente = item de texto livre
+  // (o caminho de sempre: PDF ou criação manual em branco). Puramente
+  // informativo aqui no jsonb — a materialização (price-admin-service) é quem
+  // decide se reaproveita o produto ou cria um novo.
+  productId?: string | null;
 };
 export type AcomodacaoExtraida = {
   name: string;
   type: string | null; // homestay | residence | shared_apartment | studio | hotel | other
   unit: string;
   tiers: FaixaPreco[];
+  productId?: string | null;
 };
 export type TaxaExtraida = {
   name: string;
@@ -26,6 +34,20 @@ export type TaxaExtraida = {
   amount: number;
   basis: string | null; // once_per_quote | once_per_item | per_unit | per_person
   refundable: boolean | null;
+  // Obrigatória (cobrada de todo estudante) vs opcional. Ausente/null = tratado
+  // como obrigatória na materialização (mesmo default do Admin em fee.ts).
+  mandatory: boolean | null;
+  // Vínculo OPCIONAL a um product.id real do catálogo (curso ou acomodação) —
+  // mesmo padrão de ProgramaExtraido/AcomodacaoExtraida.productId: preenchido
+  // quando a escola escolhe "vincular a um curso" no editor, nunca inventado.
+  productId?: string | null;
+  // Escopo da taxa quando NÃO há productId. "geral" = a escola escolheu
+  // EXPLICITAMENTE (no editor) que a taxa vale para todo o catálogo do campus.
+  // Ausente/null = ainda não definido (ex.: extraído de PDF pela IA, nunca
+  // revisado por ninguém) — a materialização trata isso como FAIL-CLOSED (taxa
+  // fica sem applies_to_kinds, invisível na cotação, até alguém escolher
+  // "geral" ou vincular a um curso) — nunca assume "geral" por omissão.
+  escopo?: "geral" | null;
 };
 export type PriceListExtraido = {
   currency: string | null; // ISO 4217 (3 letras) quando houver
@@ -77,6 +99,11 @@ function moeda(v: unknown): string | null {
   const c = texto(v, 8).toUpperCase();
   return /^[A-Z]{3}$/.test(c) ? c : null;
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function idOuNulo(v: unknown): string | null {
+  const s = texto(v, 40);
+  return UUID_RE.test(s) ? s : null;
+}
 function boolOuNulo(v: unknown): boolean | null {
   if (v === true || v === false) return v;
   const s = texto(v, 6).toLowerCase();
@@ -112,6 +139,7 @@ export function normalizarPriceListExtraido(raw: unknown): PriceListExtraido {
           educationType: texto((p as any)?.educationType, 60) || null,
           unit: unidade((p as any)?.unit),
           tiers: normalizarTiers((p as any)?.tiers),
+          productId: idOuNulo((p as any)?.productId),
         }))
         .filter((p) => p.name)
     : [];
@@ -123,6 +151,7 @@ export function normalizarPriceListExtraido(raw: unknown): PriceListExtraido {
           type: umDe((a as any)?.type, TIPOS_ACOM),
           unit: unidade((a as any)?.unit),
           tiers: normalizarTiers((a as any)?.tiers),
+          productId: idOuNulo((a as any)?.productId),
         }))
         .filter((a) => a.name)
     : [];
@@ -135,6 +164,9 @@ export function normalizarPriceListExtraido(raw: unknown): PriceListExtraido {
           amount: dinheiro((f as any)?.amount) ?? 0,
           basis: umDe((f as any)?.basis, BASES_TAXA),
           refundable: boolOuNulo((f as any)?.refundable),
+          mandatory: boolOuNulo((f as any)?.mandatory),
+          productId: idOuNulo((f as any)?.productId),
+          escopo: (f as any)?.escopo === "geral" ? "geral" : null,
         }))
         .filter((f) => f.name && f.amount > 0)
     : [];
@@ -217,6 +249,7 @@ const TOOL_SCHEMA = {
             amount: { type: "number" },
             basis: { type: "string", description: "once_per_quote, once_per_item, per_unit ou per_person" },
             refundable: { type: "boolean" },
+            mandatory: { type: "boolean", description: "false quando o documento indicar que a taxa e opcional; omita se obrigatoria/nao especificado." },
           },
           required: ["name", "amount"],
         },

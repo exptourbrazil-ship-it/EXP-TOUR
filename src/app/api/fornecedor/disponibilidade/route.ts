@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sessaoFornecedorAtual } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { tenantIdAtual } from "@/lib/catalog-service";
-import { validarPrograma, validarIntake, validarAcomodacao, validarPeriodo } from "@/lib/disponibilidade";
+import { validarPrograma, validarIntake, validarAcomodacao, validarPeriodo, validarCampusFornecedor } from "@/lib/disponibilidade";
 import {
   criarPrograma,
   arquivarPrograma,
@@ -12,6 +12,7 @@ import {
   arquivarAcomodacao,
   salvarPeriodo,
   removerPeriodo,
+  criarCampus,
 } from "@/lib/catalog-disponibilidade";
 import { checarELimitar } from "@/lib/rate-limit";
 
@@ -22,7 +23,9 @@ const JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
 const MAX_CRIACAO = Number(process.env.RATE_LIMIT_FORNECEDOR_CRIACAO || "30");
 
 // Endpoint unico da Disponibilidade no Portal do Fornecedor. Despacha por `acao`:
-// criar_programa | arquivar_programa | salvar_intake | remover_intake.
+// criar_programa | arquivar_programa | salvar_intake | remover_intake |
+// criar_acomodacao | arquivar_acomodacao | salvar_periodo | remover_periodo |
+// criar_campus.
 // Self-service da escola (doc 06 §3.5): publica na hora, com log. Posse sempre
 // pelo supplier_id da sessao (o servico reconfere product->campus->supplier).
 export async function POST(request: Request) {
@@ -126,6 +129,18 @@ export async function POST(request: Request) {
       return r.ok
         ? NextResponse.json({ ok: true })
         : NextResponse.json({ ok: false, erro: r.erro }, { status: 400 });
+    }
+
+    if (acao === "criar_campus") {
+      if (!(await checarELimitar(supabase, `fornecedor-criacao:${sessao.supplierUserId}`, MAX_CRIACAO, JANELA_SEG))) {
+        return NextResponse.json({ ok: false, erro: "Muitas operações em pouco tempo. Aguarde alguns minutos." }, { status: 429 });
+      }
+      const v = validarCampusFornecedor(body);
+      if (!v.ok) return NextResponse.json({ ok: false, erro: v.erro }, { status: 400 });
+      const r = await criarCampus(supabase, supplierId, tenantId, v.dados);
+      return r.ok
+        ? NextResponse.json({ ok: true, id: r.id })
+        : NextResponse.json({ ok: false, erro: r.erro, codigo: r.codigo }, { status: r.codigo === "rascunho_duplicado" ? 409 : 400 });
     }
 
     return NextResponse.json({ ok: false, erro: "Ação inválida." }, { status: 400 });

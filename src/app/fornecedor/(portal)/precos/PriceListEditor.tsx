@@ -14,16 +14,24 @@ import { t } from "@/lib/fornecedor-i18n";
 
 // Editor do rascunho do price list. Enquanto 'draft' a escola edita, salva e
 // aprova (envia para a EXP Tour). Nos demais status, so leitura.
+export type ProdutoOpt = { id: string; name: string; kind: "program" | "accommodation" };
+
 export default function PriceListEditor({
   id,
   status,
   extracted,
   language,
+  produtosDoFornecedor,
 }: {
   id: string;
   status: string;
   extracted: PriceListExtraido;
   language: string;
+  // Cursos/acomodações desta escola, para o vínculo opcional de uma taxa a um
+  // produto específico OU escolha explícita de "taxa geral". Ausente/vazio =
+  // sem esse seletor (a taxa fica sem escopo definido — fail-closed, some da
+  // cotação até ser revisada num price list que já tenha essa opção).
+  produtosDoFornecedor?: ProdutoOpt[];
 }) {
   const router = useRouter();
   const [d, setD] = useState<PriceListExtraido>(extracted);
@@ -57,6 +65,12 @@ export default function PriceListEditor({
       aPartirDe: "a partir de",
       mais: "→",
       addFaixa: "+ faixa",
+      obrigatoria: "Obrigatória",
+      vincularCurso: "Vincular a um curso (opcional)",
+      escolhaEscopo: "— Escolha: geral ou vincular a um curso —",
+      taxaGeral: "Taxa geral (todos os cursos)",
+      programaRotulo: "Curso",
+      acomodacaoRotulo: "Acomodação",
     },
     en: {
       somenteLeitura: "This price list has already been submitted — read only.",
@@ -83,6 +97,12 @@ export default function PriceListEditor({
       aPartirDe: "starting at",
       mais: "→",
       addFaixa: "+ tier",
+      obrigatoria: "Mandatory",
+      vincularCurso: "Link to a course (optional)",
+      escolhaEscopo: "— Choose: general or link to a course —",
+      taxaGeral: "General fee (all courses)",
+      programaRotulo: "Course",
+      acomodacaoRotulo: "Accommodation",
     },
   });
 
@@ -217,14 +237,48 @@ export default function PriceListEditor({
                 <option value="">{T.cobrancaPlaceholder}</option>
                 {BASES_TAXA.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--p-ink)" }}>
+                <input
+                  type="checkbox"
+                  checked={f.mandatory !== false}
+                  onChange={(e) => setD({ ...d, fees: patch(d.fees, i, { mandatory: e.target.checked }) })}
+                  disabled={!editavel}
+                />
+                {T.obrigatoria}
+              </label>
               {editavel ? (
                 <button type="button" onClick={() => setD({ ...d, fees: d.fees.filter((_, j) => j !== i) })} style={btnRemover}>{T.remover}</button>
               ) : null}
             </div>
+            {produtosDoFornecedor && produtosDoFornecedor.length > 0 ? (
+              <div style={{ marginTop: 8 }}>
+                <select
+                  value={f.productId ?? (f.escopo === "geral" ? "__geral__" : "")}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "__geral__") setD({ ...d, fees: patch(d.fees, i, { productId: null, escopo: "geral" }) });
+                    else if (v === "") setD({ ...d, fees: patch(d.fees, i, { productId: null, escopo: null }) });
+                    else setD({ ...d, fees: patch(d.fees, i, { productId: v, escopo: null }) });
+                  }}
+                  disabled={!editavel}
+                  style={inp(320)}
+                  aria-label={T.vincularCurso}
+                >
+                  <option value="" disabled={!!(f.productId || f.escopo === "geral")}>{T.escolhaEscopo}</option>
+                  <option value="__geral__">{T.taxaGeral}</option>
+                  <optgroup label={T.programaRotulo}>
+                    {produtosDoFornecedor.filter((p) => p.kind === "program").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </optgroup>
+                  <optgroup label={T.acomodacaoRotulo}>
+                    {produtosDoFornecedor.filter((p) => p.kind === "accommodation").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </optgroup>
+                </select>
+              </div>
+            ) : null}
           </div>
         ))}
         {editavel ? (
-          <Adicionar onClick={() => setD({ ...d, fees: [...d.fees, { name: "", feeType: "registration", amount: 0, basis: "once_per_quote", refundable: null }] })} rotulo={T.adicionarTaxa} />
+          <Adicionar onClick={() => setD({ ...d, fees: [...d.fees, { name: "", feeType: "registration", amount: 0, basis: "once_per_quote", refundable: null, mandatory: true, productId: null }] })} rotulo={T.adicionarTaxa} />
         ) : null}
       </Secao>
 
