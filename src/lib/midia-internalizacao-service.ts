@@ -10,7 +10,9 @@ import {
   MIDIA_MAX_BYTES,
   MIDIA_MAX_TENTATIVAS,
   FAVICON_MAX_BYTES,
+  LOGO_MAX_BYTES,
   caminhoStorageFavicon,
+  caminhoStorageLogo,
   caminhoStorageMidia,
   formatoDeImagem,
   ehUrlInterna,
@@ -306,27 +308,33 @@ export async function contarMidiaPendente(
 // site de terceiro.
 
 export const FAVICON_MAX_TENTATIVAS = 5;
+/** Mesmo teto de tentativas do favicon — usado pela logo (ver internalizarLogo). */
+export const LOGO_MAX_TENTATIVAS = 5;
 
 export type ResultadoFavicon = { ok: true; url: string; origem: string } | { ok: false; erro: string };
 
 /**
- * Baixa o favicon de UMA escola e grava no bucket, devolvendo a URL interna.
- * Nao escreve na tabela: quem chama decide quando gravar. URL ja interna volta
- * como sucesso, sem baixar de novo.
+ * Baixa UMA imagem de marca da escola (favicon OU logo — o que muda entre as
+ * duas e so o teto de bytes e o caminho no bucket) e grava no bucket,
+ * devolvendo a URL interna. Nao escreve na tabela: quem chama decide quando
+ * gravar. URL ja interna volta como sucesso, sem baixar de novo.
  *
  * `tenantId` e obrigatorio e e conferido aqui: a funcao escreve num caminho
  * derivado do supplierId, e quem chama nao deve poder passar um id de outro
  * tenant por engano (toda autorizacao neste projeto e feita em codigo).
  */
-export async function internalizarFavicon(
+async function internalizarImagemDeMarca(
   supabase: SupabaseClient,
   tenantId: string,
   supplierId: string,
-  faviconUrl: string,
+  imagemUrl: string,
+  maxBytes: number,
+  montarCaminho: (supplierId: string, impressao: string, ext: string) => string,
+  erroTamanho: string,
   opts: { fetchImpl?: typeof fetch; ultimoPorHost?: Map<string, number> } = {},
 ): Promise<ResultadoFavicon> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-  if (ehUrlInterna(faviconUrl, supabaseUrl)) return { ok: true, url: faviconUrl, origem: faviconUrl };
+  if (ehUrlInterna(imagemUrl, supabaseUrl)) return { ok: true, url: imagemUrl, origem: imagemUrl };
 
   const { data: dono, error: donoErr } = await supabase
     .from("supplier")
@@ -337,13 +345,13 @@ export async function internalizarFavicon(
   if (donoErr) return { ok: false, erro: `fornecedor: ${resumirErro(donoErr.message)}` };
   if (!dono) return { ok: false, erro: "fornecedor nao e deste tenant" };
 
-  const baixado = await baixarImagem(faviconUrl, opts.fetchImpl ?? fetch, opts.ultimoPorHost);
+  const baixado = await baixarImagem(imagemUrl, opts.fetchImpl ?? fetch, opts.ultimoPorHost);
   if (!baixado.ok) return baixado;
   const bytes = baixado.dados.bytes;
   // Arquivo de 0 byte passa pelo HTTP 200 (ja aconteceu com uma escola) e viraria
-  // um icone quebrado no lugar de nenhum icone.
+  // uma imagem quebrada no lugar de nenhuma imagem.
   if (bytes.length === 0) return { ok: false, erro: "arquivo vazio" };
-  if (bytes.length > FAVICON_MAX_BYTES) return { ok: false, erro: "icone acima de 512 KB" };
+  if (bytes.length > maxBytes) return { ok: false, erro: erroTamanho };
 
   // O tipo vem dos BYTES, nao do header do site da escola: o arquivo passa a ser
   // servido sob o nosso dominio, entao quem declara o que ele e somos nos.
@@ -353,13 +361,57 @@ export async function internalizarFavicon(
 
   const { createHash } = await import("node:crypto");
   const impressao = createHash("sha256").update(bytes).digest("hex");
-  const caminho = caminhoStorageFavicon(supplierId, impressao, ext);
+  const caminho = montarCaminho(supplierId, impressao, ext);
   const { error: upErr } = await supabase.storage
     .from(BUCKET_MIDIA_CATALOGO)
     .upload(caminho, bytes, { contentType: mime, upsert: true, cacheControl: "31536000" });
   if (upErr) return { ok: false, erro: `storage: ${resumirErro(upErr.message)}` };
 
-  return { ok: true, url: urlPublicaStorage(supabaseUrl, BUCKET_MIDIA_CATALOGO, caminho), origem: faviconUrl };
+  return { ok: true, url: urlPublicaStorage(supabaseUrl, BUCKET_MIDIA_CATALOGO, caminho), origem: imagemUrl };
+}
+
+export async function internalizarFavicon(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+  faviconUrl: string,
+  opts: { fetchImpl?: typeof fetch; ultimoPorHost?: Map<string, number> } = {},
+): Promise<ResultadoFavicon> {
+  return internalizarImagemDeMarca(
+    supabase,
+    tenantId,
+    supplierId,
+    faviconUrl,
+    FAVICON_MAX_BYTES,
+    caminhoStorageFavicon,
+    "icone acima de 512 KB",
+    opts,
+  );
+}
+
+/**
+ * Mesma logica do favicon (ver internalizarImagemDeMarca), para a LOGO da
+ * instituicao (supplier.logo_url) — imagem maior, exibida no cabecalho do
+ * Portal do Parceiro e (futuramente) na proposta. Mesma validacao de SSRF
+ * (validarUrlExterna + resolucao de DNS + teto de bytes/timeout) do favicon.
+ */
+export async function internalizarLogo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+  logoUrl: string,
+  opts: { fetchImpl?: typeof fetch; ultimoPorHost?: Map<string, number> } = {},
+): Promise<ResultadoFavicon> {
+  return internalizarImagemDeMarca(
+    supabase,
+    tenantId,
+    supplierId,
+    logoUrl,
+    LOGO_MAX_BYTES,
+    caminhoStorageLogo,
+    "logo acima de 2 MB",
+    opts,
+  );
 }
 
 /**

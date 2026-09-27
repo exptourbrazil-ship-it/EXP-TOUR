@@ -13,12 +13,20 @@ export type ProgramaExtraido = {
   educationType: string | null;
   unit: string; // "week" | "session" | "day" | "month"
   tiers: FaixaPreco[];
+  // Vínculo OPCIONAL a um product.id real do catálogo — preenchido quando o
+  // item nasce do "+ Propor preço" de dentro do editor de um curso já
+  // existente (nunca digitado pela escola). Ausente = item de texto livre
+  // (o caminho de sempre: PDF ou criação manual em branco). Puramente
+  // informativo aqui no jsonb — a materialização (price-admin-service) é quem
+  // decide se reaproveita o produto ou cria um novo.
+  productId?: string | null;
 };
 export type AcomodacaoExtraida = {
   name: string;
   type: string | null; // homestay | residence | shared_apartment | studio | hotel | other
   unit: string;
   tiers: FaixaPreco[];
+  productId?: string | null;
 };
 export type TaxaExtraida = {
   name: string;
@@ -77,6 +85,11 @@ function moeda(v: unknown): string | null {
   const c = texto(v, 8).toUpperCase();
   return /^[A-Z]{3}$/.test(c) ? c : null;
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function idOuNulo(v: unknown): string | null {
+  const s = texto(v, 40);
+  return UUID_RE.test(s) ? s : null;
+}
 function boolOuNulo(v: unknown): boolean | null {
   if (v === true || v === false) return v;
   const s = texto(v, 6).toLowerCase();
@@ -112,6 +125,7 @@ export function normalizarPriceListExtraido(raw: unknown): PriceListExtraido {
           educationType: texto((p as any)?.educationType, 60) || null,
           unit: unidade((p as any)?.unit),
           tiers: normalizarTiers((p as any)?.tiers),
+          productId: idOuNulo((p as any)?.productId),
         }))
         .filter((p) => p.name)
     : [];
@@ -123,6 +137,7 @@ export function normalizarPriceListExtraido(raw: unknown): PriceListExtraido {
           type: umDe((a as any)?.type, TIPOS_ACOM),
           unit: unidade((a as any)?.unit),
           tiers: normalizarTiers((a as any)?.tiers),
+          productId: idOuNulo((a as any)?.productId),
         }))
         .filter((a) => a.name)
     : [];

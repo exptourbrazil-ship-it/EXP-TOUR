@@ -173,26 +173,52 @@ async function materializar(
 
   const dataInicio = hoje();
   for (const pr of plano.produtos) {
-    const { data: prod, error: eProd } = await supabase
-      .from("product")
-      .insert({
-        tenant_id: sub.tenant_id,
-        campus_id: sub.campus_id,
-        kind: pr.kind,
-        name: pr.name,
-        source: "supplier",
-        visibility: "quotable",
-        status: "active",
-        default_unit: pr.unit,
-        source_submission_id: sub.id,
-      })
-      .select("id")
-      .single();
-    if (eProd || !prod) return { ok: false, erro: `Falha ao publicar produto "${pr.name}".` };
+    // Vínculo por product_id (proposta nascida de "+ Propor preço" dentro do
+    // editor de um curso já existente): reaproveita o produto do catálogo em
+    // vez de publicar um duplicado. Posse reconferida AQUI (defesa em
+    // profundidade) — o produto tem que ser do mesmo tenant/campus deste
+    // submission; senão cai no caminho de sempre (cria produto novo), como se
+    // productId não tivesse vindo.
+    let prodId: string | null = null;
+    if (pr.productId) {
+      const { data: existente } = await supabase
+        .from("product")
+        .select("id")
+        .eq("id", pr.productId)
+        .eq("tenant_id", sub.tenant_id)
+        .eq("campus_id", sub.campus_id)
+        .eq("kind", pr.kind)
+        .is("archived_at", null)
+        .maybeSingle();
+      if (existente) prodId = existente.id as string;
+    }
 
-    const detailTable = pr.kind === "program" ? "program_detail" : "accommodation_detail";
-    const { error: eDet } = await supabase.from(detailTable).upsert({ product_id: prod.id, ...pr.detail }, { onConflict: "product_id" });
-    if (eDet) return { ok: false, erro: `Falha ao publicar o detalhe de "${pr.name}".` };
+    if (!prodId) {
+      const { data: prod, error: eProd } = await supabase
+        .from("product")
+        .insert({
+          tenant_id: sub.tenant_id,
+          campus_id: sub.campus_id,
+          kind: pr.kind,
+          name: pr.name,
+          source: "supplier",
+          visibility: "quotable",
+          status: "active",
+          default_unit: pr.unit,
+          source_submission_id: sub.id,
+        })
+        .select("id")
+        .single();
+      if (eProd || !prod) return { ok: false, erro: `Falha ao publicar produto "${pr.name}".` };
+      prodId = prod.id as string;
+
+      const detailTable = pr.kind === "program" ? "program_detail" : "accommodation_detail";
+      const { error: eDet } = await supabase.from(detailTable).upsert({ product_id: prodId, ...pr.detail }, { onConflict: "product_id" });
+      if (eDet) return { ok: false, erro: `Falha ao publicar o detalhe de "${pr.name}".` };
+    }
+    // productId reaproveitado: o produto já existe no catálogo (com seu próprio
+    // conteúdo/ficha, aprovado à parte via content_submission) — não sobrescrevemos
+    // nome/detail aqui, só publicamos o preço.
 
     const { data: tpl, error: eTpl } = await supabase
       .from("price_template")
@@ -219,7 +245,7 @@ async function materializar(
         .insert(pr.tiers.map((t) => ({ price_template_id: tpl.id, min_quantity: t.min_quantity, unit_price: t.unit_price, sort: t.sort })));
       if (eTier) return { ok: false, erro: `Falha ao publicar as faixas de "${pr.name}".` };
     }
-    await supabase.from("price_template_product").insert({ price_template_id: tpl.id, product_id: prod.id });
+    await supabase.from("price_template_product").insert({ price_template_id: tpl.id, product_id: prodId });
   }
 
   for (const tx of plano.taxas) {

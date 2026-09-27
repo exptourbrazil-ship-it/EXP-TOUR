@@ -7,6 +7,12 @@ export type PlanoProduto = {
   kind: "program" | "accommodation";
   name: string;
   unit: string;
+  // Vínculo opcional a um product.id JÁ EXISTENTE (propagado do item extraído —
+  // ver price-list-extract.ProgramaExtraido/AcomodacaoExtraida). Quando presente
+  // (e a posse for confirmada pelo serviço, no mesmo tenant/campus do
+  // submission), o servico REAPROVEITA o produto em vez de criar um novo —
+  // só publica a tabela de preço/faixas e vincula via price_template_product.
+  productId: string | null;
   // detalhe especifico (program_detail / accommodation_detail), sem product_id.
   detail: Record<string, unknown>;
   template: {
@@ -51,6 +57,7 @@ function planoDeProduto(
     kind,
     name: item.name,
     unit: item.unit,
+    productId: item.productId ?? null,
     detail,
     template: {
       name: item.name,

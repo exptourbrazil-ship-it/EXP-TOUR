@@ -5,8 +5,15 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { garantirCampusDoFornecedor } from "@/lib/catalog-disponibilidade";
 import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao, TAMANHO_MAXIMO_BYTES } from "@/lib/upload-seguro";
 import { extrairPriceListPdf, normalizarPriceListExtraido } from "@/lib/price-list-extract";
-import { criarSubmission, criarSubmissionManual, atualizarExtracted, aprovarPelaEscola } from "@/lib/price-submission-service";
+import {
+  criarSubmission,
+  criarSubmissionManual,
+  atualizarExtracted,
+  aprovarPelaEscola,
+  obterPrecoVigenteDoProduto,
+} from "@/lib/price-submission-service";
 import { checarELimitar } from "@/lib/rate-limit";
+import { produtoDoFornecedor } from "@/lib/content-submission-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +39,10 @@ export async function POST(request: Request) {
     const acao = String(body?.acao || "");
 
     // Criacao manual (sem PDF/IA): a escola monta a tabela do zero no editor.
+    // `prefill` (opcional): atalho "+ Propor preço para este curso" de dentro do
+    // editor de um produto já existente — a checagem de posse do productId
+    // acontece AQUI (o mesmo padrão de content-submission-service), antes de
+    // gravar qualquer coisa.
     if (acao === "criar_manual") {
       if (!(await checarELimitar(supabase, `fornecedor-pricelist:${sessao.supplierUserId}`, MAX_UPLOAD, JANELA_SEG))) {
         return NextResponse.json({ ok: false, erro: "Muitas operações em pouco tempo. Aguarde alguns minutos." }, { status: 429 });
@@ -47,13 +58,47 @@ export async function POST(request: Request) {
           { status: 500 }
         );
       }
+
+      let prefill: { productId: string; kind: "program" | "accommodation"; name: string; unit?: string } | undefined;
+      const prefillRaw = body?.prefill as Record<string, unknown> | undefined;
+      if (prefillRaw && typeof prefillRaw === "object") {
+        const productId = String(prefillRaw.productId || "");
+        const kind = prefillRaw.kind === "accommodation" ? "accommodation" : "program";
+        const name = String(prefillRaw.name || "").trim().slice(0, 200);
+        if (!productId || !name) {
+          return NextResponse.json({ ok: false, erro: "Curso ausente para propor preço." }, { status: 400 });
+        }
+        // Posse: o produto tem que ser deste fornecedor (nunca confiar no
+        // productId vindo do cliente sem reconferir).
+        if (!(await produtoDoFornecedor(supabase, sessao.supplierId, productId, kind))) {
+          return NextResponse.json({ ok: false, erro: "Curso não encontrado para este fornecedor." }, { status: 404 });
+        }
+        const unit = typeof prefillRaw.unit === "string" ? prefillRaw.unit : undefined;
+        prefill = { productId, kind, name, unit };
+      }
+
       const r = await criarSubmissionManual(supabase, {
         tenantId,
         supplierId: sessao.supplierId,
         campusId,
         createdBy: sessao.email,
+        prefill,
       });
       return r.ok ? NextResponse.json({ ok: true, id: r.id }) : NextResponse.json({ ok: false, erro: r.erro }, { status: 500 });
+    }
+
+    // Preço vigente de UM produto (leitura, para a seção "Preço" dentro do
+    // editor do curso/acomodação). Posse reconferida antes de ler.
+    if (acao === "vigente_produto") {
+      const productId = String(body?.productId || "");
+      const kind = body?.kind === "accommodation" ? "accommodation" : "program";
+      if (!productId) return NextResponse.json({ ok: false, erro: "Produto ausente." }, { status: 400 });
+      if (!(await produtoDoFornecedor(supabase, sessao.supplierId, productId, kind))) {
+        return NextResponse.json({ ok: false, erro: "Curso não encontrado para este fornecedor." }, { status: 404 });
+      }
+      const tenantId = await tenantIdAtual(supabase);
+      const { precos, taxas } = await obterPrecoVigenteDoProduto(supabase, tenantId, productId);
+      return NextResponse.json({ ok: true, precos, taxas });
     }
 
     const id = String(body?.id || "");

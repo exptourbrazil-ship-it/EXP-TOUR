@@ -110,17 +110,21 @@ export function textosEditorConteudo(idioma: string | null | undefined) {
   });
 }
 
-// Textos da tela "Marca" (favicon + redes sociais do fornecedor) — sem fluxo
-// de aprovação: é metadado de contato/branding, não conteúdo comercial, e
-// social/favicon são colunas do FORNECEDOR (compartilhadas por todos os
-// campi), por isso a tela é única, fora do padrão rascunho→aprovação dos 3
-// editores de conteúdo.
+// Textos da seção "Ícone, logo e redes sociais" (favicon + logo + redes do
+// fornecedor) — sem fluxo de aprovação: é metadado de contato/branding, não
+// conteúdo comercial, e social/favicon/logo são colunas do FORNECEDOR
+// (compartilhadas por todos os campi). Junto com textosInstituicaoFornecedor
+// forma a tela única "Sobre a instituição" (/fornecedor/instituicao) — antes
+// duas telas separadas ("Marca" e "Sobre a instituição"), unificadas porque
+// eram, na prática, os mesmos dados do fornecedor como um todo.
 export function textosMarcaFornecedor(idioma: string | null | undefined) {
   return t(idioma, {
     pt: {
-      titulo: "Marca",
-      subtitulo: "Aparecem na proposta do estudante: o ícone do site ao lado do nome da escola e as redes como ícones clicáveis. Deixe em branco o que sua escola não tiver. Para texto de apresentação, contato e endereço, veja a aba \"Sobre a instituição\".",
+      titulo: "Ícone, logo e redes sociais",
+      subtitulo: "O ícone do site aparece ao lado do nome da escola na proposta do estudante; a logo aparece no cabeçalho deste portal; as redes aparecem como ícones clicáveis na proposta. Deixe em branco o que sua escola não tiver.",
       icone: "Ícone do site (favicon)",
+      logo: "Logo da instituição",
+      logoPlaceholder: "https://www.suaescola.com/logo.png",
       salvar: "Salvar",
       salvando: "Salvando…",
       salvo: "Salvo ✓",
@@ -130,9 +134,11 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
       erroCarregar: "Não foi possível carregar os dados de marca.",
     },
     en: {
-      titulo: "Brand",
-      subtitulo: "These appear in the student's proposal: the site icon next to the campus name and the social links as clickable icons. Leave blank whatever your campus doesn't have. For presentation text, contact and address, see the \"About the institution\" tab.",
+      titulo: "Icon, logo and social links",
+      subtitulo: "The site icon appears next to the campus name in the student's proposal; the logo appears in this portal's header; the social links appear as clickable icons in the proposal. Leave blank whatever your campus doesn't have.",
       icone: "Site icon (favicon)",
+      logo: "Institution logo",
+      logoPlaceholder: "https://www.yourschool.com/logo.png",
       salvar: "Save",
       salvando: "Saving…",
       salvo: "Saved ✓",
@@ -144,15 +150,17 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
   });
 }
 
-// Textos da tela "Sobre a instituição" (about + contato principal + endereço
-// da matriz do fornecedor) — mesmo padrão de decisão da tela "Marca": sem
-// fluxo de aprovação, gravação direta. Nível SUPPLIER (não campus): um só
-// registro por escola, diferente da tela "Campus".
+// Textos da seção "Apresentação e contato" (about + contato principal +
+// endereço da matriz do fornecedor) — mesmo padrão de decisão da seção
+// "Ícone, logo e redes sociais": sem fluxo de aprovação, gravação direta.
+// Nível SUPPLIER (não campus): um só registro por escola, diferente da tela
+// "Campus". Junto com textosMarcaFornecedor forma a tela única
+// "Sobre a instituição" (/fornecedor/instituicao).
 export function textosInstituicaoFornecedor(idioma: string | null | undefined) {
   return t(idioma, {
     pt: {
-      titulo: "Sobre a instituição",
-      subtitulo: "Apresentação e contato principal da sua instituição como um todo — diferente da tela \"Campus\" (que é por unidade) e da tela \"Marca\" (ícone do site e redes sociais).",
+      titulo: "Apresentação e contato",
+      subtitulo: "Apresentação e contato principal da sua instituição como um todo — diferente da tela \"Campus\" (que é por unidade).",
       about: "Descrição institucional",
       aboutPlaceholder: "Um resumo da sua instituição: história, diferenciais, missão.",
       contato: "Contato principal",
@@ -171,8 +179,8 @@ export function textosInstituicaoFornecedor(idioma: string | null | undefined) {
       erroCarregar: "Não foi possível carregar os dados da instituição.",
     },
     en: {
-      titulo: "About the institution",
-      subtitulo: "Presentation and main contact for your institution as a whole — different from the \"Campus\" screen (which is per unit) and the \"Brand\" screen (site icon and social links).",
+      titulo: "Presentation and contact",
+      subtitulo: "Presentation and main contact for your institution as a whole — different from the \"Campus\" screen (which is per unit).",
       about: "Institutional description",
       aboutPlaceholder: "A summary of your institution: history, differentiators, mission.",
       contato: "Main contact",
