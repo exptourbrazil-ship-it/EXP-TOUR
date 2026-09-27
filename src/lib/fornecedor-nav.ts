@@ -2,10 +2,20 @@
 // do admin (admin-nav.ts), mas com os ícones em SVG path (`d`) para caber no
 // header claro/verde do tenant sem depender de Tailwind (o portal usa estilos
 // inline + tokens --p-*). Cada item também declara o GRUPO estilo Edvisor
-// (Inventário / Alunos / Financeiro); numa barra horizontal os grupos não viram
-// cabeçalho, mas ordenam os itens e alimentam os atalhos do Painel.
-
-export type GrupoFornecedor = "Alunos" | "Inventário" | "Financeiro";
+// (Alunos / Inventário / Institucional / Financeiro); numa barra horizontal os
+// grupos não viram cabeçalho, mas ordenam os itens e alimentam os atalhos do
+// Painel (uma seção por grupo — ver ITENS_INVENTARIO_FORNECEDOR/
+// ITENS_INSTITUCIONAL_FORNECEDOR).
+//
+// Por que "Institucional" é um grupo à parte de "Inventário": Marca, Sobre a
+// instituição e Materiais são dados do FORNECEDOR como um todo (quem ele é —
+// ícone, redes, apresentação, contato, biblioteca de materiais), sem fluxo de
+// rascunho/aprovação; "Inventário" é o que ele VENDE por campus/curso
+// (disponibilidade, preço, conteúdo do curso/campus/acomodação), sempre via
+// rascunho → aprovação da EXP Tour. Misturar os dois grupos era uma das
+// causas do menu "pouco intuitivo": a escola via "Marca" ao lado de "Preços"
+// sem pista do porquê.
+export type GrupoFornecedor = "Alunos" | "Inventário" | "Institucional" | "Financeiro";
 
 export type FornecedorNavItem = {
   href: string;
@@ -40,22 +50,30 @@ const IC = {
   acomodacao: "M3 21h18M4 21V7l8-4 8 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4",
   financeiro: "M12 3v18M8 7h6a3 3 0 0 1 0 6H8m0 0h8",
   marca: "M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20M2 12h20M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z",
+  instituicao: "M3 21h18M6 21V10l6-4 6 4v11M10 21v-5h4v5",
 } as const;
 
-// Ordem de exibição: Painel (Alunos, topo) → Estudantes → Inventário → Financeiro.
+// Ordem de exibição: Painel (Alunos, topo) → Estudantes → Inventário →
+// Institucional → Financeiro.
 export const FORNECEDOR_NAV: FornecedorNavItem[] = [
   { href: "/fornecedor", label: "Painel", labelEn: "Dashboard", grupo: "Alunos", icone: IC.painel },
   { href: "/fornecedor/estudantes", label: "Estudantes", labelEn: "Students", grupo: "Alunos", icone: IC.estudantes, descricao: "Seus estudantes vinculados e o status de cada um.", descricaoEn: "Your enrolled students and each one's status." },
   { href: "/fornecedor/disponibilidade", label: "Disponibilidade", labelEn: "Availability", grupo: "Inventário", icone: IC.disponibilidade, descricao: "Datas de início e capacidade dos seus programas.", descricaoEn: "Start dates and capacity for your programs." },
-  { href: "/fornecedor/precos", label: "Preços", labelEn: "Pricing", grupo: "Inventário", icone: IC.precos, descricao: "Envie e revise suas tabelas de preço.", descricaoEn: "Submit and review your price lists." },
+  { href: "/fornecedor/precos", label: "Preços", labelEn: "Pricing", grupo: "Inventário", icone: IC.precos, descricao: "Envie seu price list e proponha promoções (descontos, semanas grátis, isenção de taxa).", descricaoEn: "Submit your price list and propose promotions (discounts, free weeks, fee waivers)." },
   { href: "/fornecedor/conteudo", label: "Cursos", labelEn: "Courses", grupo: "Inventário", icone: IC.conteudo, descricao: "Cadastre e descreva seus cursos (o que o estudante vê na cotação).", descricaoEn: "Register and describe your courses (what students see in the quote)." },
-  { href: "/fornecedor/escolas", label: "Escolas", labelEn: "Campus", grupo: "Inventário", icone: IC.escola, descricao: "Sobre a escola, fotos, estrutura e acreditações.", descricaoEn: "About the campus, photos, facilities and accreditations." },
+  { href: "/fornecedor/escolas", label: "Campus", labelEn: "Campus", grupo: "Inventário", icone: IC.escola, descricao: "Sobre o campus, fotos, estrutura e acreditações.", descricaoEn: "About the campus, photos, facilities and accreditations." },
   { href: "/fornecedor/acomodacoes", label: "Acomodações", labelEn: "Accommodation", grupo: "Inventário", icone: IC.acomodacao, descricao: "Descrição, políticas e ficha das acomodações.", descricaoEn: "Description, policies and details of the accommodation." },
-  { href: "/fornecedor/marca", label: "Marca", labelEn: "Brand", grupo: "Inventário", icone: IC.marca, descricao: "Ícone do site e redes sociais, usados na proposta do estudante.", descricaoEn: "Site icon and social links, used in the student's proposal." },
-  { href: "/fornecedor/materiais", label: "Materiais", labelEn: "Materials", grupo: "Inventário", icone: IC.materiais, descricao: "Documentos e materiais para os estudantes.", descricaoEn: "Documents and materials for students." },
-  { href: "/fornecedor/financeiro", label: "Financeiro", labelEn: "Finance", grupo: "Financeiro", icone: IC.financeiro, descricao: "Seu extrato de repasses e comprovantes.", descricaoEn: "Your payout statement and receipts." },
+  { href: "/fornecedor/marca", label: "Marca", labelEn: "Brand", grupo: "Institucional", icone: IC.marca, descricao: "Ícone do site e links das redes sociais (aparecem ao lado do nome na proposta).", descricaoEn: "Site icon and social links (shown next to your name in the proposal)." },
+  { href: "/fornecedor/instituicao", label: "Sobre a instituição", labelEn: "About the institution", grupo: "Institucional", icone: IC.instituicao, descricao: "Texto de apresentação, contato principal e endereço da matriz — diferente da aba Marca.", descricaoEn: "Presentation text, main contact and head-office address — different from the Brand tab." },
+  { href: "/fornecedor/materiais", label: "Materiais", labelEn: "Materials", grupo: "Institucional", icone: IC.materiais, descricao: "Biblioteca de brochuras, fotos, vídeos e mídia kit para os estudantes.", descricaoEn: "Library of brochures, photos, videos and media kit for students." },
+  { href: "/fornecedor/financeiro", label: "Financeiro", labelEn: "Finance", grupo: "Financeiro", icone: IC.financeiro, descricao: "Extrato de repasses, comprovantes e seus dados bancários.", descricaoEn: "Payout statement, proofs of payment and your bank details." },
 ];
 
 // Itens do grupo "Inventário", na ordem de FORNECEDOR_NAV — usados no Painel
 // para montar os atalhos de inventário (estilo Edvisor: Inventory Home).
 export const ITENS_INVENTARIO_FORNECEDOR = FORNECEDOR_NAV.filter((i) => i.grupo === "Inventário");
+
+// Itens do grupo "Institucional" (Marca / Sobre a instituição / Materiais) —
+// dados do fornecedor como um todo, sem fluxo de aprovação. Seção própria no
+// Painel, separada do inventário à venda (ver comentário do GrupoFornecedor).
+export const ITENS_INSTITUCIONAL_FORNECEDOR = FORNECEDOR_NAV.filter((i) => i.grupo === "Institucional");

@@ -1,7 +1,10 @@
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { extratoDoFornecedor, type LinhaExtrato, type StatusRepasse } from "@/lib/extrato-fornecedor";
+import { listarContasBancariasFornecedor } from "@/lib/supplier-bank-service";
+import { tenantIdAtual } from "@/lib/catalog-service";
 import { t } from "@/lib/fornecedor-i18n";
+import ContaBancariaFornecedorClient from "./ContaBancariaFornecedorClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +46,8 @@ function construirTextos(idioma: string | null | undefined) {
       titulo: "Financeiro",
       intro: (prazoDias: number) =>
         `Seus repasses por estudante: valor bruto do programa, comissão da EXP Tour, líquido a receber e a previsão de pagamento (D-${prazoDias}, ${prazoDias} dias antes do início). Quando a remessa é enviada, o comprovante aparece aqui.`,
+      sumarioExtrato: "Extrato",
+      sumarioDadosBancarios: "Dados bancários",
       liquidoPrevisto: "Líquido previsto",
       jaPago: "Já pago",
       semAcordo:
@@ -68,6 +73,8 @@ function construirTextos(idioma: string | null | undefined) {
       titulo: "Finance",
       intro: (prazoDias: number) =>
         `Your payouts per student: gross program amount, EXP Tour's commission, net amount receivable, and the expected payment date (D-${prazoDias}, ${prazoDias} days before the start date). Once the remittance is sent, the proof of payment appears here.`,
+      sumarioExtrato: "Statement",
+      sumarioDadosBancarios: "Bank details",
       liquidoPrevisto: "Net expected",
       jaPago: "Already paid",
       semAcordo:
@@ -99,6 +106,8 @@ export default async function FinanceiroPage() {
   const sessao = await exigirFornecedor("/fornecedor/financeiro");
   const supabase = getServiceClient();
   const extrato = await extratoDoFornecedor(supabase, sessao.supplierId);
+  const tenantId = await tenantIdAtual(supabase);
+  const contasBancarias = await listarContasBancariasFornecedor(supabase, tenantId, sessao.supplierId);
   const T = construirTextos(sessao.language);
 
   const moedasPrev = Object.keys(extrato.previstoPorMoeda).sort();
@@ -111,8 +120,40 @@ export default async function FinanceiroPage() {
         {T.intro(extrato.prazoDias)}
       </p>
 
+      {/* Sumário curto — a tela reúne duas coisas conceitualmente diferentes
+          (extrato de repasses, que é leitura, e dados bancários, que é uma
+          proposta editável); o nome "Financeiro" no menu não deixa isso claro
+          sozinho, daí o atalho logo no topo. */}
+      {/* Componente do servidor (sem estado): âncoras HTML puras, sem onClick —
+          o navegador já rola até o id e o scrollMarginTop abaixo compensa o
+          cabeçalho fixo do portal. */}
+      <nav aria-label="Sumário" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
+        {[
+          { id: "extrato", texto: T.sumarioExtrato },
+          { id: "dados-bancarios", texto: T.sumarioDadosBancarios },
+        ].map((it) => (
+          <a
+            key={it.id}
+            href={`#${it.id}`}
+            style={{
+              border: "1px solid var(--p-line)",
+              borderRadius: 999,
+              padding: "5px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--p-accent-ink)",
+              background: "var(--p-accent-soft)",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {it.texto}
+          </a>
+        ))}
+      </nav>
+
       {/* Resumo por moeda */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+      <div id="extrato" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20, scrollMarginTop: 88 }}>
         <ResumoCard titulo={T.liquidoPrevisto} porMoeda={extrato.previstoPorMoeda} moedas={moedasPrev} destaque="var(--p-accent-ink)" />
         <ResumoCard titulo={T.jaPago} porMoeda={extrato.pagoPorMoeda} moedas={moedasPago} destaque="var(--p-success-ink)" />
       </div>
@@ -215,6 +256,10 @@ export default async function FinanceiroPage() {
       <p style={{ color: "var(--p-muted)", fontSize: 12, marginTop: 14 }}>
         {T.rodape}
       </p>
+
+      <div id="dados-bancarios" style={{ marginTop: 28, borderTop: "1px solid var(--p-line)", paddingTop: 20, scrollMarginTop: 88 }}>
+        <ContaBancariaFornecedorClient idioma={sessao.language} contasIniciais={contasBancarias} />
+      </div>
     </div>
   );
 }

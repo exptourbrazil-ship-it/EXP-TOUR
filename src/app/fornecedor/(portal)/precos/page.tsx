@@ -2,19 +2,12 @@ import Link from "next/link";
 import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { listarSubmissionsDoFornecedor } from "@/lib/price-submission-service";
-import { t } from "@/lib/fornecedor-i18n";
+import { t, statusConteudoLabel } from "@/lib/fornecedor-i18n";
 import UploadPriceList from "./UploadPriceList";
 import NovaTabelaPreco from "./NovaTabelaPreco";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const STATUS_LABEL_COR: Record<string, string> = {
-  draft: "var(--p-accent-ink)",
-  pending_admin: "#1d4ed8",
-  approved: "var(--p-success-ink)",
-  rejected: "#b91c1c",
-};
 
 // Preços (Fase C): a escola sobe o price list (PDF), a IA extrai um rascunho, a
 // escola revisa e aprova; a EXP Tour publica. Escopado ao supplier da sessao.
@@ -40,12 +33,6 @@ export default async function PrecosPage() {
       status: "Status",
       revisar: "Revisar →",
       ver: "Ver →",
-      statusLabel: {
-        draft: "Rascunho",
-        pending_admin: "Aguardando EXP Tour",
-        approved: "Publicado",
-        rejected: "Recusado",
-      } as Record<string, string>,
     },
     en: {
       titulo: "Pricing",
@@ -63,12 +50,6 @@ export default async function PrecosPage() {
       status: "Status",
       revisar: "Review →",
       ver: "View →",
-      statusLabel: {
-        draft: "Draft",
-        pending_admin: "Awaiting EXP Tour",
-        approved: "Published",
-        rejected: "Rejected",
-      } as Record<string, string>,
     },
   });
 
@@ -171,8 +152,7 @@ export default async function PrecosPage() {
             </thead>
             <tbody>
               {submissions.map((s) => {
-                const cor = STATUS_LABEL_COR[s.status] || "var(--p-muted)";
-                const texto = T.statusLabel[s.status] || s.status;
+                const { texto, cor } = statusConteudoLabel(sessao.language, s.status);
                 return (
                   <tr key={s.id} style={{ borderTop: "1px solid var(--p-line)", color: "var(--p-ink)" }}>
                     <td style={{ padding: "10px 14px" }}>{s.sourceFilename || "—"}</td>

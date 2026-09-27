@@ -2958,6 +2958,105 @@ alter table if exists campus_content_submission add column if not exists source_
 create index if not exists idx_content_submission_source_material on content_submission(source_material_id);
 create index if not exists idx_campus_content_submission_source_material on campus_content_submission(source_material_id);
 
+-- ============================================================================
+-- Dados bancarios do fornecedor, para o REPASSE (contas-a-pagar). Ate aqui o
+-- repasse era 100% manual: o admin transferia pelo proprio banco/gateway e so
+-- REGISTRAVA depois (supplier_payout.reference e texto livre) — nenhuma conta
+-- vinculada em lugar nenhum. Isto e dinheiro de destino: uma conta errada e
+-- fraude/prejuizo real, entao NENHUMA proposta do fornecedor vira "a conta
+-- usada no repasse" sem confirmacao humana do admin. Fluxo: o fornecedor
+-- PROPOE (pending_admin) -> o admin CONFIRMA (vira a conta vigente; a
+-- confirmada anterior vira superseded, nunca apagada) ou REJEITA (com motivo).
+-- Suporta tanto IBAN/SWIFT (escolas fora do Brasil) quanto conta+agencia (BR)
+-- e Pix — todos os campos de conta sao opcionais individualmente, mas exige-se
+-- ao menos UM identificador completo (constraint abaixo). Aplicar tambem no
+-- SQL Editor de prod.
+create table if not exists supplier_bank_account (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenant(id),
+  supplier_id uuid not null references supplier(id) on delete cascade,
+  status text not null default 'pending_admin'
+    check (status in ('pending_admin','confirmed','rejected','superseded')),
+  account_holder_name text not null,
+  bank_name text,
+  country_code char(2),
+  currency char(3),
+  iban text,
+  swift_bic text,
+  account_number text,
+  routing_code text,             -- agencia/routing number (nome generico, multi-pais)
+  pix_key text,
+  proposed_by text not null,     -- e-mail do supplier_user que propos
+  reviewed_by text,              -- admin que confirmou/rejeitou
+  reviewed_at timestamptz,
+  rejection_reason text,
+  notes text,                    -- observacao livre do fornecedor
+  created_at timestamptz not null default now(),
+  updated_at timestamptz,
+  -- Exige AO MENOS UM identificador de conta utilizavel: IBAN, OU conta+algum
+  -- roteamento (agencia/routing), OU chave Pix. O formulario pode pedir so os
+  -- campos relevantes pro pais da escola; o schema aceita qualquer combinacao.
+  constraint chk_supplier_bank_account_identificador check (
+    (iban is not null and length(trim(iban)) > 0)
+    or (pix_key is not null and length(trim(pix_key)) > 0)
+    or (
+      account_number is not null and length(trim(account_number)) > 0
+      and routing_code is not null and length(trim(routing_code)) > 0
+    )
+  ),
+  constraint chk_supplier_bank_account_motivo_len check (rejection_reason is null or length(rejection_reason) <= 1000),
+  constraint chk_supplier_bank_account_notes_len check (notes is null or length(notes) <= 1000)
+);
+create index if not exists idx_supplier_bank_account_supplier_status on supplier_bank_account(tenant_id, supplier_id, status);
+-- Guarda de banco: no maximo UMA conta 'confirmed' por fornecedor (a vigente).
+-- A funcao confirmar_conta_bancaria_fornecedor abaixo ja rebaixa a anterior
+-- para 'superseded' antes de confirmar a nova, mas o indice fecha a porta
+-- para qualquer escrita futura que tente contornar a funcao.
+create unique index if not exists uq_supplier_bank_account_confirmed
+  on supplier_bank_account(supplier_id) where status = 'confirmed';
+alter table if exists supplier_bank_account enable row level security;
+
+-- Confirmacao ATOMICA de uma proposta de conta bancaria do fornecedor: rebaixa
+-- a conta 'confirmed' atual (se houver) para 'superseded' e promove a proposta
+-- 'pending_admin' para 'confirmed', sob advisory lock por fornecedor (mesmo
+-- padrao de substituir_elegibilidade). Nunca deixa duas linhas 'confirmed'
+-- simultaneas sob concorrencia (o indice unico acima e o cinto de seguranca).
+-- Retorna false se o id nao existir no tenant ou nao estiver mais pending_admin
+-- (outro admin ja decidiu) — o chamador nao audita nesse caso.
+create or replace function confirmar_conta_bancaria_fornecedor(
+  p_tenant_id uuid,
+  p_id uuid,
+  p_reviewed_by text
+) returns boolean
+language plpgsql
+as $confbank$
+declare
+  v_supplier_id uuid;
+  v_status text;
+begin
+  select supplier_id, status into v_supplier_id, v_status
+    from supplier_bank_account
+   where id = p_id and tenant_id = p_tenant_id
+   for update;
+
+  if v_supplier_id is null or v_status is distinct from 'pending_admin' then
+    return false;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_supplier_id::text, 1));
+
+  update supplier_bank_account
+     set status = 'superseded', updated_at = now()
+   where tenant_id = p_tenant_id and supplier_id = v_supplier_id and status = 'confirmed';
+
+  update supplier_bank_account
+     set status = 'confirmed', reviewed_by = p_reviewed_by, reviewed_at = now(), updated_at = now()
+   where id = p_id and tenant_id = p_tenant_id and status = 'pending_admin';
+
+  return true;
+end;
+$confbank$;
+
 -- Substituicao ATOMICA das regras de elegibilidade de um produto (compliance-
 -- sensivel: is_blocking impede a emissao da cotacao). delete+insert numa unica
 -- transacao, sob advisory lock por produto — sem fail-open em falha parcial nem
@@ -3327,6 +3426,22 @@ alter table if exists supplier add column if not exists favicon_source_url text;
 -- volta para a fila do cron todo dia, para sempre, batendo no site de terceiro.
 alter table if exists supplier add column if not exists favicon_internalize_attempts integer not null default 0;
 alter table if exists supplier add column if not exists favicon_internalize_error text;
+
+-- ---------------------------------------------------------------------------
+-- Perfil institucional (nivel SUPPLIER, nao campus): apresentacao/contato da
+-- escola como um todo, editado DIRETO pelo fornecedor na tela "Sobre a
+-- instituicao" (mesmo padrao de decisao da tela "Marca": metadado de
+-- apresentacao/contato, sem fluxo de aprovacao). Ficam FORA do alcance do
+-- fornecedor os campos de controle interno da EXP Tour sobre o relacionamento
+-- comercial (legal_name, internal_notes, relationship_status, is_preferred,
+-- verified_at, owner_user_id) — a rota de API so le/grava as colunas abaixo.
+alter table if exists supplier add column if not exists about text;
+alter table if exists supplier add column if not exists contact_name text;
+alter table if exists supplier add column if not exists contact_email text;
+alter table if exists supplier add column if not exists contact_phone text;
+alter table if exists supplier add column if not exists hq_address text;
+alter table if exists supplier add column if not exists hq_city text;
+alter table if exists supplier add column if not exists hq_country_code char(2);
 
 -- ============================================================================
 -- FAIXA DE PRECO derivada (Diagnostico Forio, item 0.5a) — ver migracao-faixa-preco.sql

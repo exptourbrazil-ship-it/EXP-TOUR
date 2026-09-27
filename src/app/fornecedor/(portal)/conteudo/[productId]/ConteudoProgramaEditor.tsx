@@ -124,12 +124,51 @@ function valorRegraElig(r: RegraEligForm): unknown {
   }
 }
 
-const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16 };
+const box: React.CSSProperties = { border: "1px solid var(--p-line)", borderRadius: 12, background: "#fff", padding: 16, marginBottom: 16, scrollMarginTop: 88 };
 const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-line)", borderRadius: 8, padding: "8px 10px", fontSize: 14, background: "#fff", color: "var(--p-ink)", boxSizing: "border-box", fontFamily: "var(--p-body)" };
 const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "var(--p-muted)", marginBottom: 4 };
 
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
 const vazioConteudo = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", is_machine_translated: false });
+
+// ── Sumário de âncoras ───────────────────────────────────────────────────────
+// O editor de um curso empilha 5 blocos (Sobre, Ficha, Duração, Elegibilidade,
+// Mídia) — sem isso, era um scroll único e longo sem nenhuma pista de "onde eu
+// coloco o quê". Em vez de reescrever para abas (arriscaria a lógica de
+// `disabled={!editavel}` de cada fieldset), um sumário clicável no topo que dá
+// scroll até a seção já resolve a maior parte da confusão.
+function SumarioAncoras({ itens }: { itens: { id: string; texto: string }[] }) {
+  return (
+    <nav
+      aria-label="Sumário"
+      style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}
+    >
+      {itens.map((it) => (
+        <a
+          key={it.id}
+          href={`#${it.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(it.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          style={{
+            border: "1px solid var(--p-line)",
+            borderRadius: 999,
+            padding: "5px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--p-accent-ink)",
+            background: "var(--p-accent-soft)",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {it.texto}
+        </a>
+      ))}
+    </nav>
+  );
+}
 
 // ── Grade de horários (timetable) ───────────────────────────────────────────
 // Tipos/parsing (shape canônico de program_detail.timetable) vêm de
@@ -355,6 +394,11 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       selecione: "Selecione…",
       sim: "Sim",
       nao: "Não",
+      sumarioSobre: "Sobre o curso",
+      sumarioFicha: "Ficha e horários",
+      sumarioDuracao: "Duração",
+      sumarioElegibilidade: "Elegibilidade",
+      sumarioMidia: "Fotos e vídeos",
     },
     en: {
       descricaoELista: "Description and lists",
@@ -392,6 +436,11 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       selecione: "Select…",
       sim: "Yes",
       nao: "No",
+      sumarioSobre: "About the course",
+      sumarioFicha: "Details and schedule",
+      sumarioDuracao: "Duration",
+      sumarioElegibilidade: "Eligibility",
+      sumarioMidia: "Photos and videos",
     },
   });
 
@@ -550,8 +599,18 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       {erro ? <div style={{ ...box, borderColor: "#fca5a5", background: "#fef2f2", color: "#991b1b", fontSize: 14 }}>{erro}</div> : null}
       {okMsg ? <div style={{ ...box, borderColor: "#86efac", background: "#f0fdf4", color: "var(--p-success-ink)", fontSize: 14 }}>{okMsg}</div> : null}
 
+      <SumarioAncoras
+        itens={[
+          { id: "sobre", texto: T.sumarioSobre },
+          { id: "ficha", texto: T.sumarioFicha },
+          { id: "duracao", texto: T.sumarioDuracao },
+          { id: "elegibilidade", texto: T.sumarioElegibilidade },
+          { id: "midia", texto: T.sumarioMidia },
+        ]}
+      />
+
       {/* Conteúdo por locale */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="sobre" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.descricaoELista}</legend>
         <div style={{ display: "flex", gap: 6, margin: "6px 0 12px" }}>
           {LOCALES.map((l) => (
@@ -577,7 +636,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       </fieldset>
 
       {/* Ficha (program_detail) */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="ficha" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fichaCurso}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.tipoExemplo}</label><input value={prog.education_type} onChange={(e) => setP({ education_type: e.target.value })} style={inp} /></div>
@@ -614,7 +673,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       </fieldset>
 
       {/* Duração e disponibilidade (min_duration/max_duration/available_from/available_until em `product`) */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="duracao" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.duracaoDisponibilidade}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.duracaoMin}</label><input value={disp.min_duration} onChange={(e) => setD({ min_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
@@ -625,7 +684,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       </fieldset>
 
       {/* Elegibilidade (eligibility_rule) */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="elegibilidade" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.elegibilidade}</legend>
         <p style={{ marginTop: 0, marginBottom: 10, fontSize: 12, color: "var(--p-muted)" }}>{T.elegibilidadeAjuda}</p>
         {regrasElig.length === 0 ? (
@@ -691,7 +750,7 @@ export default function ConteudoProgramaEditor({ productId, idioma }: { productI
       </fieldset>
 
       {/* Mídia */}
-      <fieldset style={box} disabled={!editavel}>
+      <fieldset id="midia" style={box} disabled={!editavel}>
         <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fotosVideos}</legend>
         {midias.length === 0 ? (
           <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{TX.nenhumaMidia}</p>

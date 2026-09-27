@@ -119,7 +119,7 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
   return t(idioma, {
     pt: {
       titulo: "Marca",
-      subtitulo: "Aparecem na proposta do estudante: o ícone do site ao lado do nome da escola e as redes como ícones clicáveis. Deixe em branco o que sua escola não tiver.",
+      subtitulo: "Aparecem na proposta do estudante: o ícone do site ao lado do nome da escola e as redes como ícones clicáveis. Deixe em branco o que sua escola não tiver. Para texto de apresentação, contato e endereço, veja a aba \"Sobre a instituição\".",
       icone: "Ícone do site (favicon)",
       salvar: "Salvar",
       salvando: "Salvando…",
@@ -131,7 +131,7 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
     },
     en: {
       titulo: "Brand",
-      subtitulo: "These appear in the student's proposal: the site icon next to the campus name and the social links as clickable icons. Leave blank whatever your campus doesn't have.",
+      subtitulo: "These appear in the student's proposal: the site icon next to the campus name and the social links as clickable icons. Leave blank whatever your campus doesn't have. For presentation text, contact and address, see the \"About the institution\" tab.",
       icone: "Site icon (favicon)",
       salvar: "Save",
       salvando: "Saving…",
@@ -140,6 +140,55 @@ export function textosMarcaFornecedor(idioma: string | null | undefined) {
       avisoValidacao: "The address needs to be from the network's own site — an Instagram link in the Facebook field is rejected, so the icon doesn't send the student somewhere else.",
       carregando: "Loading…",
       erroCarregar: "Could not load the brand data.",
+    },
+  });
+}
+
+// Textos da tela "Sobre a instituição" (about + contato principal + endereço
+// da matriz do fornecedor) — mesmo padrão de decisão da tela "Marca": sem
+// fluxo de aprovação, gravação direta. Nível SUPPLIER (não campus): um só
+// registro por escola, diferente da tela "Campus".
+export function textosInstituicaoFornecedor(idioma: string | null | undefined) {
+  return t(idioma, {
+    pt: {
+      titulo: "Sobre a instituição",
+      subtitulo: "Apresentação e contato principal da sua instituição como um todo — diferente da tela \"Campus\" (que é por unidade) e da tela \"Marca\" (ícone do site e redes sociais).",
+      about: "Descrição institucional",
+      aboutPlaceholder: "Um resumo da sua instituição: história, diferenciais, missão.",
+      contato: "Contato principal",
+      contactName: "Nome do contato",
+      contactEmail: "E-mail do contato",
+      contactPhone: "Telefone do contato",
+      endereco: "Endereço da matriz",
+      hqAddress: "Endereço",
+      hqCity: "Cidade",
+      hqCountryCode: "País (código de 2 letras)",
+      salvar: "Salvar",
+      salvando: "Salvando…",
+      salvo: "Salvo ✓",
+      erroGenerico: "Erro de rede.",
+      carregando: "Carregando…",
+      erroCarregar: "Não foi possível carregar os dados da instituição.",
+    },
+    en: {
+      titulo: "About the institution",
+      subtitulo: "Presentation and main contact for your institution as a whole — different from the \"Campus\" screen (which is per unit) and the \"Brand\" screen (site icon and social links).",
+      about: "Institutional description",
+      aboutPlaceholder: "A summary of your institution: history, differentiators, mission.",
+      contato: "Main contact",
+      contactName: "Contact name",
+      contactEmail: "Contact email",
+      contactPhone: "Contact phone",
+      endereco: "Head office address",
+      hqAddress: "Address",
+      hqCity: "City",
+      hqCountryCode: "Country (2-letter code)",
+      salvar: "Save",
+      salvando: "Saving…",
+      salvo: "Saved ✓",
+      erroGenerico: "Network error.",
+      carregando: "Loading…",
+      erroCarregar: "Could not load the institution data.",
     },
   });
 }
@@ -182,6 +231,88 @@ export function textosLocalizacaoContatoCampus(idioma: string | null | undefined
       salvo: "Saved ✓",
       erroGenerico: "Could not save.",
       falhaConexao: "Connection failed.",
+    },
+  });
+}
+
+// Textos da seção "Dados bancários" (aba Financeiro) — proposta do fornecedor
+// para o destino do repasse. Deixa MUITO explícito que a mudança só vale depois
+// que a EXP Tour confirmar (nunca ambíguo: dinheiro errado é prejuízo real).
+export function textosContaBancariaFornecedor(idioma: string | null | undefined) {
+  return t(idioma, {
+    pt: {
+      titulo: "Dados bancários",
+      subtitulo:
+        "A conta para onde a EXP Tour envia o repasse. Uma alteração aqui é só uma PROPOSTA — ela só passa a valer depois que a EXP Tour confirmar manualmente. Enquanto isso, o repasse continua indo para a conta confirmada anteriormente (se houver).",
+      statusPendente: "Pendente de confirmação",
+      statusConfirmada: "Confirmada",
+      statusRejeitada: "Rejeitada",
+      statusSuperada: "Substituída",
+      avisoPendente: "Esta proposta ainda não foi confirmada pela EXP Tour. Você pode editá-la ou cancelá-la enquanto estiver pendente.",
+      avisoConfirmada: "Esta é a conta em uso hoje para o repasse. Para trocar, envie uma nova proposta abaixo — ela só vale após confirmação.",
+      motivoRejeicao: "Motivo:",
+      contaConfirmadaAtual: "Conta confirmada atualmente",
+      propostaPendente: "Proposta enviada (aguardando confirmação)",
+      propor: "Propor alteração",
+      editarProposta: "Editar proposta",
+      cancelarEdicao: "Cancelar",
+      titular: "Nome do titular da conta",
+      banco: "Banco",
+      pais: "País (código, ex.: BR, US)",
+      moeda: "Moeda (código, ex.: BRL, USD)",
+      iban: "IBAN",
+      swift: "SWIFT/BIC",
+      conta: "Número da conta",
+      routing: "Agência / routing number",
+      pix: "Chave Pix",
+      observacoes: "Observações (opcional)",
+      observacoesPlaceholder: "Ex.: conta em nome da matriz, não da filial…",
+      enviar: "Enviar proposta",
+      enviando: "Enviando…",
+      salvarAlteracoes: "Salvar alterações",
+      identificadorAjuda: "Preencha ao menos um: IBAN, ou conta + agência/routing, ou chave Pix.",
+      erroGenerico: "Não foi possível enviar. Confira os campos destacados.",
+      falhaConexao: "Falha de conexão.",
+      sucessoEnviada: "Proposta enviada — aguarde a confirmação da EXP Tour.",
+      semDados: "Nenhum dado bancário cadastrado ainda.",
+      carregando: "Carregando…",
+    },
+    en: {
+      titulo: "Bank details",
+      subtitulo:
+        "The account EXP Tour sends the payout to. A change here is only a PROPOSAL — it only takes effect once EXP Tour manually confirms it. Until then, the payout keeps going to the previously confirmed account (if any).",
+      statusPendente: "Awaiting confirmation",
+      statusConfirmada: "Confirmed",
+      statusRejeitada: "Rejected",
+      statusSuperada: "Replaced",
+      avisoPendente: "This proposal has not been confirmed by EXP Tour yet. You can edit or cancel it while it's pending.",
+      avisoConfirmada: "This is the account currently used for the payout. To change it, submit a new proposal below — it only applies once confirmed.",
+      motivoRejeicao: "Reason:",
+      contaConfirmadaAtual: "Currently confirmed account",
+      propostaPendente: "Proposal submitted (awaiting confirmation)",
+      propor: "Propose a change",
+      editarProposta: "Edit proposal",
+      cancelarEdicao: "Cancel",
+      titular: "Account holder name",
+      banco: "Bank",
+      pais: "Country (code, e.g.: BR, US)",
+      moeda: "Currency (code, e.g.: BRL, USD)",
+      iban: "IBAN",
+      swift: "SWIFT/BIC",
+      conta: "Account number",
+      routing: "Routing number / branch",
+      pix: "Pix key",
+      observacoes: "Notes (optional)",
+      observacoesPlaceholder: "E.g.: account under the parent company's name, not the branch…",
+      enviar: "Submit proposal",
+      enviando: "Submitting…",
+      salvarAlteracoes: "Save changes",
+      identificadorAjuda: "Fill in at least one: IBAN, or account + routing number, or Pix key.",
+      erroGenerico: "Could not submit. Check the highlighted fields.",
+      falhaConexao: "Connection failed.",
+      sucessoEnviada: "Proposal submitted — waiting for EXP Tour to confirm.",
+      semDados: "No bank details on file yet.",
+      carregando: "Loading…",
     },
   });
 }

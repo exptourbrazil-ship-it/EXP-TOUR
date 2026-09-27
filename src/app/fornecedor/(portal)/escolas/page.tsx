@@ -24,11 +24,11 @@ export default async function EscolasFornecedorPage() {
 
   const T = t(sessao.language, {
     pt: {
-      titulo: "Conteúdo das escolas",
+      titulo: "Campus",
       subtitulo:
-        "Descreva cada unidade (sobre a escola, destaques, fotos, estrutura, acreditações e mix de nacionalidades). Você edita um rascunho e envia; a EXP Tour aprova e publica.",
-      nenhumaEscola: "Nenhuma escola cadastrada ainda.",
-      escola: "Escola",
+        "Descreva cada unidade (sobre o campus, destaques, fotos, estrutura, acreditações e mix de nacionalidades). Você edita um rascunho e envia; a EXP Tour aprova e publica.",
+      nenhumaEscola: "Nenhum campus cadastrado ainda.",
+      escola: "Campus",
       conteudo: "Conteúdo",
       semConteudo: "Sem conteúdo",
       ver: "Ver →",
