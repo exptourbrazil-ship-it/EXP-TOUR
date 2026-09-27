@@ -249,18 +249,55 @@ async function materializar(
   }
 
   for (const tx of plano.taxas) {
-    const { error: eFee } = await supabase.from("fee").insert({
-      tenant_id: sub.tenant_id,
-      campus_id: sub.campus_id,
-      name: tx.name,
-      fee_type: tx.fee_type,
-      charge_basis: tx.charge_basis,
-      amount: tx.amount,
-      currency,
-      is_mandatory: tx.is_mandatory,
-      source_submission_id: sub.id,
-    });
-    if (eFee) return { ok: false, erro: `Falha ao publicar a taxa "${tx.name}".` };
+    // Vínculo por product_id (taxa proposta ligada a um curso/acomodação
+    // específico da escola, ex.: "+ Propor taxa para este curso" ou escolha
+    // manual no editor). Posse reconferida AQUI (defesa em profundidade,
+    // mesmo padrão do produto acima) — o produto tem que ser do mesmo
+    // tenant/campus deste submission; senão a taxa é publicada como GERAL
+    // (sem vínculo específico), nunca travando a aprovação.
+    let feeProdutoId: string | null = null;
+    if (tx.productId) {
+      const { data: existente } = await supabase
+        .from("product")
+        .select("id")
+        .eq("id", tx.productId)
+        .eq("tenant_id", sub.tenant_id)
+        .eq("campus_id", sub.campus_id)
+        .is("archived_at", null)
+        .maybeSingle();
+      if (existente) feeProdutoId = existente.id as string;
+    }
+
+    const { data: feeRow, error: eFee } = await supabase
+      .from("fee")
+      .insert({
+        tenant_id: sub.tenant_id,
+        campus_id: sub.campus_id,
+        name: tx.name,
+        fee_type: tx.fee_type,
+        charge_basis: tx.charge_basis,
+        amount: tx.amount,
+        currency,
+        is_mandatory: tx.is_mandatory,
+        // FAIL-CLOSED: só se aplica a todo o catálogo do campus quando a
+        // escola ESCOLHEU EXPLICITAMENTE "taxa geral" no editor (tx.escopo
+        // === "geral") — nunca por omissão. Uma taxa extraída de PDF pela IA
+        // (ou ainda não revisada) sem productId nem escopo definido nasce
+        // sem applies_to_kinds nenhum: fica "solta" (invisível na cotação)
+        // até alguém decidir o escopo, em vez de silenciosamente cobrar de
+        // todo curso/acomodação do campus (o mesmo padrão já exigido no
+        // fluxo manual do admin, ver fee.ts).
+        applies_to_kinds: feeProdutoId ? [] : tx.escopo === "geral" ? ["program", "accommodation"] : [],
+        source_submission_id: sub.id,
+      })
+      .select("id")
+      .single();
+    if (eFee || !feeRow) return { ok: false, erro: `Falha ao publicar a taxa "${tx.name}".` };
+
+    if (feeProdutoId) {
+      const { error: eFp } = await supabase.from("fee_product").insert({ fee_id: feeRow.id, product_id: feeProdutoId });
+      if (eFp) return { ok: false, erro: `Falha ao vincular a taxa "${tx.name}" ao curso.` };
+    }
   }
 
   // Supersede fica FORA daqui: so depois que o status vira 'approved', para nao

@@ -46,9 +46,20 @@ test("taxa: default fee_type/charge_basis; is_mandatory; moeda", () => {
   });
   const plano = planoDeMaterializacao(ext, "GBP");
   assert.equal(plano.taxas.length, 2);
-  assert.deepEqual(plano.taxas[0], { name: "Registration", fee_type: "registration", charge_basis: "once_per_quote", amount: 150, currency: "GBP", is_mandatory: true });
+  assert.deepEqual(plano.taxas[0], { name: "Registration", fee_type: "registration", charge_basis: "once_per_quote", amount: 150, currency: "GBP", is_mandatory: true, productId: null, escopo: null });
   assert.equal(plano.taxas[1].fee_type, "custom");
   assert.equal(plano.taxas[1].charge_basis, "once_per_quote");
+});
+
+test("taxa: mandatory=false propagado como is_mandatory; productId propagado", () => {
+  const ext = normalizarPriceListExtraido({
+    fees: [
+      { name: "Opcional vinculada", amount: 30, mandatory: false, productId: "11111111-1111-1111-1111-111111111111" },
+    ],
+  });
+  const plano = planoDeMaterializacao(ext, "USD");
+  assert.equal(plano.taxas[0].is_mandatory, false);
+  assert.equal(plano.taxas[0].productId, "11111111-1111-1111-1111-111111111111");
 });
 
 test("resumoDoPlano conta produtos, taxas e faixas", () => {

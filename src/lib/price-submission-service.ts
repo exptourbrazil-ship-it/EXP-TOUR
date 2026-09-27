@@ -2,7 +2,7 @@
 // sempre pelo supplierId. Nada de preco vivo aqui: guarda o RASCUNHO (jsonb) e
 // o fluxo de aprovacao; a materializacao em preco active fica na fatia do Admin.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizarPriceListExtraido, contarItens, type PriceListExtraido } from "@/lib/price-list-extract";
+import { normalizarPriceListExtraido, contarItens, type PriceListExtraido, type TaxaExtraida } from "@/lib/price-list-extract";
 import { produtoDoFornecedor } from "@/lib/content-submission-service";
 
 // Rascunho vazio (mesma forma normalizada) para a criacao manual — sem PDF,
@@ -183,10 +183,24 @@ async function limparProductIdsNaoPossuidos(supabase: SupabaseClient, supplierId
         return ok ? item : { ...item, productId: null };
       })
     );
+  // Taxa nao tem "kind" proprio (pode vincular a curso OU acomodacao) — tenta
+  // as duas antes de limpar. Mesmo padrao de defesa em profundidade dos itens
+  // acima; a garantia real continua no re-check por campus_id em
+  // price-admin-service.ts (materializar).
+  const checarTaxa = async (itens: TaxaExtraida[]) =>
+    Promise.all(
+      itens.map(async (item) => {
+        if (!item.productId) return item;
+        const okPrograma = await produtoDoFornecedor(supabase, supplierId, item.productId, "program");
+        const okAcomodacao = okPrograma || (await produtoDoFornecedor(supabase, supplierId, item.productId, "accommodation"));
+        return okAcomodacao ? item : { ...item, productId: null };
+      })
+    );
   return {
     ...extracted,
     programs: await checar(extracted.programs, "program"),
     accommodations: await checar(extracted.accommodations, "accommodation"),
+    fees: await checarTaxa(extracted.fees),
   };
 }
 

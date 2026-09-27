@@ -34,6 +34,20 @@ export type TaxaExtraida = {
   amount: number;
   basis: string | null; // once_per_quote | once_per_item | per_unit | per_person
   refundable: boolean | null;
+  // Obrigatória (cobrada de todo estudante) vs opcional. Ausente/null = tratado
+  // como obrigatória na materialização (mesmo default do Admin em fee.ts).
+  mandatory: boolean | null;
+  // Vínculo OPCIONAL a um product.id real do catálogo (curso ou acomodação) —
+  // mesmo padrão de ProgramaExtraido/AcomodacaoExtraida.productId: preenchido
+  // quando a escola escolhe "vincular a um curso" no editor, nunca inventado.
+  productId?: string | null;
+  // Escopo da taxa quando NÃO há productId. "geral" = a escola escolheu
+  // EXPLICITAMENTE (no editor) que a taxa vale para todo o catálogo do campus.
+  // Ausente/null = ainda não definido (ex.: extraído de PDF pela IA, nunca
+  // revisado por ninguém) — a materialização trata isso como FAIL-CLOSED (taxa
+  // fica sem applies_to_kinds, invisível na cotação, até alguém escolher
+  // "geral" ou vincular a um curso) — nunca assume "geral" por omissão.
+  escopo?: "geral" | null;
 };
 export type PriceListExtraido = {
   currency: string | null; // ISO 4217 (3 letras) quando houver
@@ -150,6 +164,9 @@ export function normalizarPriceListExtraido(raw: unknown): PriceListExtraido {
           amount: dinheiro((f as any)?.amount) ?? 0,
           basis: umDe((f as any)?.basis, BASES_TAXA),
           refundable: boolOuNulo((f as any)?.refundable),
+          mandatory: boolOuNulo((f as any)?.mandatory),
+          productId: idOuNulo((f as any)?.productId),
+          escopo: (f as any)?.escopo === "geral" ? "geral" : null,
         }))
         .filter((f) => f.name && f.amount > 0)
     : [];
@@ -232,6 +249,7 @@ const TOOL_SCHEMA = {
             amount: { type: "number" },
             basis: { type: "string", description: "once_per_quote, once_per_item, per_unit ou per_person" },
             refundable: { type: "boolean" },
+            mandatory: { type: "boolean", description: "false quando o documento indicar que a taxa e opcional; omita se obrigatoria/nao especificado." },
           },
           required: ["name", "amount"],
         },

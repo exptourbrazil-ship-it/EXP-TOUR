@@ -324,6 +324,7 @@ function GradeHorarios({ valor, set, idioma }: { valor: TimetableEdit; set: (t: 
 // vez de publicar. Ver /api/fornecedor/price-list (ação "vigente_produto" e
 // "criar_manual" com `prefill`).
 type PrecoVigente = { id: string; name: string; currency: string; unit: string; validFrom: string; validUntil: string | null };
+type TaxaVigente = { id: string; name: string; feeType: string; chargeBasis: string; amount: number | null; currency: string | null; isMandatory: boolean; gerida: boolean };
 
 function fmtDataPreco(d: string | null): string {
   if (!d) return "—";
@@ -332,6 +333,14 @@ function fmtDataPreco(d: string | null): string {
 }
 
 const UNIT_LABEL_PRECO: Record<string, string> = { week: "semana", day: "dia", month: "mês", session: "sessão", unit: "unidade" };
+const FEE_TYPE_LABEL_PT: Record<string, string> = {
+  registration: "Matrícula", material: "Material", bank: "Bancária", placement: "Colocação",
+  service: "Serviço", courier: "Correio", courier_of_documents: "Envio de documentos", custom: "Outra",
+};
+const FEE_TYPE_LABEL_EN: Record<string, string> = {
+  registration: "Registration", material: "Material", bank: "Bank", placement: "Placement",
+  service: "Service", courier: "Courier", courier_of_documents: "Document courier", custom: "Other",
+};
 
 function SecaoPreco({
   productId,
@@ -345,6 +354,7 @@ function SecaoPreco({
   const router = useRouter();
   const [carregando, setCarregando] = useState(true);
   const [precos, setPrecos] = useState<PrecoVigente[]>([]);
+  const [taxas, setTaxas] = useState<TaxaVigente[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [propondo, setPropondo] = useState(false);
 
@@ -361,6 +371,11 @@ function SecaoPreco({
       unidade: (u: string) => `por ${UNIT_LABEL_PRECO[u] ?? u}`,
       vigencia: (de: string, ate: string) => `${de} → ${ate}`,
       semFim: "sem fim",
+      taxasVinculadas: "Taxas vinculadas a este curso",
+      semTaxas: "Nenhuma taxa vinculada a este curso.",
+      obrigatoria: "Obrigatória",
+      opcional: "Opcional",
+      porTabela: "por tabela",
     },
     en: {
       precoAtual: "Active price",
@@ -374,8 +389,14 @@ function SecaoPreco({
       unidade: (u: string) => `per ${u}`,
       vigencia: (de: string, ate: string) => `${de} → ${ate}`,
       semFim: "no end date",
+      taxasVinculadas: "Fees linked to this course",
+      semTaxas: "No fees linked to this course.",
+      obrigatoria: "Mandatory",
+      opcional: "Optional",
+      porTabela: "per table",
     },
   });
+  const FEE_TYPE_LABEL = idioma === "en" ? FEE_TYPE_LABEL_EN : FEE_TYPE_LABEL_PT;
 
   useEffect(() => {
     let vivo = true;
@@ -388,8 +409,12 @@ function SecaoPreco({
         });
         const j = await r.json().catch(() => ({}));
         if (!vivo) return;
-        if (r.ok && j.ok) setPrecos(j.precos ?? []);
-        else setErro(j?.erro || T.erroCarregar);
+        if (r.ok && j.ok) {
+          setPrecos(j.precos ?? []);
+          setTaxas(j.taxas ?? []);
+        } else {
+          setErro(j?.erro || T.erroCarregar);
+        }
       } catch {
         if (vivo) setErro(T.erroCarregar);
       } finally {
@@ -440,6 +465,23 @@ function SecaoPreco({
           ))}
         </div>
       )}
+
+      <h4 style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 14, margin: "0 0 8px" }}>{T.taxasVinculadas}</h4>
+      {carregando ? null : taxas.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--p-muted)", margin: "0 0 10px" }}>{T.semTaxas}</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          {taxas.map((tx) => (
+            <div key={tx.id} style={{ border: "1px solid var(--p-line)", borderRadius: 8, background: "#fff", padding: "8px 10px", fontSize: 13, color: "var(--p-ink)" }}>
+              <strong>{tx.name}</strong>
+              <span style={{ color: "var(--p-muted)" }}>
+                {" "}· {FEE_TYPE_LABEL[tx.feeType] ?? tx.feeType} · {tx.amount != null ? `${tx.currency ?? ""} ${tx.amount.toFixed(2)}`.trim() : T.porTabela} · {tx.isMandatory ? T.obrigatoria : T.opcional}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
         <a href="/fornecedor/precos/tabelas" style={{ fontSize: 13, color: "var(--p-accent-ink)", textDecoration: "none" }}>{T.verTabelas}</a>
         <button

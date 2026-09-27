@@ -3,6 +3,7 @@ import { exigirFornecedor } from "@/lib/fornecedor-guard";
 import { getServiceClient } from "@/lib/fornecedor-dados";
 import { listarCampiDoFornecedor, listarConteudoCampusDoFornecedor } from "@/lib/campus-content-submission-service";
 import { t, statusConteudoLabel } from "@/lib/fornecedor-i18n";
+import NovoCampusForm from "./NovoCampusForm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,8 @@ export default async function EscolasFornecedorPage() {
       <p style={{ color: "var(--p-ink)", opacity: 0.75, fontSize: 14, margin: "0 0 20px" }}>
         {T.subtitulo}
       </p>
+
+      <NovoCampusForm idioma={sessao.language} />
 
       {campi.length === 0 ? (
         <p style={{ color: "var(--p-muted)", fontSize: 14 }}>{T.nenhumaEscola}</p>

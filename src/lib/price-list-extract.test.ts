@@ -54,9 +54,39 @@ test("taxas: amount obrigatorio > 0; feeType/basis validados; refundable coerido
     ],
   });
   assert.equal(p.fees.length, 2);
-  assert.deepEqual(p.fees[0], { name: "Registration", feeType: "registration", amount: 150, basis: "once_per_quote", refundable: false });
+  assert.deepEqual(p.fees[0], {
+    name: "Registration", feeType: "registration", amount: 150, basis: "once_per_quote",
+    refundable: false, mandatory: null, productId: null, escopo: null,
+  });
   assert.equal(p.fees[1].feeType, null);
   assert.equal(p.fees[1].basis, null);
+});
+
+test("taxas: productId (UUID valido) e mandatory propagados; UUID invalido -> null", () => {
+  const p = normalizarPriceListExtraido({
+    fees: [
+      { name: "Vinculada", amount: 50, mandatory: false, productId: "11111111-1111-1111-1111-111111111111" },
+      { name: "Adulterada", amount: 50, productId: "nao-e-uuid" },
+    ],
+  });
+  assert.equal(p.fees[0].mandatory, false);
+  assert.equal(p.fees[0].productId, "11111111-1111-1111-1111-111111111111");
+  assert.equal(p.fees[1].productId, null);
+});
+
+test("taxas: escopo so vira 'geral' com valor exato; qualquer outra coisa (ausente, lixo, extraida por IA) fica null", () => {
+  const p = normalizarPriceListExtraido({
+    fees: [
+      { name: "Explicita", amount: 50, escopo: "geral" },
+      { name: "Sem escopo", amount: 50 },
+      { name: "Lixo", amount: 50, escopo: "todos por favor" },
+      { name: "Truthy mas nao geral", amount: 50, escopo: true },
+    ],
+  });
+  assert.equal(p.fees[0].escopo, "geral");
+  assert.equal(p.fees[1].escopo, null);
+  assert.equal(p.fees[2].escopo, null);
+  assert.equal(p.fees[3].escopo, null);
 });
 
 test("entrada vazia/invalida vira estrutura vazia; contarItens soma tudo", () => {
@@ -70,6 +100,8 @@ test("entrada vazia/invalida vira estrutura vazia; contarItens soma tudo", () =>
     fees: [{ name: "C", amount: 5 }],
   });
   assert.equal(contarItens(cheio), 3);
+  assert.equal(cheio.fees[0].mandatory, null);
+  assert.equal(cheio.fees[0].productId, null);
 });
 
 test("moeda invalida -> null (a escola preenche depois)", () => {
