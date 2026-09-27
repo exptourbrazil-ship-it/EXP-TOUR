@@ -171,7 +171,7 @@ c) **Instituição de Ensino:** a escola, college, universidade, centro de idiom
 
 d) **Fornecedores:** as Instituições de Ensino, provedores de acomodação, famílias anfitriãs, seguradoras, transportadoras, prestadores de transfer, órgãos examinadores e demais terceiros que executam parcelas do Programa.
 
-e) **Plataforma:** o ambiente digital da Forio, incluindo o site, a Área do Cliente e o assessor de inteligência artificial denominado **Altus**.
+e) **Plataforma:** o ambiente digital da Forio, incluindo o site, a Área do Cliente e o assistente de inteligência artificial denominado **Chat da Forio**.
 
 f) **Entrada:** o conjunto de **todas as taxas e depósitos obrigatórios exigidos pelos Fornecedores** como condição de processamento da matrícula, de confirmação da reserva ou de emissão de documentos, tais como taxa de matrícula, taxa de acomodação, taxa de registro, depósito de reserva e materiais obrigatórios, **discriminados item a item no Anexo III e no item 7 do Quadro Resumo**, expressos em moeda estrangeira e devidos após a assinatura deste Contrato, na forma da Cláusula 2.5.
 
@@ -203,7 +203,7 @@ a) diagnóstico de perfil, objetivos e restrições do Contratante; b) curadoria
 
 a) **Proposta.** A Forio apresenta ao Contratante a proposta do Programa, **acompanhada do Quadro Resumo, destas Condições Gerais e dos Anexos I, II e III**, enviados por meio eletrônico com registro de envio e de recebimento, em formato que permita leitura, download e impressão. A proposta indica o seu próprio prazo de validade e, na ausência de indicação, vigora por **10 (dez) dias corridos** contados de sua apresentação, findos os quais os valores e a disponibilidade ficam sujeitos a reconfirmação junto aos Fornecedores. Este prazo não se confunde com o prazo de arrependimento da Cláusula 8, que se conta da assinatura e tem finalidade distinta.
 
-a.1) **Canais disponíveis na proposta.** A proposta disponibiliza ao Contratante, no mínimo: (i) meio para **manifestar interesse em avançar para a contratação**; (ii) meio para agendar novo atendimento com consultor humano; e (iii) acesso ao assessor Altus. **A manifestação de interesse de que trata o item (i) não constitui aceitação da proposta, não celebra o Contrato e não gera obrigação de pagamento**, limitando-se a instruir a Forio a emitir o instrumento para assinatura.
+a.1) **Canais disponíveis na proposta.** A proposta disponibiliza ao Contratante, no mínimo: (i) meio para **manifestar interesse em avançar para a contratação**; (ii) meio para agendar novo atendimento com consultor humano; e (iii) acesso ao Chat da Forio. **A manifestação de interesse de que trata o item (i) não constitui aceitação da proposta, não celebra o Contrato e não gera obrigação de pagamento**, limitando-se a instruir a Forio a emitir o instrumento para assinatura.
 
 b) **Assinatura.** Conferidas as informações, o Contratante manifesta sua vontade mediante **assinatura eletrônica**, em plataforma de assinatura eletrônica indicada pela Forio, de **envelope único contendo o Quadro Resumo, estas Condições Gerais e os Anexos I, II e III**, de modo que a assinatura abrange simultaneamente os cinco documentos. A plataforma registra data, hora, IP, versão do documento e identificador de sessão, e emite certificado de auditoria que constitui prova da manifestação de vontade na forma da Cláusula 17.1. **É neste momento que o Contrato se considera celebrado**, iniciando-se a contagem do prazo de arrependimento da Cláusula 8.
 
@@ -233,19 +233,19 @@ e) **Ficha de matrícula.** Verificadas cumulativamente a assinatura deste Contr
 
 3.2. **A Forio não garante, e o Contratante declara não ter recebido qualquer promessa de: concessão de visto, aprovação migratória, admissão em instituição de ensino, obtenção de emprego, autorização de trabalho, obtenção de residência permanente, aproveitamento acadêmico, nível de proficiência a ser alcançado ou reconhecimento do certificado obtido por autoridade brasileira ou estrangeira.**
 
-### CLÁUSULA 4: A PLATAFORMA E O ASSESSOR ALTUS
+### CLÁUSULA 4: A PLATAFORMA E O CHAT DA FORIO
 
 4.1. O acesso à Plataforma é pessoal. O Contratante é responsável pela guarda de suas credenciais e pela veracidade das informações que insere.
 
-4.2. **As recomendações e informações geradas pelo assessor Altus têm natureza informativa e de apoio à decisão, são produzidas por sistema de inteligência artificial a partir dos dados fornecidos pelo Contratante e não constituem consultoria migratória, jurídica, médica, securitária, financeira, cambial ou educacional vinculante.** A decisão final é sempre do Contratante, que poderá, a qualquer momento, solicitar atendimento humano.
+4.2. **As recomendações e informações geradas pelo Chat da Forio têm natureza informativa e de apoio à decisão, são produzidas por sistema de inteligência artificial a partir dos dados fornecidos pelo Contratante e não constituem consultoria migratória, jurídica, médica, securitária, financeira, cambial ou educacional vinculante.** A decisão final é sempre do Contratante, que poderá, a qualquer momento, solicitar atendimento humano.
 
-4.2.1. **Limites de atuação.** O Altus presta **orientação e acompanhamento**, e não substitui profissionais habilitados. Em especial, **não pratica atos privativos de consultor migratório licenciado no país de destino, de corretor de seguros, de instituição autorizada a operar no mercado de câmbio ou de profissional de saúde**, encaminhando ao atendimento humano ou ao parceiro especializado sempre que a matéria exceder esse limite.
+4.2.1. **Limites de atuação.** O Chat da Forio presta **orientação e acompanhamento**, e não substitui profissionais habilitados. Em especial, **não pratica atos privativos de consultor migratório licenciado no país de destino, de corretor de seguros, de instituição autorizada a operar no mercado de câmbio ou de profissional de saúde**, encaminhando ao atendimento humano ou ao parceiro especializado sempre que a matéria exceder esse limite.
 
 4.3. Informações sobre disponibilidade, preços, datas e condições dos Fornecedores estão sujeitas a confirmação. **Somente a proposta formalizada e a confirmação de matrícula emitida pelo Fornecedor vinculam as partes**, prevalecendo sobre simulações, buscas, conteúdos de marketing e conversas exploratórias.
 
 4.4. Erros manifestos de cotação, preço ou disponibilidade, decorrentes de falha sistêmica, de integração ou de terceiros, não geram direito à contratação nas condições incorretas, cabendo à Forio comunicar a correção em até 2 (dois) dias úteis e ao Contratante optar entre a contratação corrigida e a restituição integral do que houver pago.
 
-4.5. Os sinais distintivos, marcas, conteúdos, textos, bases de dados e o sistema Altus são de propriedade exclusiva da Forio, sendo vedada reprodução, engenharia reversa, extração de dados por meio automatizado ou uso comercial sem autorização escrita.
+4.5. Os sinais distintivos, marcas, conteúdos, textos, bases de dados e o sistema Chat da Forio são de propriedade exclusiva da Forio, sendo vedada reprodução, engenharia reversa, extração de dados por meio automatizado ou uso comercial sem autorização escrita.
 
 ### CLÁUSULA 5: OBRIGAÇÕES E DECLARAÇÕES DO CONTRATANTE
 
@@ -331,7 +331,7 @@ a) a **Taxa de Intermediação e Câmbio** prevista na Cláusula 6.4, de 5% apli
 
 **O CONTRATANTE DECLARA COMPREENDER QUE, ALÉM DA TAXA DE INTERMEDIAÇÃO E CÂMBIO DE 5% E DO IOF-CÂMBIO, NENHUM OUTRO VALOR LHE É COBRADO PELA FORIO, A QUALQUER TÍTULO.**
 
-6.11.1. **Transparência quanto a conflito de interesses.** O Contratante declara ter sido informado, previamente à contratação, de que a Forio é remunerada pelos Fornecedores. A Forio obriga-se a (i) informar ao Contratante, sempre que solicitado, se mantém relação de representação ou contrato comercial com determinado Fornecedor, e (ii) não condicionar a curadoria e as recomendações apresentadas, inclusive as geradas pelo Altus, exclusivamente ao nível de comissionamento, orientando-se pelo perfil, objetivos e restrições informados pelo Contratante.
+6.11.1. **Transparência quanto a conflito de interesses.** O Contratante declara ter sido informado, previamente à contratação, de que a Forio é remunerada pelos Fornecedores. A Forio obriga-se a (i) informar ao Contratante, sempre que solicitado, se mantém relação de representação ou contrato comercial com determinado Fornecedor, e (ii) não condicionar a curadoria e as recomendações apresentadas, inclusive as geradas pelo Chat da Forio, exclusivamente ao nível de comissionamento, orientando-se pelo perfil, objetivos e restrições informados pelo Contratante.
 
 ### CLÁUSULA 7: REGIME DE PAGAMENTO, PRAZO DE QUITAÇÃO E ANTECIPAÇÃO
 
@@ -583,7 +583,7 @@ a) valores comprovadamente não recuperáveis junto aos Fornecedores, conforme a
 
 15.4. O Contratante pode exercer os direitos do artigo 18 da LGPD pelo canal indicado na Política de Privacidade. A Forio conservará os dados pelo prazo necessário às finalidades do tratamento e aos prazos prescricionais aplicáveis.
 
-15.5. Interações com o assessor Altus poderão ser registradas e utilizadas para execução do serviço, auditoria de qualidade e aprimoramento do sistema, adotando-se medidas de segurança e, quando cabível, técnicas de anonimização.
+15.5. Interações com o Chat da Forio poderão ser registradas e utilizadas para execução do serviço, auditoria de qualidade e aprimoramento do sistema, adotando-se medidas de segurança e, quando cabível, técnicas de anonimização.
 
 15.5.1. A Forio utiliza **processamento automatizado em suas rotinas internas** de conferência, conciliação e controle de prazos, sempre com **supervisão humana** nas decisões que produzam efeito sobre o Contratante, ficando assegurado o direito de solicitar revisão na forma do artigo 20 da LGPD.
 

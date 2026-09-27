@@ -1,6 +1,6 @@
 # Especificação de sistema: Anexo III, datas e cálculo de reembolso
 
-Requisitos de dados e de cálculo para que o Anexo III, o Quadro Resumo, o simulador, o checkout, a Área do Cliente e o Altus digam sempre a mesma coisa.
+Requisitos de dados e de cálculo para que o Anexo III, o Quadro Resumo, o simulador, o checkout, a Área do Cliente e o Chat da Forio digam sempre a mesma coisa.
 
 Decorre do Contrato v3.1 e das decisões registradas em `forio-redlines-conciliacao.md`. Documento de arquitetura, não de implementação.
 
@@ -10,7 +10,7 @@ Decorre do Contrato v3.1 e das decisões registradas em `forio-redlines-concilia
 
 **Fonte única.** Toda data, alíquota e valor que aparece em mais de uma superfície vem de um campo, nunca de duas fórmulas. Divergência entre simulador e checkout é a reclamação com maior taxa de perda, porque o cliente tem prova em tela dos dois.
 
-**Data calculada uma vez, na proposta.** As datas nascem quando a proposta é gerada, a partir da data de início escolhida, e ficam **gravadas** no registro daquele cliente. Nunca recalculadas em tempo de leitura. Isso é o que permite ao Altus e ao atendimento lerem a data do cliente em vez de derivá-la, e é o que sustenta a exigibilidade da data-limite pelo artigo 397 do Código Civil, que requer termo certo.
+**Data calculada uma vez, na proposta.** As datas nascem quando a proposta é gerada, a partir da data de início escolhida, e ficam **gravadas** no registro daquele cliente. Nunca recalculadas em tempo de leitura. Isso é o que permite ao Chat da Forio e ao atendimento lerem a data do cliente em vez de derivá-la, e é o que sustenta a exigibilidade da data-limite pelo artigo 397 do Código Civil, que requer termo certo.
 
 ---
 
@@ -200,7 +200,7 @@ Programa
 | `proposta_validade_dias` | indicada na proposta, **padrão 5** | Quadro Resumo, expiração do link |
 | `entrada_valor` | soma das TaxaObrigatoria aplicáveis | Resumo, seção 1, Quadro Resumo |
 | `entrada_vencimento` | data de assinatura + 5 dias corridos | Resumo, seção 2 |
-| `quitacao_data_limite` | menor entre (`data_inicio_curso` menos 30 dias) e prazo do fornecedor, quando registrado | Resumo, seção 2, Quadro Resumo, simulador, Altus |
+| `quitacao_data_limite` | menor entre (`data_inicio_curso` menos 30 dias) e prazo do fornecedor, quando registrado | Resumo, seção 2, Quadro Resumo, simulador, Chat da Forio |
 | `janela_amortizacao_meses` | meses entre assinatura e `quitacao_data_limite` | simulador |
 | `antecipacao_*` | valor, data e documento, quando `ExigenciaAntecipacao.ativa` | seção 2, Quadro Resumo item 7 |
 | `retencao_datas[]` | **uma data por degrau**, por fornecedor | Resumo, seções 3 e 4 |
@@ -311,9 +311,9 @@ Regras que impedem gravação ou avanço de etapa, não avisos.
 
 ## 9. Superfícies que consomem, e a regra entre elas
 
-Simulador do site, checkout, Área do Cliente, Anexo III, Quadro Resumo e Altus.
+Simulador do site, checkout, Área do Cliente, Anexo III, Quadro Resumo e Chat da Forio.
 
-**Todas leem as mesmas funções e os mesmos campos.** Em particular, o Altus não calcula plano de pagamento, equivalência em reais nem data-limite. Ele lê ou chama a mesma função do simulador. Ele é a terceira superfície onde o número aparece e a única onde o cliente pede simulação em linguagem natural, então cálculo próprio ali gera três resultados para a mesma pergunta.
+**Todas leem as mesmas funções e os mesmos campos.** Em particular, o Chat da Forio não calcula plano de pagamento, equivalência em reais nem data-limite. Ele lê ou chama a mesma função do simulador. Ele é a terceira superfície onde o número aparece e a única onde o cliente pede simulação em linguagem natural, então cálculo próprio ali gera três resultados para a mesma pergunta.
 
 ---
 

@@ -767,7 +767,7 @@ export type PublicQuote = {
     address: string | null;
     email: string | null;
     phone: string | null;
-    chatUrl: string | null; // link do chat (Altus AI), so http/https
+    chatUrl: string | null; // link do chat (Chat da Forio), so http/https
   };
   // Aba "Notes": observacoes do consultor por cotacao (HTML sanitizado). null = sem notas.
   notesHtml: string | null;

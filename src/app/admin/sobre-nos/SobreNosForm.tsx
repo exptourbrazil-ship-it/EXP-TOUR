@@ -55,7 +55,7 @@ export default function SobreNosForm({ inicial }: { inicial: ConfigMarca }) {
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Contato e atendimento</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className={lbl}>Link do chat (Altus AI) — botão “Falar com o Altus AI”</label>
+            <label className={lbl}>Link do chat (Chat da Forio) — botão “Falar com o Chat da Forio”</label>
             <input value={chatUrl} onChange={(e) => { setChatUrl(e.target.value); setOk(false); }} className={inp} placeholder="https://www.forio.com.br/chat" />
           </div>
           <div><label className={lbl}>WhatsApp (vira botão)</label><input value={phone} onChange={(e) => { setPhone(e.target.value); setOk(false); }} className={inp} placeholder="+55 11 99999-9999" /></div>
