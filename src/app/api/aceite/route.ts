@@ -33,13 +33,35 @@ async function titularDaSessao(): Promise<string | null> {
 async function termoVigente(supabase: ReturnType<typeof getSupabase>) {
   const { data } = await supabase
     .from("termos")
-    .select("id, versao, conteudo, storage_path, hash")
+    .select("id, versao, conteudo, storage_path, hash, vigente_desde")
     .eq("tipo", "adesao")
     .eq("ativo", true)
     .order("vigente_desde", { ascending: false })
     .limit(1)
     .maybeSingle();
   return data;
+}
+
+// Cliente ANTIGO isento: já tinha contrato ativo (não cancelado) ANTES do
+// termo atualmente vigente entrar em vigor. Não fabrica um aceite (a tabela
+// `aceites` é prova de consentimento real, nunca gravamos um que não
+// aconteceu) — só para de EXIGIR/mostrar o banner pra quem já era cliente
+// quando essa versão passou a existir. Pedido do usuário após um cliente
+// antigo clicar sem querer no aceite recorrente e acionar o arrependimento
+// (CDC art. 49) por engano.
+async function clienteAntigoIsento(
+  supabase: ReturnType<typeof getSupabase>,
+  titularId: string,
+  vigenteDesde: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("contratos")
+    .select("id")
+    .eq("titular_id", titularId)
+    .is("cancelado_em", null)
+    .lt("created_at", vigenteDesde)
+    .limit(1);
+  return !!data && data.length > 0;
 }
 
 function fmtDataHora(iso: string): string {
@@ -80,6 +102,13 @@ export async function GET() {
     .eq("titular_id", titularId)
     .eq("termo_id", termo.id)
     .maybeSingle();
+
+  // Isenção só se aplica a quem AINDA NÃO aceitou (nunca esconde um aceite
+  // real já registrado — se o cliente aceitou de fato, o estado dele continua
+  // normal, incluindo a janela de arrependimento).
+  if (!aceite && (await clienteAntigoIsento(supabase, titularId, termo.vigente_desde))) {
+    return NextResponse.json({ ok: true, termo: null, jaAceito: false });
+  }
 
   const arrependido = !!aceite?.arrependido_em;
   const arrependimentoAte = aceite ? prazoArrependimentoISO(aceite.data_hora) : null;
