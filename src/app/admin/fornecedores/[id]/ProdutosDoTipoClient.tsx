@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import ArquivarBotao, { avisosImpactoProduto } from "@/components/ArquivarBotao";
+import ArquivarModal from "@/components/ArquivarModal";
+import { selecionarInativos, resumoDoLote } from "@/lib/arquivamento";
 import type { ProdutoLista } from "@/lib/produto-admin-service";
 import { normalizarBusca } from "@/lib/clientes";
 
@@ -27,13 +31,54 @@ export default function ProdutosDoTipoClient({
   produtos,
   vazioLabel,
   editHrefBase,
+  supplierId,
+  kind,
 }: {
   produtos: ProdutoLista[];
   vazioLabel: string;
   // Base do editor no hub (ex.: /admin/fornecedores/<id>/produto); o link vira
   // `${editHrefBase}/${produtoId}`.
   editHrefBase: string;
+  // Fornecedor e tipo da aba (escopo do arquivamento e do lote).
+  supplierId: string;
+  kind: string;
 }) {
+  const router = useRouter();
+  const inativos = useMemo(() => selecionarInativos(produtos, kind), [produtos, kind]);
+  const [loteAberto, setLoteAberto] = useState(false);
+  const [loteExecutando, setLoteExecutando] = useState(false);
+  const [loteErro, setLoteErro] = useState<string | null>(null);
+  const [loteResultado, setLoteResultado] = useState<{ arquivados: number; ignorados: { id: string; nome: string; motivo: string }[]; restantes: number } | null>(null);
+
+  async function arquivarInativos() {
+    setLoteExecutando(true);
+    setLoteErro(null);
+    try {
+      const res = await fetch(`/api/admin/fornecedores/${supplierId}/produtos/arquivar-inativos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setLoteErro(json?.error?.message ?? "Não foi possível arquivar os inativos.");
+        return;
+      }
+      setLoteResultado(json.data);
+      router.refresh();
+    } catch {
+      setLoteErro("Falha de rede ao arquivar os inativos.");
+    } finally {
+      setLoteExecutando(false);
+    }
+  }
+
+  function fecharLote() {
+    setLoteAberto(false);
+    setLoteResultado(null);
+    setLoteErro(null);
+  }
+
   const [busca, setBusca] = useState("");
   const filtrados = useMemo(() => {
     const termo = normalizarBusca(busca.trim());
@@ -47,6 +92,66 @@ export default function ProdutosDoTipoClient({
 
   return (
     <>
+      {inativos.length > 0 ? (
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setLoteAberto(true)}
+            className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700"
+          >
+            Arquivar inativos ({inativos.length})
+          </button>
+        </div>
+      ) : null}
+      {loteAberto ? (
+        loteResultado ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+              <h3 className="font-serif text-lg text-brand">Resultado</h3>
+              <p className="mt-2 text-sm text-neutral-700">{loteResultado.arquivados} produto(s) arquivado(s).</p>
+              {loteResultado.restantes > 0 ? (
+                <p className="mt-2 text-sm text-amber-800">
+                  Limite de segurança atingido: restam {loteResultado.restantes} inativo(s). Rode novamente.
+                </p>
+              ) : null}
+              {loteResultado.ignorados.length > 0 ? (
+                <div className="mt-3">
+                  <p className="text-sm font-medium text-red-700">{loteResultado.ignorados.length} não arquivado(s):</p>
+                  <ul className="mt-1 max-h-48 list-disc overflow-y-auto pl-5 text-xs text-neutral-700">
+                    {loteResultado.ignorados.map((i) => (
+                      <li key={i.id}>{i.motivo}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-5 flex justify-end">
+                <button type="button" onClick={fecharLote} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream">
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ArquivarModal
+            titulo={`Arquivar ${inativos.length} produto(s) inativo(s)?`}
+            erro={loteErro}
+            executando={loteExecutando}
+            rotuloConfirmar={`Arquivar ${inativos.length}`}
+            onConfirmar={arquivarInativos}
+            onCancelar={fecharLote}
+          >
+            <p>Eles somem do catálogo e das cotações novas. Cotações já emitidas e contratos ficam como estão (histórico preservado).</p>
+            <ul className="list-disc pl-5 text-xs text-neutral-600">
+              {resumoDoLote(inativos).map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-neutral-500">
+              Produtos que são item de um pacote em uso não serão arquivados (aparecem no resultado).
+            </p>
+          </ArquivarModal>
+        )
+      ) : null}
       <input
         type="text"
         value={busca}
@@ -89,6 +194,21 @@ export default function ProdutosDoTipoClient({
                     <Link href={`${editHrefBase}/${p.id}`} className="font-medium text-brand-golddark hover:underline">
                       Editar →
                     </Link>
+                    <span className="ml-4">
+                      <ArquivarBotao
+                        titulo={`Arquivar "${p.name}"?`}
+                        descricao={
+                          <p>
+                            O produto{p.campusName ? ` (${p.campusName})` : ""} some do catálogo e das cotações novas. Cotações já emitidas e
+                            contratos ficam como estão. É reversível (arquivamento, não exclusão).
+                          </p>
+                        }
+                        urlArquivar={`/api/admin/produtos/${p.id}?supplier=${supplierId}`}
+                        urlImpacto={`/api/admin/produtos/${p.id}/impacto-arquivar`}
+                        avisosDoImpacto={avisosImpactoProduto}
+                        aoArquivar={() => router.refresh()}
+                      />
+                    </span>
                   </td>
                 </tr>
               ))}

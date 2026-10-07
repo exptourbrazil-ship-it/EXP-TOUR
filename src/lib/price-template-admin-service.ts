@@ -302,7 +302,7 @@ export async function arquivarTabelaPreco(
   const { tenantId, actor, ip, templateId } = args;
   const { data: existente } = await supabase
     .from("price_template")
-    .select("id, tenant_id, source_submission_id")
+    .select("id, tenant_id, source_submission_id, name, status")
     .eq("id", templateId)
     .maybeSingle();
   if (!existente || (existente as { tenant_id?: string }).tenant_id !== tenantId) {
@@ -317,6 +317,7 @@ export async function arquivarTabelaPreco(
     .eq("id", templateId)
     .eq("tenant_id", tenantId)
     .is("source_submission_id", null)
+    .is("archived_at", null)
     .select("id");
   if (error) {
     console.error("[precos] arquivar template:", error.message);
@@ -324,7 +325,18 @@ export async function arquivarTabelaPreco(
   }
   // 0 linhas = corrida (virou gerida/arquivada entre o SELECT e o UPDATE).
   if (!upd || upd.length === 0) throw new PrecoAdminErro("template_nao_encontrado");
-  await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "preco.tabela.arquivar", alvo: templateId, ip: ip ?? null });
+  await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "preco.tabela.arquivar",
+    alvo: templateId,
+    // antes/depois: status anterior e arquivamento (a tabela passa a 'expired').
+    detalhe: {
+      nome: (existente as { name?: string }).name ?? null,
+      status_antes: (existente as { status?: string }).status ?? null,
+      status_depois: "expired",
+      arquivado_antes: false,
+      arquivado_depois: true,
+    },
+    ip: ip ?? null,
+  });
 }
 
 // ── Leituras para a UI admin ────────────────────────────────────────────────

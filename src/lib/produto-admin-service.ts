@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validarProduto, type Detalhe, type Falha } from "@/lib/produto";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
+import { pacotesBloqueantes, mensagemBloqueioPacotes, motivoRecusaLote } from "@/lib/arquivamento";
 
 // Erro de dominio com codigo estavel (a rota mapeia para HTTP + mensagem).
 export class ProdutoAdminErro extends Error {
@@ -21,8 +22,11 @@ export class ProdutoAdminErro extends Error {
       | "produto_nao_encontrado"
       | "kind_imutavel"
       | "item_invalido"
+      | "usado_em_pacote"
       | "falha_persistir",
     public falhas?: Falha[],
+    // Mensagem pronta em português (ex.: quais pacotes quebrariam).
+    public mensagem?: string,
   ) {
     super(codigo);
     this.name = "ProdutoAdminErro";
@@ -260,36 +264,126 @@ export async function salvarProdutoAdmin(
   return { id, criado };
 }
 
+// Pacotes NÃO arquivados do tenant que usam cada produto como ITEM
+// (package_item.item_product_id). Mapa item -> nomes dos pacotes. `ignorarPacoteIds`
+// permite arquivar em lote um pacote junto com seus itens. Falha fechada: erro de
+// leitura vira exceção (nunca "sem pacotes" por engano).
+export async function pacotesQueUsamProdutos(
+  supabase: SupabaseClient,
+  tenantId: string,
+  itemIds: string[],
+  ignorarPacoteIds: Set<string> = new Set(),
+): Promise<Map<string, string[]>> {
+  if (itemIds.length === 0) return new Map();
+  const { data: vinc, error } = await supabase
+    .from("package_item")
+    .select("item_product_id, package_product_id")
+    .in("item_product_id", itemIds);
+  if (error) {
+    console.error("[produtos] pacotes do item:", error.message);
+    throw new ProdutoAdminErro("falha_persistir");
+  }
+  const pacoteIds = [...new Set((vinc ?? []).map((v: any) => v.package_product_id as string))];
+  if (pacoteIds.length === 0) return new Map();
+  const { data: pacs, error: ePac } = await supabase
+    .from("product")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .in("id", pacoteIds)
+    .is("archived_at", null);
+  if (ePac) {
+    console.error("[produtos] pacotes vivos:", ePac.message);
+    throw new ProdutoAdminErro("falha_persistir");
+  }
+  const vivos = new Map((pacs ?? []).map((p: any) => [p.id as string, p.name as string]));
+  return pacotesBloqueantes(itemIds, (vinc ?? []) as any[], vivos, ignorarPacoteIds);
+}
+
 // Arquiva (soft-delete) um produto do tenant. Confere posse. Idempotente.
+// GUARDA DE INTEGRIDADE: recusa se o produto for item de um pacote não arquivado
+// (o pacote quebraria). Cotações/contratos já gravados NÃO bloqueiam: guardam
+// product_snapshot e valores congelados; o reembolso lê só `componente` do
+// produto por join, que não filtra archived_at.
 export async function arquivarProdutoAdmin(
   supabase: SupabaseClient,
-  args: { tenantId: string; actor: string; ip?: string | null; productId: string },
+  args: {
+    tenantId: string;
+    actor: string;
+    ip?: string | null;
+    productId: string;
+    // Pacotes que serão arquivados na mesma operação (lote): não bloqueiam.
+    ignorarPacoteIds?: Set<string>;
+    // Fluxo do hub: o produto tem que ser de um campus deste fornecedor.
+    supplierEsperado?: string;
+    // Lote registra uma trilha própria; evita ruído de auditoria duplicada.
+    semAuditoria?: boolean;
+    // Só o lote: exige que o produto continue INATIVO (relido agora) e repete
+    // essa condição no UPDATE, para não arquivar produto reativado no meio.
+    exigirInativo?: boolean;
+  },
 ): Promise<void> {
   const { tenantId, actor, ip, productId } = args;
   const { data: existente } = await supabase
     .from("product")
-    .select("id, tenant_id")
+    .select("id, tenant_id, name, status, kind, campus_id, archived_at")
     .eq("id", productId)
     .maybeSingle();
   if (!existente || (existente as { tenant_id?: string }).tenant_id !== tenantId) {
     throw new ProdutoAdminErro("produto_nao_encontrado");
   }
-  const { error } = await supabase
+  const ex = existente as { name: string; status: string; kind: string; campus_id: string; archived_at: string | null };
+  if (args.supplierEsperado) {
+    const { data: campus } = await supabase
+      .from("campus")
+      .select("supplier_id")
+      .eq("id", ex.campus_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if ((campus as { supplier_id?: string } | null)?.supplier_id !== args.supplierEsperado) {
+      throw new ProdutoAdminErro("produto_nao_encontrado");
+    }
+  }
+  if (ex.archived_at) return; // idempotente
+
+  if (args.exigirInativo) {
+    const motivo = motivoRecusaLote(ex.status);
+    if (motivo) throw new ProdutoAdminErro("falha_persistir", undefined, motivo);
+  }
+
+  const bloqueios = await pacotesQueUsamProdutos(supabase, tenantId, [productId], args.ignorarPacoteIds);
+  const pacotes = bloqueios.get(productId);
+  if (pacotes && pacotes.length > 0) {
+    throw new ProdutoAdminErro("usado_em_pacote", undefined, mensagemBloqueioPacotes(ex.name, pacotes));
+  }
+
+  let upd = supabase
     .from("product")
     .update({ archived_at: new Date().toISOString() })
     .eq("id", productId)
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .is("archived_at", null);
+  if (args.exigirInativo) upd = upd.eq("status", "inactive");
+  const { data: atualizadas, error } = await upd.select("id");
   if (error) {
     console.error("[produtos] arquivar:", error.message);
     throw new ProdutoAdminErro("falha_persistir");
   }
+  // 0 linhas: virou ativo/arquivado entre a leitura e o UPDATE (corrida).
+  if (!atualizadas || atualizadas.length === 0) {
+    if (args.exigirInativo) throw new ProdutoAdminErro("falha_persistir", undefined, motivoRecusaLote("active") ?? undefined);
+    return;
+  }
 
-  await registrarAuditoriaAdmin(supabase, {
-    usuario: actor,
-    acao: "produto.arquivar",
-    alvo: productId,
-    ip: ip ?? null,
-  });
+  if (!args.semAuditoria) {
+    await registrarAuditoriaAdmin(supabase, {
+      usuario: actor,
+      acao: "produto.arquivar",
+      alvo: productId,
+      // antes/depois: o produto estava ativo no catálogo e passa a arquivado.
+      detalhe: { nome: ex.name, kind: ex.kind, status_antes: ex.status, arquivado_antes: false, arquivado_depois: true },
+      ip: ip ?? null,
+    });
+  }
 }
 
 // ── Leituras para a UI admin ────────────────────────────────────────────────

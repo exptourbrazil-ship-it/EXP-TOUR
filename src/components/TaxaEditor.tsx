@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ArquivarBotao from "@/components/ArquivarBotao";
 import { FEE_TYPES, CHARGE_BASES, FEE_APPLIES_KINDS, type Falha } from "@/lib/fee";
 
 // Editor de TAXA (fee) manual do Admin. Client component: monta o corpo e chama
@@ -219,6 +220,26 @@ export default function TaxaEditor({
           {salvando ? "Salvando…" : edicao ? "Salvar alterações" : "Criar taxa"}
         </button>
         <button type="button" onClick={() => router.push(destinoAoVoltar)} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">Cancelar</button>
+        {edicao ? (
+          <span className="ml-auto">
+            <ArquivarBotao
+              rotulo="Arquivar a taxa"
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700"
+              titulo={`Arquivar a taxa "${String(f.name ?? "")}"?`}
+              descricao={
+                <p>
+                  Deixa de valer em cotações novas. Cotações já emitidas não mudam de valor. É reversível (arquivamento, não exclusão).
+                  Itens vindos de price list da escola são geridos por aquele fluxo e serão recusados.
+                </p>
+              }
+              urlArquivar={`/api/admin/catalog/fees/${inicial!.id}`}
+              aoArquivar={() => {
+                router.push(destinoAoVoltar);
+                router.refresh();
+              }}
+            />
+          </span>
+        ) : null}
       </div>
     </form>
   );

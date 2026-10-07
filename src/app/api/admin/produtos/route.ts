@@ -51,6 +51,8 @@ export function respostaErroProduto(err: unknown): NextResponse {
         return bad("Produto não encontrado.", "nao_encontrado", 404);
       case "kind_imutavel":
         return bad("O tipo do produto (kind) não pode ser alterado.", "kind_imutavel", 409);
+      case "usado_em_pacote":
+        return bad(err.mensagem ?? "Produto é item de um pacote em uso.", "usado_em_pacote", 409);
       case "item_invalido":
         return bad("Item de pacote inválido (deve ser um produto deste tenant e diferente do próprio pacote).", "item_invalido", 400);
       default:

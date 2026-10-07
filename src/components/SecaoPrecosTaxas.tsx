@@ -1,3 +1,7 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import ArquivarBotao, { avisosImpactoTabela } from "@/components/ArquivarBotao";
 import Link from "next/link";
 import type { PrecoVinculado, TaxaVinculada } from "@/lib/produto-admin-service";
 
@@ -43,6 +47,7 @@ export default function SecaoPrecosTaxas({
   // tabela/taxa manterem o contexto da escola.
   campusId?: string | null;
 }) {
+  const router = useRouter();
   const q = campusId ? `?produto=${productId}&campus_id=${campusId}` : `?produto=${productId}`;
   // Contexto de retorno: ?produto= faz o "voltar"/pós-salvar dos editores
   // devolver o admin a esta aba (Preços & Taxas) do produto, dentro do hub.
@@ -96,6 +101,22 @@ export default function SecaoPrecosTaxas({
                       <Link href={`/admin/precos/tabelas/${p.id}${qCampus}`} className="text-brand-golddark hover:underline">
                         {p.gerida ? "Ver →" : "Editar →"}
                       </Link>
+                      {/* Tabela da escola (price list) é gerida por outro fluxo: sem botão. */}
+                      {p.gerida ? null : <span className="ml-4">
+                        <ArquivarBotao
+                          titulo={`Arquivar a tabela "${p.name}"?`}
+                          descricao={
+                            <p>
+                              A tabela deixa de ser usada em cotações novas. Cotações já emitidas não mudam de valor. É reversível
+                              (arquivamento, não exclusão).
+                            </p>
+                          }
+                          urlArquivar={`/api/admin/catalog/price-templates/${p.id}`}
+                          urlImpacto={`/api/admin/catalog/price-templates/${p.id}/impacto-arquivar`}
+                          avisosDoImpacto={avisosImpactoTabela}
+                          aoArquivar={() => router.refresh()}
+                        />
+                      </span>}
                     </td>
                   </tr>
                 ))}
@@ -150,6 +171,19 @@ export default function SecaoPrecosTaxas({
                       <Link href={`/admin/precos/taxas/${t.id}${qCampus}`} className="text-brand-golddark hover:underline">
                         {t.gerida ? "Ver →" : "Editar →"}
                       </Link>
+                      {t.gerida ? null : <span className="ml-4">
+                        <ArquivarBotao
+                          titulo={`Arquivar a taxa "${t.name}"?`}
+                          descricao={
+                            <p>
+                              A taxa deixa de ser cobrada em cotações novas. Cotações já emitidas não mudam de valor. É reversível
+                              (arquivamento, não exclusão).
+                            </p>
+                          }
+                          urlArquivar={`/api/admin/catalog/fees/${t.id}`}
+                          aoArquivar={() => router.refresh()}
+                        />
+                      </span>}
                     </td>
                   </tr>
                 ))}

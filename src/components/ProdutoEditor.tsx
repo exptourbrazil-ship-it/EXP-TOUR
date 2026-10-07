@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ArquivarBotao, { avisosImpactoProduto } from "@/components/ArquivarBotao";
 import { hrefVoltarProduto, HUB_LISTA_FORNECEDORES } from "@/lib/admin-hub-nav";
 import {
   DIAS_SEMANA,
@@ -516,6 +517,28 @@ export default function ProdutoEditor({
         <button type="button" onClick={() => router.push(destinoAoVoltar())} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">
           Cancelar
         </button>
+        {edicao ? (
+          <span className="ml-auto">
+            <ArquivarBotao
+              rotulo="Arquivar produto"
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700"
+              titulo={`Arquivar "${String(core.name ?? "")}"?`}
+              descricao={
+                <p>
+                  O produto some do catálogo e das cotações novas. Cotações já emitidas e contratos ficam como estão. É reversível
+                  (arquivamento, não exclusão).
+                </p>
+              }
+              urlArquivar={`/api/admin/produtos/${inicial!.id}${supplierEsperado ? `?supplier=${supplierEsperado}` : ""}`}
+              urlImpacto={`/api/admin/produtos/${inicial!.id}/impacto-arquivar`}
+              avisosDoImpacto={avisosImpactoProduto}
+              aoArquivar={() => {
+                router.push(destinoAoVoltar());
+                router.refresh();
+              }}
+            />
+          </span>
+        ) : null}
       </div>
     </form>
   );

@@ -50,7 +50,16 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const supabase = getSupabase();
     const tenantId = await tenantIdAtual(supabase);
-    await arquivarProdutoAdmin(supabase, { tenantId, actor: g.usuario, ip: g.ip, productId: id });
+    // ?supplier=<uuid> (hub): exige que o produto seja deste fornecedor.
+    const sup = new URL(request.url).searchParams.get("supplier");
+    if (sup && !isUuid(sup)) return bad("Id de fornecedor inválido.");
+    await arquivarProdutoAdmin(supabase, {
+      tenantId,
+      actor: g.usuario,
+      ip: g.ip,
+      productId: id,
+      supplierEsperado: sup ?? undefined,
+    });
     return okData({ arquivado: true });
   } catch (err) {
     return respostaErroProduto(err);
