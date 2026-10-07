@@ -72,8 +72,12 @@ const PASSOS = [
   { n: 4, titulo: "Revisão" },
 ] as const;
 
-// Passo 3: tudo que nao e curso nem acomodacao. `other` e onde vivem as noites
-// extras; `service` fica pronto para traslado, que ainda nao existe no catalogo.
+// Passo 1: curso OU pacote (soma dos itens). O pacote se comporta como o curso:
+// define o campus e as semanas que alimentam os passos 2 e 3.
+const KINDS_CURSO: KindCatalogo[] = ["program", "package"];
+// Passo 3: tudo que nao e curso, pacote nem acomodacao. `other` e onde vivem as
+// noites extras; `service` fica pronto para traslado, que ainda nao existe no
+// catalogo. O pacote NAO entra aqui: ele e escolhido no passo 1.
 const KINDS_SERVICO: KindCatalogo[] = ["insurance", "service", "other"];
 
 export default function BuscadorCatalogo({
@@ -185,7 +189,7 @@ export default function BuscadorCatalogo({
 
   const { resultados, foraDaFaixa } = useMemo(() => {
     if (passo === 1) {
-      return filtrarItensCatalogo({ itens, termo, pais, kinds: ["program"], quantidade: semanasCurso });
+      return filtrarItensCatalogo({ itens, termo, pais, kinds: KINDS_CURSO, quantidade: semanasCurso });
     }
     if (passo === 2) {
       return filtrarItensCatalogo({
@@ -708,7 +712,7 @@ export default function BuscadorCatalogo({
                                 setAcom(acom?.id === item.id ? null : item);
                               else alternarExtra(item);
                             }}
-                            rotuloBotao={passo === 1 ? "Escolher curso" : selecionado ? "✓ Selecionado" : "Selecionar"}
+                            rotuloBotao={passo === 1 ? (item.kind === "package" ? "Escolher pacote" : "Escolher curso") : selecionado ? "✓ Selecionado" : "Selecionar"}
                           />
                         );
                       })}
@@ -867,7 +871,7 @@ function VazioDoPasso({
     <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center">
       <p className="text-sm text-neutral-600">
         {passo === 1
-          ? "Nenhum curso encontrado. Ajuste o termo, o destino ou a duração."
+          ? "Nenhum curso ou pacote encontrado. Ajuste o termo, o destino ou a duração."
           : passo === 2
             ? "Nenhuma acomodação cadastrada para este campus nessa duração."
             : acomEscolhida
@@ -1013,7 +1017,7 @@ function Revisao({
       <ul className="flex flex-col gap-2">
         {carrinho.map((c) => {
           const p = precoDe(c);
-          const ehCurso = c.item.kind === "program";
+          const ehCurso = KINDS_CURSO.includes(c.item.kind);
           return (
             <li key={c.item.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">

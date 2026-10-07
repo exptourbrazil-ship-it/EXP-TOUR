@@ -9,7 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { bandeiraPais, rotuloPais } from "@/lib/paises";
 import type { ItemCatalogo, KindCatalogo } from "@/lib/catalog-busca";
 
-const KINDS_VALIDOS: KindCatalogo[] = ["program", "accommodation", "insurance", "service", "other"];
+const KINDS_VALIDOS: KindCatalogo[] = ["program", "package", "accommodation", "insurance", "service", "other"];
 
 function normalizarKind(k: unknown): KindCatalogo {
   return KINDS_VALIDOS.includes(k as KindCatalogo) ? (k as KindCatalogo) : "other";

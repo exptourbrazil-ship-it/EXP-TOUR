@@ -16,6 +16,7 @@
 // cambio no portal".)
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ehGrupoCurso, GRUPOS_CURSO } from "@/lib/grupo-item";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, ehUrlHttp, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
@@ -421,7 +422,7 @@ async function checarIntakeMaximo(
     .from("quote_item")
     .select("campus_id, start_date")
     .eq("tenant_id", tenantId)
-    .eq("group", "program")
+    .in("group", [...GRUPOS_CURSO])
     .in("quote_option_id", opIds);
   const programItens = (itens ?? []).filter((i) => i.campus_id && i.start_date);
   if (programItens.length === 0) return { bloqueado: false };
@@ -1349,12 +1350,12 @@ export async function dadosConversaoCotacao(
   // 'program'), ainda que a acomodacao comece antes. Todos os prazos (quitacao
   // D-30, arrependimento, janela de parcelas) derivam dela. Fallback ao menor
   // start_date de todos os itens so quando nao ha item de programa com data.
-  const inicioCurso = t.itens.find((i) => i.grupo === "program" && i.startDate)?.startDate ?? null;
+  const inicioCurso = t.itens.find((i) => ehGrupoCurso(i.grupo) && i.startDate)?.startDate ?? null;
   const datas = t.itens.map((i) => i.startDate).filter(Boolean) as string[];
   const dataInicio = inicioCurso ?? (datas.length ? datas.slice().sort()[0] : null);
 
   // Nome do contrato: nome do item de programa; senao 1o item; senao referencia.
-  const progItem = t.itens.find((i) => i.grupo === "program") ?? t.itens[0];
+  const progItem = t.itens.find((i) => ehGrupoCurso(i.grupo)) ?? t.itens[0];
   const contratoNome = (progItem?.nome as string) || (quote.reference as string) || "Programa";
 
   // O nome completo do estudante e resolvido no servico de checkout (fora do
@@ -1426,7 +1427,7 @@ export async function dadosConversaoCotacao(
   }
 
   // Programa: define supplier/pais do contrato.
-  const progLinha = linhas.find((i) => i.group === "program") ?? linhas[0];
+  const progLinha = linhas.find((i) => ehGrupoCurso(i.group)) ?? linhas[0];
   const progCampus = progLinha?.campus_id ? campusMap.get(progLinha.campus_id as string) : undefined;
   const supplierId = progCampus?.supplierId ?? null;
   const paisDestino = progCampus?.country ?? null;

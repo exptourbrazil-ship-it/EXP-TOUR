@@ -11,6 +11,7 @@
 //   5. dispara o codigo de acesso por e-mail (boas-vindas), best-effort.
 import { createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ehGrupoCurso } from "@/lib/grupo-item";
 import { montarPlanoConversao, dataLimiteQuitacaoProposta } from "@/lib/parcelas";
 import { prazoArrependimentoRemessaISO } from "@/lib/trava-remessa";
 import { montarAnexoIIISeed } from "@/lib/anexo-iii-seed";
@@ -114,7 +115,7 @@ export async function acceptQuote(
   // que foi PREENCHIDO no checkout (cpf/telefone mascarados no snapshot; o dado
   // completo vive em `titulares`, ligavel por titular_id). O fornecedor do
   // programa sai da linha de programa da opcao.
-  const progFornecedor = (dados.itens.find((i) => i.grupo === "program") ?? dados.itens[0])?.fornecedor ?? null;
+  const progFornecedor = (dados.itens.find((i) => ehGrupoCurso(i.grupo)) ?? dados.itens[0])?.fornecedor ?? null;
 
   // Prazos COMPROMETIDOS na proposta (congelados no aceite, dentro do Quadro
   // Resumo + hash). geradoEm é o instante do aceite; o fim do arrependimento

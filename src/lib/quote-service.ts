@@ -504,6 +504,20 @@ async function gravarLinhasSazonais(
   }
 }
 
+/** Extrai (productId, nome, quantidade, bruto) de cada item do breakdown de um pacote. */
+function itensDoPacoteParaSnapshot(
+  breakdown: unknown,
+): { productId: string; name: string; quantity: number; grossAmount: number }[] {
+  const b = breakdown as { source?: string; items?: Record<string, unknown>[] } | null;
+  if (b?.source !== "package_sum_of_items" || !Array.isArray(b.items)) return [];
+  return b.items.map((i) => ({
+    productId: String(i.productId),
+    name: String(i.name),
+    quantity: Number(i.quantity),
+    grossAmount: Number(i.grossAmount),
+  }));
+}
+
 /**
  * Precifica um produto (via priceProductFromDb) e grava o item da cotacao com
  * snapshot congelado do produto, breakdown do calculo, taxas e descontos.
@@ -618,6 +632,13 @@ export async function addQuoteItem(
     programDetail: programDetail ?? null,
     accommodationDetail: accommodationDetail ?? null,
     campus: campusSnapshot,
+    // Pacote (soma dos itens): congela a composicao (item, quantidade e valor)
+    // para a proposta/auditoria nao depender do cadastro de package_item depois.
+    // Pacote nao tem program_detail, entao `programDetail` fica null (a ficha e a
+    // grade de horarios degradam sem o bloco).
+    ...(product.kind === "package"
+      ? { packageItems: itensDoPacoteParaSnapshot(priced.breakdown) }
+      : {}),
   };
 
   // Ordem do item na opcao.

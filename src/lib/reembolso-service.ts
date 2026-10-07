@@ -5,6 +5,7 @@
 // A etapa concluida vem do OVERRIDE do admin (contratos.etapa_anexo_i) quando
 // presente; senao e DERIVADA dos sinais (entrada paga / LOA / visto aprovado).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ehGrupoCurso } from "@/lib/grupo-item";
 import { calcularReembolsoEscalonado, type ReembolsoResultado } from "@/lib/reembolso-anexo-i";
 import { derivarEtapaAnexoI, etapaValida, type EtapaChave, type SinaisEtapa } from "@/lib/etapa-anexo-i";
 import { carregarConfigTenant, tenantDoTitular } from "@/lib/tenant-config";
@@ -179,6 +180,8 @@ function diasEntreISO(deISO: string, ateISO: string | null): number | null {
 
 const GRUPO_ANCORA: Record<string, AncoraRetencao> = {
   program: "inicio_curso",
+  // Pacote de cursos (soma dos itens) ancora no inicio do curso, como o programa.
+  package: "inicio_curso",
   accommodation: "chegada_acomodacao",
 };
 
@@ -217,7 +220,7 @@ async function resolverAncorasDoCampus(
     const gross = num((it as any).gross_amount) ?? 0;
     totalGross += gross;
     const grupo = (it as any).group as string;
-    if (grupo === "program") {
+    if (ehGrupoCurso(grupo)) {
       programaGross += gross;
       const unit = String((it as any).unit ?? "").toLowerCase();
       const qtd = num((it as any).quantity) ?? 0;
