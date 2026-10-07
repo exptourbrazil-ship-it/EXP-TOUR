@@ -13,6 +13,8 @@ export default function ArquivarModal({
   carregando,
   executando,
   rotuloConfirmar = "Arquivar",
+  rotuloExecutando = "Arquivando…",
+  classeConfirmar = "bg-red-700",
   onConfirmar,
   onCancelar,
 }: {
@@ -23,6 +25,8 @@ export default function ArquivarModal({
   carregando?: boolean;
   executando?: boolean;
   rotuloConfirmar?: string;
+  rotuloExecutando?: string;
+  classeConfirmar?: string;
   onConfirmar: () => void;
   onCancelar: () => void;
 }) {
@@ -44,8 +48,8 @@ export default function ArquivarModal({
           <button type="button" onClick={onCancelar} disabled={executando} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand disabled:opacity-60">
             Cancelar
           </button>
-          <button type="button" onClick={onConfirmar} disabled={executando || carregando} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
-            {executando ? "Arquivando…" : rotuloConfirmar}
+          <button type="button" onClick={onConfirmar} disabled={executando || carregando} className={`rounded-lg ${classeConfirmar} px-4 py-2 text-sm font-medium text-white disabled:opacity-60`}>
+            {executando ? rotuloExecutando : rotuloConfirmar}
           </button>
         </div>
       </div>

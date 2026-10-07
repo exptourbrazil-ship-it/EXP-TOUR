@@ -92,3 +92,32 @@ test("executarLote: pacote que falhou continua bloqueando o item; pacote arquiva
   assert.deepEqual(r.ignorados.map((i) => i.id), ["pkFalha", "i2"]);
   assert.equal(r.ignorados[1].motivo, "bloqueado por pkFalha");
 });
+
+import { archivedAtAposTrigger } from "./arquivamento.ts";
+
+test("trigger de tabela expirada: expirar sem arquivar arquiva agora", () => {
+  const agora = "2026-10-07T10:00:00Z";
+  assert.equal(archivedAtAposTrigger({ status: "active", archivedAt: null }, { status: "expired", archivedAt: null }, agora), agora);
+  assert.equal(archivedAtAposTrigger(null, { status: "expired", archivedAt: null }, agora), agora); // INSERT
+});
+
+test("trigger de tabela expirada: não sobrescreve archived_at existente", () => {
+  const agora = "2026-10-07T10:00:00Z";
+  assert.equal(
+    archivedAtAposTrigger({ status: "active", archivedAt: null }, { status: "expired", archivedAt: "2026-01-01T00:00:00Z" }, agora),
+    "2026-01-01T00:00:00Z",
+  );
+});
+
+test("trigger de tabela expirada: reativar sem mexer em archived_at limpa; mexendo, respeita", () => {
+  const agora = "2026-10-07T10:00:00Z";
+  const antes = { status: "expired", archivedAt: "2026-01-01T00:00:00Z" };
+  assert.equal(archivedAtAposTrigger(antes, { status: "active", archivedAt: "2026-01-01T00:00:00Z" }, agora), null);
+  assert.equal(archivedAtAposTrigger(antes, { status: "active", archivedAt: "2026-05-05T00:00:00Z" }, agora), "2026-05-05T00:00:00Z");
+  assert.equal(archivedAtAposTrigger(antes, { status: "draft", archivedAt: null }, agora), null);
+  // Fora de 'expired' (ativa arquivada à mão) o trigger não mexe.
+  assert.equal(
+    archivedAtAposTrigger({ status: "active", archivedAt: "2026-01-01T00:00:00Z" }, { status: "active", archivedAt: "2026-01-01T00:00:00Z" }, agora),
+    "2026-01-01T00:00:00Z",
+  );
+});

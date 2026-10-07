@@ -22,6 +22,7 @@ const ABAS: Aba[] = [
   { slug: "promocoes", label: "Promoções", pronta: true },
   { slug: "ofertas", label: "Ofertas & Bolsas", pronta: true },
   { slug: "materiais", label: "Material", pronta: true },
+  { slug: "arquivados", label: "Arquivados", pronta: true },
 ];
 
 export default function HubTabs({ supplierId }: { supplierId: string }) {

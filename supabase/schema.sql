@@ -2032,6 +2032,30 @@ create table if not exists price_template (
   created_at timestamptz not null default now(), updated_at timestamptz, archived_at timestamptz
 );
 create index if not exists idx_price_template_campus on price_template(campus_id, market_id, status);
+-- Tabela expirada se arquiva sozinha (e a reativada volta a ficar visivel ao
+-- motor). Ver supabase/migracao-arquivar-tabela-expirada.sql.
+create or replace function price_template_arquivar_expirada()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.status = 'expired' and new.archived_at is null then
+    new.archived_at := now();
+  elsif tg_op = 'UPDATE'
+        and old.status = 'expired'
+        and new.status <> 'expired'
+        and new.archived_at is not null
+        and new.archived_at is not distinct from old.archived_at then
+    new.archived_at := null;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_price_template_arquivar_expirada on price_template;
+create trigger trg_price_template_arquivar_expirada
+  before insert or update on price_template
+  for each row execute function price_template_arquivar_expirada();
 create table if not exists price_tier (
   id uuid primary key default gen_random_uuid(),
   price_template_id uuid not null references price_template(id) on delete cascade,

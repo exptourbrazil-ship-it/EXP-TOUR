@@ -123,3 +123,27 @@ export async function executarLote<T extends { id: string; kind: string; name: s
   }
   return { arquivadosIds, ignorados };
 }
+
+// ── Tabela expirada se arquiva sozinha ───────────────────────────────────────
+
+// Espelho PURO do trigger `price_template_arquivar_expirada` (supabase/
+// migracao-arquivar-tabela-expirada.sql): dado o estado antigo (null no INSERT)
+// e o novo, devolve o archived_at que o banco gravará. Existe para documentar e
+// testar a regra, já que não há banco de teste.
+export function archivedAtAposTrigger(
+  antigo: { status: string; archivedAt: string | null } | null,
+  novo: { status: string; archivedAt: string | null },
+  agora: string,
+): string | null {
+  if (novo.status === "expired" && novo.archivedAt == null) return agora;
+  if (
+    antigo &&
+    antigo.status === "expired" &&
+    novo.status !== "expired" &&
+    novo.archivedAt != null &&
+    novo.archivedAt === antigo.archivedAt
+  ) {
+    return null;
+  }
+  return novo.archivedAt;
+}
