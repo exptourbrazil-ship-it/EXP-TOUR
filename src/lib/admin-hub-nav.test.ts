@@ -10,6 +10,8 @@ import {
   hrefNovaPromocaoNoHub,
   hrefPromocoesDoHub,
   hrefVoltarPrecoOuTaxa,
+  hrefVoltarTaxa,
+  ROTULO_ABA,
   resolverFornecedorDoRegistro,
   abaEditorValida,
 } from "./admin-hub-nav.ts";
@@ -80,4 +82,14 @@ test("abaEditorValida só aceita abas conhecidas", () => {
 
 test("hrefHub aceita a aba Arquivados", () => {
   assert.equal(hrefHub("abc", "arquivados"), "/admin/fornecedores/abc/arquivados");
+});
+
+test("aba Taxas do hub e o destino de volta de uma taxa sem produto", () => {
+  assert.equal(hrefHub("s1", "taxas"), "/admin/fornecedores/s1/taxas");
+  assert.equal(ROTULO_ABA.taxas, "Taxas");
+  assert.equal(hrefVoltarTaxa("s1"), "/admin/fornecedores/s1/taxas");
+  assert.equal(hrefVoltarTaxa("s1", null), "/admin/fornecedores/s1/taxas");
+  assert.equal(hrefVoltarTaxa("s1", "p9"), "/admin/fornecedores/s1/produto/p9?aba=precos");
+  // falha fechada
+  assert.equal(hrefVoltarTaxa(null, "p9"), "/admin/fornecedores");
 });

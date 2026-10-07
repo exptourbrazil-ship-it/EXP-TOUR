@@ -21,6 +21,7 @@ const ABAS: Aba[] = [
   { slug: "seguro", label: "Seguro", pronta: true },
   { slug: "promocoes", label: "Promoções", pronta: true },
   { slug: "ofertas", label: "Ofertas & Bolsas", pronta: true },
+  { slug: "taxas", label: "Taxas", pronta: true },
   { slug: "materiais", label: "Material", pronta: true },
   { slug: "arquivados", label: "Arquivados", pronta: true },
 ];

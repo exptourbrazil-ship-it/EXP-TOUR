@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { carregarLiquidoPorOpcao } from "@/lib/quote-issue-service";
+import { rotuloQtdEfetivo } from "@/lib/catalog-busca";
 import { materiaisParaCotacao } from "@/lib/material-service";
 import { TIPO_MATERIAL_LABEL, type TipoMaterial } from "@/lib/material-helpers";
 import ConstrutorClient, {
@@ -100,6 +101,7 @@ export default async function AdminQuoteBuilderPage({
       name: it.product_snapshot?.name ?? "(item)",
       quantity: Number(it.quantity),
       unit: it.unit,
+      quantityLabel: rotuloQtdEfetivo(it.product_snapshot?.attributes, it.unit),
       grossAmount: Number(it.gross_amount),
       currency: it.currency,
     }));

@@ -62,6 +62,10 @@ export const MEAL_PLANS = ["none", "breakfast", "half_board", "full_board", "sel
 export const POLICY_UNITS = ["day", "week", "month"] as const;
 export const CHARGE_UNITS = ["once", "day", "night", "week", "person", "unit"] as const;
 export const PRICING_MODES = ["sum_of_items", "fixed_price"] as const;
+// Rotulo da quantidade no construtor de cotacao (attributes.quantity_label):
+// o que o numero digitado conta. Lista fechada; so faz sentido em other/insurance.
+export const ROTULOS_QTD = ["pessoa", "unidade", "noite", "semana"] as const;
+export const KINDS_COM_ROTULO_QTD = ["other", "insurance"] as const;
 
 // ── Resultado ───────────────────────────────────────────────────────────────
 export type Falha = { campo: string; erro: string };
@@ -336,6 +340,44 @@ function optEnumUnit(raw: unknown): string | null {
   return typeof raw === "string" && (UNITS as readonly string[]).includes(raw) ? raw : null;
 }
 
+// Normaliza `attributes` de entrada vindo do EDITOR. Lista fechada: so
+// `quantity_label` e aceito (apenas para kinds que o usam; vazio/null => null =
+// "voltar ao padrao", o service remove a chave; valor invalido => falha). Toda
+// outra chave e DESCARTADA: `addon_de`, `course_type`, `supplements` etc. mudam o
+// que aparece nas cotacoes e nao devem ser gravaveis por este caminho.
+export function normalizarAtributos(
+  raw: unknown,
+  kind: string,
+  falhas: Falha[],
+): Record<string, unknown> {
+  const attrs: Record<string, unknown> = {};
+  if (!isObj(raw) || !("quantity_label" in raw)) return attrs;
+  if (!(KINDS_COM_ROTULO_QTD as readonly string[]).includes(kind)) return attrs;
+  const v = raw.quantity_label;
+  if (v === null || v === undefined || v === "") {
+    attrs.quantity_label = null;
+  } else if (typeof v === "string" && (ROTULOS_QTD as readonly string[]).includes(v)) {
+    attrs.quantity_label = v;
+  } else {
+    falhas.push({ campo: "quantity_label", erro: `deve ser um de: ${ROTULOS_QTD.join(", ")}` });
+  }
+  return attrs;
+}
+
+// Mescla os atributos novos sobre os existentes SEM apagar chaves nao enviadas
+// (ex.: addon_de, course_type). Chave com valor null e removida.
+export function mesclarAtributos(
+  existente: unknown,
+  novos: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(isObj(existente) ? existente : {}) };
+  for (const [k, v] of Object.entries(novos)) {
+    if (v === null) delete out[k];
+    else out[k] = v;
+  }
+  return out;
+}
+
 // ── Entrada principal ───────────────────────────────────────────────────────
 // Valida e normaliza o corpo de criacao/edicao de um produto. `kind` decide o
 // bloco de detalhe; detalhes de outros verticais no corpo sao IGNORADOS (nunca
@@ -375,7 +417,7 @@ export function validarProduto(entrada: unknown): Resultado<ProdutoNormalizado &
     max_duration: maxDur,
     available_from: from,
     available_until: until,
-    attributes: isObj(raw.attributes) ? raw.attributes : {},
+    attributes: normalizarAtributos(raw.attributes, kind ?? "program", falhas),
   };
 
   // Detalhe por vertical (so o do kind escolhido).

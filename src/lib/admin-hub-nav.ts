@@ -21,6 +21,7 @@ export type HubAba =
   | "escolas"
   | "disponibilidade"
   | "materiais"
+  | "taxas"
   | "arquivados";
 
 const ABA_POR_KIND: Record<string, HubAba> = {
@@ -42,6 +43,7 @@ export const ROTULO_ABA: Record<HubAba, string> = {
   escolas: "Meus Campi",
   disponibilidade: "Disponibilidade",
   materiais: "Material",
+  taxas: "Taxas",
   arquivados: "Arquivados",
 };
 
@@ -104,6 +106,18 @@ export function hrefVoltarPrecoOuTaxa(
 ): string {
   if (!supplierId) return HUB_LISTA_FORNECEDORES;
   return produtoId ? hrefProdutoNoHub(supplierId, produtoId, "precos") : hrefHub(supplierId);
+}
+
+// Destino ao terminar de mexer numa TAXA: com produto de contexto (já conferido
+// como do fornecedor) volta para a aba "Preços & Taxas" dele; sem produto (taxa
+// de campus por applies_to_kinds, ou aberta da aba Taxas) volta para a aba
+// "Taxas" do fornecedor. Sem fornecedor, para a lista de fornecedores.
+export function hrefVoltarTaxa(
+  supplierId: string | null | undefined,
+  produtoId?: string | null,
+): string {
+  if (!supplierId) return HUB_LISTA_FORNECEDORES;
+  return produtoId ? hrefProdutoNoHub(supplierId, produtoId, "precos") : hrefHub(supplierId, "taxas");
 }
 
 // Resolve o fornecedor dono de um registro a partir dos campi candidatos (campus
