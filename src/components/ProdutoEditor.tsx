@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hrefVoltarProduto, HUB_LISTA_FORNECEDORES } from "@/lib/admin-hub-nav";
 import {
   DIAS_SEMANA,
   hidratarTimetable,
@@ -299,6 +300,14 @@ export default function ProdutoEditor({
     }
   }
 
+  // Pós-salvar/cancelar: SEMPRE dentro do hub do fornecedor dono (aba do tipo do
+  // produto: Programas, Acomodação, Outros, Pacotes, Seguro). Sem fornecedor
+  // conhecido, falha fechada para a lista de fornecedores — nunca para uma lista
+  // geral de produtos.
+  function destinoAoVoltar(): string {
+    return supplierEsperado ? hrefVoltarProduto(supplierEsperado, kind) : HUB_LISTA_FORNECEDORES;
+  }
+
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setSalvando(true);
@@ -335,7 +344,7 @@ export default function ProdutoEditor({
         setSalvando(false);
         return;
       }
-      router.push("/admin/produtos");
+      router.push(destinoAoVoltar());
       router.refresh();
     } catch {
       setErroGeral("Falha de rede ao salvar.");
@@ -504,7 +513,7 @@ export default function ProdutoEditor({
         <button type="submit" disabled={salvando} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-60">
           {salvando ? "Salvando…" : edicao ? "Salvar alterações" : "Criar produto"}
         </button>
-        <button type="button" onClick={() => router.push("/admin/produtos")} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">
+        <button type="button" onClick={() => router.push(destinoAoVoltar())} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">
           Cancelar
         </button>
       </div>

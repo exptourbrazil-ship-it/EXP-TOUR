@@ -6,6 +6,8 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarCampusDoTenant, listarProdutosAdmin } from "@/lib/produto-admin-service";
 import { listarTabelasPrecoAdmin } from "@/lib/price-template-admin-service";
 import { obterTaxaAdmin } from "@/lib/fee-admin-service";
+import { fornecedorDeTabelaOuTaxa, produtoDoFornecedor } from "@/lib/admin-hub-resolver";
+import { hrefVoltarPrecoOuTaxa } from "@/lib/admin-hub-nav";
 import TaxaEditor from "@/components/TaxaEditor";
 
 export const runtime = "nodejs";
@@ -18,11 +20,11 @@ export default async function EditarTaxaPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ campus_id?: string }>;
+  searchParams: Promise<{ campus_id?: string; produto?: string }>;
 }) {
   const { id } = await params;
   await exigirCapacidade("fornecedores.gerir", `/admin/precos/taxas/${id}`);
-  const { campus_id: campusIdParam } = await searchParams;
+  const { produto: produtoParam } = await searchParams;
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -38,14 +40,23 @@ export default async function EditarTaxaPage({
     listarTabelasPrecoAdmin(supabase, tenantId),
   ]);
 
-  // Contexto de campus: prioriza a querystring (veio do hub do fornecedor) e
-  // cai para o campus da própria taxa — o "voltar" preserva o escopo.
-  const campusContexto = campusIdParam ?? (taxa.fee.campus_id as string | undefined) ?? null;
-  const voltarHref = campusContexto ? `/admin/precos/taxas?campus_id=${campusContexto}` : "/admin/precos/taxas";
+  // Contexto de retorno: o fornecedor é derivado do PRÓPRIO registro (campus dele
+  // e campi dos produtos vinculados), conferido por tenant; ?produto= só vale se
+  // for deste fornecedor. Nunca a uma lista geral; sem resolver, à lista de
+  // fornecedores (falha fechada).
+  const supplierContexto = await fornecedorDeTabelaOuTaxa(
+    supabase,
+    tenantId,
+    taxa.fee.campus_id as string | undefined,
+    taxa.product_ids,
+  );
+  const produtoContexto = await produtoDoFornecedor(supabase, tenantId, produtoParam, supplierContexto);
+  const voltarHref = hrefVoltarPrecoOuTaxa(supplierContexto, produtoContexto);
+  const voltarRotulo = supplierContexto ? "← Voltar ao fornecedor" : "← Fornecedores";
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">← Taxas</Link>
+      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">{voltarRotulo}</Link>
       <h1 className="mb-4 mt-1 font-serif text-2xl text-brand">
         {taxa.gerida ? "Taxa" : "Editar taxa"}
         <span className="text-neutral-400"> — {String(taxa.fee.name ?? "")}</span>

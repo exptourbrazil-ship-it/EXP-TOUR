@@ -8,8 +8,8 @@ import PromocaoEditor, { type PromocaoInicial } from "@/components/PromocaoEdito
 
 // Corpo COMPARTILHADO do editor de promoção. Carrega as listas de referência do
 // tenant (fornecedores, campi, produtos, taxas) e renderiza o PromocaoEditor com
-// um `inicial` já computado pela página (edição ou criação/prefill). Usado pela
-// tela global (/admin/precos/promocoes/...) e DENTRO do hub do fornecedor.
+// um `inicial` já computado pela página (edição ou criação/prefill). Usado no
+// hub do fornecedor (nova e editar). `voltarHref` é sempre uma aba do hub.
 export default async function PromocaoEditorCorpo({
   titulo,
   voltarHref,
@@ -43,6 +43,7 @@ export default async function PromocaoEditorCorpo({
         produtos={produtos.map((p) => ({ id: p.id, name: p.name, kind: p.kind, campusId: p.campusId }))}
         fees={taxas.map((f) => ({ id: f.id, name: f.name, campusId: f.campusId }))}
         inicial={inicial}
+        voltarHref={voltarHref}
       />
     </div>
   );

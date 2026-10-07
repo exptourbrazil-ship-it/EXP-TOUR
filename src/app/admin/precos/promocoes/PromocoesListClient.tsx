@@ -42,11 +42,11 @@ const FILTROS = [
 // lista já carregada no servidor.
 export default function PromocoesListClient({
   promocoes,
-  editHrefBase = "/admin/precos/promocoes",
+  editHrefBase,
 }: {
   promocoes: PromocaoLista[];
   // Base do editor (o hub passa `/admin/fornecedores/<id>/promocao`).
-  editHrefBase?: string;
+  editHrefBase: string;
 }) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState("");

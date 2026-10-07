@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hrefHub } from "@/lib/admin-hub-nav";
 
 // Aprovar (publica -> materializa) ou rejeitar (pede ajuste) um price list.
-export default function PrecoAprovacaoClient({ id }: { id: string }) {
+// Depois de decidir, volta para o hub do fornecedor dono do price list (nunca
+// para uma lista geral).
+export default function PrecoAprovacaoClient({ id, supplierId }: { id: string; supplierId: string }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState(null as string | null);
@@ -33,7 +36,7 @@ export default function PrecoAprovacaoClient({ id }: { id: string }) {
       } else {
         setOk("Devolvido para ajuste.");
       }
-      setTimeout(() => router.push("/admin/precos"), 900);
+      setTimeout(() => router.push(hrefHub(supplierId)), 900);
     } catch {
       setErro("Erro de rede. Tente novamente.");
     } finally {

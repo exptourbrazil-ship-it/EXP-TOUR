@@ -4,6 +4,8 @@ import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarCampusDoTenant, listarProdutosAdmin } from "@/lib/produto-admin-service";
 import { listarTabelasPrecoAdmin } from "@/lib/price-template-admin-service";
+import { fornecedorDosCampi } from "@/lib/admin-hub-resolver";
+import { hrefVoltarPrecoOuTaxa } from "@/lib/admin-hub-nav";
 import TaxaEditor from "@/components/TaxaEditor";
 
 export const runtime = "nodejs";
@@ -34,14 +36,18 @@ export default async function NovaTaxaPage({
   const alvo = produtoId ? produtos.find((p) => p.id === produtoId) : undefined;
   const inicial = alvo ? { fee: { campus_id: alvo.campusId }, product_ids: [alvo.id] } : undefined;
 
-  // Contexto de campus: vem do produto (prefill) ou direto da querystring —
-  // propagado ao "voltar" para não jogar o usuário na listagem global.
+  // Contexto de retorno: o fornecedor é derivado do CAMPUS (do produto de prefill
+  // ou do ?campus_id=), conferido por tenant — nunca aceito cru da querystring.
+  // Volta ao produto (aba Preços & Taxas) ou ao hub do fornecedor; sem resolver,
+  // à lista de fornecedores. Nunca a uma lista geral de preços/taxas.
   const campusContexto = alvo?.campusId ?? campusId ?? null;
-  const voltarHref = campusContexto ? `/admin/precos/taxas?campus_id=${campusContexto}` : "/admin/precos/taxas";
+  const supplierContexto = await fornecedorDosCampi(supabase, tenantId, [campusContexto]);
+  const voltarHref = hrefVoltarPrecoOuTaxa(supplierContexto, alvo && supplierContexto ? alvo.id : null);
+  const voltarRotulo = supplierContexto ? "← Voltar ao fornecedor" : "← Fornecedores";
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">← Taxas</Link>
+      <Link href={voltarHref} className="text-sm text-brand-golddark hover:underline">{voltarRotulo}</Link>
       <h1 className="mb-4 mt-1 font-serif text-2xl text-brand">Nova taxa</h1>
       <TaxaEditor
         campi={campi}

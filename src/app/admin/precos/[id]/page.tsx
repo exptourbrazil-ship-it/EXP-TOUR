@@ -74,7 +74,7 @@ export default async function AdminPrecoDetalhePage({ params }: { params: Promis
       ) : null}
 
       {sub.status === "pending_admin" ? (
-        <PrecoAprovacaoClient id={sub.id} />
+        <PrecoAprovacaoClient id={sub.id} supplierId={sub.supplierId} />
       ) : (
         <p className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600">
           Este price list já foi {sub.status === "approved" ? "aprovado e publicado" : "processado"} — somente leitura.

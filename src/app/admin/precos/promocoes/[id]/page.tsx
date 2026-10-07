@@ -1,14 +1,17 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { obterPromocaoAdmin } from "@/lib/promocao-admin-service";
-import PromocaoEditorCorpo from "@/components/PromocaoEditorCorpo";
+import { fornecedorDaPromocao } from "@/lib/admin-hub-resolver";
+import { hrefPromocaoNoHub, HUB_LISTA_FORNECEDORES } from "@/lib/admin-hub-nav";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Editar promoção do tenant. Corpo compartilhado com o hub do fornecedor.
+// Link antigo/atalho por id: a promoção é editada DENTRO do hub do fornecedor
+// dono (promotion.supplier_id, conferido por tenant). Não resolveu => lista de
+// fornecedores (falha fechada).
 export default async function EditarPromocaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await exigirCapacidade("fornecedores.gerir", `/admin/precos/promocoes/${id}`);
@@ -19,16 +22,6 @@ export default async function EditarPromocaoPage({ params }: { params: Promise<{
   );
   const tenantId = await tenantIdAtual(supabase);
   const promo = await obterPromocaoAdmin(supabase, tenantId, id);
-  if (!promo) notFound();
-
-  return (
-    <div className="mx-auto max-w-3xl">
-      <PromocaoEditorCorpo
-        titulo={`Editar promoção — ${String(promo.promotion.name ?? "")}`}
-        voltarHref="/admin/precos/promocoes"
-        voltarLabel="Promoções"
-        inicial={{ id, promotion: promo.promotion, targets: promo.targets }}
-      />
-    </div>
-  );
+  const supplierId = promo ? await fornecedorDaPromocao(supabase, tenantId, promo.promotion) : null;
+  redirect(supplierId ? hrefPromocaoNoHub(supplierId, id) : HUB_LISTA_FORNECEDORES);
 }

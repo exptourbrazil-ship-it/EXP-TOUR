@@ -37,13 +37,13 @@ export default function TaxaEditor({
   templates: TemplateOpt[];
   inicial?: TaxaInicial;
   // Para onde ir ao salvar/cancelar — preserva o contexto de campus quando a
-  // navegação veio de dentro do hub do fornecedor. Padrão: listagem global.
+  // navegação veio de dentro do hub do fornecedor. Padrão: lista de fornecedores.
   voltarHref?: string;
 }) {
   const router = useRouter();
   const edicao = !!inicial?.id;
   const f = inicial?.fee ?? {};
-  const destinoAoVoltar = voltarHref ?? "/admin/precos/taxas";
+  const destinoAoVoltar = voltarHref ?? "/admin/fornecedores";
 
   const [campo, setCampo] = useState<Record<string, any>>({
     campus_id: f.campus_id ?? (campi[0]?.id ?? ""),

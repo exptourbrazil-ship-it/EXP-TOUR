@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { hrefHub } from "@/lib/admin-hub-nav";
 import type { IntakeDoProduto } from "@/lib/produto-admin-service";
 
 // Seção "Datas & Disponibilidade" da página unificada de produto. Presentacional
@@ -42,7 +43,8 @@ export default function SecaoDisponibilidade({
     );
   }
 
-  const linkEditor = supplierId ? `/admin/disponibilidade?supplier=${supplierId}` : "/admin/disponibilidade";
+  // Editor de datas DENTRO do hub do fornecedor (aba Disponibilidade).
+  const linkEditor = hrefHub(supplierId, "disponibilidade");
 
   return (
     <section>

@@ -1,43 +1,13 @@
-import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
+import { redirect } from "next/navigation";
 import { exigirCapacidade } from "@/lib/admin-guard";
-import { tenantIdAtual } from "@/lib/catalog-service";
-import { listarPromocoesAdmin } from "@/lib/promocao-admin-service";
-import PromocoesListClient from "./PromocoesListClient";
-import PropostasPromocaoBloco from "./PropostasPromocaoBloco";
-import { listarPropostasPromocao } from "@/lib/promocao-proposta-service";
+import { HUB_LISTA_FORNECEDORES } from "@/lib/admin-hub-nav";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Promoções manuais do Admin. Autorização por capacidade fornecedores.gerir
-// (a rota de API revalida em cada mutação). Carrega no servidor e delega ao
-// client (indicadores, filtro por status, busca, badges).
+// A lista geral de promoções foi extinta: promoções (e as propostas lidas por IA
+// pendentes) vivem na aba Promoções do hub de cada fornecedor.
 export default async function AdminPromocoesPage() {
   await exigirCapacidade("fornecedores.gerir", "/admin/precos/promocoes");
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
-  );
-  const tenantId = await tenantIdAtual(supabase);
-  const [promocoes, propostas] = await Promise.all([
-    listarPromocoesAdmin(supabase, tenantId),
-    listarPropostasPromocao(supabase, tenantId, { status: "pending_admin" }),
-  ]);
-
-  return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="font-serif text-2xl text-brand">Promoções</h1>
-        <Link href="/admin/precos/promocoes/nova" className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">+ Nova promoção</Link>
-      </div>
-      <p className="mb-4 text-sm text-neutral-600">
-        Descontos, isenções e ofertas por fornecedor. Aplicam-se na cotação conforme o alvo, as janelas
-        de reserva/viagem e a segmentação.
-      </p>
-
-      <PropostasPromocaoBloco propostas={propostas} />
-      <PromocoesListClient promocoes={promocoes} />
-    </div>
-  );
+  redirect(HUB_LISTA_FORNECEDORES);
 }

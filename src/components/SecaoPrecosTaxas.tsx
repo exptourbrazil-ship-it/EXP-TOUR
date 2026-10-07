@@ -6,7 +6,8 @@ import type { PrecoVinculado, TaxaVinculada } from "@/lib/produto-admin-service"
 // tabelas de preço e as taxas VINCULADAS a este produto, cada uma com link para
 // o editor dedicado, e atalhos de criação. Linhas "geridas" (vindas de price
 // list de escola) aparecem com selo de só-leitura. A edição de fato continua
-// nas telas dedicadas — aqui reunimos as dimensões num lugar só.
+// nas telas dedicadas — aqui reunimos as dimensões num lugar só. Os editores
+// devolvem o admin a este produto no hub do fornecedor (nunca a uma lista geral).
 
 const UNIT_LABEL: Record<string, string> = { week: "semana", day: "dia", month: "mês", unit: "unidade", stay: "estadia" };
 const STATUS_LABEL: Record<string, string> = { draft: "Rascunho", active: "Ativa", inactive: "Inativa" };
@@ -38,13 +39,14 @@ export default function SecaoPrecosTaxas({
   precos: PrecoVinculado[];
   taxas: TaxaVinculada[];
   productId: string;
-  // Campus do produto atual — propagado na querystring para as telas de
-  // tabela/taxa manterem o usuário no contexto da escola (nunca cair na
-  // listagem global de todas as escolas). Ausente = comportamento antigo.
+  // Campus do produto atual — propagado na querystring para os editores de
+  // tabela/taxa manterem o contexto da escola.
   campusId?: string | null;
 }) {
   const q = campusId ? `?produto=${productId}&campus_id=${campusId}` : `?produto=${productId}`;
-  const qCampus = campusId ? `?campus_id=${campusId}` : "";
+  // Contexto de retorno: ?produto= faz o "voltar"/pós-salvar dos editores
+  // devolver o admin a esta aba (Preços & Taxas) do produto, dentro do hub.
+  const qCampus = campusId ? `?produto=${productId}&campus_id=${campusId}` : `?produto=${productId}`;
   return (
     <div className="space-y-8">
       {/* Preço */}
