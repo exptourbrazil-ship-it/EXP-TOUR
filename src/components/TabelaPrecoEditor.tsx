@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ArquivarBotao, { avisosImpactoTabela } from "@/components/ArquivarBotao";
 import { PRICE_BASES, DURATION_TYPES, TEMPLATE_STATUSES, type Falha } from "@/lib/preco-template";
 import { UNITS } from "@/lib/produto";
 
@@ -258,6 +259,28 @@ export default function TabelaPrecoEditor({
         <button type="button" onClick={() => router.push(destinoAoVoltar)} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">
           Cancelar
         </button>
+        {edicao ? (
+          <span className="ml-auto">
+            <ArquivarBotao
+              rotulo="Arquivar a tabela"
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700"
+              titulo={`Arquivar a tabela "${String(t.name ?? "")}"?`}
+              descricao={
+                <p>
+                  Deixa de valer em cotações novas. Cotações já emitidas não mudam de valor. É reversível (arquivamento, não exclusão).
+                  Itens vindos de price list da escola são geridos por aquele fluxo e serão recusados.
+                </p>
+              }
+              urlArquivar={`/api/admin/catalog/price-templates/${inicial!.id}`}
+              urlImpacto={`/api/admin/catalog/price-templates/${inicial!.id}/impacto-arquivar`}
+              avisosDoImpacto={avisosImpactoTabela}
+              aoArquivar={() => {
+                router.push(destinoAoVoltar);
+                router.refresh();
+              }}
+            />
+          </span>
+        ) : null}
       </div>
     </form>
   );

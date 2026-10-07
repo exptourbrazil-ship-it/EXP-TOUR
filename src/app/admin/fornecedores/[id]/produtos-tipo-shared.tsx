@@ -39,6 +39,8 @@ export async function PaginaProdutosDoTipo({
         produtos={produtos}
         vazioLabel={vazio}
         editHrefBase={`/admin/fornecedores/${supplierId}/produto`}
+        supplierId={supplierId}
+        kind={kind}
       />
     </div>
   );

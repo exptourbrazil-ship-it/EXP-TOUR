@@ -266,7 +266,7 @@ export async function arquivarTaxa(
   const { tenantId, actor, ip, feeId } = args;
   const { data: existente } = await supabase
     .from("fee")
-    .select("id, tenant_id, source_submission_id")
+    .select("id, tenant_id, source_submission_id, name")
     .eq("id", feeId)
     .maybeSingle();
   if (!existente || (existente as { tenant_id?: string }).tenant_id !== tenantId) {
@@ -281,13 +281,18 @@ export async function arquivarTaxa(
     .eq("id", feeId)
     .eq("tenant_id", tenantId)
     .is("source_submission_id", null)
+    .is("archived_at", null)
     .select("id");
   if (error) {
     console.error("[taxas] arquivar fee:", error.message);
     throw new TaxaAdminErro("falha_persistir");
   }
   if (!upd || upd.length === 0) throw new TaxaAdminErro("taxa_nao_encontrada");
-  await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "taxa.arquivar", alvo: feeId, ip: ip ?? null });
+  await registrarAuditoriaAdmin(supabase, { usuario: actor, acao: "taxa.arquivar",
+    alvo: feeId,
+    detalhe: { nome: (existente as { name?: string }).name ?? null, arquivado_antes: false, arquivado_depois: true },
+    ip: ip ?? null,
+  });
 }
 
 // ── Leituras para a UI admin ────────────────────────────────────────────────
