@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 // A lista geral de taxas foi extinta. Taxas vivem dentro de cada
 // produto (aba "Preços & Taxas" no hub do fornecedor). Link antigo com
-// ?campus_id= vai ao hub do fornecedor daquele campus; sem ele (ou se não
+// ?campus_id= vai à aba Taxas do fornecedor daquele campus; sem ele (ou se não
 // resolver no tenant), à lista de fornecedores.
 export default async function AdminTaxasPage({
   searchParams,
@@ -27,5 +27,5 @@ export default async function AdminTaxasPage({
     );
     supplierId = await fornecedorDosCampi(supabase, await tenantIdAtual(supabase), [campusId]);
   }
-  redirect(hrefHub(supplierId));
+  redirect(hrefHub(supplierId, supplierId ? "taxas" : undefined));
 }

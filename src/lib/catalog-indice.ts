@@ -7,7 +7,7 @@
 // NB: modulo SERVER-ONLY (service role). Nunca importar em codigo client.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bandeiraPais, rotuloPais } from "@/lib/paises";
-import type { ItemCatalogo, KindCatalogo } from "@/lib/catalog-busca";
+import { rotuloQtdEfetivo, type ItemCatalogo, type KindCatalogo } from "@/lib/catalog-busca";
 
 const KINDS_VALIDOS: KindCatalogo[] = ["program", "package", "accommodation", "insurance", "service", "other"];
 
@@ -134,6 +134,8 @@ export async function carregarIndiceCatalogo(
       // default de exibicao — o motor recusa o item e o card mostra "sem preco".
       unit: unidades.get(p.id as string) ?? "week",
       addonDe: (p.attributes?.addon_de as string) ?? null,
+      // Rotulo da quantidade: atributo do produto ou derivado da unidade.
+      rotuloQtd: rotuloQtdEfetivo(p.attributes, unidades.get(p.id as string) ?? "week"),
     });
   }
 

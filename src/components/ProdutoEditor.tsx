@@ -27,6 +27,8 @@ import {
   POLICY_UNITS,
   CHARGE_UNITS,
   PRICING_MODES,
+  ROTULOS_QTD,
+  KINDS_COM_ROTULO_QTD,
   type Kind,
   type Falha,
 } from "@/lib/produto";
@@ -239,6 +241,7 @@ export default function ProdutoEditor({
     valid_from: det.valid_from ?? "",
     valid_until: det.valid_until ?? "",
     pricing_mode: det.pricing_mode ?? "sum_of_items",
+    quantity_label: typeof core.attributes?.quantity_label === "string" ? core.attributes.quantity_label : "",
   });
   const [timetable, setTimetable] = useState<TimetableEdit>(() => hidratarTimetable(det.timetable));
   const [itens, setItens] = useState<ItemPacote[]>(
@@ -329,6 +332,11 @@ export default function ProdutoEditor({
       available_from: campo.available_from || undefined,
       available_until: campo.available_until || undefined,
       detail: montarDetalhe(),
+      // So o rotulo da quantidade e enviado; o servidor mescla sem apagar as
+      // demais chaves de attributes. Vazio = null = volta ao padrao da unidade.
+      ...((KINDS_COM_ROTULO_QTD as readonly string[]).includes(kind)
+        ? { attributes: { quantity_label: campo.quantity_label || null } }
+        : {}),
       ...(supplierEsperado ? { supplier_esperado: supplierEsperado } : {}),
     };
     try {
@@ -452,6 +460,12 @@ export default function ProdutoEditor({
             <Sel label="Unidade da apólice" v={campo.policy_unit} set={(x) => set("policy_unit", x)} opts={POLICY_UNITS} vazio erro={falhaDe("policy_unit")} />
             <Campo label="Duração máx. (dias)" erro={falhaDe("max_duration_days")}><input type="number" min={0} value={campo.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} className={inp} /></Campo>
             <Campo label="Resumo da cobertura" className="sm:col-span-2"><textarea value={campo.coverage_summary} onChange={(e) => set("coverage_summary", e.target.value)} rows={2} className={inp} /></Campo>
+            <Campo label="Rótulo da quantidade" erro={falhaDe("quantity_label")}>
+              <select value={campo.quantity_label} onChange={(e) => set("quantity_label", e.target.value)} className={inp}>
+                <option value="">Padrão (pela unidade de cobrança)</option>
+                {ROTULOS_QTD.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </Campo>
           </Grid>
         </Secao>
       )}
@@ -461,6 +475,12 @@ export default function ProdutoEditor({
           <Grid>
             <Sel label="Cobrança por" v={campo.charge_unit} set={(x) => set("charge_unit", x)} opts={CHARGE_UNITS} erro={falhaDe("charge_unit")} />
             <Campo label="Categoria"><input value={campo.category} onChange={(e) => set("category", e.target.value)} className={inp} placeholder="transfer, taxa, etc." /></Campo>
+            <Campo label="Rótulo da quantidade" erro={falhaDe("quantity_label")}>
+              <select value={campo.quantity_label} onChange={(e) => set("quantity_label", e.target.value)} className={inp}>
+                <option value="">Padrão (pela unidade de cobrança)</option>
+                {ROTULOS_QTD.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </Campo>
           </Grid>
         </Secao>
       )}

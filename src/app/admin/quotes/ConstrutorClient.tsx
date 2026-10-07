@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fmtMoeda } from "@/lib/formato";
+import { labelQtd, type RotuloQtd } from "@/lib/catalog-busca";
 import BuscadorCatalogo from "./BuscadorCatalogo";
 
 export type ItemView = {
@@ -12,6 +13,8 @@ export type ItemView = {
   name: string;
   quantity: number;
   unit: string;
+  /** Rotulo da quantidade (pessoa/unidade/noite/semana), do snapshot do produto. */
+  quantityLabel?: RotuloQtd;
   grossAmount: number;
   currency: string;
 };
@@ -447,7 +450,7 @@ export default function ConstrutorClient({
                         </div>
                         <div className="mt-0.5 flex items-center justify-between gap-2">
                           <div className="text-xs text-neutral-500">
-                            {it.quantity} {it.unit} ·{" "}
+                            {it.quantityLabel ? labelQtd(it.quantityLabel, it.quantity) : `${it.quantity} ${it.unit}`} ·{" "}
                             <span className="font-medium text-brand">
                               {fmtMoeda(it.grossAmount, it.currency)}
                             </span>

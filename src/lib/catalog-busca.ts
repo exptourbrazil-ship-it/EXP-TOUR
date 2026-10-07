@@ -8,6 +8,7 @@
 // motor real (/api/admin/catalog/price-batch).
 //
 // NB: modulo PURO — sem dependencia de rede/DB. Testado em catalog-busca.test.ts.
+import { ROTULOS_QTD } from "./produto.ts";
 import { CATEGORY_LABEL, GENERIC_PROFESSIONAL_TERMS, expandirTermos, normalizar } from "./orcamento.ts";
 
 export type KindCatalogo = "program" | "package" | "accommodation" | "insurance" | "service" | "other";
@@ -35,6 +36,13 @@ export type ItemCatalogo = {
    * o id do produto-mae. Vem de `attributes.addon_de`. null = produto proprio.
    */
   addonDe: string | null;
+  /**
+   * Rotulo da QUANTIDADE ("pessoa" | "unidade" | "noite" | "semana"): o que o
+   * numero digitado conta. Vem de `attributes.quantity_label` quando valido; senao
+   * e derivado da unidade de cobranca (`rotuloQtdPadrao`). Opcional so para nao
+   * quebrar fixtures antigas — use `rotuloQtdDe(item)`.
+   */
+  rotuloQtd?: RotuloQtd;
 };
 
 export type ForaDaFaixaItem = {
@@ -157,6 +165,52 @@ export function filtrarItensCatalogo(args: {
       a.item.name.localeCompare(b.item.name, "pt-BR"),
   );
   return { resultados: candidatos.map((c) => c.item), foraDaFaixa: fora };
+}
+
+/** Rotulos permitidos para a quantidade (lista fechada; gravada em product.attributes.quantity_label). */
+export { ROTULOS_QTD };
+export type RotuloQtd = (typeof ROTULOS_QTD)[number];
+
+/** Nome do rotulo para o admin (campo "Rotulo da quantidade" do editor). */
+export const ROTULO_QTD_NOME: Record<RotuloQtd, string> = {
+  pessoa: "Pessoa",
+  unidade: "Unidade",
+  noite: "Noite",
+  semana: "Semana",
+};
+
+/** Valida o valor vindo de fora (atributo/JSON): so a lista fechada passa. */
+export function rotuloQtdValido(v: unknown): RotuloQtd | null {
+  return typeof v === "string" && (ROTULOS_QTD as readonly string[]).includes(v) ? (v as RotuloQtd) : null;
+}
+
+/** Padrao derivado da unidade de cobranca (comportamento historico). */
+export function rotuloQtdPadrao(unit: string): RotuloQtd {
+  if (unit === "week") return "semana";
+  if (unit === "day" || unit === "night") return "noite";
+  if (unit === "person") return "pessoa";
+  return "unidade";
+}
+
+/** Rotulo efetivo: atributo valido do produto, senao o padrao da unidade. */
+export function rotuloQtdEfetivo(attributes: unknown, unit: string): RotuloQtd {
+  const attrs = attributes && typeof attributes === "object" ? (attributes as Record<string, unknown>) : {};
+  return rotuloQtdValido(attrs.quantity_label) ?? rotuloQtdPadrao(unit);
+}
+
+/** Rotulo efetivo de um item do indice. */
+export function rotuloQtdDe(item: Pick<ItemCatalogo, "unit" | "rotuloQtd">): RotuloQtd {
+  return item.rotuloQtd ?? rotuloQtdPadrao(item.unit);
+}
+
+/** Substantivo no plural correto ("pessoa"/"pessoas"), sem o numero. */
+export function substantivoQtd(rotulo: RotuloQtd, n: number): string {
+  return n === 1 ? rotulo : `${rotulo}s`;
+}
+
+/** "1 pessoa", "2 pessoas", "3 noites"... */
+export function labelQtd(rotulo: RotuloQtd, n: number): string {
+  return `${n} ${substantivoQtd(rotulo, n)}`;
 }
 
 /** Rotulo da unidade, no plural conforme a quantidade. */

@@ -5,7 +5,7 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { listarCampusDoTenant, listarProdutosAdmin } from "@/lib/produto-admin-service";
 import { listarTabelasPrecoAdmin } from "@/lib/price-template-admin-service";
 import { fornecedorDosCampi } from "@/lib/admin-hub-resolver";
-import { hrefVoltarPrecoOuTaxa } from "@/lib/admin-hub-nav";
+import { hrefVoltarTaxa } from "@/lib/admin-hub-nav";
 import TaxaEditor from "@/components/TaxaEditor";
 
 export const runtime = "nodejs";
@@ -42,7 +42,7 @@ export default async function NovaTaxaPage({
   // à lista de fornecedores. Nunca a uma lista geral de preços/taxas.
   const campusContexto = alvo?.campusId ?? campusId ?? null;
   const supplierContexto = await fornecedorDosCampi(supabase, tenantId, [campusContexto]);
-  const voltarHref = hrefVoltarPrecoOuTaxa(supplierContexto, alvo && supplierContexto ? alvo.id : null);
+  const voltarHref = hrefVoltarTaxa(supplierContexto, alvo && supplierContexto ? alvo.id : null);
   const voltarRotulo = supplierContexto ? "← Voltar ao fornecedor" : "← Fornecedores";
 
   return (

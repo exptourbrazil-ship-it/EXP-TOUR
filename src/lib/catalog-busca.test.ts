@@ -201,3 +201,46 @@ test("busca por termo acha o pacote pelo nome e respeita a faixa de duracao", ()
   assert.equal(r.resultados.length, 0);
   assert.equal(r.foraDaFaixa[0].id, "pk");
 });
+
+import { rotuloQtdEfetivo, rotuloQtdPadrao, labelQtd, substantivoQtd, rotuloQtdDe } from "./catalog-busca.ts";
+import { normalizarAtributos, mesclarAtributos } from "./produto.ts";
+
+test("rotulo da quantidade: padrao pela unidade e atributo do produto", () => {
+  assert.equal(rotuloQtdPadrao("week"), "semana");
+  assert.equal(rotuloQtdPadrao("day"), "noite");
+  assert.equal(rotuloQtdPadrao("unit"), "unidade");
+  assert.equal(rotuloQtdEfetivo({}, "unit"), "unidade");
+  // transfer por pessoa: tabela "unit", mas a quantidade conta pessoas
+  assert.equal(rotuloQtdEfetivo({ quantity_label: "pessoa" }, "unit"), "pessoa");
+  // valor fora da lista fechada e ignorado
+  assert.equal(rotuloQtdEfetivo({ quantity_label: "hora" }, "week"), "semana");
+  assert.equal(rotuloQtdEfetivo(null, "day"), "noite");
+  assert.equal(rotuloQtdDe({ unit: "unit" }), "unidade");
+  assert.equal(rotuloQtdDe({ unit: "unit", rotuloQtd: "pessoa" }), "pessoa");
+});
+
+test("labelQtd/substantivoQtd: plural correto", () => {
+  assert.equal(labelQtd("pessoa", 1), "1 pessoa");
+  assert.equal(labelQtd("pessoa", 2), "2 pessoas");
+  assert.equal(labelQtd("noite", 3), "3 noites");
+  assert.equal(substantivoQtd("semana", 1), "semana");
+  assert.equal(substantivoQtd("unidade", 4), "unidades");
+});
+
+test("normalizarAtributos: lista fechada, so em other/insurance, vazio vira null", () => {
+  const f: { campo: string; erro: string }[] = [];
+  assert.deepEqual(normalizarAtributos({ quantity_label: "pessoa", x: 1, addon_de: "abc" }, "other", f), { quantity_label: "pessoa" });
+  assert.deepEqual(normalizarAtributos({ addon_de: "abc", course_type: "x" }, "other", []), {});
+  assert.deepEqual(normalizarAtributos({ quantity_label: "" }, "insurance", f), { quantity_label: null });
+  assert.deepEqual(normalizarAtributos({ quantity_label: "pessoa" }, "program", f), {});
+  assert.equal(f.length, 0);
+  normalizarAtributos({ quantity_label: "hora" }, "other", f);
+  assert.equal(f[0].campo, "quantity_label");
+  assert.deepEqual(normalizarAtributos(undefined, "other", []), {});
+});
+
+test("mesclarAtributos: preserva chaves existentes e remove com null", () => {
+  assert.deepEqual(mesclarAtributos({ addon_de: "p1", quantity_label: "noite" }, { quantity_label: "pessoa" }), { addon_de: "p1", quantity_label: "pessoa" });
+  assert.deepEqual(mesclarAtributos({ addon_de: "p1", quantity_label: "noite" }, { quantity_label: null }), { addon_de: "p1" });
+  assert.deepEqual(mesclarAtributos(null, {}), {});
+});

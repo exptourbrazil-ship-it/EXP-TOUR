@@ -7,7 +7,7 @@ import { listarCampusDoTenant, listarProdutosAdmin } from "@/lib/produto-admin-s
 import { listarTabelasPrecoAdmin } from "@/lib/price-template-admin-service";
 import { obterTaxaAdmin } from "@/lib/fee-admin-service";
 import { fornecedorDeTabelaOuTaxa, produtoDoFornecedor } from "@/lib/admin-hub-resolver";
-import { hrefVoltarPrecoOuTaxa } from "@/lib/admin-hub-nav";
+import { hrefVoltarTaxa } from "@/lib/admin-hub-nav";
 import TaxaEditor from "@/components/TaxaEditor";
 
 export const runtime = "nodejs";
@@ -51,7 +51,7 @@ export default async function EditarTaxaPage({
     taxa.product_ids,
   );
   const produtoContexto = await produtoDoFornecedor(supabase, tenantId, produtoParam, supplierContexto);
-  const voltarHref = hrefVoltarPrecoOuTaxa(supplierContexto, produtoContexto);
+  const voltarHref = hrefVoltarTaxa(supplierContexto, produtoContexto);
   const voltarRotulo = supplierContexto ? "← Voltar ao fornecedor" : "← Fornecedores";
 
   return (

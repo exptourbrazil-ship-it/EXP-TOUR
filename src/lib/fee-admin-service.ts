@@ -317,7 +317,7 @@ export type TaxaLista = {
 export async function listarTaxasAdmin(
   supabase: SupabaseClient,
   tenantId: string,
-  filtro?: { campusId?: string },
+  filtro?: { campusId?: string; campusIds?: string[] },
 ): Promise<TaxaLista[]> {
   let q = supabase
     .from("fee")
@@ -329,6 +329,11 @@ export async function listarTaxasAdmin(
     .order("updated_at", { ascending: false, nullsFirst: false })
     .order("name");
   if (filtro?.campusId) q = q.eq("campus_id", filtro.campusId);
+  if (filtro?.campusIds) {
+    // Lista vazia => nada a listar (nunca cair em "todos os campi do tenant").
+    if (filtro.campusIds.length === 0) return [];
+    q = q.in("campus_id", filtro.campusIds);
+  }
   const { data } = await q;
   return (data ?? []).map((f: any) => {
     const campus = Array.isArray(f.campus) ? f.campus[0] : f.campus;

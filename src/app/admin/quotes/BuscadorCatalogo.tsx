@@ -26,7 +26,10 @@ import {
   KIND_LABEL,
   faixaDe,
   filtrarItensCatalogo,
+  labelQtd,
   labelUnidade,
+  rotuloQtdDe,
+  substantivoQtd,
   type ItemCatalogo,
   type KindCatalogo,
 } from "@/lib/catalog-busca";
@@ -941,7 +944,7 @@ function Card({
             onChange={(e) => onMudarQtd(parseInt(e.target.value, 10))}
             className="w-16 rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-800"
           />
-          <span className="text-neutral-500">{item.unit === "day" ? "noite(s)" : "semana(s)"}</span>
+          <span className="text-neutral-500">{substantivoQtd(rotuloQtdDe(item), qtd)}</span>
         </label>
       ) : null}
 
@@ -952,7 +955,7 @@ function Card({
           <>
             <p className="font-serif text-xl text-brand">{fmtMoeda(preco.netAmount, preco.currency)}</p>
             <p className="text-[11px] text-neutral-500">
-              {labelUnidade(item.unit, qtd)}
+              {labelQtd(rotuloQtdDe(item), qtd)}
               {preco.grossAmount !== preco.netAmount ? (
                 <> · bruto {fmtMoeda(preco.grossAmount, preco.currency)}</>
               ) : null}
@@ -969,8 +972,8 @@ function Card({
       {faixa ? (
         <p className="mt-1 text-[11px] text-neutral-400">
           {faixa.min === faixa.max
-            ? `pacote fixo de ${labelUnidade(item.unit, faixa.min)}`
-            : `${faixa.min}–${labelUnidade(item.unit, faixa.max)}`}
+            ? `pacote fixo de ${labelQtd(rotuloQtdDe(item), faixa.min)}`
+            : `${faixa.min}–${labelQtd(rotuloQtdDe(item), faixa.max)}`}
         </p>
       ) : null}
 
@@ -1027,7 +1030,7 @@ function Revisao({
                   </span>
                   <p className="mt-1 text-sm font-medium text-brand">{c.item.name}</p>
                   <p className="text-xs text-neutral-500">
-                    {c.item.school} · {c.item.city} · {labelUnidade(c.item.unit, c.qtd)}
+                    {c.item.school} · {c.item.city} · {labelQtd(rotuloQtdDe(c.item), c.qtd)}
                   </p>
                 </div>
                 <div className="text-right">

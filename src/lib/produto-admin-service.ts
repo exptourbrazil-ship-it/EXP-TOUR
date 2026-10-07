@@ -9,7 +9,7 @@
 // no update, que o proprio produto e do tenant. A validacao/normalizacao dos
 // campos vem do motor PURO src/lib/produto.ts; aqui so persistimos e auditamos.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { validarProduto, type Detalhe, type Falha } from "@/lib/produto";
+import { validarProduto, mesclarAtributos, type Detalhe, type Falha } from "@/lib/produto";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import { pacotesBloqueantes, mensagemBloqueioPacotes, motivoRecusaLote } from "@/lib/arquivamento";
 
@@ -176,7 +176,7 @@ export async function salvarProdutoAdmin(
     // numa tabela por kind — trocar orfanaria/duplicaria detalhe).
     const { data: existente } = await supabase
       .from("product")
-      .select("id, tenant_id, kind")
+      .select("id, tenant_id, kind, attributes")
       .eq("id", productId)
       .maybeSingle();
     if (!existente || (existente as { tenant_id?: string }).tenant_id !== tenantId) {
@@ -200,7 +200,8 @@ export async function salvarProdutoAdmin(
         max_duration: core.max_duration,
         available_from: core.available_from,
         available_until: core.available_until,
-        attributes: core.attributes,
+        // Mescla sobre o existente: nao apaga chaves que o editor nao envia.
+        attributes: mesclarAtributos((existente as { attributes?: unknown }).attributes, core.attributes),
         updated_at: new Date().toISOString(),
       })
       .eq("id", productId)
@@ -228,7 +229,7 @@ export async function salvarProdutoAdmin(
         max_duration: core.max_duration,
         available_from: core.available_from,
         available_until: core.available_until,
-        attributes: core.attributes,
+        attributes: mesclarAtributos({}, core.attributes), // remove marcadores null
         created_by_user_id: null, // actor e e-mail/usuario, nao uuid; a trilha registra quem
       })
       .select("id")
