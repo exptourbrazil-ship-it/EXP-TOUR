@@ -20,7 +20,8 @@ export type HubAba =
   | "ofertas"
   | "escolas"
   | "disponibilidade"
-  | "materiais";
+  | "materiais"
+  | "arquivados";
 
 const ABA_POR_KIND: Record<string, HubAba> = {
   program: "programas",
@@ -41,6 +42,7 @@ export const ROTULO_ABA: Record<HubAba, string> = {
   escolas: "Meus Campi",
   disponibilidade: "Disponibilidade",
   materiais: "Material",
+  arquivados: "Arquivados",
 };
 
 // ids de fornecedor/produto vêm do banco (uuid), mas codificamos por garantia.

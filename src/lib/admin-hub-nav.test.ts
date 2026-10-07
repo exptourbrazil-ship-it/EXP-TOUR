@@ -77,3 +77,7 @@ test("abaEditorValida só aceita abas conhecidas", () => {
   assert.equal(abaEditorValida("<script>"), null);
   assert.equal(abaEditorValida(undefined), null);
 });
+
+test("hrefHub aceita a aba Arquivados", () => {
+  assert.equal(hrefHub("abc", "arquivados"), "/admin/fornecedores/abc/arquivados");
+});

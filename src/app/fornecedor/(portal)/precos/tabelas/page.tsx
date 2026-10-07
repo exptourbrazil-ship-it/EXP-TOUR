@@ -177,9 +177,11 @@ function Aviso({ tom, children }: { tom: "atencao" | "erro"; children: React.Rea
 // draft | active | expired — tratar todos, senao a escola ve "Rascunho" numa
 // tabela que na verdade venceu.
 function rotuloSituacao(tabela: TabelaCargaHoraria, T: Textos): string {
+  // Expirada vem ANTES de arquivada: tabela expirada se arquiva sozinha (trigger),
+  // e para a escola o que importa é "expirou", não "foi arquivada".
+  if (tabela.status === "expired") return T.expirada;
   if (tabela.archivedAt) return T.arquivada;
   if (tabela.status === "draft") return T.rascunho;
-  if (tabela.status === "expired") return T.expirada;
   return T.vigenciaEncerrada;
 }
 

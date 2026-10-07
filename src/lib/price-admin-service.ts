@@ -146,7 +146,19 @@ async function supersedeAnteriores(supabase: SupabaseClient, sub: SubmissionRow)
   const ids = (priors ?? []).map((p) => (p as { id: string }).id);
   if (ids.length === 0) return;
   const agora = new Date().toISOString();
-  await supabase.from("price_template").update({ status: "expired" }).in("source_submission_id", ids);
+  // Expirada => arquivada (regra do trigger trg_price_template_arquivar_expirada,
+  // espelhada aqui para funcionar mesmo sem o trigger). Quem já estava arquivada
+  // mantém a data original de arquivamento.
+  await supabase
+    .from("price_template")
+    .update({ status: "expired", archived_at: agora })
+    .in("source_submission_id", ids)
+    .is("archived_at", null);
+  await supabase
+    .from("price_template")
+    .update({ status: "expired" })
+    .in("source_submission_id", ids)
+    .not("archived_at", "is", null);
   await supabase.from("product").update({ archived_at: agora }).in("source_submission_id", ids);
   await supabase.from("fee").update({ archived_at: agora }).in("source_submission_id", ids);
 }
