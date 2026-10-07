@@ -27,6 +27,11 @@ import {
 } from "@/lib/pricing";
 import { separarTaxas, type TaxaNormalizada } from "@/lib/taxa-opcional";
 import {
+  precificarPacoteSomaDeItens,
+  ErroPacote,
+  type ItemPacoteEntrada,
+} from "@/lib/package-pricing";
+import {
   resolveMarket,
   evaluateEligibility,
   type Market,
@@ -117,6 +122,12 @@ export type LoadPricingArgs = {
    * todo estudante do mesmo jeito — a marca existia na tela e nao no calculo.
    */
   optionalFeeIds?: string[];
+  /**
+   * Ignora o ajuste sazonal do CAMPUS INTEIRO (product_id nulo), mantendo so os
+   * do proprio produto. Usado pelos itens 2..N de um pacote: o ajuste do campus
+   * e cobrado UMA vez no pacote (no primeiro item), nao por item.
+   */
+  ignorarSazonalDoCampus?: boolean;
 };
 
 /** Taxa opcional disponivel para o produto, ainda NAO cobrada. */
@@ -395,7 +406,7 @@ export async function loadPricingInputs(
       .eq("tenant_id", tenantId)
       .eq("campus_id", campus.id)
       .eq("status", "active")
-      .or(`product_id.is.null,product_id.eq.${productId}`);
+      .or(args.ignorarSazonalDoCampus ? `product_id.eq.${productId}` : `product_id.is.null,product_id.eq.${productId}`);
     // Falha FECHADA: engolir o erro aqui emitiria (e congelaria) uma cotacao sem o
     // suplemento de temporada — dinheiro a menos, sem ninguem perceber.
     if (sazErr) throw new Error(`Falha ao carregar ajuste sazonal: ${sazErr.message}`);
@@ -516,6 +527,13 @@ export async function priceProductFromDb(
   args: PriceProductArgs,
 ): Promise<PricedItemComOpcionais> {
   const request = await loadPricingInputs(supabase, args);
+
+  // PACOTE sum_of_items: preco = soma dos itens, cada um pelo motor normal.
+  // `fixed_price` segue o caminho de sempre (tabela propria do pacote).
+  if (request.product.kind === "package" && (await modoPrecoDoPacote(supabase, args.productId)) === "sum_of_items") {
+    return precificarPacoteDoBanco(supabase, args, request);
+  }
+
   const priced: PricedItemComOpcionais = priceProduct(request);
 
   const taxasOpcionais = (request as PriceRequest & { __taxasOpcionais?: TaxaOpcional[] }).__taxasOpcionais;
@@ -524,12 +542,25 @@ export async function priceProductFromDb(
   const avisosSazonais = (request as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais;
   if (avisosSazonais) priced.warnings.push(...avisosSazonais);
 
-  // Elegibilidade (spec 3.5): carrega regras do produto e avalia o contexto.
+  priced.warnings.push(...(await avisosDeElegibilidade(supabase, args, args.productId)));
+
+  return priced;
+}
+
+/**
+ * Avalia as regras de elegibilidade (spec 3.5) de UM produto e devolve os
+ * avisos em portugues (bloqueante ou nao). Vazio quando elegivel ou sem regras.
+ */
+async function avisosDeElegibilidade(
+  supabase: SupabaseClient,
+  args: PriceProductArgs,
+  productId: string,
+): Promise<string[]> {
   const { data: ruleRows } = await supabase
     .from("eligibility_rule")
     .select("group_index, attribute, operator, value, is_blocking")
     .eq("tenant_id", args.tenantId)
-    .eq("product_id", args.productId);
+    .eq("product_id", productId);
 
   const rules: EligibilityRule[] = (ruleRows ?? []).map((r: any) => ({
     groupIndex: r.group_index ?? 0,
@@ -538,28 +569,167 @@ export async function priceProductFromDb(
     value: r.value,
     isBlocking: r.is_blocking ?? false,
   }));
+  if (rules.length === 0) return [];
 
-  if (rules.length > 0) {
-    const context: StudentContext = {
-      nationalityCode: args.nationalityCode,
-      ...(args.studentContext ?? {}),
-    };
-    const elig = evaluateEligibility(rules, context, args.startDate);
-    if (!elig.eligible) {
-      const grupos = elig.failedGroups.join(", ");
-      if (elig.blocking) {
-        priced.warnings.push(
-          `Warning bloqueante: estudante nao elegivel para este produto (grupos: ${grupos}).`,
-        );
-      } else {
-        priced.warnings.push(
-          `Estudante pode nao ser elegivel para este produto (grupos: ${grupos}).`,
-        );
-      }
-    }
+  const context: StudentContext = {
+    nationalityCode: args.nationalityCode,
+    ...(args.studentContext ?? {}),
+  };
+  const elig = evaluateEligibility(rules, context, args.startDate);
+  if (elig.eligible) return [];
+  const grupos = elig.failedGroups.join(", ");
+  return [
+    elig.blocking
+      ? `Warning bloqueante: estudante nao elegivel para este produto (grupos: ${grupos}).`
+      : `Estudante pode nao ser elegivel para este produto (grupos: ${grupos}).`,
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Pacote (product.kind = 'package')
+// ---------------------------------------------------------------------------
+
+/** `package.pricing_mode` do produto. Ausente = recusa (falha fechada). */
+async function modoPrecoDoPacote(
+  supabase: SupabaseClient,
+  productId: string,
+): Promise<"sum_of_items" | "fixed_price"> {
+  const { data, error } = await supabase
+    .from("package")
+    .select("pricing_mode")
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao carregar o modo de preco do pacote: ${error.message}`);
+  const modo = data?.pricing_mode as string | undefined;
+  if (modo === "sum_of_items" || modo === "fixed_price") return modo;
+  throw new ErroPacote("Pacote sem modo de preco cadastrado (package.pricing_mode): nao e possivel precificar.");
+}
+
+/**
+ * Precifica um pacote `sum_of_items`: carrega os `package_item` OBRIGATORIOS,
+ * valida cada item (mesmo tenant e campus, ativo, nao arquivado, nao-pacote) e
+ * monta, para cada um, a entrada do motor normal com quantidade = quantidade do
+ * pacote x `package_item.quantity` e a MESMA data de inicio. A soma e as taxas
+ * (sem cobrar em dobro) sao do modulo puro `package-pricing`.
+ *
+ * Itens `is_optional=true` ficam de fora nesta versao (ver docs/decisions.md).
+ * `pkgRequest` e a entrada do proprio produto pacote: dela saem so as taxas
+ * vinculadas ao pacote, a regra multi-curso do campus e os limites do pacote.
+ */
+async function precificarPacoteDoBanco(
+  supabase: SupabaseClient,
+  args: PriceProductArgs,
+  pkgRequest: PriceRequest,
+): Promise<PricedItemComOpcionais> {
+  const { tenantId, productId } = args;
+
+  const { data: pkgProd, error: pkgErr } = await supabase
+    .from("product")
+    .select("id, name, campus_id, status, archived_at")
+    .eq("tenant_id", tenantId)
+    .eq("id", productId)
+    .maybeSingle();
+  if (pkgErr) throw new Error(`Falha ao carregar pacote: ${pkgErr.message}`);
+  if (!pkgProd) throw new Error("Pacote nao encontrado para este tenant.");
+  const nomePacote = (pkgProd.name as string) ?? "Pacote";
+
+  const { data: linhas, error: linErr } = await supabase
+    .from("package_item")
+    .select("item_product_id, quantity, unit, is_optional, sort")
+    .eq("package_product_id", productId)
+    .order("sort", { ascending: true })
+    .order("item_product_id", { ascending: true });
+  if (linErr) throw new Error(`Falha ao carregar itens do pacote: ${linErr.message}`);
+  // Itens opcionais ficam fora do preco nesta versao.
+  const obrigatorias = (linhas ?? []).filter((l: any) => !l.is_optional);
+  if (obrigatorias.length === 0) {
+    throw new ErroPacote(`O pacote "${nomePacote}" nao tem itens obrigatorios cadastrados.`);
   }
 
-  return priced;
+  const ids = [...new Set(obrigatorias.map((l: any) => l.item_product_id as string))];
+  const { data: prods, error: prodErr } = await supabase
+    .from("product")
+    .select("id, name, kind, campus_id, status, archived_at, default_unit")
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+  if (prodErr) throw new Error(`Falha ao carregar produtos do pacote: ${prodErr.message}`);
+  const porId = new Map<string, any>((prods ?? []).map((p: any) => [p.id as string, p]));
+
+  const itens: ItemPacoteEntrada[] = [];
+  const opcionais = new Map<string, TaxaOpcional>();
+  const avisosElegibilidade: string[] = [];
+
+  for (const l of obrigatorias as any[]) {
+    const item = porId.get(l.item_product_id as string);
+    if (!item) {
+      // Ausente no tenant: inexistente ou de OUTRO tenant. Nao distingue.
+      throw new ErroPacote(`Pacote "${nomePacote}": um dos itens nao esta disponivel para cotacao.`);
+    }
+    const nome = (item.name as string) ?? "Item";
+    if (item.kind === "package") {
+      throw new ErroPacote(`Pacote "${nomePacote}": o item "${nome}" e outro pacote (pacote dentro de pacote nao e permitido).`);
+    }
+    if (item.status !== "active" || item.archived_at != null) {
+      throw new ErroPacote(`Pacote "${nomePacote}": o item "${nome}" esta inativo ou arquivado.`);
+    }
+    if (item.campus_id !== pkgProd.campus_id) {
+      throw new ErroPacote(`Pacote "${nomePacote}": o item "${nome}" e de outro campus.`);
+    }
+    const fator = l.quantity == null ? NaN : Number(l.quantity);
+    if (!Number.isFinite(fator) || fator <= 0) {
+      throw new ErroPacote(`Pacote "${nomePacote}": o item "${nome}" nao tem quantidade valida.`);
+    }
+    // Unidade do item = unidade do pacote. Sem unidade no package_item, vale a
+    // unidade padrao do proprio item (nao se presume que seja a cotada).
+    const unidadeDoItem = (l.unit as string | null) ?? (item.default_unit as string | null);
+    if (unidadeDoItem !== args.unit) {
+      throw new ErroPacote(`Pacote "${nomePacote}": o item "${nome}" usa a unidade "${unidadeDoItem ?? "indefinida"}", diferente da cotada (${args.unit}).`);
+    }
+
+    const req = await loadPricingInputs(supabase, {
+      ...args,
+      productId: item.id as string,
+      quantity: round2Quantidade(args.quantity * fator),
+      // Ajuste sazonal do campus inteiro: so no primeiro item (cobrado 1x).
+      ignorarSazonalDoCampus: itens.length > 0,
+    });
+    const extras = [...((req as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais ?? [])];
+    extras.push(...(await avisosDeElegibilidade(supabase, args, item.id as string)));
+    for (const o of (req as PriceRequest & { __taxasOpcionais?: TaxaOpcional[] }).__taxasOpcionais ?? []) {
+      opcionais.set(o.id, o);
+    }
+    itens.push({ itemProductId: item.id as string, name: nome, quantityFactor: fator, request: req, extraWarnings: extras, chosenFeeIds: args.optionalFeeIds });
+  }
+
+  const priced = precificarPacoteSomaDeItens({
+    packageName: nomePacote,
+    quantity: args.quantity,
+    startDate: args.startDate,
+    unit: args.unit,
+    multiCourseRule: pkgRequest.feeContext?.multiCourseRule ?? "charge_highest",
+    items: itens,
+    packageFees: pkgRequest.fees,
+    packageProduct: {
+      minDuration: pkgRequest.product.minDuration,
+      maxDuration: pkgRequest.product.maxDuration,
+      availableFrom: pkgRequest.product.availableFrom,
+      availableUntil: pkgRequest.product.availableUntil,
+    },
+  });
+
+  // Taxas opcionais do proprio pacote tambem sao oferecidas.
+  for (const o of (pkgRequest as PriceRequest & { __taxasOpcionais?: TaxaOpcional[] }).__taxasOpcionais ?? []) {
+    opcionais.set(o.id, o);
+  }
+  const resultado: PricedItemComOpcionais = { ...priced };
+  if (opcionais.size > 0) resultado.optionalFees = [...opcionais.values()];
+  resultado.warnings.push(...(await avisosDeElegibilidade(supabase, args, productId)));
+  return resultado;
+}
+
+/** Evita lixo de ponto flutuante em quantidade fracionada (ex.: 0.1 x 3). */
+function round2Quantidade(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------

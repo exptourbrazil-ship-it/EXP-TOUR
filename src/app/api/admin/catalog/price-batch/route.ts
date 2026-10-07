@@ -1,4 +1,5 @@
 import { tenantIdAtual, priceProductFromDb } from "@/lib/catalog-service";
+import { ErroPacote } from "@/lib/package-pricing";
 import { validarDuracao } from "@/lib/duracao";
 import { checarELimitar } from "@/lib/rate-limit";
 import {
@@ -97,9 +98,11 @@ export async function POST(request: Request) {
 
     const tenantId = await tenantIdAtual(supabase);
 
-    const resultados = await Promise.all(
-      pedidos.map(async (pedido) => {
-        try {
+    // Concorrencia LIMITADA: um pacote dispara dezenas de consultas; 24 em
+    // paralelo estouraria o pool. Lotes de CONCORRENCIA, ordem preservada.
+    const CONCORRENCIA = 6;
+    const precificarUm = async (pedido: Pedido) => {
+      try {
           const priced = await priceProductFromDb(supabase, {
             tenantId,
             productId: pedido.productId,
@@ -135,11 +138,17 @@ export async function POST(request: Request) {
           return {
             productId: pedido.productId,
             ok: false as const,
-            error: "Sem preço para esta data/duração.",
+            // Recusa de PACOTE ja vem em portugues e diz qual item/taxa falhou
+            // (sem PII): o consultor precisa ler o motivo. Demais erros seguem
+            // genericos (anti-enumeracao).
+            error: err instanceof ErroPacote ? err.message : "Sem preço para esta data/duração.",
           };
         }
-      }),
-    );
+    };
+    const resultados: Awaited<ReturnType<typeof precificarUm>>[] = [];
+    for (let i = 0; i < pedidos.length; i += CONCORRENCIA) {
+      resultados.push(...(await Promise.all(pedidos.slice(i, i + CONCORRENCIA).map(precificarUm))));
+    }
 
     return okData(resultados);
   } catch (err) {

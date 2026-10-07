@@ -10,7 +10,7 @@
 // NB: modulo PURO — sem dependencia de rede/DB. Testado em catalog-busca.test.ts.
 import { CATEGORY_LABEL, GENERIC_PROFESSIONAL_TERMS, expandirTermos, normalizar } from "./orcamento.ts";
 
-export type KindCatalogo = "program" | "accommodation" | "insurance" | "service" | "other";
+export type KindCatalogo = "program" | "package" | "accommodation" | "insurance" | "service" | "other";
 
 export type ItemCatalogo = {
   id: string;
@@ -173,6 +173,7 @@ export function labelUnidade(unit: string, n: number): string {
 /** Rotulo curto do tipo de produto, para o selo do card. */
 export const KIND_LABEL: Record<string, string> = {
   program: "Curso",
+  package: "Pacote",
   accommodation: "Acomodação",
   insurance: "Seguro",
   service: "Serviço",

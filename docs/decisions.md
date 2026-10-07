@@ -136,3 +136,96 @@ moeda, com exatamente um valor de `is_refundable` não nulo do outro lado): 2 de
 informação — inventar `false` ali seria afirmar ao cliente o que não se sabe.
 Como nenhuma taxa do tenant é `true`, o backfill não alterou nenhuma entrada;
 só fez a etiqueta aparecer.
+
+---
+
+## ADR — Pacote `sum_of_items`: preço = soma dos itens, cotável no construtor
+
+**Contexto.** Existem 68 produtos `kind='package'` (General English 20/30 +
+English for X, por campus de Malta), com `package.pricing_mode='sum_of_items'` e
+2 linhas em `package_item` cada. O pacote não tem tabela de preço própria (e não
+deve ter), então o motor devolvia "sem preço". Além disso `catalog-indice`
+convertia `package` em `other`, e ele só aparecia no passo 3 do construtor.
+
+**Decisão.**
+
+1. **Ponto único:** `priceProductFromDb` (`catalog-service.ts`), por onde passam
+   `/api/admin/catalog/price`, `price-batch`, `price-templates/preview`,
+   `addQuoteItem` e `recalculateQuote`. Se `kind='package'` e `sum_of_items`, ele
+   delega a `precificarPacoteDoBanco`; `fixed_price` segue o caminho antigo.
+2. **Cálculo em módulo puro** (`package-pricing.ts`), reutilizando `priceProduct`
+   para cada item: quantidade do item = quantidade do pacote × `package_item.quantity`,
+   mesma data de início; a faixa de cada item vale pela quantidade TOTAL. Bruto e
+   líquido do pacote = `sumMoney` das linhas já arredondadas por item.
+3. **Taxas sem cobrança em dobro**, decididas ANTES de precificar (para as
+   promoções incidirem só nas taxas que sobraram): `once_per_quote` com o mesmo
+   `fee.id` é cobrada uma vez; matrículas de ids diferentes seguem
+   `campus_settings.multi_course_fee_rule` (highest/lowest/all, via
+   `aggregateRegistrationFee`); `once_per_item`/`per_unit`/`per_person` ficam em
+   cada item (rotuladas "— nome do item"). Taxas ligadas ao próprio pacote
+   (`fee_product`/`applies_to_kinds`) entram no primeiro item. Observação: o
+   motor só aplica a regra multi-curso quando recebe `programItemCount > 1`, e
+   nenhum chamador o informa — dois cursos AVULSOS na mesma opção continuam
+   cobrando uma matrícula cada. Esta ADR não muda isso; vale só para os itens
+   DENTRO de um pacote.
+4. **Formato gravado:** o pacote é UM `quote_item` (`group='package'`). Linhas de
+   taxa, desconto e sazonal usam o mesmo formato do item simples (os leitores
+   — proposta `/p/[token]`, PDF, entrada, checkout — não mudam). O
+   `price_breakdown` ganha `source='package_sum_of_items'` e `items[]` com o
+   rastro completo de cada item; o snapshot guarda `packageItems`.
+5. **Fail-closed** (mensagem em português, diz o item): item sem tabela vigente
+   ou bruto ≤ 0, item arquivado/inativo, de outro campus, de outro tenant,
+   outro pacote (sem recursão), `quantity` nula/≤ 0, unidade do item diferente
+   da cotada, moedas diferentes, pacote sem itens obrigatórios.
+6. **Itens `is_optional=true` ficam de fora** do preço nesta versão (não há UI
+   para oferecê-los). Quando houver, devem entrar como extras escolhidos, nunca
+   somados por padrão.
+7. **Papel de curso:** o `quote_item.group` guarda o `kind`; fluxos que ancoram
+   o contrato no curso (início D-30, fornecedor/país, base e semanas de
+   retenção, intake) passam a tratar `package` como `program`
+   (`grupo-item.ts::ehGrupoCurso`).
+8. **Construtor:** `package` vira kind próprio ("Pacote"), listado no passo 1
+   junto com `program` e removido do passo 3.
+
+**Consequência.** O custo do preço de um pacote é ~3× o de um curso (carrega o
+pacote + cada item). Promoções percentuais sobre `total` incidem item a item (a
+matrícula entra na base do item que a carrega). `componenteEducacionalDoContrato`
+continua usando `product.componente` para `package` (decisão anterior): se esse
+campo estiver vazio nos 68 pacotes, a base da remuneração do contrato ficará
+subestimada — conferir no cadastro.
+
+**Revisão independente (correções).**
+
+- **Taxas próprias do pacote × taxas dos itens.** Para cada `fee_type` em que o
+  pacote tem taxa própria (`applies_to_kinds` com `package` ou `fee_product` do
+  pacote), as taxas do MESMO `fee_type` vindas dos itens (qualquer
+  `charge_basis`) são suprimidas: o pacote cobra matrícula e material uma vez
+  (dado real BELS Malta: pacote 55 + 35 `once_per_quote`; cursos 55 + 35
+  `once_per_item`). `fee_type` sem taxa própria mantém o comportamento dos
+  itens; a matrícula dos itens segue `multi_course_fee_rule` considerando
+  QUALQUER `charge_basis` (antes só `once_per_quote`). Taxas do pacote são
+  deduplicadas por `fee.id` em qualquer base.
+- **Promoções.** `fixed_off`, promoções com `max_discount_amount` e percentual
+  não empilhável valem UMA vez no pacote, no primeiro item a que se aplicam
+  (erra para menos desconto). Percentual empilhável segue item a item.
+- **Guardas.** Quantidade de item em semanas precisa ser inteira; sem
+  `package_item.unit`, vale `product.default_unit` do item e deve bater com a
+  unidade cotada. Ajuste sazonal do campus inteiro (`product_id` nulo) se aplica
+  também a cursos; no pacote é cobrado só no primeiro item. O `price-batch`
+  precifica em lotes de 6 em paralelo.
+
+**Segunda revisão (ajustes).**
+
+- A supressão por `fee_type` vale só para `registration` e `material` (lista
+  explícita) e só quando a taxa do pacote tem valor > 0. `service` e demais tipos
+  são baldes genéricos (administrativa, certificado, courier...): não são
+  suprimidos por tipo, só deduplicados por `fee.id`. Toda supressão gera aviso
+  em português com nome e valor de cada taxa suprimida. Taxa opcional escolhida
+  pelo consultor num item nunca é suprimida.
+- Taxa (do pacote ou de item) em moeda diferente da dos produtos recusa o
+  pacote.
+- Erros de negócio do pacote são `ErroPacote` e o `price-batch` devolve a
+  mensagem (em português, sem PII) em vez do genérico.
+- **Decisão de produto pendente:** promoção percentual NÃO empilhável vale só no
+  primeiro item a que se aplica (como `fixed_off` e as com teto); o desconto
+  pode ficar menor que o da escola quando ela o concede sobre o pacote todo.

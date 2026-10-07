@@ -179,3 +179,25 @@ test("faixa invertida e normalizada: max nunca fica abaixo do min", () => {
   assert.deepEqual(faixaDe({ minQtd: 2, maxQtd: 8 }), { min: 2, max: 8 });
   assert.equal(faixaDe({ minQtd: 0, maxQtd: 0 }), null);
 });
+
+// Pacote e kind proprio: aparece junto com o curso no passo 1 (kinds program +
+// package) e NAO aparece no passo 3 (servicos), nem como acomodacao.
+test("pacote entra no filtro do passo 1 junto com o curso e sai do passo 3", () => {
+  const itens = [
+    item({ id: "ge", name: "General English 20" }),
+    item({ id: "pk", name: "General English 20 + English for Business", kind: "package" }),
+    item({ id: "ac", name: "Homestay", kind: "accommodation" }),
+    item({ id: "sg", name: "Seguro", kind: "insurance" }),
+  ];
+  const ids = (kinds: ItemCatalogo["kind"][]) =>
+    filtrarItensCatalogo({ itens, termo: "", kinds, quantidade: 4 }).resultados.map((r) => r.id).sort();
+  assert.deepEqual(ids(["program", "package"]), ["ge", "pk"]);
+  assert.deepEqual(ids(["insurance", "service", "other"]), ["sg"]);
+});
+
+test("busca por termo acha o pacote pelo nome e respeita a faixa de duracao", () => {
+  const itens = [item({ id: "pk", name: "General English 20 + English for Business", kind: "package", minQtd: 1, maxQtd: 52 })];
+  const r = filtrarItensCatalogo({ itens, termo: "business", kinds: ["program", "package"], quantidade: 60 });
+  assert.equal(r.resultados.length, 0);
+  assert.equal(r.foraDaFaixa[0].id, "pk");
+});
