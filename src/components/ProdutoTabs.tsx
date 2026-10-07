@@ -9,8 +9,12 @@ import { useState } from "react";
 // componentes de sempre; aqui apenas as reunimos numa navegação por abas.
 export type AbaProduto = { chave: string; label: string; conteudo: React.ReactNode };
 
-export default function ProdutoTabs({ abas }: { abas: AbaProduto[] }) {
-  const [ativa, setAtiva] = useState(abas[0]?.chave ?? "");
+export default function ProdutoTabs({ abas, abaInicial }: { abas: AbaProduto[]; abaInicial?: string | null }) {
+  // abaInicial (ex.: "precos") reabre a seção de onde o admin veio — o "voltar"
+  // dos editores de preço/taxa devolve à aba Preços & Taxas, não à primeira.
+  const [ativa, setAtiva] = useState(
+    abaInicial && abas.some((a) => a.chave === abaInicial) ? abaInicial : (abas[0]?.chave ?? ""),
+  );
 
   return (
     <div>

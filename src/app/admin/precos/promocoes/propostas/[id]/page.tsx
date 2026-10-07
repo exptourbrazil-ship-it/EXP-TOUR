@@ -6,6 +6,7 @@ import { tenantIdAtual } from "@/lib/catalog-service";
 import { obterPropostaPromocao } from "@/lib/promocao-proposta-service";
 import { listarCampusDoFornecedor } from "@/lib/fornecedor-hub-service";
 import { listarProdutosDoFornecedor } from "@/lib/content-submission-service";
+import { hrefPromocoesDoHub, hrefPromocaoNoHub, hrefHub } from "@/lib/admin-hub-nav";
 import PropostaPromocaoClient from "./PropostaPromocaoClient";
 
 export const runtime = "nodejs";
@@ -32,8 +33,8 @@ export default async function PropostaPromocaoPage({ params }: { params: Promise
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-3 flex flex-wrap gap-3 text-sm text-neutral-500">
-        <Link href="/admin/precos/promocoes" className="hover:text-brand">← Promoções</Link>
-        <Link href={`/admin/fornecedores/${p.supplierId}/materiais`} className="hover:text-brand">Material do fornecedor →</Link>
+        <Link href={hrefPromocoesDoHub(p.supplierId)} className="hover:text-brand">← Promoções do fornecedor</Link>
+        <Link href={hrefHub(p.supplierId, "materiais")} className="hover:text-brand">Material do fornecedor →</Link>
       </div>
       <h1 className="mb-1 font-serif text-2xl text-brand">{p.nome}</h1>
       <p className="mb-4 text-sm text-neutral-600">
@@ -71,12 +72,12 @@ export default async function PropostaPromocaoPage({ params }: { params: Promise
       </div>
 
       {p.status === "pending_admin" ? (
-        <PropostaPromocaoClient id={p.id} entrada={p.entrada} campi={campi.map((c) => ({ id: c.id, nome: c.nome }))} produtos={produtos} />
+        <PropostaPromocaoClient id={p.id} voltarHref={hrefPromocoesDoHub(p.supplierId)} entrada={p.entrada} campi={campi.map((c) => ({ id: c.id, nome: c.nome }))} produtos={produtos} />
       ) : (
         <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600">
           {p.status === "approved" && p.promotionId ? (
             <>
-              Publicada como promoção. <Link href={`/admin/precos/promocoes/${p.promotionId}`} className="text-brand-golddark hover:underline">Abrir promoção →</Link>
+              Publicada como promoção. <Link href={hrefPromocaoNoHub(p.supplierId, p.promotionId)} className="text-brand-golddark hover:underline">Abrir promoção →</Link>
             </>
           ) : p.status === "rejected" ? (
             <>Recusada{p.rejectReason ? `: ${p.rejectReason}` : ""}.</>

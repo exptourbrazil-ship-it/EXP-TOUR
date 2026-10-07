@@ -7,6 +7,8 @@ import FornecedorPicker from "./FornecedorPicker";
 import PropostasDisponibilidadeBloco from "./PropostasDisponibilidadeBloco";
 import { listarPropostasDisponibilidade } from "@/lib/disponibilidade-proposta-service";
 import { tenantIdAtual } from "@/lib/catalog-service";
+import { redirect } from "next/navigation";
+import { hrefHub } from "@/lib/admin-hub-nav";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,12 +28,27 @@ export default async function AdminDisponibilidadePage({
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  // Com ?supplier= o editor de datas vive DENTRO do hub do fornecedor (aba
+  // Disponibilidade): redireciona, conferindo que o fornecedor é do tenant.
+  const tenantId = await tenantIdAtual(supabase);
+  if (supplierId) {
+    const { data: dono } = await supabase
+      .from("supplier")
+      .select("id")
+      .eq("id", supplierId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (dono) redirect(hrefHub(supplierId, "disponibilidade"));
+  }
+
+  // Sempre escopado ao tenant: sem isso o seletor listava (e o editor abria)
+  // fornecedores de outro tenant.
   const { data: suppliers } = await supabase
     .from("supplier")
     .select("id, display_name")
+    .eq("tenant_id", tenantId)
     .order("display_name");
 
-  const tenantId = await tenantIdAtual(supabase);
   const propostas = await listarPropostasDisponibilidade(supabase, tenantId, { status: "pending_admin" });
   const escolhido = (suppliers ?? []).find((s) => s.id === supplierId) ?? null;
   const [programas, acomodacoes] = escolhido

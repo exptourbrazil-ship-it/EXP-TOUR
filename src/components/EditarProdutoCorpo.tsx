@@ -21,6 +21,7 @@ import { listarAjustesSazonais } from "@/lib/sazonal-admin-service";
 import SecaoDisponibilidade from "@/components/SecaoDisponibilidade";
 import SecaoPromocoes from "@/components/SecaoPromocoes";
 import ProdutoTabs from "@/components/ProdutoTabs";
+import { hrefVoltarProduto, rotuloVoltarProduto, abaEditorValida } from "@/lib/admin-hub-nav";
 
 const KIND_LABEL: Record<string, string> = {
   program: "Programa", accommodation: "Acomodação", insurance: "Seguro", other: "Complementar", package: "Pacote",
@@ -28,23 +29,21 @@ const KIND_LABEL: Record<string, string> = {
 
 // Corpo COMPARTILHADO do editor de produto (Informação · Preços & Taxas · Datas &
 // Disponibilidade · Promoções · Elegibilidade · Conteúdo). Usado tanto pela tela
-// global (/admin/produtos/[id]) quanto DENTRO do hub do fornecedor
-// (/admin/fornecedores/[id]/produto/[productId]) — a edição acontece no mesmo
-// lugar, só muda a moldura e o link de "voltar".
+// hub do fornecedor (/admin/fornecedores/[id]/produto/[productId]); /admin/produtos/[id]
+// só redireciona para ele. O "voltar" vai para a aba do tipo do produto no hub.
 //
 // POSSE: sempre por tenant. Quando `supplierIdEsperado` é passado (fluxo do hub),
 // confere que o produto pertence AQUELE fornecedor (via campus) — notFound caso
 // contrário, para a URL do hub não abrir produto de outro fornecedor/tenant.
 export default async function EditarProdutoCorpo({
   productId,
-  voltarHref,
-  voltarLabel,
   supplierIdEsperado,
+  abaInicial,
 }: {
   productId: string;
-  voltarHref: string;
-  voltarLabel: string;
-  supplierIdEsperado?: string;
+  supplierIdEsperado: string;
+  // Aba interna a abrir (?aba=), validada contra lista fechada.
+  abaInicial?: string | null;
 }) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -90,7 +89,10 @@ export default async function EditarProdutoCorpo({
 
   // Posse do hub: o produto tem que ser do fornecedor esperado. Conferida ANTES de
   // qualquer leitura extra (moeda / ajuste sazonal).
-  if (supplierIdEsperado && supplierId !== supplierIdEsperado) notFound();
+  if (supplierId !== supplierIdEsperado) notFound();
+
+  const voltarHref = hrefVoltarProduto(supplierIdEsperado, kind);
+  const voltarLabel = rotuloVoltarProduto(kind);
 
   if (kind === "accommodation") {
     ajustesSazonais.push(...(await listarAjustesSazonais(supabase, tenantId, productId, campusId || undefined)));
@@ -107,6 +109,7 @@ export default async function EditarProdutoCorpo({
       </div>
 
       <ProdutoTabs
+        abaInicial={abaEditorValida(abaInicial)}
         abas={[
           {
             chave: "informacao",
@@ -150,7 +153,7 @@ export default async function EditarProdutoCorpo({
           {
             chave: "promocoes",
             label: "Promoções",
-            conteudo: <SecaoPromocoes promocoes={promocoes} productId={productId} />,
+            conteudo: <SecaoPromocoes promocoes={promocoes} productId={productId} supplierId={supplierIdEsperado} />,
           },
           {
             chave: "elegibilidade",

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { hrefNovaPromocaoNoHub, hrefPromocaoNoHub } from "@/lib/admin-hub-nav";
 import type { PromocaoDoProduto } from "@/lib/produto-admin-service";
 
 // Seção "Promoções" da página unificada de produto. Presentacional (só leitura):
@@ -24,7 +25,15 @@ function fmtValor(p: PromocaoDoProduto): string {
   return p.value.toFixed(2);
 }
 
-export default function SecaoPromocoes({ promocoes, productId }: { promocoes: PromocaoDoProduto[]; productId: string }) {
+export default function SecaoPromocoes({
+  promocoes,
+  productId,
+  supplierId,
+}: {
+  promocoes: PromocaoDoProduto[];
+  productId: string;
+  supplierId: string;
+}) {
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
@@ -32,7 +41,7 @@ export default function SecaoPromocoes({ promocoes, productId }: { promocoes: Pr
           <h2 className="font-serif text-lg text-brand">Promoções</h2>
           <p className="text-xs text-neutral-500">Promoções que miram este produto (alvo por produto).</p>
         </div>
-        <Link href={`/admin/precos/promocoes/nova?produto=${productId}`} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
+        <Link href={hrefNovaPromocaoNoHub(supplierId, productId)} className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-brand-cream">
           + Nova promoção
         </Link>
       </div>
@@ -40,7 +49,7 @@ export default function SecaoPromocoes({ promocoes, productId }: { promocoes: Pr
       {promocoes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-neutral-300 p-4 text-sm text-neutral-500">
           Nenhuma promoção mira este produto diretamente. Promoções por campus, mercado ou nacionalidade
-          continuam valendo pela cotação — gerencie-as na tela de promoções.
+          continuam valendo pela cotação — gerencie-as na aba Promoções do fornecedor.
         </p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -66,7 +75,7 @@ export default function SecaoPromocoes({ promocoes, productId }: { promocoes: Pr
                     {STATUS_LABEL[p.status] ?? p.status}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link href={`/admin/precos/promocoes/${p.id}`} className="text-brand-golddark hover:underline">
+                    <Link href={hrefPromocaoNoHub(supplierId, p.id)} className="text-brand-golddark hover:underline">
                       Editar →
                     </Link>
                   </td>

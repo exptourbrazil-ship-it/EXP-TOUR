@@ -3,13 +3,16 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { obterPromocaoAdmin } from "@/lib/promocao-admin-service";
+import { fornecedorDaPromocao } from "@/lib/admin-hub-resolver";
+import { hrefPromocoesDoHub } from "@/lib/admin-hub-nav";
 import PromocaoEditorCorpo from "@/components/PromocaoEditorCorpo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Editar promoção DENTRO do hub. Posse: a promoção tem que ser deste fornecedor
-// (promotion.supplier_id) — notFound caso contrário.
+// (promotion.supplier_id, conferido por tenant) — notFound caso contrário.
+// Salvar/cancelar voltam à aba Promoções DESTE fornecedor.
 export default async function EditarPromocaoNoHubPage({
   params,
 }: {
@@ -24,12 +27,12 @@ export default async function EditarPromocaoNoHubPage({
   );
   const tenantId = await tenantIdAtual(supabase);
   const promo = await obterPromocaoAdmin(supabase, tenantId, promoId);
-  if (!promo || String(promo.promotion.supplier_id ?? "") !== id) notFound();
+  if (!promo || (await fornecedorDaPromocao(supabase, tenantId, promo.promotion)) !== id) notFound();
 
   return (
     <PromocaoEditorCorpo
       titulo={`Editar promoção — ${String(promo.promotion.name ?? "")}`}
-      voltarHref={`/admin/fornecedores/${id}/promocoes`}
+      voltarHref={hrefPromocoesDoHub(id)}
       voltarLabel="Promoções"
       inicial={{ id: promoId, promotion: promo.promotion, targets: promo.targets }}
     />

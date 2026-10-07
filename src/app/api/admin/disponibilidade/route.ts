@@ -50,6 +50,18 @@ export async function POST(request: Request) {
     );
   }
 
+  // O supplierId vem do corpo: confere que o fornecedor é DESTE tenant antes de
+  // qualquer leitura/escrita (senão um admin agiria no fornecedor de outro tenant).
+  const { data: fornecedorDoTenant } = await supabase
+    .from("supplier")
+    .select("id")
+    .eq("id", supplierId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!fornecedorDoTenant) {
+    return NextResponse.json({ ok: false, erro: "Fornecedor não encontrado." }, { status: 404 });
+  }
+
   try {
     if (acao === "criar_programa") {
       const v = validarPrograma(body);

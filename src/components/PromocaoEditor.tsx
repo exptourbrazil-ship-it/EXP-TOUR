@@ -40,12 +40,15 @@ export default function PromocaoEditor({
   produtos,
   fees,
   inicial,
+  voltarHref,
 }: {
   suppliers: SupplierOpt[];
   campi: CampusOpt[];
   produtos: ProdutoOpt[];
   fees: FeeOpt[];
   inicial?: PromocaoInicial;
+  // Destino após salvar/cancelar: sempre dentro do hub do fornecedor.
+  voltarHref: string;
 }) {
   const router = useRouter();
   const edicao = !!inicial?.id;
@@ -141,7 +144,7 @@ export default function PromocaoEditor({
         setSalvando(false);
         return;
       }
-      router.push("/admin/precos/promocoes");
+      router.push(voltarHref);
       router.refresh();
     } catch {
       setErroGeral("Falha de rede ao salvar.");
@@ -273,7 +276,7 @@ export default function PromocaoEditor({
         <button type="submit" disabled={salvando} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-cream disabled:opacity-60">
           {salvando ? "Salvando…" : edicao ? "Salvar alterações" : "Criar promoção"}
         </button>
-        <button type="button" onClick={() => router.push("/admin/precos/promocoes")} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">Cancelar</button>
+        <button type="button" onClick={() => router.push(voltarHref)} className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-brand">Cancelar</button>
       </div>
     </form>
   );

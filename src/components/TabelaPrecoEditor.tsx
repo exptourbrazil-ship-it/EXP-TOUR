@@ -45,13 +45,13 @@ export default function TabelaPrecoEditor({
   markets: MarketOpt[];
   inicial?: TabelaInicial;
   // Para onde ir ao salvar/cancelar — preserva o contexto de campus quando a
-  // navegação veio de dentro do hub do fornecedor. Padrão: listagem global.
+  // navegação veio de dentro do hub do fornecedor. Padrão: lista de fornecedores.
   voltarHref?: string;
 }) {
   const router = useRouter();
   const edicao = !!inicial?.id;
   const t = inicial?.template ?? {};
-  const destinoAoVoltar = voltarHref ?? "/admin/precos/tabelas";
+  const destinoAoVoltar = voltarHref ?? "/admin/fornecedores";
 
   const [campo, setCampo] = useState<Record<string, any>>({
     campus_id: t.campus_id ?? (campi[0]?.id ?? ""),

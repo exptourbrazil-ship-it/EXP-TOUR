@@ -10,17 +10,19 @@ export const dynamic = "force-dynamic";
 // supplierIdEsperado — URL de produto de outro fornecedor dá notFound.
 export default async function EditarProdutoNoHubPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; productId: string }>;
+  searchParams: Promise<{ aba?: string }>;
 }) {
   const { id, productId } = await params;
+  const { aba } = await searchParams;
   await exigirCapacidade("fornecedores.gerir", `/admin/fornecedores/${id}/produto/${productId}`);
   return (
     <EditarProdutoCorpo
       productId={productId}
       supplierIdEsperado={id}
-      voltarHref={`/admin/fornecedores/${id}`}
-      voltarLabel="Inventário do fornecedor"
+      abaInicial={aba}
     />
   );
 }

@@ -29,11 +29,14 @@ const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String
 // validacao do servidor (validarPromocao) e aparecem junto ao campo.
 export default function PropostaPromocaoClient({
   id,
+  voltarHref,
   entrada,
   campi,
   produtos,
 }: {
   id: string;
+  // Aba Promoções do hub do fornecedor da proposta (não existe lista geral).
+  voltarHref: string;
   entrada: Record<string, unknown>;
   campi: Array<{ id: string; nome: string }>;
   produtos: Array<{ id: string; nome: string }>;
@@ -102,7 +105,7 @@ export default function PropostaPromocaoClient({
         return;
       }
       setOk(`Publicada: ${json.nome}.`);
-      setTimeout(() => router.push("/admin/precos/promocoes"), 900);
+      setTimeout(() => router.push(voltarHref), 900);
     } catch {
       setErro("Erro de rede. Tente novamente.");
     } finally {
@@ -125,7 +128,7 @@ export default function PropostaPromocaoClient({
         return;
       }
       setOk("Proposta recusada.");
-      setTimeout(() => router.push("/admin/precos/promocoes"), 900);
+      setTimeout(() => router.push(voltarHref), 900);
     } catch {
       setErro("Erro de rede. Tente novamente.");
     } finally {
