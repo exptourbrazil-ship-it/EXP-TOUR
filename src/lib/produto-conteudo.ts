@@ -372,6 +372,31 @@ export type DetalhesSnapshot = {
   escola: DetalhesEscola | null;
 };
 
+// Nome legivel do "Tipo" do curso (program_detail.education_type, um slug
+// tecnico). O cliente nao pode ver "english-for-specific-purposes". Mesmos nomes
+// de CATEGORY_LABEL (orcamento.ts), mais os tipos que so existem no catalogo.
+const TIPO_ENSINO_LABEL: Record<string, string> = {
+  "english-for-specific-purposes": "Inglês para Fins Específicos",
+  "english-for-professionals": "Inglês para Profissionais",
+  "qualification-english": "Inglês com Certificação",
+  "english-plus": "English Plus (curso + atividades)",
+  "general-english": "Inglês Geral",
+  language: "Idioma",
+};
+
+// Tipo desconhecido: nunca mostra o slug cru. Texto que ja e legivel (tem
+// espaco ou maiuscula) passa como esta; slug vira palavras ("foo-bar" -> "Foo bar").
+export function rotuloTipoEnsino(valor: unknown): string | null {
+  if (typeof valor !== "string") return null;
+  const v = valor.trim();
+  if (!v) return null;
+  const conhecido = TIPO_ENSINO_LABEL[v.toLowerCase()];
+  if (conhecido) return conhecido;
+  if (/[\sA-ZÀ-Ý]/.test(v)) return v;
+  const palavras = v.replace(/[-_]+/g, " ").trim();
+  return palavras.charAt(0).toUpperCase() + palavras.slice(1);
+}
+
 const DELIVERY_LABEL: Record<string, string> = { in_person: "Presencial", online: "Online", hybrid: "Híbrido" };
 const FORMATO_LABEL: Record<string, string> = {
   group: "Em grupo", mini_group: "Mini-grupo (2 alunos)", one_to_one: "Individual", combined: "Grupo + individual",
@@ -461,7 +486,7 @@ function parseTimetable(raw: unknown): BlocoTimetable[] {
 function detalhesPrograma(pd: unknown): DetalhesPrograma | null {
   if (!isObj(pd)) return null;
   const linhas: QuickInfoLinha[] = [];
-  pushLinha(linhas, "Tipo", pd.education_type);
+  pushLinha(linhas, "Tipo", rotuloTipoEnsino(pd.education_type));
   pushLinha(linhas, "Área", pd.subject);
   pushLinha(linhas, "Idioma", pd.language);
   if (typeof pd.delivery_method === "string" && DELIVERY_LABEL[pd.delivery_method]) {
