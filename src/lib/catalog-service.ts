@@ -26,6 +26,7 @@ import {
   type SeasonalProration,
 } from "@/lib/pricing";
 import { separarTaxas, type TaxaNormalizada } from "@/lib/taxa-opcional";
+import { avisoDeIntake, avisoDePeriodo, somarDias } from "@/lib/disponibilidade-aviso";
 import {
   precificarPacoteSomaDeItens,
   ErroPacote,
@@ -543,6 +544,7 @@ export async function priceProductFromDb(
   if (avisosSazonais) priced.warnings.push(...avisosSazonais);
 
   priced.warnings.push(...(await avisosDeElegibilidade(supabase, args, args.productId)));
+  priced.warnings.push(...(await avisosDeDisponibilidade(supabase, args, args.productId)));
 
   return priced;
 }
@@ -583,6 +585,61 @@ async function avisosDeElegibilidade(
       ? `Warning bloqueante: estudante nao elegivel para este produto (grupos: ${grupos}).`
       : `Estudante pode nao ser elegivel para este produto (grupos: ${grupos}).`,
   ];
+}
+
+/**
+ * Avisos (NUNCA bloqueantes) de Disponibilidade: data de início fora das turmas
+ * cadastradas do programa, ou estadia fora das janelas cadastradas da acomodação.
+ * A equipe pode cotar fora da lista se a escola aceitar; o aviso só chama a atenção.
+ * Falha ABERTA de propósito: erro de leitura não pode derrubar a cotação.
+ */
+async function avisosDeDisponibilidade(
+  supabase: SupabaseClient,
+  args: PriceProductArgs,
+  productId: string,
+  quantity: number = args.quantity,
+): Promise<string[]> {
+  const { data: prod } = await supabase
+    .from("product")
+    .select("kind")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", productId)
+    .maybeSingle();
+  const kind = prod?.kind as string | undefined;
+
+  if (kind === "program") {
+    const { data, error } = await supabase
+      .from("product_availability")
+      .select("start_date, status")
+      .eq("tenant_id", args.tenantId)
+      .eq("product_id", productId);
+    if (error) return [];
+    return avisoDeIntake(
+      args.startDate,
+      (data ?? []).map((r: any) => ({ startDate: r.start_date as string, status: r.status as string })),
+    );
+  }
+
+  if (kind === "accommodation") {
+    const { data, error } = await supabase
+      .from("accommodation_availability")
+      .select("period_start, period_end, status")
+      .eq("tenant_id", args.tenantId)
+      .eq("product_id", productId);
+    if (error) return [];
+    const fim = args.unit === "week" ? somarDias(args.startDate, Math.round(quantity * 7)) : null;
+    return avisoDePeriodo(
+      args.startDate,
+      fim,
+      (data ?? []).map((r: any) => ({
+        periodStart: r.period_start as string,
+        periodEnd: (r.period_end as string | null) ?? null,
+        status: r.status as string,
+      })),
+    );
+  }
+
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -695,6 +752,7 @@ async function precificarPacoteDoBanco(
     });
     const extras = [...((req as PriceRequest & { __avisosSazonais?: string[] }).__avisosSazonais ?? [])];
     extras.push(...(await avisosDeElegibilidade(supabase, args, item.id as string)));
+    extras.push(...(await avisosDeDisponibilidade(supabase, args, item.id as string, round2Quantidade(args.quantity * fator))));
     for (const o of (req as PriceRequest & { __taxasOpcionais?: TaxaOpcional[] }).__taxasOpcionais ?? []) {
       opcionais.set(o.id, o);
     }
