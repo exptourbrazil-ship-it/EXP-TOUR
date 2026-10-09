@@ -409,3 +409,22 @@ test("validarAccommodationDetail: vazio é válido; enum/weekday inválidos falh
   const e3 = validarAccommodationDetail({ distance_to_campus_minutes: -5 });
   assert.ok(!e3.ok && e3.falhas.some((f: Falha) => f.campo === "distance_to_campus_minutes"));
 });
+
+test("rotuloTipoEnsino: slug tecnico vira nome legivel, nunca o texto cru", async () => {
+  const { rotuloTipoEnsino } = await import("./produto-conteudo.ts");
+  assert.equal(rotuloTipoEnsino("english-for-specific-purposes"), "Inglês para Fins Específicos");
+  assert.equal(rotuloTipoEnsino("english-for-professionals"), "Inglês para Profissionais");
+  assert.equal(rotuloTipoEnsino("general-english"), "Inglês Geral");
+  assert.equal(rotuloTipoEnsino("qualification-english"), "Inglês com Certificação");
+  assert.equal(rotuloTipoEnsino("some-new-type"), "Some new type");
+  assert.equal(rotuloTipoEnsino("Inglês de Negócios"), "Inglês de Negócios");
+  assert.equal(rotuloTipoEnsino(""), null);
+  assert.equal(rotuloTipoEnsino(null), null);
+});
+
+test("detalhesDoSnapshot: linha Tipo mostra o nome legivel", () => {
+  const d = detalhesDoSnapshot({ programDetail: { education_type: "english-for-specific-purposes" } });
+  const tipo = d.programa?.quickInfo.find((l) => l.rotulo === "Tipo");
+  assert.ok(tipo);
+  assert.equal(tipo.valor, "Inglês para Fins Específicos");
+});
