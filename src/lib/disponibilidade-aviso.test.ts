@@ -21,14 +21,14 @@ test("intake: sem lista cadastrada não avisa", () => {
 test("intake: data fora da lista avisa e sugere as próximas datas", () => {
   const r = avisoDeIntake("2027-03-01", intakes);
   assert.equal(r.length, 1);
-  assert.match(r[0], /01\/03\/2027 não está entre as datas/);
+  assert.match(r[0], /01\/03\/2027 fora das turmas cadastradas/);
   assert.match(r[0], /06\/07\/2027, 02\/08\/2027/);
   assert.doesNotMatch(r[0], /Warning bloqueante/);
 });
 
 test("intake: depois da última data avisa a última cadastrada", () => {
   const r = avisoDeIntake("2028-12-01", intakes);
-  assert.match(r[0], /última data cadastrada é 02\/08\/2027/);
+  assert.match(r[0], /Última turma: 02\/08\/2027/);
 });
 
 test("intake: turma encerrada, lista de espera e poucas vagas", () => {
@@ -58,7 +58,7 @@ test("período: sem janelas cadastradas não avisa", () => {
 
 test("período: início fora da janela avisa e lista os períodos", () => {
   const r = avisoDePeriodo("2027-01-10", "2027-02-07", maioAgosto);
-  assert.match(r[0], /fora dos períodos/);
+  assert.match(r[0], /fora dos períodos cadastrados/);
   assert.match(r[0], /01\/05\/2027 a 31\/08\/2027/);
 });
 

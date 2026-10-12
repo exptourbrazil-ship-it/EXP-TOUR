@@ -32,20 +32,20 @@ export function avisoDeIntake(startDate: string, intakes: IntakeDisp[]): string[
   if (intakes.length === 0) return [];
   const exata = intakes.find((i) => i.startDate === startDate);
   if (exata) {
-    if (exata.status === "closed") return [`A turma de ${fmtData(startDate)} está encerrada na escola. Confirme antes de vender.`];
-    if (exata.status === "waitlist") return [`A turma de ${fmtData(startDate)} está em lista de espera na escola.`];
-    if (exata.status === "limited") return [`A turma de ${fmtData(startDate)} tem poucas vagas. Confirme a disponibilidade com a escola.`];
+    if (exata.status === "closed") return [`Turma de ${fmtData(startDate)} encerrada. Confirme com a escola.`];
+    if (exata.status === "waitlist") return [`Turma de ${fmtData(startDate)} em lista de espera.`];
+    if (exata.status === "limited") return [`Turma de ${fmtData(startDate)} com poucas vagas. Confirme com a escola.`];
     return [];
   }
   const abertas = intakes.filter((i) => i.status !== "closed").map((i) => i.startDate).sort();
   const proximas = abertas.filter((d) => d > startDate).slice(0, MAX_SUGESTOES);
   const sugestao =
     proximas.length > 0
-      ? `Próximas datas cadastradas: ${proximas.map(fmtData).join(", ")}.`
+      ? ` Próximas: ${proximas.map(fmtData).join(", ")}.`
       : abertas.length > 0
-        ? `A última data cadastrada é ${fmtData(abertas[abertas.length - 1])}.`
+        ? ` Última turma: ${fmtData(abertas[abertas.length - 1])}.`
         : "";
-  return [`${fmtData(startDate)} não está entre as datas de início cadastradas deste programa. Confirme com a escola. ${sugestao}`.trim()];
+  return [`${fmtData(startDate)} fora das turmas cadastradas.${sugestao}`];
 }
 
 /**
@@ -59,13 +59,13 @@ export function avisoDePeriodo(startDate: string, fim: string | null, periodos: 
   const abertos = periodos.filter((p) => p.status === "open");
   if (abertos.some(cobre)) return [];
   const consulta = periodos.find((p) => p.status === "on_request" && cobre(p));
-  if (consulta) return ["Esta acomodação está disponível apenas sob consulta neste período. Confirme com a escola."];
+  if (consulta) return ["Acomodação só sob consulta neste período. Confirme com a escola."];
   const fechado = periodos.find((p) => p.status === "closed" && cobre(p));
-  if (fechado) return ["Esta acomodação está fechada neste período. Confirme com a escola."];
+  if (fechado) return ["Acomodação fechada neste período. Confirme com a escola."];
   const janelas = [...periodos]
     .filter((p) => p.status === "open")
     .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
     .map((p) => `${fmtData(p.periodStart)}${p.periodEnd ? ` a ${fmtData(p.periodEnd)}` : " em diante"}`);
-  const lista = janelas.length > 0 ? ` Períodos cadastrados: ${janelas.join("; ")}.` : "";
-  return [`A estadia fica fora dos períodos de disponibilidade cadastrados desta acomodação. Confirme com a escola.${lista}`];
+  const lista = janelas.length > 0 ? ` Disponível: ${janelas.join("; ")}.` : "";
+  return [`Estadia fora dos períodos cadastrados.${lista}`];
 }
