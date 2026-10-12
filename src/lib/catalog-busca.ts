@@ -43,6 +43,13 @@ export type ItemCatalogo = {
    * quebrar fixtures antigas — use `rotuloQtdDe(item)`.
    */
   rotuloQtd?: RotuloQtd;
+  /**
+   * Acomodação cujo preço é EMBUTIDO no do curso da escola (ex.: homestay da OISE
+   * Oxford). `incluida` = a acomodação que vem no preço (tabela de zero);
+   * `dispensa` = a opção de abrir mão dela, com desconto (tabela negativa). Vem de
+   * `attributes.acomodacao_embutida`. null/ausente = acomodação comum.
+   */
+  acomodacaoEmbutida?: "incluida" | "dispensa" | null;
 };
 
 export type ForaDaFaixaItem = {
@@ -233,3 +240,31 @@ export const KIND_LABEL: Record<string, string> = {
   service: "Serviço",
   other: "Outro",
 };
+
+/** Valor válido de `attributes.acomodacao_embutida`, ou null. */
+export function acomodacaoEmbutidaValida(v: unknown): "incluida" | "dispensa" | null {
+  return v === "incluida" || v === "dispensa" ? v : null;
+}
+
+/**
+ * Aviso (nunca bloqueante) para o construtor: o curso é de um campus em que a
+ * acomodação vem embutida no preço, e o consultor não escolheu nenhuma das duas
+ * opções (a que está incluída ou a de dispensa com desconto). Sem isso a proposta
+ * sairia sem nenhuma informação de moradia, escondendo do cliente o que ele paga.
+ * Devolve null quando não há o que avisar.
+ */
+export function avisoAcomodacaoEmbutida(
+  curso: Pick<ItemCatalogo, "kind" | "campusId" | "school"> | null,
+  acomSelecionada: Pick<ItemCatalogo, "id"> | null,
+  catalogo: Pick<ItemCatalogo, "id" | "kind" | "campusId" | "name" | "acomodacaoEmbutida">[],
+): string | null {
+  if (!curso || (curso.kind !== "program" && curso.kind !== "package")) return null;
+  const doCampus = catalogo.filter((i) => i.kind === "accommodation" && i.campusId === curso.campusId && i.acomodacaoEmbutida);
+  if (doCampus.length === 0) return null;
+  if (acomSelecionada && doCampus.some((i) => i.id === acomSelecionada.id)) return null;
+  const incluida = doCampus.find((i) => i.acomodacaoEmbutida === "incluida");
+  const dispensa = doCampus.find((i) => i.acomodacaoEmbutida === "dispensa");
+  const opcoes = [incluida ? `"${incluida.name}"` : null, dispensa ? `"${dispensa.name}"` : null].filter(Boolean).join(" ou ");
+  const escola = curso.school || "A escola";
+  return `${escola} inclui acomodação no preço do curso. Na etapa de acomodação, escolha ${opcoes} para a proposta mostrar a moradia.`;
+}
