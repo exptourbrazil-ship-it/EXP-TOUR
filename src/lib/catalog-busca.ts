@@ -251,12 +251,16 @@ export function acomodacaoEmbutidaValida(v: unknown): "incluida" | "dispensa" | 
  * acomodação vem embutida no preço, e o consultor não escolheu nenhuma das duas
  * opções (a que está incluída ou a de dispensa com desconto). Sem isso a proposta
  * sairia sem nenhuma informação de moradia, escondendo do cliente o que ele paga.
+ *
+ * O texto muda com o passo: na etapa de acomodação (2) orienta a escolha; nas
+ * seguintes (3 e 4) manda VOLTAR à etapa, porque o consultor já passou por ela.
  * Devolve null quando não há o que avisar.
  */
 export function avisoAcomodacaoEmbutida(
   curso: Pick<ItemCatalogo, "kind" | "campusId" | "school"> | null,
   acomSelecionada: Pick<ItemCatalogo, "id"> | null,
   catalogo: Pick<ItemCatalogo, "id" | "kind" | "campusId" | "name" | "acomodacaoEmbutida">[],
+  passo: number = 2,
 ): string | null {
   if (!curso || (curso.kind !== "program" && curso.kind !== "package")) return null;
   const doCampus = catalogo.filter((i) => i.kind === "accommodation" && i.campusId === curso.campusId && i.acomodacaoEmbutida);
@@ -266,5 +270,15 @@ export function avisoAcomodacaoEmbutida(
   const dispensa = doCampus.find((i) => i.acomodacaoEmbutida === "dispensa");
   const opcoes = [incluida ? `"${incluida.name}"` : null, dispensa ? `"${dispensa.name}"` : null].filter(Boolean).join(" ou ");
   const escola = curso.school || "A escola";
-  return `${escola} inclui acomodação no preço do curso. Na etapa de acomodação, escolha ${opcoes} para a proposta mostrar a moradia.`;
+  const depois = passo >= 3;
+
+  if (acomSelecionada) {
+    // Acomodação comum do mesmo campus: soma ao valor do curso, que já tem a dele.
+    return depois
+      ? `A acomodação escolhida será somada ao valor do curso, que na ${escola} já inclui acomodação. Se não era a intenção, volte à etapa de acomodação e escolha ${opcoes}.`
+      : `${escola} já inclui acomodação no preço do curso e esta será somada ao valor. Para usar a que está incluída, escolha ${opcoes}.`;
+  }
+  return depois
+    ? `Nenhuma acomodação foi escolhida, e ${escola} inclui acomodação no preço do curso. Volte à etapa de acomodação e escolha ${opcoes}.`
+    : `${escola} inclui acomodação no preço do curso. Escolha ${opcoes} para a proposta mostrar a moradia.`;
 }

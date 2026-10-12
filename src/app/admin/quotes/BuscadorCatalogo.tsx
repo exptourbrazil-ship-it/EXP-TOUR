@@ -491,7 +491,7 @@ export default function BuscadorCatalogo({
   }, [acom, qtdDaAcom]);
   const foraDaFaixaNoCarrinho = cursoForaDaFaixa || acomForaDaFaixa;
   // Escola com acomodação embutida no curso: lembra de escolher a opção (aviso, não trava).
-  const avisoEmbutida = useMemo(() => avisoAcomodacaoEmbutida(curso, acom, itens), [curso, acom, itens]);
+  const avisoEmbutida = useMemo(() => avisoAcomodacaoEmbutida(curso, acom, itens, passo), [curso, acom, itens, passo]);
 
   const podeAvancar = (passo === 1 ? !!curso : true) && !foraDaFaixaNoCarrinho;
 

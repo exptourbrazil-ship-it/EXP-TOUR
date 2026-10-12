@@ -267,12 +267,26 @@ test("acomodacaoEmbutidaValida: só aceita os dois valores conhecidos", () => {
   assert.equal(acomodacaoEmbutidaValida(undefined), null);
 });
 
-test("aviso: curso de campus com acomodação embutida e nenhuma escolhida avisa, citando as duas opções", () => {
-  const a = avisoAcomodacaoEmbutida(curso, null, catalogo);
+test("aviso (passo 2): nenhuma escolhida orienta a escolha, citando as duas opções", () => {
+  const a = avisoAcomodacaoEmbutida(curso, null, catalogo, 2);
   assert.ok(a);
-  assert.match(a!, /OISE inclui acomodação no preço do curso/);
+  assert.match(a!, /OISE inclui acomodação no preço do curso\. Escolha/);
   assert.match(a!, /Casa de família OISE/);
   assert.match(a!, /Sem homestay/);
+  assert.doesNotMatch(a!, /Volte/);
+});
+
+test("aviso (passos 3 e 4): nenhuma escolhida manda VOLTAR à etapa de acomodação", () => {
+  for (const passo of [3, 4]) {
+    const a = avisoAcomodacaoEmbutida(curso, null, catalogo, passo);
+    assert.ok(a);
+    assert.match(a!, /Nenhuma acomodação foi escolhida/);
+    assert.match(a!, /Volte à etapa de acomodação/);
+  }
+});
+
+test("aviso: sem passo informado usa o texto da etapa de acomodação", () => {
+  assert.doesNotMatch(avisoAcomodacaoEmbutida(curso, null, catalogo)!, /Volte/);
 });
 
 test("aviso: escolher a casa incluída ou a de dispensa tira o aviso", () => {
@@ -280,8 +294,12 @@ test("aviso: escolher a casa incluída ou a de dispensa tira o aviso", () => {
   assert.equal(avisoAcomodacaoEmbutida(curso, sem, catalogo), null);
 });
 
-test("aviso: escolher uma acomodação COMUM do mesmo campus ainda avisa (somaria ao curso)", () => {
-  assert.ok(avisoAcomodacaoEmbutida(curso, comum, catalogo));
+test("aviso: escolher uma acomodação COMUM do mesmo campus avisa que somaria ao curso, com texto por passo", () => {
+  const a2 = avisoAcomodacaoEmbutida(curso, comum, catalogo, 2);
+  const a3 = avisoAcomodacaoEmbutida(curso, comum, catalogo, 3);
+  assert.match(a2!, /esta será somada ao valor/);
+  assert.match(a3!, /será somada ao valor do curso/);
+  assert.match(a3!, /volte à etapa de acomodação/);
 });
 
 test("aviso: sem curso, curso de outro campus ou acomodação não-curso não avisa", () => {
