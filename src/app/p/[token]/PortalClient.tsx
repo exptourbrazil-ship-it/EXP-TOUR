@@ -10,6 +10,7 @@ import {
 } from "./SimuladorParcelas";
 import type { MesInicio } from "@/app/orcamento/shared";
 import { REDE_LABEL, type Rede } from "@/lib/redes-sociais";
+import { valorExibidoDoItem } from "@/lib/valor-item";
 
 // Cliente do portal do estudante — apresentacao no formato Edvisor, em ABAS:
 // Overview (opcoes lado a lado) · Option 1..N (detalhe de cada opcao: itens +
@@ -505,7 +506,7 @@ function Overview({
                     <span className="text-[color:var(--p-muted)]">{GRUPO_LABEL[it.grupo] ?? it.grupo}: </span>
                     {it.nome}
                   </span>
-                  <span className="whitespace-nowrap text-[color:var(--p-ink)]">{fmtMoeda(it.grossAmount, it.currency)}</span>
+                  <span className="whitespace-nowrap text-[color:var(--p-ink)]">{valorExibidoDoItem(it.grupo, it.grossAmount, fmtMoeda(it.grossAmount, it.currency))}</span>
                 </li>
               ))}
               {/* F5: cada promocao com o PRAZO congelado ("valida ate" / "prazo
@@ -1356,7 +1357,7 @@ function DetalhamentoPreco({
                     <LinhaPreco
                       rotulo={it.nome}
                       detalhe={[ondeQuem || null, periodo].filter(Boolean).join(" · ") || null}
-                      valor={fmtMoeda(it.grossAmount, it.currency)}
+                      valor={valorExibidoDoItem(it.grupo, it.grossAmount, fmtMoeda(it.grossAmount, it.currency))}
                     />
                     {taxasDoItem(idx).map((t, k) => (
                       <LinhaPreco
