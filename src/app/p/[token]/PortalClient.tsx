@@ -585,16 +585,52 @@ function Overview({
 }
 
 // Bloco de bullets da ficha. Renderiza como TEXTO (o React escapa) — nunca HTML.
-function BlocoBullets({ titulo, itens }: { titulo: string; itens: string[] }) {
+// Listas curtas da ficha. O estado vai SEMPRE em icone + cor + texto (o titulo do
+// bloco diz o que e): incluido = visto; nao incluido = x em tom neutro (a area do
+// cliente nao usa vermelho); destaques viram "chips" para ler de relance.
+type TomBloco = "destaque" | "incluido" | "excluido" | "neutro";
+
+function IconeLista({ tom }: { tom: "incluido" | "excluido" | "neutro" }) {
+  const cor = tom === "incluido" ? "text-[color:var(--p-success)]" : "text-[color:var(--p-muted)]";
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={`mt-[3px] h-3.5 w-3.5 shrink-0 ${cor}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {tom === "incluido" ? <path d="M3 8.5l3.2 3.2L13 4.8" /> : tom === "excluido" ? <path d="M4 4l8 8M12 4l-8 8" /> : <path d="M4 8h8" />}
+    </svg>
+  );
+}
+
+function BlocoBullets({ titulo, itens, tom = "neutro" }: { titulo: string; itens: string[]; tom?: TomBloco }) {
   if (itens.length === 0) return null;
   return (
-    <div className="mt-2">
+    <div className="mt-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">{titulo}</p>
-      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[color:var(--p-ink)]">
-        {itens.map((t, i) => (
-          <li key={i}>{t}</li>
-        ))}
-      </ul>
+      {tom === "destaque" ? (
+        <ul className="mt-1.5 flex flex-wrap gap-1.5 text-[color:var(--p-ink)]">
+          {itens.map((t, i) => (
+            <li key={i} className="rounded-full border border-[color:var(--p-line)] bg-[color:var(--p-success-soft)] px-2.5 py-1 text-xs">
+              {t}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="mt-1 space-y-1 text-[color:var(--p-ink)]">
+          {itens.map((t, i) => (
+            <li key={i} className="flex gap-2">
+              <IconeLista tom={tom} />
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -779,9 +815,9 @@ function FichaDetalhes({ ficha }: { ficha: FichaItem }) {
             dangerouslySetInnerHTML={{ __html: ficha.descriptionHtml }}
           />
         ) : null}
-        <BlocoBullets titulo="Destaques" itens={ficha.highlights} />
-        <BlocoBullets titulo="Incluído" itens={ficha.inclusions} />
-        <BlocoBullets titulo="Não incluído" itens={ficha.exclusions} />
+        <BlocoBullets titulo="Destaques" itens={ficha.highlights} tom="destaque" />
+        <BlocoBullets titulo="Incluído" itens={ficha.inclusions} tom="incluido" />
+        <BlocoBullets titulo="Não incluído" itens={ficha.exclusions} tom="excluido" />
         <BlocoBullets titulo="Menos indicado para" itens={ficha.notIdealFor} />
         <GaleriaMidia midias={ficha.midias} />
       </div>
@@ -910,7 +946,7 @@ function EscolaBloco({
           dangerouslySetInnerHTML={{ __html: escola.descriptionHtml }}
         />
       ) : null}
-      <BlocoBullets titulo="Destaques" itens={escola.highlights} />
+      <BlocoBullets titulo="Destaques" itens={escola.highlights} tom="destaque" />
 
       {escola.amenities.length > 0 ? (
         <div className="mt-3">
