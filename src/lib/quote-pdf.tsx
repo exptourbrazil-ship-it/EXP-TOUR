@@ -20,6 +20,7 @@ import {
 } from "@react-pdf/renderer";
 import type { PublicQuote } from "@/lib/quote-issue-service";
 import { getTenantBrand, type PdfTheme } from "@/lib/tenant-brand";
+import { valorExibidoDoItem } from "@/lib/valor-item";
 import { INTER_REGULAR_TTF, INTER_MEDIUM_TTF } from "@/lib/fonts/inter";
 
 // Registra a Inter (400/500) uma unica vez. As fontes vao embutidas como data
@@ -191,7 +192,7 @@ function ItemLinha({ it, s }: { it: Opcao["itens"][number]; s: Styles }) {
             </Text>
           ) : null}
         </Text>
-        <Text style={s.itemVal}>{fmtMoeda(it.grossAmount, it.currency)}</Text>
+        <Text style={s.itemVal}>{valorExibidoDoItem(it.grupo, it.grossAmount, fmtMoeda(it.grossAmount, it.currency))}</Text>
       </View>
       {detalhe ? <Text style={s.detalheLinha}>{detalhe}</Text> : null}
     </View>
@@ -269,7 +270,7 @@ function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles
           <View key={i} wrap={false}>
             <View style={s.sumRow}>
               <Text style={s.sumRot}>{it.nome}</Text>
-              <Text>{fmtMoeda(it.grossAmount, it.currency)}</Text>
+              <Text>{valorExibidoDoItem(it.grupo, it.grossAmount, fmtMoeda(it.grossAmount, it.currency))}</Text>
             </View>
             {suas.map((tx, k) => (
               <View key={k} style={s.sumRow}>
