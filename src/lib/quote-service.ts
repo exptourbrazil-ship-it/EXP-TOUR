@@ -300,7 +300,7 @@ export async function addQuoteOption(
     .eq("tenant_id", args.tenantId)
     .eq("quote_id", args.quoteId);
   const sort = count ?? 0;
-  const label = args.label ?? `Opcao ${sort + 1}`;
+  const label = args.label ?? `Opção ${sort + 1}`;
 
   const { data: option, error: insErr } = await supabase
     .from("quote_option")
