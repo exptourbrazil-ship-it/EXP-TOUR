@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMoeda } from "@/lib/formato";
 import {
   KIND_LABEL,
+  avisoAcomodacaoEmbutida,
   faixaDe,
   filtrarItensCatalogo,
   labelQtd,
@@ -489,6 +490,8 @@ export default function BuscadorCatalogo({
     return q < f.min || q > f.max;
   }, [acom, qtdDaAcom]);
   const foraDaFaixaNoCarrinho = cursoForaDaFaixa || acomForaDaFaixa;
+  // Escola com acomodação embutida no curso: lembra de escolher a opção (aviso, não trava).
+  const avisoEmbutida = useMemo(() => avisoAcomodacaoEmbutida(curso, acom, itens), [curso, acom, itens]);
 
   const podeAvancar = (passo === 1 ? !!curso : true) && !foraDaFaixaNoCarrinho;
 
@@ -533,6 +536,12 @@ export default function BuscadorCatalogo({
                   </>
                 ) : null}
                 Ajuste a duração ou troque o item para continuar.
+              </p>
+            ) : null}
+
+            {avisoEmbutida && passo >= 2 ? (
+              <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                {avisoEmbutida}
               </p>
             ) : null}
 

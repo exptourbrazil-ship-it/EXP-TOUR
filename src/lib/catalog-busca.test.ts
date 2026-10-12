@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { faixaDe, filtrarItensCatalogo, labelUnidade, type ItemCatalogo } from "./catalog-busca.ts";
+import {
+  acomodacaoEmbutidaValida,
+  avisoAcomodacaoEmbutida,
+  faixaDe,
+  filtrarItensCatalogo,
+  labelUnidade,
+  type ItemCatalogo,
+} from "./catalog-busca.ts";
 
 function item(p: Partial<ItemCatalogo> & { id: string; name: string }): ItemCatalogo {
   return {
@@ -243,4 +250,46 @@ test("mesclarAtributos: preserva chaves existentes e remove com null", () => {
   assert.deepEqual(mesclarAtributos({ addon_de: "p1", quantity_label: "noite" }, { quantity_label: "pessoa" }), { addon_de: "p1", quantity_label: "pessoa" });
   assert.deepEqual(mesclarAtributos({ addon_de: "p1", quantity_label: "noite" }, { quantity_label: null }), { addon_de: "p1" });
   assert.deepEqual(mesclarAtributos(null, {}), {});
+});
+
+// ---- acomodação embutida no curso (ex.: homestay da OISE Oxford) -----------
+
+const curso = item({ id: "cur", name: "Tutorial 15", campusId: "oxf", school: "OISE" });
+const casa = item({ id: "casa", name: "Casa de família OISE", kind: "accommodation", campusId: "oxf", acomodacaoEmbutida: "incluida" });
+const sem = item({ id: "sem", name: "Sem homestay (desconto no curso)", kind: "accommodation", campusId: "oxf", acomodacaoEmbutida: "dispensa" });
+const comum = item({ id: "res", name: "Residência qualquer", kind: "accommodation", campusId: "oxf" });
+const catalogo = [curso, casa, sem, comum];
+
+test("acomodacaoEmbutidaValida: só aceita os dois valores conhecidos", () => {
+  assert.equal(acomodacaoEmbutidaValida("incluida"), "incluida");
+  assert.equal(acomodacaoEmbutidaValida("dispensa"), "dispensa");
+  assert.equal(acomodacaoEmbutidaValida("qualquer"), null);
+  assert.equal(acomodacaoEmbutidaValida(undefined), null);
+});
+
+test("aviso: curso de campus com acomodação embutida e nenhuma escolhida avisa, citando as duas opções", () => {
+  const a = avisoAcomodacaoEmbutida(curso, null, catalogo);
+  assert.ok(a);
+  assert.match(a!, /OISE inclui acomodação no preço do curso/);
+  assert.match(a!, /Casa de família OISE/);
+  assert.match(a!, /Sem homestay/);
+});
+
+test("aviso: escolher a casa incluída ou a de dispensa tira o aviso", () => {
+  assert.equal(avisoAcomodacaoEmbutida(curso, casa, catalogo), null);
+  assert.equal(avisoAcomodacaoEmbutida(curso, sem, catalogo), null);
+});
+
+test("aviso: escolher uma acomodação COMUM do mesmo campus ainda avisa (somaria ao curso)", () => {
+  assert.ok(avisoAcomodacaoEmbutida(curso, comum, catalogo));
+});
+
+test("aviso: sem curso, curso de outro campus ou acomodação não-curso não avisa", () => {
+  assert.equal(avisoAcomodacaoEmbutida(null, null, catalogo), null);
+  assert.equal(avisoAcomodacaoEmbutida(item({ id: "o", name: "Outro", campusId: "lon" }), null, catalogo), null);
+  assert.equal(avisoAcomodacaoEmbutida(casa, null, catalogo), null);
+});
+
+test("aviso: campus sem acomodação embutida nunca avisa", () => {
+  assert.equal(avisoAcomodacaoEmbutida(curso, null, [curso, comum]), null);
 });
