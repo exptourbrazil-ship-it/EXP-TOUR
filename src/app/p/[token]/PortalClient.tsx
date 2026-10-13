@@ -11,6 +11,7 @@ import {
 import type { MesInicio } from "@/app/orcamento/shared";
 import { REDE_LABEL, type Rede } from "@/lib/redes-sociais";
 import { valorExibidoDoItem } from "@/lib/valor-item";
+import { montarQuadroHorarios } from "@/lib/grade-horarios";
 
 // Cliente do portal do estudante — apresentacao no formato Edvisor, em ABAS:
 // Overview (opcoes lado a lado) · Option 1..N (detalhe de cada opcao: itens +
@@ -844,6 +845,59 @@ function QuickInfoGrid({ linhas }: { linhas: { rotulo: string; valor: string }[]
   );
 }
 
+// Grade de horários: quadro (faixa de horário × dias). Sem horário em algum bloco
+// (ex.: "horário flexível") não dá para montar quadro e mantém a lista por dia.
+function GradeHorarios({ timetable }: { timetable: NonNullable<DetalhesItem["programa"]>["timetable"] }) {
+  const quadro = montarQuadroHorarios(timetable);
+  if (!quadro) {
+    return (
+      <ul className="mt-1 space-y-1 text-sm text-[color:var(--p-ink)]">
+        {timetable.map((t, i) => (
+          <li key={i}>
+            <span className="text-[color:var(--p-muted)]">{t.dia}: </span>
+            <span className="inline-flex flex-wrap gap-x-3 gap-y-0.5">
+              {t.blocos.map((b, j) => {
+                const intervalo = b.isIntervalo ?? b.descricao.toLowerCase().includes("intervalo");
+                const horario = b.inicio && b.fim ? `${b.inicio}–${b.fim}` : null;
+                return (
+                  <span key={j} className={intervalo ? "italic text-[color:var(--p-muted)]" : undefined}>
+                    {horario ? `${horario} ` : ""}
+                    {b.descricao}
+                  </span>
+                );
+              })}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <div className="mt-1 overflow-x-auto">
+      <table className="w-full min-w-[280px] border-collapse text-sm text-[color:var(--p-ink)]">
+        <thead>
+          <tr className="text-left text-xs text-[color:var(--p-muted)]">
+            <th scope="col" className="border-b border-[color:var(--p-line)] py-1.5 pr-3 font-medium">Horário</th>
+            {quadro.colunas.map((c, i) => (
+              <th key={i} scope="col" className="border-b border-[color:var(--p-line)] px-2 py-1.5 font-medium">{c.rotulo}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {quadro.linhas.map((l, i) => (
+            <tr key={i} className={l.intervalo ? "italic text-[color:var(--p-muted)]" : undefined}>
+              <th scope="row" className="whitespace-nowrap border-b border-[color:var(--p-line)] py-1.5 pr-3 text-left font-normal tabular-nums">{l.horario}</th>
+              {l.celulas.map((c, j) => (
+                <td key={j} className="border-b border-[color:var(--p-line)] px-2 py-1.5">{c ?? "—"}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Detalhes por item: Quick Info do curso (+ timetable) ou atributos da acomodação.
 function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
   const prog = d.programa;
@@ -857,28 +911,7 @@ function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
           {prog.timetable.length > 0 ? (
             <div className="mt-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Grade de horários</p>
-              <ul className="mt-1 space-y-1 text-sm text-[color:var(--p-ink)]">
-                {prog.timetable.map((t, i) => (
-                  <li key={i}>
-                    <span className="text-[color:var(--p-muted)]">{t.dia}: </span>
-                    <span className="inline-flex flex-wrap gap-x-3 gap-y-0.5">
-                      {t.blocos.map((b, j) => {
-                        const ehIntervalo = b.isIntervalo ?? b.descricao.toLowerCase().includes("intervalo");
-                        const horario = b.inicio && b.fim ? `${b.inicio}–${b.fim}` : null;
-                        return (
-                          <span
-                            key={j}
-                            className={ehIntervalo ? "italic text-[color:var(--p-muted)]" : undefined}
-                          >
-                            {horario ? `${horario} ` : ""}
-                            {b.descricao}
-                          </span>
-                        );
-                      })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <GradeHorarios timetable={prog.timetable} />
             </div>
           ) : null}
         </>
