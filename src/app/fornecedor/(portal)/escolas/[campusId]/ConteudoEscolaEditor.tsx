@@ -305,7 +305,7 @@ export default function ConteudoEscolaEditor({
       {/* Localizacao e contato — gravacao DIRETA, sem fluxo de rascunho/aprovacao
           (diferente das secoes abaixo, sempre editavel independente do status). */}
       <fieldset id="localizacao" style={box}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{TI.titulo}</legend>
+        <legend className="legenda-badge-fornecedor">{TI.titulo}</legend>
         <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 12px" }}>{TI.subtitulo}</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ gridColumn: "1 / -1" }}>
@@ -349,7 +349,7 @@ export default function ConteudoEscolaEditor({
 
       {/* Sobre a escola por locale */}
       <fieldset id="sobre" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.sobreAEscola}</legend>
+        <legend className="legenda-badge-fornecedor">{T.sobreAEscola}</legend>
         <div style={{ display: "flex", gap: 6, margin: "6px 0 12px" }}>
           {LOCALES.map((l) => (
             <button key={l} type="button" onClick={() => setAba(l)}
@@ -374,7 +374,7 @@ export default function ConteudoEscolaEditor({
 
       {/* Estrutura / acreditações */}
       <fieldset id="estrutura" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.estruturaEAcreditacoes}</legend>
+        <legend className="legenda-badge-fornecedor">{T.estruturaEAcreditacoes}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.amenities}</label><textarea value={amenities} onChange={(e) => setAmenities(e.target.value)} rows={4} style={inp} placeholder="Wi-Fi&#10;Cafeteria&#10;Sala de informática" /></div>
           <div><label style={lbl}>{T.acreditacoes}</label><textarea value={accreditations} onChange={(e) => setAccreditations(e.target.value)} rows={4} style={inp} placeholder="IALC&#10;Languages Canada" /></div>
@@ -383,7 +383,7 @@ export default function ConteudoEscolaEditor({
 
       {/* Mix de nacionalidades */}
       <fieldset id="nacionalidades" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.mixNacionalidades}</legend>
+        <legend className="legenda-badge-fornecedor">{T.mixNacionalidades}</legend>
         {nacs.length === 0 ? <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{T.nenhumaNacionalidade}</p> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
             {nacs.map((n, i) => (
@@ -403,7 +403,7 @@ export default function ConteudoEscolaEditor({
 
       {/* Mídia */}
       <fieldset id="midia" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fotosVideosBrochuras}</legend>
+        <legend className="legenda-badge-fornecedor">{T.fotosVideosBrochuras}</legend>
         {midias.length === 0 ? <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{T.nenhumaMidiaEscola}</p> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
             {midias.map((m, i) => (

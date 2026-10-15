@@ -305,7 +305,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
 
       {/* Descrição por locale */}
       <fieldset id="descricao" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.descricaoEPoliticas}</legend>
+        <legend className="legenda-badge-fornecedor">{T.descricaoEPoliticas}</legend>
         <div style={{ display: "flex", gap: 6, margin: "6px 0 12px" }}>
           {LOCALES.map((l) => (
             <button key={l} type="button" onClick={() => setAba(l)}
@@ -331,7 +331,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
 
       {/* Ficha (accommodation_detail) */}
       <fieldset id="ficha" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fichaAcomodacao}</legend>
+        <legend className="legenda-badge-fornecedor">{T.fichaAcomodacao}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.tipo}</label>{sel(ACCOM(idioma), ficha.accommodation_type, (v) => setF({ accommodation_type: v }))}</div>
           <div><label style={lbl}>{T.quarto}</label>{sel(ROOM(idioma), ficha.room_type, (v) => setF({ room_type: v }))}</div>
@@ -346,7 +346,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
 
       {/* Duração e disponibilidade (min_duration/max_duration/available_from/available_until em `product`) */}
       <fieldset id="duracao" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.duracaoDisponibilidade}</legend>
+        <legend className="legenda-badge-fornecedor">{T.duracaoDisponibilidade}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.duracaoMin}</label><input value={disp.min_duration} onChange={(e) => setD({ min_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
           <div><label style={lbl}>{T.duracaoMax}</label><input value={disp.max_duration} onChange={(e) => setD({ max_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
@@ -357,7 +357,7 @@ export default function ConteudoAcomodacaoEditor({ productId, idioma }: { produc
 
       {/* Mídia */}
       <fieldset id="midia" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fotosVideos}</legend>
+        <legend className="legenda-badge-fornecedor">{T.fotosVideos}</legend>
         {midias.length === 0 ? <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{TX.nenhumaMidia}</p> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
             {midias.map((m, i) => (
