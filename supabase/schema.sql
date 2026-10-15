@@ -3507,3 +3507,5 @@ alter table if exists faixa_preco enable row level security;
 -- por anon/authenticated e search_path fixo. Ver migracao-revogar-execute-funcoes-publicas.sql
 -- (ja aplicada em producao). Funcoes novas nascem sem EXECUTE publico (default privileges).
 -- ---------------------------------------------------------------------------
+
+-- Origem do conteudo (product_content/campus_content.origem): ver migracao-origem-conteudo.sql (ja aplicada em producao).

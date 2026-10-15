@@ -28,7 +28,7 @@ async function produtoDoTenant(supabase: SupabaseClient, tenantId: string, produ
 async function snapshotConteudo(supabase: SupabaseClient, productId: string): Promise<any[]> {
   const { data } = await supabase
     .from("product_content")
-    .select("locale, description_html, highlights, inclusions, exclusions, not_ideal_for, is_machine_translated")
+    .select("locale, description_html, highlights, inclusions, exclusions, not_ideal_for, is_machine_translated, origem")
     .eq("product_id", productId);
   return data ?? [];
 }
@@ -41,7 +41,12 @@ async function snapshotMedia(supabase: SupabaseClient, productId: string): Promi
   return data ?? [];
 }
 
-function linhasConteudo(productId: string, content: ConteudoLocale[]) {
+// Origem do conteudo gravado: 'fornecedor' (veio do portal do fornecedor e foi
+// aprovado pelo admin), 'admin' (edicao direta no hub) ou 'carga_interna'
+// (carga por planilha/SQL da EXP Tour — valor padrao das linhas antigas).
+export type OrigemConteudo = "fornecedor" | "admin" | "carga_interna";
+
+function linhasConteudo(productId: string, content: ConteudoLocale[], origem: OrigemConteudo) {
   return content.map((c) => ({
     product_id: productId,
     locale: c.locale,
@@ -51,6 +56,7 @@ function linhasConteudo(productId: string, content: ConteudoLocale[]) {
     exclusions: c.exclusions,
     not_ideal_for: c.not_ideal_for,
     is_machine_translated: c.is_machine_translated,
+    origem,
   }));
 }
 
@@ -72,11 +78,12 @@ async function persistir(
   productId: string,
   content: ConteudoLocale[],
   media: MidiaItem[],
+  origem: OrigemConteudo,
 ): Promise<void> {
   const { error: eDelC } = await supabase.from("product_content").delete().eq("product_id", productId);
   if (eDelC) throw comFalha("limpar conteúdo", eDelC.message);
   if (content.length > 0) {
-    const { error } = await supabase.from("product_content").insert(linhasConteudo(productId, content));
+    const { error } = await supabase.from("product_content").insert(linhasConteudo(productId, content, origem));
     if (error) throw comFalha("inserir conteúdo", error.message);
   }
   const { error: eDelM } = await supabase.from("product_media").delete().eq("tenant_id", tenantId).eq("product_id", productId);
@@ -99,6 +106,8 @@ export type SalvarConteudoArgs = {
   productId: string; // vem da URL (server)
   content: unknown; // corpo cru
   media: unknown; // corpo cru
+  // Padrao 'admin' (edicao direta). A aprovacao de envio do fornecedor passa 'fornecedor'.
+  origem?: OrigemConteudo;
 };
 
 export async function salvarConteudoProduto(
@@ -106,6 +115,7 @@ export async function salvarConteudoProduto(
   args: SalvarConteudoArgs,
 ): Promise<{ locales: number; midias: number }> {
   const { tenantId, actor, ip, productId } = args;
+  const origem: OrigemConteudo = args.origem ?? "admin";
 
   if (!(await produtoDoTenant(supabase, tenantId, productId))) {
     throw new ConteudoAdminErro("produto_nao_encontrado");
@@ -120,7 +130,7 @@ export async function salvarConteudoProduto(
   const snapM = await snapshotMedia(supabase, productId);
 
   try {
-    await persistir(supabase, tenantId, productId, content, media);
+    await persistir(supabase, tenantId, productId, content, media, origem);
   } catch (e) {
     // Restaura os conjuntos anteriores (best-effort).
     try {
@@ -138,7 +148,7 @@ export async function salvarConteudoProduto(
     usuario: actor,
     acao: "produto.conteudo.definir",
     alvo: productId,
-    detalhe: { locales: content.length, midias: media.length },
+    detalhe: { locales: content.length, midias: media.length, origem },
     ip: ip ?? null,
   });
 

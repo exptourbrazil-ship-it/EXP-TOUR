@@ -55,7 +55,7 @@ const FORMATO = (idioma: string | undefined) => t(idioma, {
   ],
 });
 
-type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; is_machine_translated: boolean };
+type ConteudoForm = { description_html: string; highlights: string; inclusions: string; exclusions: string; not_ideal_for: string; is_machine_translated: boolean };
 type MidiaForm = { url: string; kind: string; caption: string };
 type ProgramaForm = {
   education_type: string; subject: string; language: string; delivery_method: string; format: string;
@@ -130,7 +130,7 @@ const inp: React.CSSProperties = { width: "100%", border: "1px solid var(--p-lin
 const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "var(--p-muted)", marginBottom: 4 };
 
 const arr = (v: unknown): string => (Array.isArray(v) ? v.join("\n") : "");
-const vazioConteudo = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", is_machine_translated: false });
+const vazioConteudo = (): ConteudoForm => ({ description_html: "", highlights: "", inclusions: "", exclusions: "", not_ideal_for: "", is_machine_translated: false });
 
 // ── Sumário de âncoras ───────────────────────────────────────────────────────
 // O editor de um curso empilha 5 blocos (Sobre, Ficha, Duração, Elegibilidade,
@@ -547,6 +547,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
       destaques: "Destaques (um por linha)",
       inclui: "Inclui (um por linha)",
       naoInclui: "Não inclui (um por linha)",
+      menosIndicadoPara: "Menos indicado para (um por linha)",
       fichaCurso: "Ficha do curso",
       tipoExemplo: "Tipo (ex.: General English)",
       areaAssunto: "Área/assunto",
@@ -590,6 +591,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
       destaques: "Highlights (one per line)",
       inclui: "Includes (one per line)",
       naoInclui: "Doesn't include (one per line)",
+      menosIndicadoPara: "Less suitable for (one per line)",
       fichaCurso: "Course details",
       tipoExemplo: "Type (e.g.: General English)",
       areaAssunto: "Subject area",
@@ -664,7 +666,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
     for (const l of LOCALES) {
       const c = (p.content ?? []).find((x: any) => x.locale === l);
       base[l] = c
-        ? { description_html: c.description_html ?? "", highlights: arr(c.highlights), inclusions: arr(c.inclusions), exclusions: arr(c.exclusions), is_machine_translated: !!c.is_machine_translated }
+        ? { description_html: c.description_html ?? "", highlights: arr(c.highlights), inclusions: arr(c.inclusions), exclusions: arr(c.exclusions), not_ideal_for: arr(c.not_ideal_for), is_machine_translated: !!c.is_machine_translated }
         : vazioConteudo();
     }
     setPorLocale(base);
@@ -811,10 +813,11 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
           <label style={lbl}>{T.descricaoHtml}</label>
           <textarea value={c.description_html} onChange={(e) => setLoc({ description_html: e.target.value })} rows={5} style={inp} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.destaques}</label><textarea value={c.highlights} onChange={(e) => setLoc({ highlights: e.target.value })} rows={4} style={inp} /></div>
           <div><label style={lbl}>{T.inclui}</label><textarea value={c.inclusions} onChange={(e) => setLoc({ inclusions: e.target.value })} rows={4} style={inp} /></div>
           <div><label style={lbl}>{T.naoInclui}</label><textarea value={c.exclusions} onChange={(e) => setLoc({ exclusions: e.target.value })} rows={4} style={inp} /></div>
+          <div><label style={lbl}>{T.menosIndicadoPara}</label><textarea value={c.not_ideal_for} onChange={(e) => setLoc({ not_ideal_for: e.target.value })} rows={4} style={inp} /></div>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, color: "var(--p-ink)" }}>
           <input type="checkbox" checked={c.is_machine_translated} onChange={(e) => setLoc({ is_machine_translated: e.target.checked })} /> {TX.traducaoAutomatica}

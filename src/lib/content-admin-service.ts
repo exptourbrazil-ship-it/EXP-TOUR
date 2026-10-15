@@ -201,6 +201,7 @@ export async function aprovarConteudoPeloAdmin(
       productId: det.productId,
       content: payload.content ?? [],
       media: payload.media ?? [],
+      origem: "fornecedor",
     });
   } catch (e) {
     console.error("[content-admin] materializar conteudo/midia falhou:", e instanceof Error ? e.message : e);
