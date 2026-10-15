@@ -144,7 +144,7 @@ export default function TabelaPrecoEditor({
       ) : null}
 
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Tabela</legend>
+        <legend className="legenda-badge">Tabela</legend>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="Nome" erro={falhaDe("name")} className="sm:col-span-2">
             <input value={campo.name} onChange={(e) => set("name", e.target.value)} className={inp} placeholder="Ex.: General English 2026" />
@@ -197,7 +197,7 @@ export default function TabelaPrecoEditor({
 
       {/* Faixas */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Faixas de preço</legend>
+        <legend className="legenda-badge">Faixas de preço</legend>
         <p className="mb-2 text-xs text-neutral-500">
           A faixa vale a partir da quantidade informada (a próxima faixa define o teto). A primeira faixa é o preço-âncora.
         </p>
@@ -227,7 +227,7 @@ export default function TabelaPrecoEditor({
 
       {/* Produtos vinculados */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Produtos desta tabela</legend>
+        <legend className="legenda-badge">Produtos desta tabela</legend>
         <p className="mb-2 text-xs text-neutral-500">Selecione os produtos (do mesmo campus) que usam esta tabela de preço.</p>
         {falhaDe("product_ids") ? <p className="mb-2 text-xs text-red-600">{falhaDe("product_ids")}</p> : null}
         {produtosDoCampus.length === 0 ? (
@@ -319,7 +319,7 @@ function Preview({ produtos, unit, edicao }: { produtos: { id: string; name: str
 
   return (
     <fieldset className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4">
-      <legend className="px-1 font-serif text-base text-brand">Pré-visualizar preço</legend>
+      <legend className="legenda-badge">Pré-visualizar preço</legend>
       <p className="mb-2 text-xs text-neutral-500">
         Usa o preço vivo no banco — reflete a <b>versão salva</b> (salve antes para ver as faixas atuais).
       </p>

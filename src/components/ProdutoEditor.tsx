@@ -570,7 +570,7 @@ const inp = "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-      <legend className="px-1 font-serif text-base text-brand">{titulo}</legend>
+      <legend className="legenda-badge">{titulo}</legend>
       {children}
     </fieldset>
   );

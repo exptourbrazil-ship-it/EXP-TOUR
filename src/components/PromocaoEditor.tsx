@@ -157,7 +157,7 @@ export default function PromocaoEditor({
       {erroGeral ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{erroGeral}</div> : null}
 
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Promoção</legend>
+        <legend className="legenda-badge">Promoção</legend>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="Nome" erro={falhaDe("name")} className="sm:col-span-2">
             <input value={campo.name} onChange={(e) => set("name", e.target.value)} className={inp} placeholder="Ex.: Early bird 2026" />
@@ -183,7 +183,7 @@ export default function PromocaoEditor({
       {/* Valor / semântica (condicional) */}
       {(exigeValue || exigeSemantics) && (
         <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-          <legend className="px-1 font-serif text-base text-brand">Valor</legend>
+          <legend className="legenda-badge">Valor</legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {exigeValue ? (
               <Campo label={campo.promo_type === "percent_off" ? "Percentual (0–100)" : campo.promo_type === "free_units" ? "Nº de unidades" : "Valor"} erro={falhaDe("value")}>
@@ -211,7 +211,7 @@ export default function PromocaoEditor({
 
       {/* Aplicação */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Aplicação</legend>
+        <legend className="legenda-badge">Aplicação</legend>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Sel label="Aplica-se a" v={campo.applies_to} set={(x) => { set("applies_to", x); set("applies_to_ref_id", ""); }} opts={APPLIES_TO} />
           {exigeRef ? (
@@ -244,7 +244,7 @@ export default function PromocaoEditor({
 
       {/* Janelas */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Janelas de vigência</legend>
+        <legend className="legenda-badge">Janelas de vigência</legend>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="Reserva de"><input type="date" value={campo.booking_from} onChange={(e) => set("booking_from", e.target.value)} className={inp} /></Campo>
           <Campo label="Reserva até" erro={falhaDe("booking_until")}><input type="date" value={campo.booking_until} onChange={(e) => set("booking_until", e.target.value)} className={inp} /></Campo>
@@ -255,7 +255,7 @@ export default function PromocaoEditor({
 
       {/* Segmentação */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Segmentação (opcional)</legend>
+        <legend className="legenda-badge">Segmentação (opcional)</legend>
         <p className="mb-2 text-xs text-neutral-500">Restringe a promoção a critérios (ex.: nacionalidade BR, mercado latam). Sem segmentos, vale para todos.</p>
         <div className="space-y-2">
           {targets.map((t, i) => (

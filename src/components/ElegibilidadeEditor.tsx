@@ -154,7 +154,7 @@ export default function ElegibilidadeEditor({ productId, inicial }: { productId:
 
   return (
     <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-      <legend className="px-1 font-serif text-base text-brand">Elegibilidade</legend>
+      <legend className="legenda-badge">Elegibilidade</legend>
       <p className="mb-3 text-xs text-neutral-500">
         Regras que definem quem pode cotar este produto. <b>Mesmo grupo = E</b> (todas precisam passar);
         <b> grupos diferentes = OU</b>. Marque <b>bloqueante</b> para impedir a emissão da cotação (senão é só um aviso).
