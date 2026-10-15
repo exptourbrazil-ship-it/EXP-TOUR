@@ -31,6 +31,20 @@ function paraForm(c: any): ConteudoForm {
   };
 }
 
+// Resumo da origem do conteudo gravado (coluna product_content.origem). Conteudo
+// vindo do portal do fornecedor (aprovado pelo admin) e o destino; carga interna
+// e edicao direta do admin ainda nao foram confirmadas pelo fornecedor.
+function origemDoConteudo(content: any[]): { rotulo: string; fornecedor: boolean } {
+  const origens = new Set((content ?? []).map((c) => (typeof c?.origem === "string" ? c.origem : "carga_interna")));
+  if (origens.size === 0) return { rotulo: "Sem conteúdo", fornecedor: false };
+  if (origens.size === 1 && origens.has("fornecedor")) return { rotulo: "Fornecedor (portal)", fornecedor: true };
+  const partes: string[] = [];
+  if (origens.has("fornecedor")) partes.push("Fornecedor (portal)");
+  if (origens.has("admin")) partes.push("Edição do admin");
+  if (origens.has("carga_interna")) partes.push("Carga interna EXP Tour");
+  return { rotulo: partes.join(" + "), fornecedor: false };
+}
+
 export default function ConteudoEditor({
   productId,
   inicialContent,
@@ -97,6 +111,15 @@ export default function ConteudoEditor({
     <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
       <legend className="legenda-badge">Conteúdo e mídia</legend>
       <p className="mb-3 text-xs text-neutral-500">Descrição e listas por idioma (uma por linha) + imagens/vídeos por URL. É o que aparece na ficha do produto no portal.</p>
+      <p className="mb-3 text-xs">
+        <span className="text-neutral-500">Origem do conteúdo: </span>
+        <span className={"rounded-full px-2 py-0.5 font-semibold " + (origemDoConteudo(inicialContent).fornecedor ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800")}>
+          {origemDoConteudo(inicialContent).rotulo}
+        </span>
+        {origemDoConteudo(inicialContent).fornecedor ? null : (
+          <span className="text-neutral-500"> — o fornecedor ainda não confirmou este texto pelo portal dele.</span>
+        )}
+      </p>
 
       {erroGeral ? <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{erroGeral}</div> : null}
       {ok ? <div className="mb-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">Conteúdo salvo.</div> : null}

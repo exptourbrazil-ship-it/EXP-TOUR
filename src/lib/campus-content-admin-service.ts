@@ -61,7 +61,7 @@ async function campusDoTenant(supabase: SupabaseClient, tenantId: string, campus
 }
 
 async function snapCampusContent(supabase: SupabaseClient, campusId: string): Promise<any[]> {
-  const { data } = await supabase.from("campus_content").select("locale, highlights, highlights_footer, description_html, is_machine_translated").eq("campus_id", campusId);
+  const { data } = await supabase.from("campus_content").select("locale, highlights, highlights_footer, description_html, is_machine_translated, origem").eq("campus_id", campusId);
   return data ?? [];
 }
 async function snapCampusMedia(supabase: SupabaseClient, campusId: string): Promise<any[]> {
@@ -81,6 +81,8 @@ async function materializarCampus(supabase: SupabaseClient, tenantId: string, ca
       highlights_footer: c.highlights_footer,
       description_html: c.description_html,
       is_machine_translated: c.is_machine_translated,
+      // Conteudo de escola so entra aqui pela aprovacao de um envio do fornecedor.
+      origem: "fornecedor",
     }));
     const { error } = await supabase.from("campus_content").insert(rows);
     if (error) throw new Error(`inserir conteúdo: ${error.message}`);
