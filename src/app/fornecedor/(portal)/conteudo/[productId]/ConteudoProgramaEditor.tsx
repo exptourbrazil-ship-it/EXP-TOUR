@@ -797,7 +797,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
 
       {/* Conteúdo por locale */}
       <fieldset id="sobre" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.descricaoELista}</legend>
+        <legend className="legenda-badge-fornecedor">{T.descricaoELista}</legend>
         <div style={{ display: "flex", gap: 6, margin: "6px 0 12px" }}>
           {LOCALES.map((l) => (
             <button key={l} type="button" onClick={() => setAba(l)}
@@ -823,7 +823,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
 
       {/* Ficha (program_detail) */}
       <fieldset id="ficha" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fichaCurso}</legend>
+        <legend className="legenda-badge-fornecedor">{T.fichaCurso}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.tipoExemplo}</label><input value={prog.education_type} onChange={(e) => setP({ education_type: e.target.value })} style={inp} /></div>
           <div><label style={lbl}>{T.areaAssunto}</label><input value={prog.subject} onChange={(e) => setP({ subject: e.target.value })} style={inp} /></div>
@@ -860,7 +860,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
 
       {/* Duração e disponibilidade (min_duration/max_duration/available_from/available_until em `product`) */}
       <fieldset id="duracao" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.duracaoDisponibilidade}</legend>
+        <legend className="legenda-badge-fornecedor">{T.duracaoDisponibilidade}</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={lbl}>{T.duracaoMin}</label><input value={disp.min_duration} onChange={(e) => setD({ min_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
           <div><label style={lbl}>{T.duracaoMax}</label><input value={disp.max_duration} onChange={(e) => setD({ max_duration: e.target.value })} inputMode="numeric" style={inp} /></div>
@@ -879,7 +879,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
 
       {/* Elegibilidade (eligibility_rule) */}
       <fieldset id="elegibilidade" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.elegibilidade}</legend>
+        <legend className="legenda-badge-fornecedor">{T.elegibilidade}</legend>
         <p style={{ marginTop: 0, marginBottom: 10, fontSize: 12, color: "var(--p-muted)" }}>{T.elegibilidadeAjuda}</p>
         {regrasElig.length === 0 ? (
           <p style={{ marginBottom: 10, fontSize: 13, color: "var(--p-muted)" }}>{T.elegibilidadeVazia}</p>
@@ -945,7 +945,7 @@ export default function ConteudoProgramaEditor({ productId, nomePrograma, idioma
 
       {/* Mídia */}
       <fieldset id="midia" style={box} disabled={!editavel}>
-        <legend style={{ fontFamily: "var(--p-heading)", color: "var(--p-ink)", fontSize: 16, padding: "0 4px" }}>{T.fotosVideos}</legend>
+        <legend className="legenda-badge-fornecedor">{T.fotosVideos}</legend>
         {midias.length === 0 ? (
           <p style={{ color: "var(--p-muted)", fontSize: 13, margin: "0 0 10px" }}>{TX.nenhumaMidia}</p>
         ) : (
