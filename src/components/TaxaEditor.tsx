@@ -129,7 +129,7 @@ export default function TaxaEditor({
       ) : null}
 
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Taxa</legend>
+        <legend className="legenda-badge">Taxa</legend>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="Nome" erro={falhaDe("name")} className="sm:col-span-2">
             <input value={campo.name} onChange={(e) => set("name", e.target.value)} className={inp} placeholder="Ex.: Taxa de matrícula" />
@@ -156,7 +156,7 @@ export default function TaxaEditor({
 
       {/* Valor: fixo XOR derivado de tabela */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Valor</legend>
+        <legend className="legenda-badge">Valor</legend>
         {falhaDe("amount") ? <p className="mb-2 text-xs text-red-600">{falhaDe("amount")}</p> : null}
         <div className="mb-3 flex gap-4 text-sm">
           <label className="flex items-center gap-1"><input type="radio" name="modo" checked={campo.modo === "fixo"} onChange={() => set("modo", "fixo")} /> Valor fixo</label>
@@ -184,7 +184,7 @@ export default function TaxaEditor({
 
       {/* Alvo: tipos e/ou produtos */}
       <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-        <legend className="px-1 font-serif text-base text-brand">Onde a taxa se aplica</legend>
+        <legend className="legenda-badge">Onde a taxa se aplica</legend>
         <p className="mb-2 text-xs text-neutral-500">Por tipo de produto e/ou produtos específicos (do mesmo campus). Informe ao menos um.</p>
         {falhaDe("applies_to_kinds") ? <p className="mb-2 text-xs text-red-600">{falhaDe("applies_to_kinds")}</p> : null}
         <div className="mb-3">

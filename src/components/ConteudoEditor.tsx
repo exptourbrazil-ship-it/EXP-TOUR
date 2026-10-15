@@ -95,7 +95,7 @@ export default function ConteudoEditor({
 
   return (
     <fieldset className="rounded-xl border border-neutral-200 bg-white p-4">
-      <legend className="px-1 font-serif text-base text-brand">Conteúdo e mídia</legend>
+      <legend className="legenda-badge">Conteúdo e mídia</legend>
       <p className="mb-3 text-xs text-neutral-500">Descrição e listas por idioma (uma por linha) + imagens/vídeos por URL. É o que aparece na ficha do produto no portal.</p>
 
       {erroGeral ? <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{erroGeral}</div> : null}

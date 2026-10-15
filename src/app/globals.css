@@ -210,6 +210,32 @@
   background-color: var(--p-page);
 }
 
+/* --- Titulo de secao (legend de fieldset) em badge ---
+   Os editores do admin (produto, tabela de preco, taxa, promocao, elegibilidade,
+   conteudo) abrem cada secao com um <legend>. Em texto solto ele se perdia na
+   borda do cartao; como badge fica destacado e marca onde a secao comeca. No
+   claro usa a cor da marca com texto creme; no escuro (onde a marca e quase
+   preta) usa um indigo claro com texto branco e filete, com contraste medido. */
+@layer components {
+  .legenda-badge {
+    display: inline-block;
+    margin-inline: 0.25rem;
+    padding: 0.2rem 0.85rem;
+    border-radius: 9999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1.25rem;
+    background-color: rgb(var(--brand));
+    color: rgb(var(--brand-cream));
+  }
+}
+[data-tema="escuro"] .admin-tenant .legenda-badge {
+  background-color: #3a4170;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px #5a639c;
+}
+
 /* --- Superficies --- */
 [data-tema="escuro"] .admin-tenant .bg-white {
   background-color: var(--a-surface);
