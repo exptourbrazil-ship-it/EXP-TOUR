@@ -11,14 +11,11 @@ export const runtime = "nodejs";
 // Rota administrativa para preencher os dados da aba Viagem (viagem_info) de um
 // contrato: escola, endereco, acomodacao, contato local e observacoes.
 //
-// Autenticacao: cookie de sessao de admin (login em /admin/login), com
-// fallback ao Bearer ADMIN_CAMBIO_SECRET.
-async function checarAuth(request: Request, capacidade: CapacidadeAdmin): Promise<boolean> {
-  if (await checarCapacidadeAdmin(capacidade)) return true;
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (!adminSecret) return false;
-  return authHeader === "Bearer " + adminSecret;
+// Autenticacao: SOMENTE sessao de admin com a capacidade (login em /admin/login).
+// O atalho Bearer ADMIN_CAMBIO_SECRET nao vale aqui: promoveria o portador a
+// super-admin global (ver admin-guard.ts).
+async function checarAuth(_request: Request, capacidade: CapacidadeAdmin): Promise<boolean> {
+  return checarCapacidadeAdmin(capacidade);
 }
 
 function getSupabase() {

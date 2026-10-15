@@ -8,13 +8,9 @@ export const runtime = "nodejs";
 // administrativo — util para ver pagamentos com status "erro" que precisam de
 // reprocessamento. Filtro opcional por ?status= e ?source=.
 //
-// Autenticacao: cookie de sessao de admin, com fallback ao Bearer
-// ADMIN_CAMBIO_SECRET (mesmo padrao das demais rotas admin).
-async function checarAuth(request: Request): Promise<boolean> {
-  if (await checarCapacidadeAdmin("config.gerir")) return true;
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  if (!adminSecret) return false;
-  return request.headers.get("authorization") === "Bearer " + adminSecret;
+// Autenticacao: SOMENTE sessao de admin com a capacidade config.gerir.
+async function checarAuth(_request: Request): Promise<boolean> {
+  return checarCapacidadeAdmin("config.gerir");
 }
 
 function getSupabase() {
