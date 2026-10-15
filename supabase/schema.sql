@@ -3501,3 +3501,9 @@ create table if not exists faixa_preco (
 );
 create index if not exists idx_faixa_preco_busca on faixa_preco(tenant_id, nivel, destino, semanas);
 alter table if exists faixa_preco enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Revisao de seguranca (14/10/2026): funcoes do schema public nao executaveis
+-- por anon/authenticated e search_path fixo. Ver migracao-revogar-execute-funcoes-publicas.sql
+-- (ja aplicada em producao). Funcoes novas nascem sem EXECUTE publico (default privileges).
+-- ---------------------------------------------------------------------------
