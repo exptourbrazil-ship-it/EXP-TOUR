@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
+import { escopoTenantAdmin } from "@/lib/admin-tenant";
 import AntecipacoesClient from "./AntecipacoesClient";
 
 export const runtime = "nodejs";
@@ -23,10 +24,14 @@ export default async function AdminAntecipacoesPage() {
       process.env.NEXT_PUBLIC_SUPABASE_URL as string,
       process.env.SUPABASE_SERVICE_ROLE_KEY as string
     );
-    const { data } = await supabase
+    // Isolamento por tenant (falha ao resolver o escopo => catch => lista vazia).
+    const escopo = await escopoTenantAdmin(supabase);
+    let q = supabase
       .from("contratos")
       .select("id, nome, moeda, estudante_nome, titular:titulares(nome_completo)")
       .order("created_at", { ascending: false });
+    if (!escopo.global) q = q.eq("tenant_id", escopo.tenantId);
+    const { data } = await q;
     contratos = (data || []).map((c: any) => ({
       id: c.id,
       moeda: c.moeda || "",

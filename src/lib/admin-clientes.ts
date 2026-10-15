@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { agruparCarteira } from "@/lib/clientes";
 import type { ClienteCarteira } from "@/lib/clientes";
 import { hojeBrasilISO } from "@/lib/admin-financeiro";
+import { escopoTenantAdmin } from "@/lib/admin-tenant";
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -19,17 +20,24 @@ export async function carregarClientes(
   modo: "ativos" | "arquivados" = "ativos",
 ): Promise<ClienteCarteira[]> {
   const supabase = getSupabase();
+  // Escopo do admin (isolamento por tenant): admin escopado so enxerga titulares
+  // e contratos do SEU tenant, como as rotas de API. Global => sem filtro. Erro
+  // ao resolver o escopo propaga (a pagina cai no estado de erro): falha FECHADA.
+  const escopo = await escopoTenantAdmin(supabase);
 
   let q = supabase
     .from("titulares")
     .select("id, nome_completo, cpf, telefone, email, data_inicio");
+  if (!escopo.global) q = q.eq("tenant_id", escopo.tenantId);
   q = modo === "arquivados" ? q.not("arquivado_em", "is", null) : q.is("arquivado_em", null);
   const { data: titulares, error: erroTitulares } = await q;
   if (erroTitulares) throw new Error("Falha ao carregar titulares.");
 
-  const { data: contratos, error: erroContratos } = await supabase
+  let qContratos = supabase
     .from("contratos")
     .select("id, titular_id, estudante_nome, pais_destino, moeda");
+  if (!escopo.global) qContratos = qContratos.eq("tenant_id", escopo.tenantId);
+  const { data: contratos, error: erroContratos } = await qContratos;
   if (erroContratos) throw new Error("Falha ao carregar contratos.");
 
   const { data: parcelas, error: erroParcelas } = await supabase
@@ -52,11 +60,20 @@ export async function carregarClientes(
   }
   excecoes = (excecoesData || []).filter((e) => !!e.titular_id) as { titular_id: string }[];
 
+  // Parcelas e processos entram so quando pertencem aos contratos/titulares do
+  // escopo (a agregacao ja os ignora; filtrar aqui evita carregar o resto).
+  const idsContratos = new Set((contratos || []).map((c: any) => c.id));
+  const idsTitulares = new Set((titulares || []).map((t: any) => t.id));
+  const parcelasDoEscopo = escopo.global
+    ? parcelas || []
+    : (parcelas || []).filter((p: any) => idsContratos.has(p.contrato_id));
+  const excecoesDoEscopo = escopo.global ? excecoes : excecoes.filter((e) => idsTitulares.has(e.titular_id));
+
   return agruparCarteira(
     (titulares || []) as any,
     (contratos || []) as any,
-    (parcelas || []) as any,
+    parcelasDoEscopo as any,
     hojeBrasilISO(),
-    excecoes
+    excecoesDoEscopo
   );
 }

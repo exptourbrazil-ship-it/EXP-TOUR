@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { podeAdmin } from "@/lib/admin-roles";
 import { resumoViagem, type ViagemInfoParcial } from "@/lib/viagem";
+import { escopoTenantAdmin } from "@/lib/admin-tenant";
 import ViagemInfoClient from "./ViagemInfoClient";
 
 export const runtime = "nodejs";
@@ -34,10 +35,14 @@ export default async function AdminViagemPage() {
       process.env.SUPABASE_SERVICE_ROLE_KEY as string
     );
 
-    const { data: linhas } = await supabase
+    // Isolamento por tenant (falha ao resolver o escopo => catch => lista vazia).
+    const escopo = await escopoTenantAdmin(supabase);
+    let qLinhas = supabase
       .from("contratos")
       .select("id, nome, estudante_nome, pais_destino, titular_id")
       .order("estudante_nome", { ascending: true });
+    if (!escopo.global) qLinhas = qLinhas.eq("tenant_id", escopo.tenantId);
+    const { data: linhas } = await qLinhas;
 
     const titularIds = Array.from(new Set((linhas || []).map((c: any) => c.titular_id).filter(Boolean)));
     const contratoIds = (linhas || []).map((c: any) => c.id);
