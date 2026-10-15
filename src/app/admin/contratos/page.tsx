@@ -4,6 +4,7 @@ import { podeAdmin } from "@/lib/admin-roles";
 import { signTemplateConfigurado } from "@/lib/sign-template";
 import { statusMaisRecentePorContrato } from "@/lib/contratos";
 import { deriveEstadoContrato, estadoValido, rotuloEstado, type EstadoContrato } from "@/lib/contrato-estados";
+import { escopoTenantAdmin } from "@/lib/admin-tenant";
 import ContratosClient from "./ContratosClient";
 
 export const runtime = "nodejs";
@@ -46,10 +47,15 @@ export default async function AdminContratosPage() {
       process.env.SUPABASE_SERVICE_ROLE_KEY as string
     );
 
-    const { data: linhas } = await supabase
+    // Isolamento por tenant: admin escopado so lista contratos do seu tenant.
+    // Falha ao resolver o escopo cai no catch (lista vazia): falha FECHADA.
+    const escopo = await escopoTenantAdmin(supabase);
+    let qLinhas = supabase
       .from("contratos")
       .select("id, nome, estudante_nome, pais_destino, moeda, valor_total, titular_id, cancelado_em, cancelado_tipo, cancelado_motivo, estado, visto_status, data_inicio")
       .order("created_at", { ascending: false });
+    if (!escopo.global) qLinhas = qLinhas.eq("tenant_id", escopo.tenantId);
+    const { data: linhas } = await qLinhas;
 
     const titularIds = Array.from(new Set((linhas || []).map((c: any) => c.titular_id).filter(Boolean)));
     const contratoIds = (linhas || []).map((c: any) => c.id);

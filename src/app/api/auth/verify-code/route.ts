@@ -4,6 +4,15 @@ import { criarSessao, SESSION_COOKIE } from "@/lib/session";
 import { conferirCodigoAcesso } from "@/lib/codigo-acesso";
 import { resolverEscopoTenant } from "@/lib/cron-tenant";
 import { tenantPertenceAoDeploy } from "@/lib/login-tenant";
+import { checarELimitar, obterIp } from "@/lib/rate-limit";
+
+// Rate limit anti forca bruta do codigo de 6 digitos (janela de 10 min), alem do
+// limite de 5 tentativas por codigo. Por IP e por CPF; configuravel por env. O
+// teto por CPF acomoda os 3 codigos que o request-code libera na mesma janela
+// (3 x 5 tentativas).
+const RL_JANELA_SEG = Number(process.env.RATE_LIMIT_JANELA_SEG || "600");
+const RL_VERIFY_IP = Number(process.env.RATE_LIMIT_VERIFY_CODE_IP || "30");
+const RL_VERIFY_CPF = Number(process.env.RATE_LIMIT_VERIFY_CODE_CPF || "15");
 
 function limparCpf(cpf: string): string {
     return cpf.replace(/\D/g, "");
@@ -26,6 +35,21 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const cpfLimpo = limparCpf(cpf);
+
+  // Rate limit ANTES de qualquer leitura do codigo. Falha FECHADA: sem o contador
+  // nao ha defesa contra forca bruta. O registro do hit vem antes da contagem
+  // (ver checarELimitar), entao rajadas paralelas nao rendem palpites extras.
+  const erro429 = NextResponse.json(
+    { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
+    { status: 429 }
+  );
+  const ip = obterIp(request);
+  if (!(await checarELimitar(supabase, `verify-code:ip:${ip}`, RL_VERIFY_IP, RL_JANELA_SEG, Date.now(), true))) {
+    return erro429;
+  }
+  if (!(await checarELimitar(supabase, `verify-code:cpf:${cpfLimpo}`, RL_VERIFY_CPF, RL_JANELA_SEG, Date.now(), true))) {
+    return erro429;
+  }
 
   const { data: titular } = await supabase
       .from("titulares")
@@ -80,18 +104,40 @@ export async function POST(request: Request) {
               );
   }
 
+  // Reserva a tentativa ANTES de comparar, de forma atomica (compare-and-set no
+  // contador lido). Requisicoes paralelas leem o mesmo valor, mas so UMA vence o
+  // update: as demais nao chegam a comparar palpite nenhum. Assim o teto de 5
+  // tentativas por codigo vale tambem sob concorrencia. Falha FECHADA: erro do
+  // banco ou update sem linha afetada recusa a tentativa.
+  const { data: reservada } = await supabase
+      .from("codigos_acesso")
+      .update({ tentativas: codigoAcesso.tentativas + 1 })
+      .eq("id", codigoAcesso.id)
+      .eq("tentativas", codigoAcesso.tentativas)
+      .is("used_at", null)
+      .select("id");
+  if (!reservada || reservada.length === 0) {
+        return NextResponse.json(
+          { error: "Não foi possível validar agora. Aguarde um instante e tente novamente." },
+          { status: 429 }
+        );
+  }
+
   if (!conferirCodigoAcesso(codigo, codigoAcesso as any)) {
-        await supabase
-          .from("codigos_acesso")
-          .update({ tentativas: codigoAcesso.tentativas + 1 })
-          .eq("id", codigoAcesso.id);
         return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
   }
 
-  await supabase
+  // Consome o codigo de forma condicional: so abre sessao quem de fato marcou
+  // used_at (um mesmo codigo nao abre duas sessoes em paralelo).
+  const { data: consumido } = await supabase
       .from("codigos_acesso")
       .update({ used_at: agoraISO })
-      .eq("id", codigoAcesso.id);
+      .eq("id", codigoAcesso.id)
+      .is("used_at", null)
+      .select("id");
+  if (!consumido || consumido.length === 0) {
+        return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 });
+  }
 
   const sessao = criarSessao(titular.id);
 

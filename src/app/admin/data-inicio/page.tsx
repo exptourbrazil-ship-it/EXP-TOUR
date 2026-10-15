@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { exigirCapacidade } from "@/lib/admin-guard";
 import { podeAdmin } from "@/lib/admin-roles";
+import { escopoTenantAdmin } from "@/lib/admin-tenant";
 import DataInicioClient from "./DataInicioClient";
 
 export const runtime = "nodejs";
@@ -28,10 +29,14 @@ export default async function AdminDataInicioPage() {
       process.env.NEXT_PUBLIC_SUPABASE_URL as string,
       process.env.SUPABASE_SERVICE_ROLE_KEY as string
     );
-    const { data } = await supabase
+    // Isolamento por tenant (falha ao resolver o escopo => catch => lista vazia).
+    const escopo = await escopoTenantAdmin(supabase);
+    let q = supabase
       .from("titulares")
       .select("id, nome_completo, email, data_inicio")
       .order("nome_completo", { ascending: true });
+    if (!escopo.global) q = q.eq("tenant_id", escopo.tenantId);
+    const { data } = await q;
     titulares = (data || []) as TitularDataInicioAdmin[];
   } catch (err) {
     // Fail-safe de exibicao: renderiza vazio, mas loga sem PII para a falha nao
