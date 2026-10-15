@@ -35,6 +35,13 @@ export async function POST(request: Request) {
   const sessao = await sessaoFornecedorAtual();
   if (!sessao) return NextResponse.json({ ok: false, erro: "Não autenticado." }, { status: 401 });
 
+  // Dado bancario do repasse: so o admin do fornecedor e o financeiro propoem.
+  // (O papel vem do banco, via sessaoFornecedorAtual.) Admissions e marketing
+  // seguem vendo o historico, mas nao propoem troca.
+  if (sessao.role !== "supplier_admin" && sessao.role !== "finance") {
+    return NextResponse.json({ ok: false, erro: "Sem permissão para propor dados bancários." }, { status: 403 });
+  }
+
   const supabase = getServiceClient();
   let tenantId: string;
   try {

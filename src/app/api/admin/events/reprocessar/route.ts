@@ -16,13 +16,9 @@ export const runtime = "nodejs";
 // A operacao e idempotente: reconsulta o pagamento no MP e so marca a parcela
 // como paga se ainda nao estiver paga.
 //
-// Autenticacao: cookie de sessao de admin, com fallback ao Bearer
-// ADMIN_CAMBIO_SECRET.
-async function checarAuth(request: Request): Promise<boolean> {
-  if (await checarCapacidadeAdmin("config.gerir")) return true;
-  const adminSecret = process.env.ADMIN_CAMBIO_SECRET;
-  if (!adminSecret) return false;
-  return request.headers.get("authorization") === "Bearer " + adminSecret;
+// Autenticacao: SOMENTE sessao de admin com a capacidade config.gerir.
+async function checarAuth(_request: Request): Promise<boolean> {
+  return checarCapacidadeAdmin("config.gerir");
 }
 
 function getSupabase() {

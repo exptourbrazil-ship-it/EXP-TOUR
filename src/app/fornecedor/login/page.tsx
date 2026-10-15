@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { proximoSeguro } from "@/lib/redirect-seguro";
 import { t } from "@/lib/fornecedor-i18n";
 
 // Tela de login do Portal do Fornecedor por CÓDIGO enviado ao e-mail (mesmo
@@ -16,7 +17,7 @@ export default function FornecedorLoginPage() {
   const router = useRouter();
   const next =
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("next") || "/fornecedor"
+      ? proximoSeguro(new URLSearchParams(window.location.search).get("next"), "/fornecedor", "/fornecedor")
       : "/fornecedor";
 
   const [idioma, setIdioma] = useState("pt" as "pt" | "en");

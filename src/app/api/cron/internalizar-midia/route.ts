@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bearerConfere } from "@/lib/segredo";
 import { createClient } from "@supabase/supabase-js";
 import { tenantIdAtual } from "@/lib/catalog-service";
 import { internalizarFavicons, internalizarMidias } from "@/lib/midia-internalizacao-service";
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     console.error("CRON_SECRET nao configurado: execucao do cron recusada.");
     return NextResponse.json({ ok: false, erro: "Cron nao configurado" }, { status: 503 });
   }
-  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+  if (!bearerConfere(request.headers.get("authorization"), cronSecret)) {
     return NextResponse.json({ ok: false, erro: "Nao autorizado" }, { status: 401 });
   }
 

@@ -1,14 +1,43 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verificarSessaoAdmin, ADMIN_SESSION_COOKIE } from "@/lib/admin-session";
-import { podeAdmin, type CapacidadeAdmin, type PapelAdmin } from "@/lib/admin-roles";
+import { createClient } from "@supabase/supabase-js";
+import { papelValido, podeAdmin, type CapacidadeAdmin, type PapelAdmin } from "@/lib/admin-roles";
+
+// A sessao e um token HMAC de 12h; sozinha ela nao sabe se o admin foi desativado
+// ou rebaixado depois do login. Aqui a sessao e REVALIDADA no banco a cada uso:
+// admin_users.ativo e o papel vigente (o do banco vence o do cookie). Falha
+// FECHADA: erro de banco, linha ausente ou inativo => sem sessao.
+// Sessao cujo "usuario" nao e um e-mail (login legado por usuario/senha) nao tem
+// linha em admin_users e segue como antes.
+async function revalidarAdmin(
+  sessao: { usuario: string; papel: PapelAdmin } | null,
+): Promise<{ usuario: string; papel: PapelAdmin } | null> {
+  if (!sessao) return null;
+  if (!sessao.usuario.includes("@")) return sessao;
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+    );
+    const { data, error } = await supabase
+      .from("admin_users")
+      .select("papel, ativo")
+      .eq("email", sessao.usuario.toLowerCase())
+      .maybeSingle();
+    if (error || !data || data.ativo !== true) return null;
+    return { usuario: sessao.usuario, papel: papelValido(data.papel) ? data.papel : "operacao" };
+  } catch {
+    return null;
+  }
+}
 
 // Guarda server-side para paginas de admin: verifica a assinatura completa
 // do cookie de sessao (HMAC) no runtime Node. Se invalido/ausente,
 // redireciona para /admin/login. Retorna o usuario e o papel autenticados.
 export async function exigirAdmin(next?: string): Promise<{ usuario: string; papel: PapelAdmin }> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
-  const sessao = verificarSessaoAdmin(token);
+  const sessao = await revalidarAdmin(verificarSessaoAdmin(token));
   if (!sessao) {
     const alvo = next ? "/admin/login?next=" + encodeURIComponent(next) : "/admin/login";
     redirect(alvo);
@@ -32,14 +61,14 @@ export async function exigirCapacidade(
 // Versao para rotas de API: retorna true/false sem redirecionar.
 export async function checarAdminCookie(): Promise<boolean> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
-  return !!verificarSessaoAdmin(token);
+  return !!(await revalidarAdmin(verificarSessaoAdmin(token)));
 }
 
 // Sessao completa (usuario + papel) para rotas de API, ou null se nao houver
 // sessao valida.
 export async function sessaoAdminAtual(): Promise<{ usuario: string; papel: PapelAdmin } | null> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
-  return verificarSessaoAdmin(token);
+  return revalidarAdmin(verificarSessaoAdmin(token));
 }
 
 // Guarda de ROTA DE API por capacidade: true so se ha sessao valida E o papel

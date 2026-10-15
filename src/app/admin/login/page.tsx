@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { proximoSeguro } from "@/lib/redirect-seguro";
 
 // Tela de login do administrador por CÓDIGO enviado ao e-mail.
 // Passo 1: o staff clica em "Enviar código" e um código de 6 dígitos é
@@ -10,7 +11,7 @@ import { useRouter } from "next/navigation";
 // cria um cookie de sessão httpOnly (12h) e redireciona para o painel.
 export default function AdminLoginPage() {
   const router = useRouter();
-  const next = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("next") || "/admin") : "/admin";
+  const next = typeof window !== "undefined" ? proximoSeguro(new URLSearchParams(window.location.search).get("next"), "/admin", "/admin") : "/admin";
 
   const [etapa, setEtapa] = useState("solicitar" as "solicitar" | "codigo");
   const [email, setEmail] = useState("");
