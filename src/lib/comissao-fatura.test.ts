@@ -93,14 +93,17 @@ test("vencimento padrao: emissao + prazo (30 por padrao)", () => {
   assert.equal(diferencaDias("2027-01-01", "2027-01-11"), 10);
 });
 
-test("lembretes: so nos marcos e so com saldo", () => {
+test("lembretes: marco alcancado (catch-up) e so com saldo", () => {
   const f = { status: "enviada" as const, due_date: "2027-02-10", commission_amount: 500, received_amount: 0 };
+  assert.equal(lembreteDevido(f, "2027-02-06"), null); // faltam 4 dias: ainda cedo
   assert.equal(lembreteDevido(f, "2027-02-07"), "a_vencer");
+  assert.equal(lembreteDevido(f, "2027-02-09"), "a_vencer"); // dia perdido continua devido
   assert.equal(lembreteDevido(f, "2027-02-10"), "vence_hoje");
   assert.equal(lembreteDevido(f, "2027-02-11"), "vencida_1");
+  assert.equal(lembreteDevido(f, "2027-02-20"), "vencida_1");
   assert.equal(lembreteDevido(f, "2027-02-25"), "vencida_15");
   assert.equal(lembreteDevido(f, "2027-03-12"), "vencida_30");
-  assert.equal(lembreteDevido(f, "2027-02-08"), null);
+  assert.equal(lembreteDevido(f, "2027-06-01"), "vencida_30");
   assert.equal(lembreteDevido({ ...f, status: "paga", received_amount: 500 }, "2027-02-10"), null);
   assert.equal(lembreteDevido({ ...f, status: "rascunho" }, "2027-02-10"), null);
   assert.equal(lembreteDevido({ ...f, status: "cancelada" }, "2027-02-10"), null);

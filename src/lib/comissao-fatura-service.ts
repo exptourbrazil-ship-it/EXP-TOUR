@@ -6,6 +6,7 @@
 // auditadas (admin_audit); o dinheiro so muda por registrar_recebimento_comissao
 // (RPC atomica), nunca por tela solta. Posse sempre por tenant (e pelo
 // supplier_id da sessao, no lado do fornecedor).
+import { createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarAuditoriaAdmin } from "@/lib/admin-audit";
 import {
@@ -91,6 +92,7 @@ export async function salvarEmissor(
 ): Promise<Resultado> {
   const r = normalizarEmissor(args.entrada);
   if (!r.ok) return { ok: false, erro: r.erro };
+  const anterior = await obterEmissor(supabase, args.tenantId);
   const { error } = await supabase
     .from("tenant_config")
     .upsert({ tenant_id: args.tenantId, fatura_emissor: r.valor, atualizado_em: new Date().toISOString() }, { onConflict: "tenant_id" });
@@ -98,7 +100,17 @@ export async function salvarEmissor(
     console.error("[comissao] salvar emissor:", error.message);
     return { ok: false, erro: "Não foi possível salvar os dados da fatura." };
   }
-  await registrarAuditoriaAdmin(supabase, { usuario: args.adminUser, acao: "financeiro.fatura_emissor.definir", alvo: args.tenantId, ip: args.ip ?? null });
+  // Trilha: quais campos mudaram e o hash curto das instrucoes de pagamento antes/depois
+  // (dado bancario sai em todo PDF/e-mail: troca silenciosa e vetor de desvio de pagamento).
+  const campos = (Object.keys(r.valor) as (keyof EmissorFatura)[]).filter((k) => !anterior || anterior[k] !== r.valor[k]);
+  const h = (v: string | undefined) => (v ? createHash("sha256").update(v).digest("hex").slice(0, 12) : null);
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.adminUser,
+    acao: "financeiro.fatura_emissor.definir",
+    alvo: args.tenantId,
+    detalhe: { campos_alterados: campos, instrucoes_hash_antes: h(anterior?.paymentInstructions), instrucoes_hash_depois: h(r.valor.paymentInstructions) },
+    ip: args.ip ?? null,
+  });
   return { ok: true };
 }
 
@@ -577,29 +589,56 @@ export async function cancelarFatura(
 // A escola ve e baixa as faturas dela e INFORMA a previsao/observacao de
 // pagamento. Nao marca como paga: dinheiro so muda pelo registro do financeiro.
 
-export async function listarFaturasDaEscola(supabase: SupabaseClient, tenantId: string, supplierId: string): Promise<FaturaLista[]> {
+// O que a ESCOLA enxerga: so os campos que a tela dela usa. Nada interno (quem criou,
+// ids de tenant/caso, motivo de cancelamento, observacoes internas).
+const SEL_FATURA_ESCOLA =
+  "id, numero, status, currency, student_name, program_name, commission_amount, received_amount, issue_date, due_date, school_expected_at, school_note";
+
+export type FaturaEscola = {
+  id: string;
+  numero: string;
+  status: StatusFatura;
+  currency: string;
+  student_name: string | null;
+  program_name: string | null;
+  commission_amount: number;
+  received_amount: number;
+  issue_date: string | null;
+  due_date: string | null;
+  school_expected_at: string | null;
+  school_note: string | null;
+  exibicao: StatusExibicao;
+  diasAtraso: number;
+  saldo: number;
+};
+
+export async function listarFaturasDaEscola(supabase: SupabaseClient, tenantId: string, supplierId: string): Promise<FaturaEscola[]> {
   const { data } = await supabase
     .from("comissao_fatura")
-    .select(`${SEL_FATURA}, supplier:supplier(display_name)`)
+    .select(SEL_FATURA_ESCOLA)
     .eq("tenant_id", tenantId)
     .eq("supplier_id", supplierId)
     .in("status", ["emitida", "enviada", "paga"])
     .order("created_at", { ascending: false })
     .limit(200);
   const hoje = hojeISO();
-  return ((data ?? []) as unknown as (FaturaRow & { supplier?: unknown })[]).map((r) => paraLista(r, hoje));
+  return ((data ?? []) as unknown as Omit<FaturaEscola, "exibicao" | "diasAtraso" | "saldo">[]).map((r) => {
+    const ex = statusExibicao(r, hoje);
+    return { ...r, commission_amount: Number(r.commission_amount), received_amount: Number(r.received_amount), exibicao: ex.status, diasAtraso: ex.diasAtraso, saldo: saldoFatura(r) };
+  });
 }
 
-export async function faturaDaEscola(supabase: SupabaseClient, tenantId: string, supplierId: string, id: string): Promise<FaturaRow | null> {
+// Posse: a fatura e da escola da sessao e esta visivel a ela (emitida/enviada/paga).
+export async function faturaDaEscola(supabase: SupabaseClient, tenantId: string, supplierId: string, id: string): Promise<boolean> {
   const { data } = await supabase
     .from("comissao_fatura")
-    .select(SEL_FATURA)
+    .select("id")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .eq("supplier_id", supplierId)
     .in("status", ["emitida", "enviada", "paga"])
     .maybeSingle();
-  return (data as FaturaRow | null) ?? null;
+  return !!data;
 }
 
 export async function informarPagamentoDaEscola(
@@ -634,8 +673,7 @@ export async function informarPagamentoDaEscola(
 
 /** Gera o PDF para a escola (checando posse pelo supplier_id da sessao). */
 export async function pdfDaFaturaParaEscola(supabase: SupabaseClient, tenantId: string, supplierId: string, id: string) {
-  const f = await faturaDaEscola(supabase, tenantId, supplierId, id);
-  if (!f) return { ok: false as const, erro: "Fatura não encontrada." };
+  if (!(await faturaDaEscola(supabase, tenantId, supplierId, id))) return { ok: false as const, erro: "Fatura não encontrada." };
   return gerarPdfDaFatura(supabase, tenantId, id);
 }
 
@@ -670,14 +708,22 @@ export async function enviarLembretesDoDia(
     const chave = `comissao:lembrete:${f.id}:${marco}`;
     const { error: eEv } = await supabase.from("events").insert({ source: "comissao", event_type: "lembrete", external_id: f.id, idempotency_key: chave, payload: { marco, hoje }, status: "processado" });
     if (eEv) {
-      // 23505 = marco ja enviado (idempotencia); outros erros: nao arrisca duplicar.
+      // 23505 = marco ja enviado (idempotencia). Qualquer outro erro: loga e nao arrisca duplicar.
+      if ((eEv as { code?: string }).code !== "23505") console.error("[comissao] lembrete: falha ao reivindicar marco:", eEv.message);
       continue;
     }
+    // Reivindicou o marco: se nada sair (sem contato ativo ou todos os envios falharem),
+    // libera a chave para a proxima execucao tentar de novo (o marco continua devido).
+    const liberarMarco = async () => {
+      await supabase.from("events").delete().eq("idempotency_key", chave);
+    };
     const dests = await destinatariosDaEscola(supabase, f.supplier_id);
     if (dests.length === 0) {
       semDestinatario++;
+      await liberarMarco();
       continue;
     }
+    let enviouAlgum = false;
     const s = Array.isArray(f.supplier) ? (f.supplier as { display_name: string | null }[])[0] : (f.supplier as { display_name: string | null } | null);
     const atraso = f.due_date ? Math.max(0, diferencaDias(f.due_date, hoje) ?? 0) : 0;
     const situacao = marco === "a_vencer" ? "a_vencer" : marco === "vence_hoje" ? "vence_hoje" : "vencida";
@@ -695,10 +741,12 @@ export async function enviarLembretesDoDia(
           tenantSlug: process.env.CATALOGO_TENANT_SLUG ?? "forio",
         });
         lembretes++;
+        enviouAlgum = true;
       } catch {
         falhas++;
       }
     }
+    if (!enviouAlgum) await liberarMarco();
   }
   return { avaliadas: faturas.length, lembretes, semDestinatario, falhas };
 }

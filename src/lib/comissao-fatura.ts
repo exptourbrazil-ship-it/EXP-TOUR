@@ -290,16 +290,25 @@ export function normalizarEmissor(raw: unknown): { ok: true; valor: EmissorFatur
 
 export type TipoLembrete = "a_vencer" | "vence_hoje" | "vencida_1" | "vencida_15" | "vencida_30";
 
-/** Lembrete devido HOJE para a fatura, ou null. Um por marco (a chave de idempotencia evita repetir). */
+/**
+ * Marco de lembrete ALCANCADO pela fatura hoje (o mais avancado), ou null. Quem decide
+ * se ja foi enviado e a chave de idempotencia (um e-mail por marco): se um dia nao
+ * houve envio (cron fora do ar, escola sem contato), o marco continua devido no dia
+ * seguinte e e reenviado — nenhum marco se perde por ser "so de um dia".
+ *  - de 3 dias antes ate o dia anterior ao vencimento: a_vencer
+ *  - no dia: vence_hoje
+ *  - 1 a 14 dias de atraso: vencida_1 | 15 a 29: vencida_15 | 30 ou mais: vencida_30
+ */
 export function lembreteDevido(f: FaturaParaStatus, hojeISO: string): TipoLembrete | null {
   if (f.status !== "emitida" && f.status !== "enviada") return null;
   if (saldoFatura(f) <= 0 || !f.due_date) return null;
   const d = diferencaDias(hojeISO, f.due_date); // positivo = faltam d dias
   if (d === null) return null;
-  if (d === 3) return "a_vencer";
+  if (d > 3) return null;
+  if (d > 0) return "a_vencer";
   if (d === 0) return "vence_hoje";
-  if (d === -1) return "vencida_1";
-  if (d === -15) return "vencida_15";
-  if (d === -30) return "vencida_30";
-  return null;
+  const atraso = -d;
+  if (atraso >= 30) return "vencida_30";
+  if (atraso >= 15) return "vencida_15";
+  return "vencida_1";
 }

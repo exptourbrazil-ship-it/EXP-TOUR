@@ -33,6 +33,11 @@ export async function POST(request: Request) {
   const { supabase, tenantId, adminUser, ip } = c.ctx;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") return NextResponse.json({ ok: false, erro: "Corpo inválido." }, { status: 400 });
+  // Normaliza os ids ANTES de checar o escopo: o validador tambem faz trim, e um id com
+  // espaco nas pontas nao pode pular o barrar* e ainda passar na validacao.
+  for (const k of ["supplierId", "contratoId"] as const) {
+    if (typeof body[k] === "string") body[k] = (body[k] as string).trim();
+  }
 
   // Isolamento por tenant: escola e caso precisam estar no escopo do admin.
   if (ehUuid(body.supplierId)) {
