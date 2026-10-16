@@ -77,6 +77,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     capacidade: "financeiro.ver",
   },
   {
+    href: "/admin/contas-a-receber",
+    label: "Contas a receber",
+    descricao: "Comissões das escolas: faturas, cobrança e recebimentos",
+    icone: ICONES.financeiro,
+    capacidade: "financeiro.ver",
+  },
+  {
     href: "/admin/contas-a-pagar",
     label: "Contas a pagar",
     descricao: "Repasses às escolas (D-30) e comprovantes",
@@ -251,6 +258,7 @@ const GRUPO_POR_HREF: Record<string, GrupoNav> = {
   "/admin/viagem": "Clientes",
   "/admin/financeiro": "Financeiro",
   "/admin/contas-a-pagar": "Financeiro",
+  "/admin/contas-a-receber": "Financeiro",
   "/admin/contas-bancarias": "Financeiro",
   "/admin/antecipacoes": "Financeiro",
   "/admin/cambio": "Financeiro",

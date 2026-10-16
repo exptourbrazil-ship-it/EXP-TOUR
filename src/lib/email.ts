@@ -146,6 +146,10 @@ async function enviarViaResend(
   tipo: string,
   subject: string,
   html: string,
+  // Anexos (Resend: `content` em base64). Opcional; so a fatura de comissao usa hoje.
+  anexos?: { filename: string; content: Buffer }[],
+  // Responder para (ex.: financeiro da EXP Tour na fatura de comissao).
+  replyTo?: string,
 ) {
   const apiKey = getApiKey();
   const from = fromFor(t);
@@ -154,7 +158,16 @@ async function enviarViaResend(
     response = await fetch(RESEND_API_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [destinatario], subject, html }),
+      body: JSON.stringify({
+        from,
+        to: [destinatario],
+        subject,
+        html,
+        ...(replyTo ? { reply_to: replyTo } : {}),
+        ...(anexos && anexos.length
+          ? { attachments: anexos.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+          : {}),
+      }),
     });
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : "Falha de rede ao chamar a API do Resend";
@@ -860,4 +873,75 @@ export async function enviarAvisoInternoEmail(assunto: string, texto: string) {
   const destinatario = process.env.ADMIN_EMAIL || "rodrigo@exp-tour.com";
   const html = `<div style="font-family:${t.font};color:${t.ink};font-size:14px;white-space:pre-wrap;">${escaparHtml(texto)}</div>`;
   return enviarViaResend(t, destinatario, "aviso_interno", assunto, html);
+}
+
+
+// ---- Fatura de comissao (EXP Tour/Forio -> escola) -------------------------
+
+export type DadosFaturaComissaoEmail = {
+  numero: string;
+  escolaNome: string;
+  valorFormatado: string; // ja formatado na moeda (ex.: "CAD 960.00")
+  vencimentoFormatado: string; // ex.: "Jan 19, 2027"
+  alunoNome: string | null;
+  programa: string | null;
+  emissorNome: string;
+  emissorEmail: string;
+  portalUrl: string | null;
+  pdf: Buffer;
+  tenantSlug?: string | null;
+};
+
+// Envia a fatura de comissao, com o PDF anexo, a um contato financeiro da escola.
+// Em ingles (a escola e a destinataria). Lanca em falha (o servico decide o que
+// fazer; o resultado tambem fica em email_logs).
+export async function enviarFaturaComissaoEmail(destinatario: string, nome: string, d: DadosFaturaComissaoEmail) {
+  const t = resolveTheme(d.tenantSlug ?? null);
+  const primeiro = (nome || "").trim().split(" ")[0];
+  const saudacao = primeiro ? `Dear ${escaparHtml(primeiro)},` : "Dear team,";
+  const aluno = d.alunoNome ? `${escaparHtml(d.alunoNome)}${d.programa ? ` — ${escaparHtml(d.programa)}` : ""}` : escaparHtml(d.programa || "");
+  const corpo = `<p style="color:${t.ink};font-size:16px;margin:0 0 14px;">${saudacao}</p>
+<p style="color:${t.ink};font-size:15px;margin:0 0 14px;">Please find attached commission invoice <strong>${escaparHtml(d.numero)}</strong> for the enrolment below, which the student paid directly to ${escaparHtml(d.escolaNome)}.</p>
+<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 14px;">
+${aluno ? `<tr><td style="color:${t.ink};font-size:14px;padding:6px 0;border-bottom:1px solid ${t.line};">Enrolment</td><td style="color:${t.ink};font-size:14px;padding:6px 0;border-bottom:1px solid ${t.line};text-align:right;">${aluno}</td></tr>` : ""}
+<tr><td style="color:${t.ink};font-size:14px;padding:6px 0;border-bottom:1px solid ${t.line};">Amount due</td><td style="color:${t.ink};font-size:14px;padding:6px 0;border-bottom:1px solid ${t.line};text-align:right;"><strong>${escaparHtml(d.valorFormatado)}</strong></td></tr>
+<tr><td style="color:${t.ink};font-size:14px;padding:6px 0;">Due date</td><td style="color:${t.ink};font-size:14px;padding:6px 0;text-align:right;">${escaparHtml(d.vencimentoFormatado)}</td></tr>
+</table>
+<p style="color:${t.ink};font-size:14px;margin:0 0 6px;">Payment instructions are in the attached PDF. You can also see your invoices with ${escaparHtml(d.emissorNome)} in the supplier portal.</p>
+${d.portalUrl ? `<table role="presentation">${botaoRow(t, d.portalUrl, "Open supplier portal")}</table>` : ""}
+<p style="color:${t.ink};font-size:13px;margin:18px 0 0;">Questions? Reply to this e-mail (${escaparHtml(d.emissorEmail)}).</p>`;
+  return enviarViaResend(
+    t,
+    destinatario,
+    "fatura_comissao",
+    `Commission invoice ${d.numero} — ${d.escolaNome}`,
+    layout(t, { corpo, maxw: 520 }),
+    [{ filename: `commission-invoice-${d.numero}.pdf`, content: d.pdf }],
+    d.emissorEmail,
+  );
+}
+
+// Lembrete de fatura de comissao (vencendo/vencida), sem anexo, com link para o portal.
+export async function enviarLembreteFaturaComissaoEmail(
+  destinatario: string,
+  nome: string,
+  d: { numero: string; escolaNome: string; saldoFormatado: string; vencimentoFormatado: string; situacao: "a_vencer" | "vence_hoje" | "vencida"; diasAtraso: number; emissorEmail: string; portalUrl: string | null; tenantSlug?: string | null },
+) {
+  const t = resolveTheme(d.tenantSlug ?? null);
+  const primeiro = (nome || "").trim().split(" ")[0];
+  const saudacao = primeiro ? `Dear ${escaparHtml(primeiro)},` : "Dear team,";
+  const frase =
+    d.situacao === "a_vencer"
+      ? `commission invoice <strong>${escaparHtml(d.numero)}</strong> is due on <strong>${escaparHtml(d.vencimentoFormatado)}</strong>.`
+      : d.situacao === "vence_hoje"
+        ? `commission invoice <strong>${escaparHtml(d.numero)}</strong> is due <strong>today</strong>.`
+        : `commission invoice <strong>${escaparHtml(d.numero)}</strong> was due on ${escaparHtml(d.vencimentoFormatado)} and is <strong>${d.diasAtraso} day${d.diasAtraso === 1 ? "" : "s"} overdue</strong>.`;
+  const corpo = `<p style="color:${t.ink};font-size:16px;margin:0 0 14px;">${saudacao}</p>
+<p style="color:${t.ink};font-size:15px;margin:0 0 14px;">This is a reminder that ${frase}</p>
+<p style="color:${t.ink};font-size:15px;margin:0 0 14px;">Outstanding balance: <strong>${escaparHtml(d.saldoFormatado)}</strong>. If you have already paid, please reply with the transfer date and we will reconcile it.</p>
+${d.portalUrl ? `<table role="presentation">${botaoRow(t, d.portalUrl, "View invoice in the portal")}</table>` : ""}
+<p style="color:${t.ink};font-size:13px;margin:18px 0 0;">Questions? Reply to this e-mail (${escaparHtml(d.emissorEmail)}).</p>`;
+  const assunto =
+    d.situacao === "vencida" ? `Overdue: commission invoice ${d.numero}` : `Reminder: commission invoice ${d.numero}`;
+  return enviarViaResend(t, destinatario, "lembrete_fatura_comissao", assunto, layout(t, { corpo, maxw: 520 }), undefined, d.emissorEmail);
 }
