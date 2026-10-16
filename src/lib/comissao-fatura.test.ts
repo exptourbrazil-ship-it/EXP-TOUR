@@ -160,3 +160,24 @@ test("fatura com itens: total sem comissao nenhuma e recusado", () => {
   const r = validarNovaFatura({ supplierId: SUP, currency: "USD", itens: [{ kind: "fee", description: "Taxa", baseAmount: 50, commissionBasis: "none" }] });
   assert.equal(r.ok, false);
 });
+
+test("fatura com itens: fixo em moeda diferente da fatura exige comissao manual", () => {
+  const r = validarNovaFatura({
+    supplierId: SUP, currency: "CAD",
+    itens: [{ kind: "program", description: "Curso", baseAmount: 3000, commissionType: "fixed_per_sale", commissionValue: 300, commissionCurrency: "USD", ruleSource: "padrao" }],
+  });
+  assert.equal(r.ok, false);
+});
+
+test("fatura com itens: fixo por venda vale uma vez por fatura", () => {
+  const r = validarNovaFatura({
+    supplierId: SUP, currency: "USD",
+    itens: [
+      { kind: "program", description: "Curso", baseAmount: 3000, commissionType: "fixed_per_sale", commissionValue: 300, commissionCurrency: "USD" },
+      { kind: "accommodation", description: "Casa", baseAmount: 1000, commissionType: "fixed_per_sale", commissionValue: 300, commissionCurrency: "USD" },
+    ],
+  });
+  assert.ok(r.ok);
+  assert.deepEqual(r.valor.itens.map((i) => i.commissionAmount), [300, 0]);
+  assert.equal(r.valor.commissionAmount, 300);
+});

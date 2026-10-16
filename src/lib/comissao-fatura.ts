@@ -168,6 +168,8 @@ function parseItens(
   if (!Array.isArray(raw) || raw.length === 0) return { ok: false, erro: "Adicione ao menos um item." };
   if (raw.length > MAX_ITENS) return { ok: false, erro: `No máximo ${MAX_ITENS} itens por fatura.` };
   const itens: ItemFaturaNormalizado[] = [];
+  // "Fixo por venda" vale uma vez por fatura: so a primeira linha calculada por ele recebe o valor.
+  let vendaFixaAplicada = false;
   for (let i = 0; i < raw.length; i++) {
     const n = i + 1;
     const o = (raw[i] && typeof raw[i] === "object" ? raw[i] : {}) as Record<string, unknown>;
@@ -200,7 +202,14 @@ function parseItens(
     if (manual) origem = "manual";
     if (comissao === null) {
       if (basis === "none") comissao = 0;
-      else if (type && valor !== null) comissao = calcularComissaoFatura({ base, currency, type, value: valor, weeks });
+      else if (type && valor !== null) {
+        const moedaRegra = typeof o.commissionCurrency === "string" ? o.commissionCurrency : null;
+        if (type === "fixed_per_sale" && vendaFixaAplicada) comissao = 0;
+        else {
+          comissao = calcularComissaoFatura({ base, currency, type, value: valor, weeks, acordoCurrency: moedaRegra });
+          if (comissao !== null && type === "fixed_per_sale") vendaFixaAplicada = true;
+        }
+      }
     }
     if (comissao === null) return { ok: false, erro: `Item ${n}: sem regra de comissão aplicável — informe o valor da comissão.` };
     comissao = round2(comissao);

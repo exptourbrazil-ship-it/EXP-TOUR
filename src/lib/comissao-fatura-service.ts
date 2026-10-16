@@ -875,7 +875,7 @@ async function preencherRegrasDosItens(supabase: SupabaseClient, tenantId: strin
     if (jaTem) return it;
     const r = resolverRegra({ kind: typeof it.kind === "string" ? it.kind : null, productId: typeof it.productId === "string" ? it.productId : null, hoje, regras, padrao: padrao ? { basis: padrao.basis, type: padrao.type, value: padrao.value, currency: padrao.currency } : null });
     if (!r) return it;
-    return { ...it, commissionBasis: r.basis, commissionType: r.type, commissionValue: r.value, ruleSource: r.origem };
+    return { ...it, commissionBasis: r.basis, commissionType: r.type, commissionValue: r.value, commissionCurrency: r.currency, ruleSource: r.origem };
   });
   return { ...entrada, itens };
 }
@@ -935,13 +935,16 @@ export async function salvarRegra(
     if (!dono.has(r.productId)) return { ok: false, erro: "O produto não pertence a esta escola." };
   }
   // Uma regra ativa por tipo/produto: arquiva a anterior (fica no historico) e grava a nova.
-  let q = supabase.from("supplier_commission_rule").update({ archived_at: new Date().toISOString() }).eq("tenant_id", args.tenantId).eq("supplier_id", args.supplierId).eq("scope", r.scope).is("archived_at", null);
+  // Se a gravacao falhar, a anterior e restaurada para a escola nao ficar sem regra.
+  const agora = new Date().toISOString();
+  let q = supabase.from("supplier_commission_rule").update({ archived_at: agora }).eq("tenant_id", args.tenantId).eq("supplier_id", args.supplierId).eq("scope", r.scope).is("archived_at", null);
   q = r.scope === "kind" ? q.eq("kind", r.kind as string) : q.eq("product_id", r.productId as string);
-  const { error: eArq } = await q;
+  const { data: arquivadas, error: eArq } = await q.select("id");
   if (eArq) {
     console.error("[comissao] arquivar regra anterior:", eArq.message);
     return { ok: false, erro: "Não foi possível salvar a regra." };
   }
+  const idsArquivados = ((arquivadas ?? []) as { id: string }[]).map((x) => x.id);
   const { data, error } = await supabase
     .from("supplier_commission_rule")
     .insert({
@@ -963,6 +966,10 @@ export async function salvarRegra(
     .single();
   if (error || !data) {
     console.error("[comissao] salvar regra:", error?.message);
+    if (idsArquivados.length > 0) {
+      const { error: eRest } = await supabase.from("supplier_commission_rule").update({ archived_at: null }).in("id", idsArquivados).eq("tenant_id", args.tenantId);
+      if (eRest) console.error("[comissao] restaurar regra anterior:", eRest.message);
+    }
     return { ok: false, erro: "Não foi possível salvar a regra." };
   }
   await registrarAuditoriaAdmin(supabase, {
@@ -1006,12 +1013,14 @@ export async function salvarAcordoPadrao(
   const r = v.valor;
   const { data: sup } = await supabase.from("supplier").select("id, tenant_id").eq("id", args.supplierId).maybeSingle();
   if (!sup || (sup as { tenant_id: string }).tenant_id !== args.tenantId) return { ok: false, erro: "Escola não encontrada." };
-  const { error: eArq } = await supabase
+  const { data: acordosArq, error: eArq } = await supabase
     .from("supplier_agreement")
     .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("tenant_id", args.tenantId)
     .eq("supplier_id", args.supplierId)
-    .is("archived_at", null);
+    .is("archived_at", null)
+    .select("id");
+  const idsAcordos = ((acordosArq ?? []) as { id: string }[]).map((x) => x.id);
   if (eArq) {
     console.error("[comissao] arquivar acordo:", eArq.message);
     return { ok: false, erro: "Não foi possível salvar o acordo." };
@@ -1033,6 +1042,10 @@ export async function salvarAcordoPadrao(
     .single();
   if (error || !data) {
     console.error("[comissao] salvar acordo:", error?.message);
+    if (idsAcordos.length > 0) {
+      const { error: eRest } = await supabase.from("supplier_agreement").update({ archived_at: null }).in("id", idsAcordos).eq("tenant_id", args.tenantId);
+      if (eRest) console.error("[comissao] restaurar acordo anterior:", eRest.message);
+    }
     return { ok: false, erro: "Não foi possível salvar o acordo." };
   }
   await registrarAuditoriaAdmin(supabase, {
