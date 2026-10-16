@@ -70,6 +70,7 @@ export const FORNECEDOR_NAV: FornecedorNavItem[] = [
   { href: "/fornecedor/instituicao", label: "Sobre a instituição", labelEn: "About the institution", grupo: "Institucional", icone: IC.instituicao, descricao: "Ícone do site, logo e redes sociais, além de apresentação, contato principal e endereço da matriz.", descricaoEn: "Site icon, logo and social links, plus presentation text, main contact and head-office address." },
   { href: "/fornecedor/materiais", label: "Materiais", labelEn: "Materials", grupo: "Institucional", icone: IC.materiais, descricao: "Biblioteca de brochuras, fotos, vídeos e mídia kit para os estudantes.", descricaoEn: "Library of brochures, photos, videos and media kit for students." },
   { href: "/fornecedor/financeiro", label: "Financeiro", labelEn: "Finance", grupo: "Financeiro", icone: IC.financeiro, descricao: "Extrato de repasses, comprovantes e seus dados bancários.", descricaoEn: "Payout statement, proofs of payment and your bank details." },
+  { href: "/fornecedor/faturas", label: "Faturas da EXP Tour", labelEn: "EXP Tour invoices", grupo: "Financeiro", icone: IC.financeiro, descricao: "Faturas de comissão emitidas pela EXP Tour: baixe o PDF e informe a data prevista de pagamento.", descricaoEn: "Commission invoices issued by EXP Tour: download the PDF and tell us the expected payment date." },
 ];
 
 // Itens do grupo "Inventário", na ordem de FORNECEDOR_NAV — usados no Painel
