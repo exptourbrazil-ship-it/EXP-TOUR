@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { calcularComissaoFatura } from "@/lib/comissao-fatura";
+import { KINDS_COMISSAO, KIND_ROTULO, descreverRegra } from "@/lib/comissao-regra";
 import type { EmissorFatura, StatusExibicao } from "@/lib/comissao-fatura";
 
 type Fatura = {
@@ -327,61 +328,94 @@ function EmissorForm({ inicial, onSalvo, onErro }: { inicial: EmissorFatura | nu
   );
 }
 
-// ── Nova fatura ──────────────────────────────────────────────────────────────
+// ── Nova fatura (com linhas por item) ────────────────────────────────────────
+type RegraTela = { origem: "produto" | "tipo" | "padrao"; basis: string; type: string; value: number; currency: string | null } | null;
+type ItemForm = { key: number; kind: string; productId: string; description: string; baseAmount: string; manual: boolean; commissionAmount: string; regra: RegraTela };
+type ProdutoEscola = { id: string; name: string; kind: string };
+
+const ORIGEM_ROTULO: Record<string, string> = { produto: "regra do produto", tipo: "regra do tipo", padrao: "acordo padrão" };
+let proximaChave = 1;
+const novoItem = (p: Partial<ItemForm> = {}): ItemForm => ({ key: proximaChave++, kind: "program", productId: "", description: "", baseAmount: "", manual: false, commissionAmount: "", regra: null, ...p });
+
+function comissaoDoItem(it: ItemForm, currency: string, weeks: number | null): number | null {
+  const base = Number(String(it.baseAmount).replace(",", "."));
+  if (!(base > 0)) return null;
+  if (it.manual) {
+    const m = Number(String(it.commissionAmount).replace(",", "."));
+    return Number.isFinite(m) && m >= 0 ? m : null;
+  }
+  if (!it.regra) return null;
+  if (it.regra.basis === "none") return 0;
+  return calcularComissaoFatura({ base, currency, type: it.regra.type as "percent" | "fixed_per_sale" | "fixed_per_week", value: it.regra.value, acordoCurrency: it.regra.currency, weeks });
+}
+
 function NovaFaturaForm({ casos, escolas, onCriada, onErro }: { casos: Caso[]; escolas: Escola[]; onCriada: (numero: string) => void; onErro: (t: string) => void }) {
   const [contratoId, setContratoId] = useState("");
   const [supplierId, setSupplierId] = useState("");
-  const [v, setV] = useState({
-    currency: "", studentName: "", programName: "", startDate: "", endDate: "", weeks: "",
-    paidToSchoolAmount: "", paidToSchoolAt: "", commissionBasis: "", commissionType: "percent", commissionValue: "",
-    commissionAmount: "", notes: "",
-  });
-  const [manual, setManual] = useState(false);
+  const [v, setV] = useState({ currency: "", studentName: "", programName: "", startDate: "", endDate: "", weeks: "", paidToSchoolAt: "", notes: "" });
+  const [itens, setItens] = useState<ItemForm[]>([novoItem()]);
+  const [produtos, setProdutos] = useState<ProdutoEscola[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const set = (p: Partial<typeof v>) => setV((s) => ({ ...s, ...p }));
+  const weeks = Number(v.weeks) > 0 ? Number(v.weeks) : null;
+
+  // Resolve (no servidor) a regra de cada linha: produto > tipo > acordo padrao da escola.
+  async function resolver(escola: string, lista: ItemForm[]): Promise<ItemForm[]> {
+    if (!escola) return lista;
+    const r = await chamar("/api/admin/contas-a-receber/resolver", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supplierId: escola, itens: lista.map((i) => ({ kind: i.kind, productId: i.productId || null })) }),
+    });
+    if (!r.ok) { onErro(r.erro || "Não foi possível carregar as regras de comissão."); return lista; }
+    const regras = (r.dados?.regras ?? []) as (null | { origem: "produto" | "tipo" | "padrao"; basis: string; type: string; value: number; currency: string | null })[];
+    setProdutos((r.dados?.produtos ?? []) as ProdutoEscola[]);
+    return lista.map((it, idx) => ({ ...it, regra: regras[idx] ?? null }));
+  }
+
+  async function mudarEscola(id: string) {
+    setSupplierId(id);
+    setItens(await resolver(id, itens));
+  }
+
+  async function atualizarItem(key: number, patch: Partial<ItemForm>, reresolver: boolean) {
+    const lista = itens.map((i) => (i.key === key ? { ...i, ...patch } : i));
+    setItens(lista);
+    if (reresolver) setItens(await resolver(supplierId, lista));
+  }
 
   async function escolherCaso(id: string) {
     setContratoId(id);
     setAviso(null);
     if (!id) return;
     const r = await chamar(`/api/admin/contas-a-receber?sugerir=${id}`, { method: "GET" });
-    const s = (r.dados?.sugestao ?? null) as null | {
-      supplierId: string; studentName: string | null; programName: string | null; startDate: string | null; currency: string | null;
-      valorContrato: number | null; jaTemFatura: boolean; acordo: { basis: string; type: string; value: number } | null;
-    };
+    const s = (r.dados?.sugestao ?? null) as null | { supplierId: string; studentName: string | null; programName: string | null; startDate: string | null; currency: string | null; valorContrato: number | null; jaTemFatura: boolean; acordo: unknown };
     if (!r.ok || !s) { onErro(r.erro || "Não foi possível carregar o caso."); return; }
     setSupplierId(s.supplierId);
-    set({
-      currency: s.currency || "",
-      studentName: s.studentName || "",
-      programName: s.programName || "",
-      startDate: s.startDate || "",
-      paidToSchoolAmount: s.valorContrato != null ? String(s.valorContrato) : "",
-      commissionBasis: s.acordo?.basis ?? "",
-      commissionType: s.acordo?.type ?? "percent",
-      commissionValue: s.acordo ? String(s.acordo.value) : "",
-      commissionAmount: "",
-    });
-    setManual(false);
+    set({ currency: s.currency || "", studentName: s.studentName || "", programName: s.programName || "", startDate: s.startDate || "" });
+    const lista = [novoItem({ kind: "program", description: s.programName || "Programa", baseAmount: s.valorContrato != null ? String(s.valorContrato) : "" })];
+    setItens(await resolver(s.supplierId, lista));
     setAviso(
       (s.jaTemFatura ? "Já existe uma fatura ativa para este caso. " : "") +
-        (s.acordo ? "Comissão preenchida pelo acordo cadastrado da escola; confira a base e o valor pago." : "Esta escola não tem acordo de comissão cadastrado: informe o percentual ou o valor da comissão."),
+        "A base de cada linha vem do valor do contrato: ajuste para o que o aluno pagou à escola e acrescente a acomodação e outros itens, cada um com a sua regra de comissão.",
     );
   }
 
-  const calculada = useMemo(() => {
-    const base = Number(String(v.paidToSchoolAmount).replace(",", "."));
-    const val = Number(String(v.commissionValue).replace(",", "."));
-    if (!v.currency || !(base > 0) || !v.commissionValue || !Number.isFinite(val)) return null;
-    return calcularComissaoFatura({ base, currency: v.currency, type: v.commissionType as "percent" | "fixed_per_sale" | "fixed_per_week", value: val, weeks: Number(v.weeks) || null });
-  }, [v.paidToSchoolAmount, v.commissionValue, v.commissionType, v.currency, v.weeks]);
+  const comissoes = itens.map((it) => comissaoDoItem(it, v.currency, weeks));
+  const totalBase = itens.reduce((a, it) => a + (Number(String(it.baseAmount).replace(",", ".")) || 0), 0);
+  const totalComissao = comissoes.reduce<number>((a, c) => a + (c ?? 0), 0);
+  const faltaRegra = itens.some((it, i) => comissoes[i] === null && Number(String(it.baseAmount).replace(",", ".")) > 0);
 
   async function criar(e: React.FormEvent) {
     e.preventDefault();
     setSalvando(true);
-    const corpo: Record<string, unknown> = { supplierId, contratoId: contratoId || undefined, ...v };
-    if (!manual) delete corpo.commissionAmount; // sem ajuste manual: o servidor calcula pelo acordo
+    const corpo = {
+      supplierId, contratoId: contratoId || undefined, ...v,
+      itens: itens.map((it) => ({
+        kind: it.kind, productId: it.productId || undefined, description: it.description, baseAmount: it.baseAmount,
+        ...(it.manual ? { commissionAmount: it.commissionAmount } : {}),
+      })),
+    };
     const r = await chamar("/api/admin/contas-a-receber", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
     setSalvando(false);
     if (r.ok) onCriada(String(r.dados?.numero ?? ""));
@@ -400,7 +434,7 @@ function NovaFaturaForm({ casos, escolas, onCriada, onErro }: { casos: Caso[]; e
         </div>
         <div>
           <label className={lbl}>Escola *</label>
-          <select className={inp} value={supplierId} onChange={(e) => setSupplierId(e.target.value)} required disabled={!!contratoId}>
+          <select className={inp} value={supplierId} onChange={(e) => void mudarEscola(e.target.value)} required disabled={!!contratoId}>
             <option value="">— escolha —</option>
             {escolas.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
           </select>
@@ -408,39 +442,68 @@ function NovaFaturaForm({ casos, escolas, onCriada, onErro }: { casos: Caso[]; e
       </div>
       {aviso ? <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{aviso}</div> : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div><label className={lbl}>Aluno</label><input className={inp} value={v.studentName} onChange={(e) => set({ studentName: e.target.value })} /></div>
         <div className="sm:col-span-2"><label className={lbl}>Programa</label><input className={inp} value={v.programName} onChange={(e) => set({ programName: e.target.value })} /></div>
+        <div><label className={lbl}>Moeda *</label><input className={inp} value={v.currency} onChange={(e) => set({ currency: e.target.value.toUpperCase().slice(0, 3) })} placeholder="EUR" required /></div>
         <div><label className={lbl}>Início</label><input className={inp} type="date" value={v.startDate} onChange={(e) => set({ startDate: e.target.value })} /></div>
         <div><label className={lbl}>Término</label><input className={inp} type="date" value={v.endDate} onChange={(e) => set({ endDate: e.target.value })} /></div>
         <div><label className={lbl}>Semanas</label><input className={inp} inputMode="decimal" value={v.weeks} onChange={(e) => set({ weeks: e.target.value })} /></div>
-        <div><label className={lbl}>Moeda *</label><input className={inp} value={v.currency} onChange={(e) => set({ currency: e.target.value.toUpperCase().slice(0, 3) })} placeholder="CAD" required /></div>
-        <div><label className={lbl}>Valor que o aluno pagou à escola *</label><input className={inp} inputMode="decimal" value={v.paidToSchoolAmount} onChange={(e) => set({ paidToSchoolAmount: e.target.value })} required /></div>
-        <div><label className={lbl}>Data desse pagamento</label><input className={inp} type="date" value={v.paidToSchoolAt} onChange={(e) => set({ paidToSchoolAt: e.target.value })} /></div>
+        <div><label className={lbl}>Data do pagamento à escola</label><input className={inp} type="date" value={v.paidToSchoolAt} onChange={(e) => set({ paidToSchoolAt: e.target.value })} /></div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div>
-          <label className={lbl}>Tipo de comissão</label>
-          <select className={inp} value={v.commissionType} onChange={(e) => set({ commissionType: e.target.value })}>
-            <option value="percent">Percentual</option>
-            <option value="fixed_per_sale">Fixa por venda</option>
-            <option value="fixed_per_week">Fixa por semana</option>
-          </select>
+      <div>
+        <div className="mb-1 flex items-center">
+          <span className="text-sm font-medium text-brand">Itens que o aluno pagou à escola</span>
+          <button type="button" onClick={() => setItens((l) => [...l, novoItem({ kind: "accommodation" })])} className="ml-auto rounded-md border border-neutral-300 px-2 py-1 text-xs">+ Item</button>
         </div>
-        <div><label className={lbl}>{v.commissionType === "percent" ? "Percentual (%)" : "Valor fixo"}</label><input className={inp} inputMode="decimal" value={v.commissionValue} onChange={(e) => set({ commissionValue: e.target.value })} /></div>
-        <div>
-          <label className={lbl}>Comissão a cobrar {manual ? "(ajuste manual)" : "(calculada)"}</label>
-          {manual ? (
-            <input className={inp} inputMode="decimal" value={v.commissionAmount} onChange={(e) => set({ commissionAmount: e.target.value })} required />
-          ) : (
-            <div className={`${inp} bg-neutral-50 tabular-nums`}>{calculada != null ? fmtMoeda(calculada, v.currency) : "—"}</div>
-          )}
-          <button type="button" onClick={() => setManual((m) => !m)} className="mt-1 text-xs text-neutral-500 underline">{manual ? "voltar ao cálculo automático" : "ajustar manualmente"}</button>
+        <div className="grid gap-2">
+          {itens.map((it, idx) => {
+            const c = comissoes[idx];
+            const prods = produtos.filter((p) => p.kind === it.kind);
+            return (
+              <div key={it.key} className="grid gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:grid-cols-12">
+                <div className="sm:col-span-2"><label className={lbl}>Tipo</label>
+                  <select className={inp} value={it.kind} onChange={(e) => void atualizarItem(it.key, { kind: e.target.value, productId: "" }, true)}>
+                    {KINDS_COMISSAO.map((k) => <option key={k} value={k}>{KIND_ROTULO[k]}</option>)}
+                  </select>
+                </div>
+                <div className="sm:col-span-3"><label className={lbl}>Produto (opcional)</label>
+                  <select className={inp} value={it.productId} onChange={(e) => void atualizarItem(it.key, { productId: e.target.value, description: it.description || (produtos.find((p) => p.id === e.target.value)?.name ?? "") }, true)}>
+                    <option value="">— qualquer —</option>
+                    {prods.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div className="sm:col-span-3"><label className={lbl}>Descrição *</label><input className={inp} value={it.description} onChange={(e) => void atualizarItem(it.key, { description: e.target.value }, false)} maxLength={200} required /></div>
+                <div className="sm:col-span-2"><label className={lbl}>Valor pago *</label><input className={inp} inputMode="decimal" value={it.baseAmount} onChange={(e) => void atualizarItem(it.key, { baseAmount: e.target.value }, false)} required /></div>
+                <div className="sm:col-span-2">
+                  <label className={lbl}>Comissão {it.manual ? "(manual)" : ""}</label>
+                  {it.manual ? (
+                    <input className={inp} inputMode="decimal" value={it.commissionAmount} onChange={(e) => void atualizarItem(it.key, { commissionAmount: e.target.value }, false)} required />
+                  ) : (
+                    <div className={`${inp} bg-white tabular-nums`}>{c != null ? fmtMoeda(c, v.currency || "USD") : "—"}</div>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500 sm:col-span-12">
+                  <span>
+                    {it.manual ? "ajuste manual" : it.regra ? <>{descreverRegra({ basis: it.regra.basis as never, type: it.regra.type as never, value: it.regra.value, currency: it.regra.currency })} <span className="text-neutral-400">({ORIGEM_ROTULO[it.regra.origem]})</span></> : <span className="text-amber-700">sem regra aplicável — use o ajuste manual</span>}
+                  </span>
+                  <button type="button" className="underline" onClick={() => void atualizarItem(it.key, { manual: !it.manual, commissionAmount: it.manual ? "" : c != null ? String(c) : "" }, false)}>{it.manual ? "voltar à regra" : "ajustar manualmente"}</button>
+                  {itens.length > 1 ? <button type="button" className="ml-auto text-red-700 underline" onClick={() => setItens((l) => l.filter((x) => x.key !== it.key))}>remover</button> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex justify-end gap-6 text-sm">
+          <span className="text-neutral-500">Pago à escola: <b className="tabular-nums text-neutral-800">{fmtMoeda(totalBase, v.currency || "USD")}</b></span>
+          <span className="text-neutral-500">Comissão total: <b className="tabular-nums text-brand">{fmtMoeda(totalComissao, v.currency || "USD")}</b></span>
         </div>
       </div>
+
       <div><label className={lbl}>Observações (saem na fatura)</label><textarea className={inp} rows={2} value={v.notes} onChange={(e) => set({ notes: e.target.value })} maxLength={1000} /></div>
-      <button type="submit" disabled={salvando} className="justify-self-start rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{salvando ? "Criando…" : "Criar fatura (rascunho)"}</button>
+      <button type="submit" disabled={salvando || faltaRegra} className="justify-self-start rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{salvando ? "Criando…" : "Criar fatura (rascunho)"}</button>
+      {faltaRegra ? <div className="text-xs text-amber-700">Algum item não tem regra de comissão: cadastre em Fornecedores → Comissões ou use o ajuste manual no item.</div> : null}
     </form>
   );
 }

@@ -24,6 +24,7 @@ import {
   type StatusFatura,
   type TipoLembrete,
 } from "@/lib/comissao-fatura";
+import { resolverRegra, validarRegra, type RegraArmazenada, type RegraComissao } from "@/lib/comissao-regra";
 
 export type Resultado<T = unknown> = ({ ok: true } & T) | { ok: false; erro: string };
 
@@ -218,7 +219,10 @@ export async function criarFatura(
   supabase: SupabaseClient,
   args: { tenantId: string; adminUser: string; ip?: string | null; entrada: EntradaNovaFatura },
 ): Promise<Resultado<{ id: string; numero: string }>> {
-  const v = validarNovaFatura(args.entrada);
+  // Itens sem regra informada recebem a regra aplicavel (produto > tipo > padrao da escola),
+  // resolvida AQUI no servidor a partir do banco — nao do que a tela diz.
+  const entrada = await preencherRegrasDosItens(supabase, args.tenantId, args.entrada);
+  const v = validarNovaFatura(entrada);
   if (!v.ok) return { ok: false, erro: v.erro };
   const f = v.valor;
 
@@ -262,17 +266,75 @@ export async function criarFatura(
     console.error("[comissao] criar:", error?.message);
     return { ok: false, erro: "Não foi possível criar a fatura." };
   }
+  const faturaId = (data as { id: string }).id;
+  if (f.itens.length > 0) {
+    // Confere que cada produto citado e da escola (posse) antes de gravar as linhas.
+    const ids = [...new Set(f.itens.map((i) => i.productId).filter((x): x is string => !!x))];
+    if (ids.length > 0) {
+      const dono = await produtosDaEscolaPorIds(supabase, f.supplierId, ids);
+      if (dono.size !== ids.length) {
+        await supabase.from("comissao_fatura").delete().eq("id", faturaId).eq("tenant_id", args.tenantId);
+        return { ok: false, erro: "Um dos produtos informados não pertence a esta escola." };
+      }
+    }
+    const { error: eItens } = await supabase.from("comissao_fatura_item").insert(
+      f.itens.map((it, idx) => ({
+        tenant_id: args.tenantId,
+        fatura_id: faturaId,
+        sort: idx,
+        kind: it.kind,
+        product_id: it.productId,
+        description: it.description,
+        base_amount: it.baseAmount,
+        commission_basis: it.commissionBasis,
+        commission_type: it.commissionType,
+        commission_value: it.commissionValue,
+        rule_source: it.ruleSource,
+        commission_amount: it.commissionAmount,
+      })),
+    );
+    if (eItens) {
+      // Sem transacao no cliente: desfaz a fatura para nao ficar um total sem as linhas.
+      await supabase.from("comissao_fatura").delete().eq("id", faturaId).eq("tenant_id", args.tenantId);
+      console.error("[comissao] itens:", eItens.message);
+      return { ok: false, erro: "Não foi possível criar os itens da fatura." };
+    }
+  }
   await registrarAuditoriaAdmin(supabase, {
     usuario: args.adminUser,
     acao: "financeiro.fatura_comissao.criar",
-    alvo: (data as { id: string }).id,
-    detalhe: { numero: (data as { numero: string }).numero, supplierId: f.supplierId, contratoId: f.contratoId, currency: f.currency, comissao: f.commissionAmount },
+    alvo: faturaId,
+    detalhe: { numero: (data as { numero: string }).numero, supplierId: f.supplierId, contratoId: f.contratoId, currency: f.currency, comissao: f.commissionAmount, itens: f.itens.length },
     ip: args.ip ?? null,
   });
   return { ok: true, id: (data as { id: string }).id, numero: (data as { numero: string }).numero };
 }
 
 // ── Leitura ──────────────────────────────────────────────────────────────────
+
+export type ItemFaturaRow = {
+  id: string;
+  sort: number;
+  kind: string | null;
+  product_id: string | null;
+  description: string;
+  base_amount: number;
+  commission_basis: string | null;
+  commission_type: string | null;
+  commission_value: number | null;
+  rule_source: string | null;
+  commission_amount: number;
+};
+
+export async function itensDaFatura(supabase: SupabaseClient, tenantId: string, faturaId: string): Promise<ItemFaturaRow[]> {
+  const { data } = await supabase
+    .from("comissao_fatura_item")
+    .select("id, sort, kind, product_id, description, base_amount, commission_basis, commission_type, commission_value, rule_source, commission_amount")
+    .eq("tenant_id", tenantId)
+    .eq("fatura_id", faturaId)
+    .order("sort", { ascending: true });
+  return ((data ?? []) as ItemFaturaRow[]).map((i) => ({ ...i, base_amount: Number(i.base_amount), commission_amount: Number(i.commission_amount), commission_value: i.commission_value != null ? Number(i.commission_value) : null }));
+}
 
 export async function obterFatura(supabase: SupabaseClient, tenantId: string, id: string): Promise<(FaturaRow & { supplierNome: string | null; supplierLegalName: string | null; supplierPais: string | null }) | null> {
   const { data } = await supabase
@@ -388,8 +450,18 @@ export async function gerarPdfDaFatura(supabase: SupabaseClient, tenantId: strin
   if (!f) return { ok: false, erro: "Fatura não encontrada." };
   const emissor = await obterEmissor(supabase, tenantId);
   if (!emissor) return { ok: false, erro: "Cadastre os dados do emissor (razão social, e-mail e dados bancários) antes de gerar a fatura." };
+  const itens = await itensDaFatura(supabase, tenantId, id);
   const { gerarFaturaComissaoPdf } = await import("@/lib/comissao-fatura-pdf");
   const pdf = await gerarFaturaComissaoPdf({
+    itens: itens.map((i) => ({
+      kind: i.kind,
+      description: i.description,
+      baseAmount: i.base_amount,
+      commissionType: i.commission_type,
+      commissionValue: i.commission_value,
+      commissionBasis: i.commission_basis,
+      commissionAmount: i.commission_amount,
+    })),
     tenantSlug: process.env.CATALOGO_TENANT_SLUG ?? "forio",
     numero: f.numero,
     issueDate: f.issue_date,
@@ -749,6 +821,241 @@ export async function enviarLembretesDoDia(
     if (!enviouAlgum) await liberarMarco();
   }
   return { avaliadas: faturas.length, lembretes, semDestinatario, falhas };
+}
+
+// ── Regras de comissao por escola / tipo / produto ───────────────────────────
+
+const SEL_REGRA = "id, scope, kind, product_id, commission_basis, commission_type, commission_value, currency, valid_from, valid_until, notes, created_at";
+
+export type RegraLinha = RegraArmazenada & { id: string; notes: string | null; created_at: string; productNome?: string | null };
+
+export async function carregarRegrasDaEscola(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+): Promise<{ padrao: (RegraComissao & { id: string; valid_from: string; valid_until: string | null; notes: string | null }) | null; regras: RegraLinha[] }> {
+  const [{ data: regras }, { data: acordos }] = await Promise.all([
+    supabase.from("supplier_commission_rule").select(SEL_REGRA).eq("tenant_id", tenantId).eq("supplier_id", supplierId).is("archived_at", null).order("created_at", { ascending: true }),
+    supabase
+      .from("supplier_agreement")
+      .select("id, commission_basis, commission_type, commission_value, currency, valid_from, valid_until, notes")
+      .eq("tenant_id", tenantId)
+      .eq("supplier_id", supplierId)
+      .is("archived_at", null)
+      .order("valid_from", { ascending: false }),
+  ]);
+  const hoje = hojeISO();
+  let padrao = null as null | (RegraComissao & { id: string; valid_from: string; valid_until: string | null; notes: string | null });
+  for (const a of (acordos ?? []) as { id: string; commission_basis: string; commission_type: string; commission_value: number; currency: string | null; valid_from: string; valid_until: string | null; notes: string | null }[]) {
+    if (a.valid_from > hoje) continue;
+    if (a.valid_until && String(a.valid_until) < hoje) continue;
+    padrao = { id: a.id, basis: a.commission_basis as RegraComissao["basis"], type: a.commission_type as RegraComissao["type"], value: Number(a.commission_value), currency: a.currency, valid_from: a.valid_from, valid_until: a.valid_until, notes: a.notes };
+    break;
+  }
+  const linhas = ((regras ?? []) as RegraLinha[]).map((r) => ({ ...r, commission_value: Number(r.commission_value) }));
+  const prodIds = [...new Set(linhas.map((r) => r.product_id).filter((x): x is string => !!x))];
+  if (prodIds.length > 0) {
+    const { data: ps } = await supabase.from("product").select("id, name").in("id", prodIds);
+    const nome = new Map(((ps ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]));
+    for (const l of linhas) if (l.product_id) l.productNome = nome.get(l.product_id) ?? null;
+  }
+  return { padrao, regras: linhas };
+}
+
+/** Para cada item sem regra informada, resolve produto > tipo > padrao e preenche. */
+async function preencherRegrasDosItens(supabase: SupabaseClient, tenantId: string, entrada: EntradaNovaFatura): Promise<EntradaNovaFatura> {
+  if (!Array.isArray(entrada.itens) || entrada.itens.length === 0) return entrada;
+  const supplierId = typeof entrada.supplierId === "string" ? entrada.supplierId.trim() : "";
+  if (!/^[0-9a-f-]{36}$/i.test(supplierId)) return entrada;
+  const { padrao, regras } = await carregarRegrasDaEscola(supabase, tenantId, supplierId);
+  const hoje = hojeISO();
+  const itens = (entrada.itens as Record<string, unknown>[]).map((raw) => {
+    const it = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const jaTem = (it.commissionAmount !== undefined && it.commissionAmount !== null && it.commissionAmount !== "") || (it.commissionType && it.commissionValue !== undefined && it.commissionValue !== "") || it.commissionBasis === "none";
+    if (jaTem) return it;
+    const r = resolverRegra({ kind: typeof it.kind === "string" ? it.kind : null, productId: typeof it.productId === "string" ? it.productId : null, hoje, regras, padrao: padrao ? { basis: padrao.basis, type: padrao.type, value: padrao.value, currency: padrao.currency } : null });
+    if (!r) return it;
+    return { ...it, commissionBasis: r.basis, commissionType: r.type, commissionValue: r.value, commissionCurrency: r.currency, ruleSource: r.origem };
+  });
+  return { ...entrada, itens };
+}
+
+/** Resolve a regra de cada {kind, productId} para a tela mostrar o percentual de cada linha. */
+export async function resolverRegrasParaTela(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+  itens: { kind: string | null; productId: string | null }[],
+) {
+  const { padrao, regras } = await carregarRegrasDaEscola(supabase, tenantId, supplierId);
+  const hoje = hojeISO();
+  const base = padrao ? { basis: padrao.basis, type: padrao.type, value: padrao.value, currency: padrao.currency } : null;
+  return itens.map((i) => resolverRegra({ kind: i.kind, productId: i.productId, hoje, regras, padrao: base }));
+}
+
+export type ProdutoDaEscola = { id: string; name: string; kind: string };
+
+/** Produtos ativos da escola (todos os campi), para escolher o item/regra por produto. */
+export async function listarProdutosDaEscola(supabase: SupabaseClient, tenantId: string, supplierId: string): Promise<ProdutoDaEscola[]> {
+  const { data: camps } = await supabase.from("campus").select("id").eq("supplier_id", supplierId).is("archived_at", null);
+  const campusIds = ((camps ?? []) as { id: string }[]).map((c) => c.id);
+  if (campusIds.length === 0) return [];
+  const { data } = await supabase
+    .from("product")
+    .select("id, name, kind, tenant_id")
+    .in("campus_id", campusIds)
+    .eq("tenant_id", tenantId)
+    .is("archived_at", null)
+    .eq("status", "active")
+    .order("kind", { ascending: true })
+    .order("name", { ascending: true })
+    .limit(1000);
+  return ((data ?? []) as { id: string; name: string; kind: string }[]).map((p) => ({ id: p.id, name: p.name, kind: p.kind }));
+}
+
+async function produtosDaEscolaPorIds(supabase: SupabaseClient, supplierId: string, ids: string[]): Promise<Set<string>> {
+  const { data: camps } = await supabase.from("campus").select("id").eq("supplier_id", supplierId);
+  const campusIds = ((camps ?? []) as { id: string }[]).map((c) => c.id);
+  if (campusIds.length === 0) return new Set();
+  const { data } = await supabase.from("product").select("id").in("id", ids).in("campus_id", campusIds);
+  return new Set(((data ?? []) as { id: string }[]).map((p) => p.id));
+}
+
+export async function salvarRegra(
+  supabase: SupabaseClient,
+  args: { tenantId: string; adminUser: string; ip?: string | null; supplierId: string; entrada: unknown },
+): Promise<Resultado<{ id: string }>> {
+  const v = validarRegra((args.entrada && typeof args.entrada === "object" ? args.entrada : {}) as Record<string, unknown>);
+  if (!v.ok) return { ok: false, erro: v.erro };
+  const r = v.valor;
+  const { data: sup } = await supabase.from("supplier").select("id, tenant_id").eq("id", args.supplierId).maybeSingle();
+  if (!sup || (sup as { tenant_id: string }).tenant_id !== args.tenantId) return { ok: false, erro: "Escola não encontrada." };
+  if (r.productId) {
+    const dono = await produtosDaEscolaPorIds(supabase, args.supplierId, [r.productId]);
+    if (!dono.has(r.productId)) return { ok: false, erro: "O produto não pertence a esta escola." };
+  }
+  // Uma regra ativa por tipo/produto: arquiva a anterior (fica no historico) e grava a nova.
+  // Se a gravacao falhar, a anterior e restaurada para a escola nao ficar sem regra.
+  const agora = new Date().toISOString();
+  let q = supabase.from("supplier_commission_rule").update({ archived_at: agora }).eq("tenant_id", args.tenantId).eq("supplier_id", args.supplierId).eq("scope", r.scope).is("archived_at", null);
+  q = r.scope === "kind" ? q.eq("kind", r.kind as string) : q.eq("product_id", r.productId as string);
+  const { data: arquivadas, error: eArq } = await q.select("id");
+  if (eArq) {
+    console.error("[comissao] arquivar regra anterior:", eArq.message);
+    return { ok: false, erro: "Não foi possível salvar a regra." };
+  }
+  const idsArquivados = ((arquivadas ?? []) as { id: string }[]).map((x) => x.id);
+  const { data, error } = await supabase
+    .from("supplier_commission_rule")
+    .insert({
+      tenant_id: args.tenantId,
+      supplier_id: args.supplierId,
+      scope: r.scope,
+      kind: r.kind,
+      product_id: r.productId,
+      commission_basis: r.basis,
+      commission_type: r.type,
+      commission_value: r.value,
+      currency: r.currency,
+      valid_from: r.validFrom ?? hojeISO(),
+      valid_until: r.validUntil,
+      notes: r.notes,
+      created_by: args.adminUser,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("[comissao] salvar regra:", error?.message);
+    if (idsArquivados.length > 0) {
+      const { error: eRest } = await supabase.from("supplier_commission_rule").update({ archived_at: null }).in("id", idsArquivados).eq("tenant_id", args.tenantId);
+      if (eRest) console.error("[comissao] restaurar regra anterior:", eRest.message);
+    }
+    return { ok: false, erro: "Não foi possível salvar a regra." };
+  }
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.adminUser,
+    acao: "financeiro.comissao_regra.definir",
+    alvo: (data as { id: string }).id,
+    detalhe: { supplierId: args.supplierId, scope: r.scope, kind: r.kind, productId: r.productId, basis: r.basis, type: r.type, value: r.value },
+    ip: args.ip ?? null,
+  });
+  return { ok: true, id: (data as { id: string }).id };
+}
+
+export async function arquivarRegra(
+  supabase: SupabaseClient,
+  args: { tenantId: string; adminUser: string; ip?: string | null; supplierId: string; regraId: string },
+): Promise<Resultado> {
+  const { data, error } = await supabase
+    .from("supplier_commission_rule")
+    .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", args.regraId)
+    .eq("tenant_id", args.tenantId)
+    .eq("supplier_id", args.supplierId)
+    .is("archived_at", null)
+    .select("id");
+  if (error) {
+    console.error("[comissao] arquivar regra:", error.message);
+    return { ok: false, erro: "Não foi possível remover a regra." };
+  }
+  if (!data || data.length === 0) return { ok: false, erro: "Regra não encontrada." };
+  await registrarAuditoriaAdmin(supabase, { usuario: args.adminUser, acao: "financeiro.comissao_regra.remover", alvo: args.regraId, detalhe: { supplierId: args.supplierId }, ip: args.ip ?? null });
+  return { ok: true };
+}
+
+/** Define o acordo PADRAO da escola (arquiva o vigente e grava o novo com vigencia). */
+export async function salvarAcordoPadrao(
+  supabase: SupabaseClient,
+  args: { tenantId: string; adminUser: string; ip?: string | null; supplierId: string; entrada: Record<string, unknown> },
+): Promise<Resultado<{ id: string }>> {
+  const v = validarRegra({ ...args.entrada, scope: "kind", kind: "program" });
+  if (!v.ok) return { ok: false, erro: v.erro };
+  const r = v.valor;
+  const { data: sup } = await supabase.from("supplier").select("id, tenant_id").eq("id", args.supplierId).maybeSingle();
+  if (!sup || (sup as { tenant_id: string }).tenant_id !== args.tenantId) return { ok: false, erro: "Escola não encontrada." };
+  const { data: acordosArq, error: eArq } = await supabase
+    .from("supplier_agreement")
+    .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("tenant_id", args.tenantId)
+    .eq("supplier_id", args.supplierId)
+    .is("archived_at", null)
+    .select("id");
+  const idsAcordos = ((acordosArq ?? []) as { id: string }[]).map((x) => x.id);
+  if (eArq) {
+    console.error("[comissao] arquivar acordo:", eArq.message);
+    return { ok: false, erro: "Não foi possível salvar o acordo." };
+  }
+  const { data, error } = await supabase
+    .from("supplier_agreement")
+    .insert({
+      tenant_id: args.tenantId,
+      supplier_id: args.supplierId,
+      valid_from: r.validFrom ?? hojeISO(),
+      valid_until: r.validUntil,
+      commission_basis: r.basis,
+      commission_type: r.type,
+      commission_value: r.value,
+      currency: r.currency,
+      notes: r.notes,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("[comissao] salvar acordo:", error?.message);
+    if (idsAcordos.length > 0) {
+      const { error: eRest } = await supabase.from("supplier_agreement").update({ archived_at: null }).in("id", idsAcordos).eq("tenant_id", args.tenantId);
+      if (eRest) console.error("[comissao] restaurar acordo anterior:", eRest.message);
+    }
+    return { ok: false, erro: "Não foi possível salvar o acordo." };
+  }
+  await registrarAuditoriaAdmin(supabase, {
+    usuario: args.adminUser,
+    acao: "financeiro.acordo_comissao.definir",
+    alvo: (data as { id: string }).id,
+    detalhe: { supplierId: args.supplierId, basis: r.basis, type: r.type, value: r.value },
+    ip: args.ip ?? null,
+  });
+  return { ok: true, id: (data as { id: string }).id };
 }
 
 export { calcularComissaoFatura };

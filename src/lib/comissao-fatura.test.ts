@@ -117,3 +117,67 @@ test("emissor: exige razao social, e-mail e instrucoes de pagamento", () => {
   assert.equal(r.valor.paymentTermsDays, 45);
   assert.equal(normalizarEmissor({ legalName: "A", email: "a@b.co", paymentInstructions: "x", paymentTermsDays: 999 }).ok, false);
 });
+
+test("fatura com itens: cada linha usa a sua regra e o total e a soma", () => {
+  const r = validarNovaFatura({
+    supplierId: SUP, currency: "EUR",
+    itens: [
+      { kind: "program", description: "General English 20", baseAmount: 3000, commissionType: "percent", commissionValue: 25, commissionBasis: "tuition", ruleSource: "padrao" },
+      { kind: "accommodation", description: "Residência Superior", baseAmount: 1200, commissionType: "percent", commissionValue: 10, commissionBasis: "tuition", ruleSource: "tipo" },
+      { kind: "fee", description: "Matrícula", baseAmount: 55, commissionBasis: "none", ruleSource: "tipo" },
+    ],
+  });
+  assert.ok(r.ok);
+  assert.equal(r.valor.itens.length, 3);
+  assert.deepEqual(r.valor.itens.map((i) => i.commissionAmount), [750, 120, 0]);
+  assert.equal(r.valor.paidToSchoolAmount, 4255);
+  assert.equal(r.valor.commissionAmount, 870);
+  assert.equal(r.valor.itens[2].ruleSource, "tipo");
+});
+
+test("fatura com itens: ajuste manual por linha vence e marca origem manual", () => {
+  const r = validarNovaFatura({
+    supplierId: SUP, currency: "USD",
+    itens: [{ kind: "program", description: "Curso", baseAmount: 1000, commissionType: "percent", commissionValue: 20, commissionAmount: 150, ruleSource: "padrao" }],
+  });
+  assert.ok(r.ok);
+  assert.equal(r.valor.itens[0].commissionAmount, 150);
+  assert.equal(r.valor.itens[0].ruleSource, "manual");
+});
+
+test("fatura com itens: recusa item sem descricao, sem base, sem regra ou acima da base", () => {
+  const base = { supplierId: SUP, currency: "USD" };
+  assert.equal(validarNovaFatura({ ...base, itens: [{ baseAmount: 100, commissionAmount: 10 }] }).ok, false);
+  assert.equal(validarNovaFatura({ ...base, itens: [{ description: "x", baseAmount: 0, commissionAmount: 10 }] }).ok, false);
+  assert.equal(validarNovaFatura({ ...base, itens: [{ description: "x", baseAmount: 100 }] }).ok, false);
+  assert.equal(validarNovaFatura({ ...base, itens: [{ description: "x", baseAmount: 100, commissionAmount: 150 }] }).ok, false);
+  assert.equal(validarNovaFatura({ ...base, itens: [{ description: "x", kind: "zz", baseAmount: 100, commissionAmount: 10 }] }).ok, false);
+  assert.equal(validarNovaFatura({ ...base, itens: [] }).ok, false);
+  assert.equal(validarNovaFatura({ ...base, itens: Array.from({ length: 21 }, () => ({ description: "x", baseAmount: 10, commissionAmount: 1 })) }).ok, false);
+});
+
+test("fatura com itens: total sem comissao nenhuma e recusado", () => {
+  const r = validarNovaFatura({ supplierId: SUP, currency: "USD", itens: [{ kind: "fee", description: "Taxa", baseAmount: 50, commissionBasis: "none" }] });
+  assert.equal(r.ok, false);
+});
+
+test("fatura com itens: fixo em moeda diferente da fatura exige comissao manual", () => {
+  const r = validarNovaFatura({
+    supplierId: SUP, currency: "CAD",
+    itens: [{ kind: "program", description: "Curso", baseAmount: 3000, commissionType: "fixed_per_sale", commissionValue: 300, commissionCurrency: "USD", ruleSource: "padrao" }],
+  });
+  assert.equal(r.ok, false);
+});
+
+test("fatura com itens: fixo por venda vale uma vez por fatura", () => {
+  const r = validarNovaFatura({
+    supplierId: SUP, currency: "USD",
+    itens: [
+      { kind: "program", description: "Curso", baseAmount: 3000, commissionType: "fixed_per_sale", commissionValue: 300, commissionCurrency: "USD" },
+      { kind: "accommodation", description: "Casa", baseAmount: 1000, commissionType: "fixed_per_sale", commissionValue: 300, commissionCurrency: "USD" },
+    ],
+  });
+  assert.ok(r.ok);
+  assert.deepEqual(r.valor.itens.map((i) => i.commissionAmount), [300, 0]);
+  assert.equal(r.valor.commissionAmount, 300);
+});

@@ -6,7 +6,19 @@ import { Document, Page, View, Text, StyleSheet, renderToBuffer } from "@react-p
 import { getTenantBrand, type PdfTheme } from "@/lib/tenant-brand";
 import type { EmissorFatura } from "@/lib/comissao-fatura";
 
+export type ItemFaturaPdf = {
+  kind: string | null;
+  description: string;
+  baseAmount: number;
+  commissionType: string | null;
+  commissionValue: number | null;
+  commissionBasis: string | null;
+  commissionAmount: number;
+};
+
 export type DadosFaturaPdf = {
+  /** Linhas por item; vazio = fatura antiga de linha unica. */
+  itens?: ItemFaturaPdf[];
   tenantSlug: string;
   numero: string;
   issueDate: string | null;
@@ -68,6 +80,18 @@ function descricaoTaxa(d: DadosFaturaPdf): string {
 
 // Fonte: Helvetica (embutida no react-pdf) para qualquer tenant — fatura e documento
 // comercial, nao depende de fonte de marca registrada.
+const KIND_EN: Record<string, string> = {
+  program: "Programme", accommodation: "Accommodation", package: "Package", insurance: "Insurance", other: "Service", fee: "Fee",
+};
+
+function taxaDoItem(it: ItemFaturaPdf, moeda: string): string {
+  if (it.commissionBasis === "none") return "n/a";
+  if (it.commissionType === "percent" && it.commissionValue != null) return `${it.commissionValue}%`;
+  if (it.commissionType === "fixed_per_sale" && it.commissionValue != null) return `${fmtMoeda(it.commissionValue, moeda)} fixed`;
+  if (it.commissionType === "fixed_per_week" && it.commissionValue != null) return `${fmtMoeda(it.commissionValue, moeda)} / week`;
+  return "As agreed";
+}
+
 function estilos(t: PdfTheme) {
   return StyleSheet.create({
     page: { padding: 40, fontSize: 10, color: t.ink, fontFamily: "Helvetica", lineHeight: 1.35 },
@@ -89,6 +113,12 @@ function estilos(t: PdfTheme) {
     totalFinal: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, marginTop: 4, borderTopWidth: 1.5, borderTopColor: t.brand },
     totalFinalTxt: { fontFamily: "Helvetica-Bold", fontSize: 13, color: t.brand },
     caixa: { marginTop: 18, padding: 10, backgroundColor: t.accentSoft, borderRadius: 4 },
+    th: { flexDirection: "row", paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: t.brand },
+    thTxt: { fontSize: 8, textTransform: "uppercase", letterSpacing: 0.8, color: t.faint },
+    c1: { width: "46%" },
+    c2: { width: "20%", textAlign: "right" },
+    c3: { width: "14%", textAlign: "right" },
+    c4: { width: "20%", textAlign: "right" },
     rodape: { position: "absolute", bottom: 24, left: 40, right: 40, fontSize: 8, color: t.faint, textAlign: "center" },
   });
 }
@@ -108,6 +138,8 @@ export async function gerarFaturaComissaoPdf(d: DadosFaturaPdf): Promise<Buffer>
   const t = brand.pdf;
   const s = estilos(t);
   const saldo = Math.max(0, Math.round((d.commissionAmount - d.receivedAmount) * 100) / 100);
+  const itens = d.itens ?? [];
+  const temItens = itens.length > 0;
 
   const doc = (
     <Document title={`Commission invoice ${d.numero}`} author={d.emissor.legalName}>
@@ -144,13 +176,42 @@ export async function gerarFaturaComissaoPdf(d: DadosFaturaPdf): Promise<Buffer>
           <Linha s={s} rotulo="Programme" valor={d.programName || "—"} />
           <Linha s={s} rotulo="Programme dates" valor={`${fmtData(d.startDate)}${d.endDate ? ` – ${fmtData(d.endDate)}` : ""}`} />
           {d.weeks ? <Linha s={s} rotulo="Weeks" valor={String(d.weeks)} /> : null}
-          <Linha
-            s={s}
-            rotulo="Paid by the student to the school"
-            valor={`${fmtMoeda(d.paidToSchoolAmount, d.currency)}${d.paidToSchoolAt ? ` on ${fmtData(d.paidToSchoolAt)}` : ""}`}
-          />
-          <Linha s={s} rotulo="Commission terms" valor={descricaoTaxa(d)} />
+          {temItens ? null : (
+            <>
+              <Linha
+                s={s}
+                rotulo="Paid by the student to the school"
+                valor={`${fmtMoeda(d.paidToSchoolAmount, d.currency)}${d.paidToSchoolAt ? ` on ${fmtData(d.paidToSchoolAt)}` : ""}`}
+              />
+              <Linha s={s} rotulo="Commission terms" valor={descricaoTaxa(d)} />
+            </>
+          )}
         </View>
+
+        {temItens ? (
+          <View style={{ marginTop: 14 }}>
+            <Text style={s.rotulo}>
+              Paid by the student to the school{d.paidToSchoolAt ? ` on ${fmtData(d.paidToSchoolAt)}` : ""} — commission by item
+            </Text>
+            <View style={s.th}>
+              <Text style={[s.thTxt, s.c1]}>Item</Text>
+              <Text style={[s.thTxt, s.c2]}>Amount paid</Text>
+              <Text style={[s.thTxt, s.c3]}>Rate</Text>
+              <Text style={[s.thTxt, s.c4]}>Commission</Text>
+            </View>
+            {itens.map((it, i) => (
+              <View key={i} style={s.tr} wrap={false}>
+                <View style={s.c1}>
+                  <Text>{it.description}</Text>
+                  {it.kind ? <Text style={{ color: t.faint, fontSize: 8 }}>{KIND_EN[it.kind] ?? it.kind}</Text> : null}
+                </View>
+                <Text style={s.c2}>{fmtMoeda(it.baseAmount, d.currency)}</Text>
+                <Text style={s.c3}>{taxaDoItem(it, d.currency)}</Text>
+                <Text style={s.c4}>{fmtMoeda(it.commissionAmount, d.currency)}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <View style={s.totais}>
           <View style={s.totalLinha}>
@@ -176,7 +237,7 @@ export async function gerarFaturaComissaoPdf(d: DadosFaturaPdf): Promise<Buffer>
         </View>
 
         {d.notes ? (
-          <View style={{ marginTop: 12 }}>
+          <View style={{ marginTop: 12 }} wrap={false}>
             <Text style={s.rotulo}>Notes</Text>
             <Text>{d.notes}</Text>
           </View>
