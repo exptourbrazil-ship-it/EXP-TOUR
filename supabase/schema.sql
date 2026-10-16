@@ -3511,3 +3511,5 @@ alter table if exists faixa_preco enable row level security;
 -- Origem do conteudo (product_content/campus_content.origem): ver migracao-origem-conteudo.sql (ja aplicada em producao).
 
 -- Contas a receber de comissao das escolas (comissao_fatura, comissao_recebimento, tenant_config.fatura_emissor, registrar_recebimento_comissao): ver migracao-contas-a-receber-comissoes.sql (ja aplicada em producao).
+
+-- Comissao por tipo de item e por produto + linhas na fatura (supplier_commission_rule, comissao_fatura_item): ver migracao-comissao-por-item.sql (ja aplicada em producao).

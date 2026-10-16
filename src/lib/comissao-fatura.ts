@@ -106,7 +106,25 @@ export type EntradaNovaFatura = {
   /** Ajuste manual: sobrescreve o valor calculado. */
   commissionAmount?: unknown;
   notes?: unknown;
+  /** Linhas por item (curso, acomodacao...). Quando presentes, os totais saem delas. */
+  itens?: unknown;
 };
+
+export type ItemFaturaNormalizado = {
+  kind: string | null;
+  productId: string | null;
+  description: string;
+  baseAmount: number;
+  commissionBasis: BaseComissao | null;
+  commissionType: TipoComissao | null;
+  commissionValue: number | null;
+  ruleSource: "produto" | "tipo" | "padrao" | "manual";
+  commissionAmount: number;
+};
+
+const ITEM_KINDS: readonly string[] = ["program", "accommodation", "package", "insurance", "other", "fee"];
+const ORIGENS: readonly string[] = ["produto", "tipo", "padrao", "manual"];
+const MAX_ITENS = 20;
 
 export type FaturaNormalizada = {
   supplierId: string;
@@ -124,6 +142,7 @@ export type FaturaNormalizada = {
   commissionValue: number | null;
   commissionAmount: number;
   notes: string | null;
+  itens: ItemFaturaNormalizado[];
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,6 +160,56 @@ function dataOpcional(v: unknown): { ok: true; valor: string | null } | { ok: fa
   return diasEpoch(v) === null ? { ok: false } : { ok: true, valor: String(v).trim() };
 }
 
+function parseItens(
+  raw: unknown,
+  currency: string,
+  weeks: number | null,
+): { ok: true; itens: ItemFaturaNormalizado[] } | { ok: false; erro: string } {
+  if (!Array.isArray(raw) || raw.length === 0) return { ok: false, erro: "Adicione ao menos um item." };
+  if (raw.length > MAX_ITENS) return { ok: false, erro: `No máximo ${MAX_ITENS} itens por fatura.` };
+  const itens: ItemFaturaNormalizado[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const n = i + 1;
+    const o = (raw[i] && typeof raw[i] === "object" ? raw[i] : {}) as Record<string, unknown>;
+    const description = txt(o.description, 200);
+    if (!description) return { ok: false, erro: `Item ${n}: descreva o item.` };
+    let kind: string | null = null;
+    if (o.kind !== undefined && o.kind !== null && o.kind !== "") {
+      if (typeof o.kind !== "string" || !ITEM_KINDS.includes(o.kind)) return { ok: false, erro: `Item ${n}: tipo inválido.` };
+      kind = o.kind;
+    }
+    let productId: string | null = null;
+    if (o.productId !== undefined && o.productId !== null && o.productId !== "") {
+      if (typeof o.productId !== "string" || !UUID.test(o.productId.trim())) return { ok: false, erro: `Item ${n}: produto inválido.` };
+      productId = o.productId.trim();
+    }
+    const base = num(o.baseAmount);
+    if (base === null || base <= 0) return { ok: false, erro: `Item ${n}: informe o valor base.` };
+    const basis = typeof o.commissionBasis === "string" && BASES.includes(o.commissionBasis) ? (o.commissionBasis as BaseComissao) : null;
+    const type = typeof o.commissionType === "string" && TIPOS.includes(o.commissionType) ? (o.commissionType as TipoComissao) : null;
+    const valor = num(o.commissionValue);
+    if (o.commissionValue !== undefined && o.commissionValue !== null && o.commissionValue !== "" && (valor === null || valor < 0)) {
+      return { ok: false, erro: `Item ${n}: valor da comissão inválido.` };
+    }
+    let comissao: number | null = num(o.commissionAmount);
+    if (o.commissionAmount !== undefined && o.commissionAmount !== null && o.commissionAmount !== "" && (comissao === null || comissao < 0)) {
+      return { ok: false, erro: `Item ${n}: comissão inválida.` };
+    }
+    let origem: ItemFaturaNormalizado["ruleSource"] = typeof o.ruleSource === "string" && ORIGENS.includes(o.ruleSource) ? (o.ruleSource as ItemFaturaNormalizado["ruleSource"]) : "manual";
+    const manual = o.commissionAmount !== undefined && o.commissionAmount !== null && o.commissionAmount !== "";
+    if (manual) origem = "manual";
+    if (comissao === null) {
+      if (basis === "none") comissao = 0;
+      else if (type && valor !== null) comissao = calcularComissaoFatura({ base, currency, type, value: valor, weeks });
+    }
+    if (comissao === null) return { ok: false, erro: `Item ${n}: sem regra de comissão aplicável — informe o valor da comissão.` };
+    comissao = round2(comissao);
+    if (comissao > round2(base)) return { ok: false, erro: `Item ${n}: a comissão não pode passar do valor base.` };
+    itens.push({ kind, productId, description, baseAmount: round2(base), commissionBasis: basis, commissionType: type, commissionValue: valor, ruleSource: origem, commissionAmount: comissao });
+  }
+  return { ok: true, itens };
+}
+
 /** Valida e normaliza a entrada do formulario. Erro em portugues, seguro para a tela. */
 export function validarNovaFatura(e: EntradaNovaFatura): { ok: true; valor: FaturaNormalizada } | { ok: false; erro: string } {
   const supplierId = typeof e.supplierId === "string" ? e.supplierId.trim() : "";
@@ -153,8 +222,9 @@ export function validarNovaFatura(e: EntradaNovaFatura): { ok: true; valor: Fatu
   const currency = typeof e.currency === "string" ? e.currency.toUpperCase().trim() : "";
   if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, erro: "Informe a moeda (3 letras, ex.: CAD)." };
 
-  const pago = num(e.paidToSchoolAmount);
-  if (pago === null || pago <= 0) return { ok: false, erro: "Informe o valor que o aluno pagou à escola." };
+  const comItens = Array.isArray(e.itens) && e.itens.length > 0;
+  let pago: number | null = num(e.paidToSchoolAmount);
+  if (!comItens && (pago === null || pago <= 0)) return { ok: false, erro: "Informe o valor que o aluno pagou à escola." };
 
   const datas: Record<string, string | null> = {};
   for (const [k, v, rotulo] of [
@@ -188,18 +258,29 @@ export function validarNovaFatura(e: EntradaNovaFatura): { ok: true; valor: Fatu
     return { ok: false, erro: "Valor da comissão inválido." };
   }
 
-  // Comissao: ajuste manual vence; senao calcula pelo acordo informado.
-  let comissao: number | null = num(e.commissionAmount);
-  if (e.commissionAmount !== undefined && e.commissionAmount !== null && e.commissionAmount !== "" && (comissao === null || comissao < 0)) {
-    return { ok: false, erro: "Valor da comissão inválido." };
+  // Com itens, os totais saem das linhas; sem itens, vale o fluxo de linha unica
+  // (ajuste manual vence; senao calcula pelo acordo informado).
+  let itensNorm: ItemFaturaNormalizado[] = [];
+  let comissao: number | null;
+  if (comItens) {
+    const pi = parseItens(e.itens, currency, weeksRaw);
+    if (!pi.ok) return pi;
+    itensNorm = pi.itens;
+    pago = round2(itensNorm.reduce((a, it) => a + it.baseAmount, 0));
+    comissao = round2(itensNorm.reduce((a, it) => a + it.commissionAmount, 0));
+  } else {
+    comissao = num(e.commissionAmount);
+    if (e.commissionAmount !== undefined && e.commissionAmount !== null && e.commissionAmount !== "" && (comissao === null || comissao < 0)) {
+      return { ok: false, erro: "Valor da comissão inválido." };
+    }
+    if (comissao === null && type && valorAcordo !== null) {
+      comissao = calcularComissaoFatura({ base: pago as number, currency, type, value: valorAcordo, weeks: weeksRaw });
+    }
+    if (comissao === null) return { ok: false, erro: "Não foi possível calcular a comissão: informe o valor da comissão." };
+    comissao = round2(comissao);
   }
-  if (comissao === null && type && valorAcordo !== null) {
-    comissao = calcularComissaoFatura({ base: pago, currency, type, value: valorAcordo, weeks: weeksRaw });
-  }
-  if (comissao === null) return { ok: false, erro: "Não foi possível calcular a comissão: informe o valor da comissão." };
-  comissao = round2(comissao);
   if (comissao <= 0) return { ok: false, erro: "A comissão deve ser maior que zero." };
-  if (comissao > round2(pago)) return { ok: false, erro: "A comissão não pode ser maior que o valor pago à escola." };
+  if (comissao > round2(pago as number)) return { ok: false, erro: "A comissão não pode ser maior que o valor pago à escola." };
 
   return {
     ok: true,
@@ -212,13 +293,14 @@ export function validarNovaFatura(e: EntradaNovaFatura): { ok: true; valor: Fatu
       startDate: datas.start,
       endDate: datas.end,
       weeks: weeksRaw,
-      paidToSchoolAmount: round2(pago),
+      paidToSchoolAmount: round2(pago as number),
       paidToSchoolAt: datas.paidAt,
       commissionBasis: basis,
       commissionType: type,
       commissionValue: valorAcordo,
       commissionAmount: comissao,
       notes: txt(e.notes, 1000),
+      itens: itensNorm,
     },
   };
 }
