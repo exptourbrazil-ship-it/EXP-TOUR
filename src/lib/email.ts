@@ -9,6 +9,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getTenantBrand, type EmailTheme } from "@/lib/tenant-brand";
 import { conteudoAvisoFimAluno } from "@/lib/conclusao-programa";
+import { conteudoSolicitacaoPassaporte } from "@/lib/passaporte-lembrete";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -640,6 +641,41 @@ export async function enviarAvisoDocumentoEmail(
     ? `Documento aprovado - ${t.brandName}`
     : `Documento recusado - reenvio necessário - ${t.brandName}`;
   return enviarViaResend(t, destinatario, "aviso_documento", assunto, templateAvisoDocumento(t, nome, dados));
+}
+
+// ---- Solicitacao de passaporte ao cliente ----------------------------------
+
+function templateSolicitacaoPassaporte(
+  t: EmailTheme,
+  c: { saudacao: string; paragrafo: string; botaoLabel: string },
+  portalUrl: string,
+) {
+  // Escapa saudacao/paragrafo: contêm nomes (titular/estudante) vindos do CRM — um
+  // nome com <, > ou & quebraria o HTML. Mesma convenção dos demais templates.
+  const corpo = `<p style="color:${t.ink};font-size:18px;margin:0 0 12px;">${escaparHtml(c.saudacao)}</p>
+<p style="color:${t.ink};font-size:15px;margin:0 0 4px;">${escaparHtml(c.paragrafo)}</p>
+<table role="presentation">${botaoRow(t, portalUrl, c.botaoLabel)}</table>`;
+  return layout(t, { corpo });
+}
+
+// Pede ao TITULAR o upload da imagem do passaporte (lembrete do cron). O conteudo
+// (titular-vs-estudante) vem do motor puro passaporte-lembrete. Best-effort: lanca
+// em caso de falha para o chamador contabilizar (o cron ja registra em email_logs).
+export async function enviarSolicitacaoPassaporteEmail(
+  destinatario: string,
+  nome: string,
+  dados: { estudante: string; portalUrl: string },
+  tenantSlug?: string | null,
+) {
+  const t = resolveTheme(tenantSlug);
+  const c = conteudoSolicitacaoPassaporte({ nome, estudante: dados.estudante });
+  return enviarViaResend(
+    t,
+    destinatario,
+    "solicitacao_passaporte",
+    c.subject,
+    templateSolicitacaoPassaporte(t, c, dados.portalUrl),
+  );
 }
 
 // ---- Aviso de visto negado (E1) --------------------------------------------
