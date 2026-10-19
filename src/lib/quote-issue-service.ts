@@ -17,6 +17,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ehGrupoCurso, GRUPOS_CURSO } from "@/lib/grupo-item";
+import { resolverVisto, type CartaoVisto } from "@/lib/visto-destino";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, ehUrlHttp, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
@@ -824,6 +825,8 @@ export type PublicQuote = {
      */
     vet: number | null;
     vetAt: string | null;
+    /** Card de visto do programa (pais do campus + duracao); null sem regra conhecida. */
+    visto: CartaoVisto | null;
     itens: Array<{
       grupo: string;
       nome: string;
@@ -1065,15 +1068,17 @@ export async function getPublicQuote(
     ),
   );
   const escolas: Record<string, { nome: string | null; website: string | null; favicon: string | null; social: LinkSocial[] }> = {};
+  const paisDoCampus = new Map<string, string | null>();
   if (campusIds.length > 0) {
     const { data: campusContato } = await supabase
       .from("campus")
-      .select("id, website, supplier:supplier_id(display_name, website, favicon_url, social)")
+      .select("id, website, country_code, supplier:supplier_id(display_name, website, favicon_url, social)")
       .eq("tenant_id", tenantId)
       .in("id", campusIds)
       .is("archived_at", null);
     for (const c of (campusContato ?? []) as any[]) {
       const sup = Array.isArray(c.supplier) ? c.supplier[0] : c.supplier;
+      paisDoCampus.set(c.id as string, (c.country_code as string) ?? null);
       // Site do campus vence o da escola: nos 23 campi do tenant ele esta
       // sempre preenchido e e mais especifico (pagina daquela unidade).
       const bruto = ((c.website as string) || (sup?.website as string) || "").trim();
@@ -1157,8 +1162,20 @@ export async function getPublicQuote(
       presentmentCurrency: presentment,
       disclaimer: (policy?.disclaimer as string) ?? "",
     },
-    options,
+    options: options.map((o) => ({ ...o, visto: vistoDaOpcao(o.itens, paisDoCampus) })),
   };
+}
+
+/** Visto do PROGRAMA da opcao: pais do campus do curso + duracao (datas ou semanas vendidas). */
+function vistoDaOpcao(
+  itens: Array<{ grupo: string; startDate: string | null; endDate: string | null; quantity: number; unit: string; detalhes: DetalhesSnapshot }>,
+  paisDoCampus: Map<string, string | null>,
+): CartaoVisto | null {
+  const prog = itens.find((it) => ehGrupoCurso(it.grupo) && it.detalhes?.escola?.campusId);
+  if (!prog) return null;
+  const pais = paisDoCampus.get(prog.detalhes.escola!.campusId as string) ?? null;
+  const semanas = prog.unit === "week" ? Number(prog.quantity) : null;
+  return resolverVisto({ pais, inicio: prog.startDate, fim: prog.endDate, semanas });
 }
 
 // ---------------------------------------------------------------------------
