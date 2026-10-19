@@ -177,7 +177,11 @@ export async function GET(request: Request) {
       const dataFimBR = dataBR((c.data_fim ?? "").slice(0, 10));
       const botaoUrl = `${base}/fornecedor`;
 
-      // Contatos de admissões ativos da escola (supplier_user).
+      // Contatos da escola p/ o pedido de certificado: admissões + admin do
+      // fornecedor, ativos e com e-mail (mesma regra dos alertas de fornecedor,
+      // fornecedor-alertas.ts, e do alerta 5 em confirmacao-service.ts). Muitas
+      // escolas só têm o papel supplier_admin cadastrado — filtrar só "admissions"
+      // deixaria o pedido sem destinatário.
       let contatos: Array<{ email: string; name: string | null; language: string | null }> = [];
       if (c.supplier_id) {
         const { data: us } = await supabase
@@ -185,7 +189,7 @@ export async function GET(request: Request) {
           .select("email, name, language")
           .eq("supplier_id", c.supplier_id)
           .eq("active", true)
-          .eq("role", "admissions");
+          .in("role", ["admissions", "supplier_admin"]);
         contatos = ((us ?? []) as Array<{ email: string | null; name: string | null; language: string | null }>)
           .filter((u): u is { email: string; name: string | null; language: string | null } => !!u.email);
       }
