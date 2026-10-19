@@ -66,8 +66,12 @@ export async function carregarFinanceiro(contratoIds?: string[] | null): Promise
   let qParcelas = supabase
     .from("parcelas")
     .select(
-      "id, numero, descricao, valor_atual, valor_cobrado_brl, vencimento, status, is_entrada, paid_at, contrato_id, contratos(moeda, pais_destino, estudante_nome, nome, titulares(id, nome_completo, cpf))"
+      "id, numero, descricao, valor_atual, valor_cobrado_brl, vencimento, status, is_entrada, paid_at, contrato_id, contratos!inner(moeda, pais_destino, estudante_nome, nome, cancelado_em, titulares(id, nome_completo, cpf))"
     )
+    // Exclui parcelas de contratos CANCELADOS: elas nao sao recebiveis e nao
+    // devem contar como "em atraso"/"a receber" no painel. !inner garante que o
+    // filtro na coluna do contrato recorta as PARCELAS (nao so o objeto embutido).
+    .is("contratos.cancelado_em", null)
     .order("vencimento", { ascending: true });
   if (contratoIds != null) qParcelas = qParcelas.in("contrato_id", contratoIds);
   const { data: parcelas, error: erroParcelas } = await qParcelas;

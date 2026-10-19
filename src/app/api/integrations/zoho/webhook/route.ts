@@ -105,14 +105,78 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: titular, error: titularError } = await supabase
+  // Tenant do titular. `titulares.tenant_id` e NOT NULL no banco (login
+  // multi-tenant por URL), entao o INSERT de um CPF novo precisa do valor -- sem
+  // ele, o INSERT falhava com 500 e o cliente nunca era criado. O deploy resolve
+  // o tenant pelo slug (CATALOGO_TENANT_SLUG, default "forio").
+  //
+  // INVARIANTE: um CPF NUNCA muda de tenant por um webhook. Por isso separamos os
+  // caminhos: titular JA existente -> UPDATE que NEM TOCA em tenant_id (sincroniza
+  // so os dados do CRM); titular NOVO -> INSERT com o tenant do deploy. Assim a
+  // preservacao do tenant nao depende de um read racy (achado da revisao: um
+  // upsert que regravava tenant_id podia mover a conta de tenant se o read de
+  // preservacao falhasse).
+  const slugTenant = process.env.CATALOGO_TENANT_SLUG ?? "forio";
+  const { data: tenantRow, error: tenantError } = await supabase
+    .from("tenant")
+    .select("id")
+    .eq("slug", slugTenant)
+    .maybeSingle();
+  if (tenantError || !tenantRow?.id) {
+    console.error("Falha ao resolver tenant do deploy p/ titular:", tenantError?.message, "slug:", slugTenant);
+    return NextResponse.json({ ok: false, error: "Tenant do deploy nao configurado" }, { status: 500 });
+  }
+  const tenantDeploy = tenantRow.id as string;
+
+  // Fail-closed: se nao conseguimos SABER se o titular ja existe, nao arriscamos
+  // gravar (um INSERT as cegas poderia bater no unique de cpf; um UPDATE poderia
+  // nao achar). Aborta com 500 em vez de degradar.
+  const { data: titularAtual, error: titularReadError } = await supabase
     .from("titulares")
-    .upsert(
-        { cpf, nome_completo: nomeCompleto, telefone, email, zoho_contact_id: contactId },
-      { onConflict: "cpf" }
-    )
-    .select()
-    .single();
+    .select("id")
+    .eq("cpf", cpf)
+    .maybeSingle();
+  if (titularReadError) {
+    console.error("Falha ao consultar titular por cpf:", titularReadError.message);
+    return NextResponse.json({ ok: false, error: "Falha ao consultar titular no Supabase" }, { status: 500 });
+  }
+
+  // Dados do CRM sincronizados em ambos os caminhos; tenant_id SO no INSERT.
+  const dadosTitular = { cpf, nome_completo: nomeCompleto, telefone, email, zoho_contact_id: contactId };
+  let titular: { id: string } | null = null;
+  let titularError: { message?: string } | null = null;
+
+  if (titularAtual?.id) {
+    const upd = await supabase
+      .from("titulares")
+      .update(dadosTitular)
+      .eq("id", titularAtual.id)
+      .select()
+      .single();
+    titular = upd.data;
+    titularError = upd.error;
+  } else {
+    const ins = await supabase
+      .from("titulares")
+      .insert({ ...dadosTitular, tenant_id: tenantDeploy })
+      .select()
+      .single();
+    if (ins.error) {
+      // Corrida: outro disparo do Zoho criou o titular (mesmo CPF) entre o read e
+      // este INSERT. Nao reinserimos (quebraria o unique); UPDATE sem tenant_id.
+      const upd = await supabase
+        .from("titulares")
+        .update(dadosTitular)
+        .eq("cpf", cpf)
+        .select()
+        .single();
+      titular = upd.data;
+      titularError = upd.error;
+    } else {
+      titular = ins.data;
+      titularError = ins.error;
+    }
+  }
 
   if (titularError || !titular) {
     console.error(titularError);
@@ -287,6 +351,10 @@ export async function POST(request: Request) {
       valor_total: valorTotal,
       moeda,
       zoho_product_id: produtoLookup.id,
+      // tenant_id tambem e NOT NULL no banco (login multi-tenant). Contrato NOVO
+      // (o dedupe acima ja tratou os existentes) nasce no tenant do deploy -- sem
+      // isso o INSERT falhava com 500 e o titular ficava sem contrato.
+      tenant_id: tenantDeploy,
       // Fornecedor ja no provisionamento (quando o Vendor esta sincronizado).
       ...(supplierId ? { supplier_id: supplierId } : {}),
       ...camposContrato,
