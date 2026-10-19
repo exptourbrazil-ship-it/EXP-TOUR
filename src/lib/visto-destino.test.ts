@@ -64,6 +64,7 @@ test("programas cadastrados de estagio e voluntariado: tipo proprio, nunca isent
   }
   assert.match(resolverVisto({ categoria: "estagio", pais: "US", semanas: 8 })?.titulo ?? "", /F-1/);
   assert.ok(resolverVisto({ categoria: "estagio", pais: "US", semanas: 8 })?.alertas.some((a) => /J-1/.test(a)));
+  assert.ok(resolverVisto({ pais: "US", semanas: 8 })?.alertas.some((a) => /18 horas/.test(a)));
   assert.match(resolverVisto({ categoria: "estagio", pais: "GB", semanas: 8 })?.titulo ?? "", /Government Authorised Exchange/);
 });
 
