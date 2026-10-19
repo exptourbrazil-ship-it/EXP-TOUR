@@ -175,7 +175,9 @@ export async function GET(request: Request) {
       const estudante = c.estudante_nome || "o estudante";
       const programa = c.nome || "";
       const dataFimBR = dataBR((c.data_fim ?? "").slice(0, 10));
-      const botaoUrl = `${base}/fornecedor`;
+      // Deep-link direto para a pagina do estudante no Portal do Fornecedor, onde
+      // a escola faz o upload do certificado e do relatorio ([id] = contrato_id).
+      const botaoUrl = `${base}/fornecedor/estudantes/${c.id}`;
 
       // Contatos da escola p/ o pedido de certificado: admissões + admin do
       // fornecedor, ativos e com e-mail (mesma regra dos alertas de fornecedor,

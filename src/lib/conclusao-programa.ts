@@ -82,20 +82,20 @@ export function conteudoPedidoCertificado(
   const pt = idioma === "pt";
   if (pt) {
     return {
-      subject: `Certificado e report — ${d.estudante}`,
-      titulo: "Programa concluído — enviar certificado e report",
+      subject: `Certificado e relatório — ${d.estudante}`,
+      titulo: "Programa concluído — enviar certificado e relatório acadêmico",
       contexto:
         `O programa de ${d.estudante}${d.programa ? ` (${d.programa})` : ""} foi encerrado em ${d.dataFimBR}. ` +
-        "Por favor, envie a imagem do certificado de conclusão e o report final do estudante pelo portal.",
+        "Por favor, envie o certificado de conclusão e o relatório acadêmico final do estudante pelo portal (botão abaixo).",
       botaoLabel: "Enviar documentos",
     };
   }
   return {
     subject: `Certificate & report — ${d.estudante}`,
-    titulo: "Program completed — please share the certificate & report",
+    titulo: "Program completed — please share the certificate & academic report",
     contexto:
       `The program for ${d.estudante}${d.programa ? ` (${d.programa})` : ""} ended on ${d.dataFimBR}. ` +
-      "Please upload the completion certificate (image) and the student's final report via the portal.",
+      "Please upload the completion certificate and the student's final academic report via the portal (button below).",
     botaoLabel: "Upload documents",
   };
 }
