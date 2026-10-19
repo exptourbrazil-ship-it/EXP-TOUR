@@ -1,7 +1,7 @@
 ---
 name: monitor-vistos
 description: Monitor de vistos (read-only). Use periodicamente, ou quando um país mudar regra, para comparar as páginas OFICIAIS de governo com o que o portal afirma no card de visto da cotação (src/lib/visto-destino.ts) e com a página do Notion "RELATÓRIO: VISTOS E ENTRADAS DE BRASILEIROS NO EXTERIOR". Reporta divergências com fonte; NÃO edita código nem Notion.
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, mcp__43701966-692f-429d-a02a-34bc37d5914d__notion-fetch, mcp__43701966-692f-429d-a02a-34bc37d5914d__notion-search
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, mcp__43701966-692f-429d-a02a-34bc37d5914d__notion-fetch, mcp__43701966-692f-429d-a02a-34bc37d5914d__notion-search, mcp__c6999731-4018-4445-8d34-cb091e28b268__execute_sql
 model: inherit
 ---
 
@@ -18,8 +18,26 @@ A "verdade" do portal está em dois lugares, que devem andar juntos:
    (id 60ecc8ccafc68232b0d1019a4d1c08a9), seção "Guia de tipo de visto por
    programa". Leia com notion-fetch.
 
-Países: EUA, Canadá, Reino Unido, Irlanda, Malta, Espanha, França, Alemanha,
-Austrália, Nova Zelândia, Emirados.
+## Escopo: só o que está cadastrado
+
+O card existe apenas para países e programas REGISTRADOS no catálogo. Em cada
+rodada, reconfira o escopo (somente leitura) no Supabase, projeto "Forio"
+(id lvchpskxeohfmistppxl), com `execute_sql`:
+
+```sql
+select c.country_code, p.kind, count(*) n,
+  count(*) filter (where p.name ~* 'volunt') volunt,
+  count(*) filter (where p.name ~* 'intern(ship)?\y|est[aá]gio|traineeship|work experience') estagio,
+  count(*) filter (where p.name ~* 'au[ -]?pair|work ?(and|&) ?travel|working holiday') trabalho
+from product p join campus c on c.id = p.campus_id
+where p.archived_at is null and p.status = 'active' and p.kind in ('program','package')
+group by 1,2 order by 1,2;
+```
+
+Em 19/10/2026 o escopo era: CA, GB, IE, MT, NZ, US; estágio em GB, IE e US;
+voluntariado em GB; nenhum programa de trabalho. Pesquise e compare SÓ esses
+países e categorias. Se aparecer país ou categoria nova no catálogo, avise
+no relatório (classe NOVO — "falta regra no card") em vez de pesquisar tudo.
 
 ## Fontes (nesta ordem)
 
@@ -29,18 +47,14 @@ Governo primeiro; o Mundo dos Vistos (www4.mundodosvistos.com.br) só como apoio
 - Reino Unido: gov.uk/eta, /standard-visitor, /student-visa, /study-visit-visa,
   /government-authorised-exchange, /youth-mobility
 - Irlanda: irishimmigration.ie, citizensinformation.ie, enterprise.gov.ie
-- Schengen: home-affairs.ec.europa.eu, travel-europe.europa.eu/etias_en (ETIAS!),
-  exteriores.gob.es, france-visas.gouv.fr, auswaertiges-amt.de, make-it-in-germany.com
+- Schengen (Malta): home-affairs.ec.europa.eu, travel-europe.europa.eu/etias_en (ETIAS!)
 - Malta: identita.gov.mt (Central Visa Unit)
-- Austrália: immi.homeaffairs.gov.au (vistos 600, 500, 407, 408, 462; página de cotas)
 - Nova Zelândia: immigration.govt.nz (Brazil Working Holiday, NZeTA, student visa)
-- EAU: mofa.gov.ae (embaixada em Brasília), icp.gov.ae
 
 Pontos que mudam com mais frequência (cheque sempre): taxas (ETA £, study permit
-CAD, SEVIS, NZeTA, Student Visa), data de início do ETIAS, abertura/fechamento das
-cotas de Working Holiday (Austrália 462, Nova Zelândia), regras de estudo curto
-(Visitor AU/NZ, Canadá sem study permit), regra nova de pedido de fora do país
-(Student visa AU) e a lista de países do IEC e do Youth Mobility.
+CAD, SEVIS, NZeTA, Student Visa), data de início do ETIAS, regras de estudo curto
+(Canadá sem study permit, NZeTA/Visitor na Nova Zelândia) e o enquadramento de
+estágio/voluntariado (J-1, Government Authorised Exchange, Standard Visitor).
 
 ## Como trabalhar
 
