@@ -61,10 +61,11 @@ function ehConflitoUnicidade(err: { code?: string } | null): boolean {
 // Promove o claim de `pendente` para `processado` (e-mail confirmado). É o que
 // impede um REENVIO na próxima varredura; por isso insiste (até 3 tentativas) num
 // blip transitório do banco, em vez de deixar o claim `pendente` (que reabriria o
-// envio depois de PENDENTE_OBSOLETO_MS). No 1º passo (escola) a conclusão terminal
-// já é um segundo backstop; no 2º (aluno) o contrato continua concluído e na janela,
-// então esta confirmação é o ÚNICO guarda contra duplicata — daí o retry. Retorna
-// true se marcou; false se, mesmo após as tentativas, não confirmou.
+// envio depois de PENDENTE_OBSOLETO_MS). Como o 2º passo reprocessa os concluídos
+// recentes (pedido à escola E aviso ao aluno) enquanto estão na janela, a conclusão
+// terminal NÃO é mais backstop para esses envios — esta confirmação é o único guarda
+// contra duplicata. Retorna true se marcou; false se, mesmo após as tentativas, não
+// confirmou (o chamador conta como erro para dar visibilidade).
 async function marcarPedidoEnviado(supabase: SupabaseClient, chave: string): Promise<boolean> {
   for (let tentativa = 0; tentativa < 3; tentativa++) {
     const { error } = await supabase
@@ -111,6 +112,132 @@ async function reivindicarEnvio(
     return idadeMs >= PENDENTE_OBSOLETO_MS ? "enviar" : "pular";
   }
   return "erro";
+}
+
+// Pede à ESCOLA o certificado + relatório de um contrato concluído, idempotente
+// pela chave `conclusao_certificado:<id>`. Usado pelo 1º passo (conclusão na data)
+// E pelo 2º passo (contratos concluídos por qualquer caminho, inclusive o botão
+// "Concluir" do admin) — a chave única garante UM envio só, não importa quem chegar
+// primeiro. Envia a admissões + admin do fornecedor (ativos, com e-mail), com o
+// botão de upload direto na página do estudante. Sem contato -> alerta interno.
+// Retorna "retry" quando nada saiu por falha transitória (todos os e-mails falharam
+// ou erro de claim) para o 1º passo NÃO concluir ainda; "ok" caso contrário.
+async function pedirCertificadoEscola(
+  supabase: SupabaseClient,
+  c: { id: string; supplier_id: string | null; estudante_nome: string | null; nome: string | null; data_fim: string | null },
+  base: string,
+  resultado: { emails_escola: number; sem_contato: number; erros: number },
+): Promise<"ok" | "retry"> {
+  const chave = `conclusao_certificado:${c.id}`;
+
+  // Claim ATÔMICO do pedido de certificado (status `pendente` até o e-mail sair).
+  const { error: claimErro } = await supabase.from("events").insert({
+    source: "conclusao_programa",
+    event_type: "pedido_certificado",
+    idempotency_key: chave,
+    external_id: c.id,
+    payload: { contrato_id: c.id, supplier_id: c.supplier_id ?? null },
+    status: "pendente",
+  });
+
+  let enviarAgora: boolean;
+  if (!claimErro) {
+    enviarAgora = true; // ganhamos o claim
+  } else if (ehConflitoUnicidade(claimErro as { code?: string })) {
+    // Já existe um claim: decide pelo status/idade.
+    const { data: ex, error: exErro } = await supabase
+      .from("events")
+      .select("status, created_at")
+      .eq("idempotency_key", chave)
+      .maybeSingle();
+    if (exErro) {
+      console.error("[concluir-programas] falha ao ler claim do pedido:", exErro.message);
+      resultado.erros++;
+      return "retry";
+    }
+    if (ex?.status === "processado") {
+      enviarAgora = false; // e-mail já confirmado numa varredura anterior
+    } else {
+      const idadeMs = ex?.created_at ? Date.now() - new Date(ex.created_at).getTime() : Infinity;
+      enviarAgora = idadeMs >= PENDENTE_OBSOLETO_MS; // reenvia só se o pendente é antigo
+    }
+  } else {
+    console.error("[concluir-programas] falha ao reivindicar pedido:", (claimErro as { message?: string }).message);
+    resultado.erros++;
+    return "retry";
+  }
+
+  if (!enviarAgora) return "ok"; // já pedido numa varredura anterior
+
+  const estudante = c.estudante_nome || "o estudante";
+  const programa = c.nome || "";
+  const dataFimBR = dataBR((c.data_fim ?? "").slice(0, 10));
+  // Deep-link direto para a pagina do estudante no Portal do Fornecedor, onde a
+  // escola faz o upload do certificado e do relatorio ([id] = contrato_id).
+  const botaoUrl = `${base}/fornecedor/estudantes/${c.id}`;
+
+  // Contatos da escola: admissões + admin do fornecedor, ativos e com e-mail.
+  let contatos: Array<{ email: string; name: string | null; language: string | null }> = [];
+  if (c.supplier_id) {
+    const { data: us } = await supabase
+      .from("supplier_user")
+      .select("email, name, language")
+      .eq("supplier_id", c.supplier_id)
+      .eq("active", true)
+      .in("role", ["admissions", "supplier_admin"]);
+    contatos = ((us ?? []) as Array<{ email: string | null; name: string | null; language: string | null }>)
+      .filter((u): u is { email: string; name: string | null; language: string | null } => !!u.email);
+  }
+
+  if (contatos.length === 0) {
+    // Sem contato da escola: alerta a equipe para pedir manualmente e marca o
+    // pedido como tratado p/ não re-alertar a cada dia.
+    resultado.sem_contato++;
+    try {
+      await enviarAvisoInternoEmail(
+        "Programa concluído sem contato da escola",
+        `O contrato ${c.id} foi concluído, mas a escola não tem contato de admissões cadastrado. Solicite a imagem do certificado e o report manualmente.`,
+      );
+    } catch {
+      // best-effort
+    }
+    if (!(await marcarPedidoEnviado(supabase, chave))) resultado.erros++;
+    return "ok";
+  }
+
+  // Envia o pedido a cada contato. Só marcamos (e, no 1º passo, concluímos) se AO
+  // MENOS UM e-mail saiu — se TODOS falharem, o claim fica `pendente` e a próxima
+  // varredura tenta de novo.
+  let algumSucesso = false;
+  for (const u of contatos) {
+    const ct = conteudoPedidoCertificado(u.language || "en", { estudante, programa, dataFimBR });
+    try {
+      await enviarAlertaFornecedorEmail(u.email, u.name || "", u.language || "en", {
+        subject: ct.subject,
+        titulo: ct.titulo,
+        contexto: ct.contexto,
+        botaoLabel: ct.botaoLabel,
+        botaoUrl,
+      });
+      algumSucesso = true;
+      resultado.emails_escola++;
+    } catch {
+      // Não logar o erro cru (pode conter o e-mail). Falha já fica em email_logs.
+      resultado.erros++;
+    }
+  }
+  if (!algumSucesso) return "retry";
+  // Cópia interna (equipe) — não há consultor-dono por contrato no banco.
+  try {
+    await enviarAvisoInternoEmail(
+      "Programa concluído — certificado solicitado à escola",
+      `O contrato ${c.id} foi concluído e o pedido de certificado + report foi enviado à escola.`,
+    );
+  } catch {
+    // best-effort
+  }
+  if (!(await marcarPedidoEnviado(supabase, chave))) resultado.erros++;
+  return "ok";
 }
 
 export async function GET(request: Request) {
@@ -188,122 +315,10 @@ export async function GET(request: Request) {
     }
     resultado.candidatos++;
 
-    const chave = `conclusao_certificado:${c.id}`;
-
-    // Claim ATÔMICO do pedido de certificado (status `pendente` até o e-mail sair).
-    const { error: claimErro } = await supabase.from("events").insert({
-      source: "conclusao_programa",
-      event_type: "pedido_certificado",
-      idempotency_key: chave,
-      external_id: c.id,
-      payload: { contrato_id: c.id, supplier_id: c.supplier_id ?? null },
-      status: "pendente",
-    });
-
-    // Decide se ESTA execução deve (tentar) enviar o e-mail.
-    let enviarAgora: boolean;
-    if (!claimErro) {
-      enviarAgora = true; // ganhamos o claim
-    } else if (ehConflitoUnicidade(claimErro as { code?: string })) {
-      // Já existe um claim: decide pelo status/idade (ver cabeçalho).
-      const { data: ex, error: exErro } = await supabase
-        .from("events")
-        .select("status, created_at")
-        .eq("idempotency_key", chave)
-        .maybeSingle();
-      if (exErro) {
-        console.error("[concluir-programas] falha ao ler claim do pedido:", exErro.message);
-        resultado.erros++;
-        continue;
-      }
-      if (ex?.status === "processado") {
-        enviarAgora = false; // e-mail já confirmado numa varredura anterior
-      } else {
-        const idadeMs = ex?.created_at ? Date.now() - new Date(ex.created_at).getTime() : Infinity;
-        enviarAgora = idadeMs >= PENDENTE_OBSOLETO_MS; // reenvia só se o pendente é antigo
-      }
-    } else {
-      // Erro transitório (não-23505): não processa este contrato agora; a próxima
-      // varredura tenta de novo (não arrisca concluir/enviar sem base).
-      console.error("[concluir-programas] falha ao reivindicar pedido:", (claimErro as { message?: string }).message);
-      resultado.erros++;
+    // Pedido de certificado à escola (idempotente). Se nada saiu por falha
+    // transitória, NÃO conclui ainda — a próxima varredura tenta de novo.
+    if ((await pedirCertificadoEscola(supabase, c, base, resultado)) === "retry") {
       continue;
-    }
-
-    if (enviarAgora) {
-      const estudante = c.estudante_nome || "o estudante";
-      const programa = c.nome || "";
-      const dataFimBR = dataBR((c.data_fim ?? "").slice(0, 10));
-      // Deep-link direto para a pagina do estudante no Portal do Fornecedor, onde
-      // a escola faz o upload do certificado e do relatorio ([id] = contrato_id).
-      const botaoUrl = `${base}/fornecedor/estudantes/${c.id}`;
-
-      // Contatos da escola p/ o pedido de certificado: admissões + admin do
-      // fornecedor, ativos e com e-mail (mesma regra dos alertas de fornecedor,
-      // fornecedor-alertas.ts, e do alerta 5 em confirmacao-service.ts). Muitas
-      // escolas só têm o papel supplier_admin cadastrado — filtrar só "admissions"
-      // deixaria o pedido sem destinatário.
-      let contatos: Array<{ email: string; name: string | null; language: string | null }> = [];
-      if (c.supplier_id) {
-        const { data: us } = await supabase
-          .from("supplier_user")
-          .select("email, name, language")
-          .eq("supplier_id", c.supplier_id)
-          .eq("active", true)
-          .in("role", ["admissions", "supplier_admin"]);
-        contatos = ((us ?? []) as Array<{ email: string | null; name: string | null; language: string | null }>)
-          .filter((u): u is { email: string; name: string | null; language: string | null } => !!u.email);
-      }
-
-      if (contatos.length === 0) {
-        // Sem contato da escola: conclui mesmo assim (decisão do produto) e alerta a
-        // equipe para pedir manualmente. Marca o pedido como enviado p/ não re-alertar.
-        resultado.sem_contato++;
-        try {
-          await enviarAvisoInternoEmail(
-            "Programa concluído sem contato da escola",
-            `O contrato ${c.id} foi concluído automaticamente na data de término, mas a escola não tem contato de admissões cadastrado. Solicite a imagem do certificado e o report manualmente.`,
-          );
-        } catch {
-          // best-effort: o aviso interno não deve bloquear a conclusão.
-        }
-        await marcarPedidoEnviado(supabase, chave);
-      } else {
-        // Envia o pedido a cada contato. Só seguimos para concluir se AO MENOS UM
-        // e-mail saiu — se TODOS falharem, o claim fica `pendente` e NÃO concluímos:
-        // o contrato continua elegível e a próxima varredura tenta de novo.
-        let algumSucesso = false;
-        for (const u of contatos) {
-          const ct = conteudoPedidoCertificado(u.language || "en", { estudante, programa, dataFimBR });
-          try {
-            await enviarAlertaFornecedorEmail(u.email, u.name || "", u.language || "en", {
-              subject: ct.subject,
-              titulo: ct.titulo,
-              contexto: ct.contexto,
-              botaoLabel: ct.botaoLabel,
-              botaoUrl,
-            });
-            algumSucesso = true;
-            resultado.emails_escola++;
-          } catch {
-            // Não logar o erro cru (pode conter o e-mail). Falha já fica em email_logs.
-            resultado.erros++;
-          }
-        }
-        if (!algumSucesso) {
-          continue; // nenhum e-mail saiu -> não conclui; reprocessa na próxima varredura
-        }
-        // Cópia interna (equipe) — não há consultor-dono por contrato no banco.
-        try {
-          await enviarAvisoInternoEmail(
-            "Programa concluído — certificado solicitado à escola",
-            `O contrato ${c.id} foi concluído automaticamente na data de término e o pedido de certificado + report foi enviado à escola.`,
-          );
-        } catch {
-          // best-effort
-        }
-        await marcarPedidoEnviado(supabase, chave);
-      }
     }
 
     // Conclusão idempotente: relê o estado imediatamente antes (guarda contra uma
@@ -344,9 +359,11 @@ export async function GET(request: Request) {
   type LinhaConcluido = {
     id: string;
     titular_id: string | null;
+    supplier_id: string | null;
     estudante_nome: string | null;
     estudante_email: string | null;
     nome: string | null;
+    data_fim: string | null;
   };
   // Filtra JÁ NO SQL os contratos cuja conclusão (transição para 'concluido') caiu
   // dentro da janela — evita varrer todos os concluídos históricos (custo O(janela),
@@ -371,7 +388,7 @@ export async function GET(request: Request) {
   for (const lote of emLotes([...idsRecentes], 500)) {
     const { data, error } = await supabase
       .from("contratos")
-      .select("id, titular_id, estudante_nome, estudante_email, nome")
+      .select("id, titular_id, supplier_id, estudante_nome, estudante_email, nome, data_fim")
       .in("id", lote)
       .is("cancelado_em", null)
       .eq("estado", "concluido");
@@ -384,8 +401,15 @@ export async function GET(request: Request) {
   }
 
   for (const c of concluidos) {
-    // Janela já aplicada no SQL acima (idsRecentes) — aqui só o envio.
-    // E-mail do aluno: estudante -> titular (fallback). Sem e-mail, não dá p/ enviar.
+    // Janela já aplicada no SQL acima (idsRecentes). Dois envios por contrato:
+    // (a) pedido de certificado à ESCOLA — idempotente pela chave
+    // `conclusao_certificado:<id>`, então se o 1º passo (conclusão na data) já pediu,
+    // isto pula; se a conclusão foi MANUAL (botão do admin, sem passar pelo 1º passo),
+    // é AQUI que o pedido à escola sai. Cobre "toda vez que o aluno terminar".
+    await pedirCertificadoEscola(supabase, c, base, resultado);
+
+    // (b) E-mail ao aluno: estudante -> titular (fallback). Sem e-mail, pula só o
+    // aviso ao aluno (o pedido à escola acima já foi feito).
     let email = (c.estudante_email || "").trim();
     if (!email && c.titular_id) {
       const { data: tit } = await supabase
