@@ -81,5 +81,12 @@ test("voluntariado no Reino Unido: ETA ate 30 dias; acima disso, a confirmar", (
   assert.equal(resolverVisto({ categoria: "voluntariado", pais: "GB", semanas: 4 })?.situacao, "autorizacao");
   const longo = resolverVisto({ categoria: "voluntariado", pais: "GB", semanas: 6 });
   assert.equal(longo?.situacao, "visto");
-  assert.match(longo?.titulo ?? "", /a confirmar/);
+  assert.match(longo?.titulo ?? "", /Charity Worker/);
+  assert.ok(longo?.alertas.some((a) => /Twin/.test(a)));
+  assert.equal(resolverVisto({ categoria: "voluntariado", pais: "GB", inicio: "2027-03-01", fim: "2027-03-30" })?.situacao, "autorizacao");
+});
+
+test("estagio Twin Londres: custo do certificado BUNAC aparece", () => {
+  const v = resolverVisto({ categoria: "estagio", pais: "GB", semanas: 12 });
+  assert.ok(v?.detalhes.some((d) => /BUNAC: £ 2\.500/.test(d)));
 });

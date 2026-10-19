@@ -261,7 +261,8 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
         detalhes: [
           "Work experience e treinamento dentro de esquema aprovado, com patrocinador licenciado. Máximo de 12 ou 24 meses conforme o esquema.",
           "A Twin informa que candidatos de fora do Espaço Econômico Europeu participam por parceria com a BUNAC, patrocinadora do visto (nome antigo: Tier 5). Estágio de até 6 meses, mínimo de 25 horas por semana.",
-          "Taxa de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
+          "Custo do certificado de patrocínio da BUNAC: £ 2.500.",
+          "Taxa do visto de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
         ],
         alertas: [
           "A ETA e o visto de visitante não permitem estagiar. A página do programa não cita o visto: o consultor confirma com a Twin a rota para brasileiros. " + ENQUADRAMENTO,
@@ -270,15 +271,27 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
       };
     case "GB:voluntariado": {
       const longo = dias !== null && dias > 30;
+      if (longo) {
+        return {
+          situacao: "visto",
+          titulo: "Temporary Worker – Charity Worker (voluntariado acima de 30 dias)",
+          detalhes: [
+            "A ETA (Standard Visitor) só cobre voluntariado de até 30 dias em instituição de caridade registrada. Acima disso, o governo prevê o visto Charity Worker, para trabalho voluntário não remunerado.",
+            "Exige certificate of sponsorship emitido por organização licenciada, e o trabalho deve ser da própria organização patrocinadora. Taxa de £ 340 + taxa de saúde (cerca de £ 1.035 por ano) e comprovação de recursos.",
+          ],
+          alertas: [
+            "O programa passa de 30 dias: o consultor confirma com a Twin quem patrocina o visto, ou se o voluntariado será limitado a 30 dias para caber na ETA.",
+          ],
+          fonte: "https://www.gov.uk/temporary-worker-charity-worker-visa",
+        };
+      }
       return {
-        situacao: longo ? "visto" : "autorizacao",
-        titulo: longo ? "Voluntariado acima de 30 dias — tipo de visto a confirmar" : "ETA — Standard Visitor (voluntariado de até 30 dias)",
+        situacao: "autorizacao",
+        titulo: "ETA — Standard Visitor (voluntariado de até 30 dias)",
         detalhes: [
           "Voluntariado de até 30 dias com instituição de caridade registrada cabe como visitante (ETA de £ 20). A Twin informa a mesma regra.",
         ],
-        alertas: longo
-          ? ["A ETA só cobre voluntariado de até 30 dias, em instituição de caridade registrada. O programa dura mais que isso: o consultor confirma o visto com a Twin."]
-          : ["Fora de instituição de caridade registrada, ou acima de 30 dias, é preciso outro visto: confirme com o consultor."],
+        alertas: ["O voluntariado precisa ser em instituição de caridade registrada (não em empresa). Se passar de 30 dias, é preciso outro visto: confirme com o consultor."],
         fonte: "https://www.gov.uk/standard-visitor/volunteering",
       };
     }
