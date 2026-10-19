@@ -121,7 +121,7 @@ function estudo(pais: string, dias: number | null): Faixa | null {
         ],
         alertas: [
           "O tempo de espera por entrevista nos consulados do Brasil é longo: peça o visto com antecedência.",
-          "Regra informada pelas escolas (Rennert 2026): mais de 18 horas de aula por semana exigem o F-1; menos de 18 horas podem ser feitas com visto de turista B-2 (o Brasil não tem a isenção ESTA). O governo restringe o B-2 a estudo recreativo sem créditos: o consultor confirma o enquadramento do seu curso.",
+          "Regra informada pelas escolas: mais de 18 horas de aula por semana exigem o F-1; menos de 18 horas podem ser feitas com visto de turista B-2 (o Brasil não tem a isenção ESTA). O governo restringe o B-2 a estudo recreativo sem créditos: o consultor confirma o enquadramento do seu curso.",
         ],
         fonte: "https://studyinthestates.dhs.gov/students/prepare/students-and-the-form-i-20",
       };
@@ -246,7 +246,7 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
         situacao: "visto",
         titulo: "F-1 (visto de estudante) do curso de inglês combinado — estágio voluntário",
         detalhes: [
-          "Segundo a brochura 2026 da Rennert, o estágio (Business English in Action) é um complemento do Business English 22 ou do Intensive English 22: o aluno precisa do visto F-1.",
+          "A Rennert oferece o estágio (Business English in Action) como complemento do Business English 22 ou do Intensive English 22: o aluno precisa do visto F-1.",
           "Duração de 6 a 16 semanas incluindo o inglês: nas 2 primeiras semanas, aulas e oficinas de currículo e entrevista; depois, voluntariado de meio período por 4 a 14 semanas, não remunerado, com carta de recomendação ao final.",
           "A escola emite o I-20; taxa SEVIS I-901 de US$ 350.",
         ],

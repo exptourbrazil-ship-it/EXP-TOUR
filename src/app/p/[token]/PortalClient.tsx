@@ -945,30 +945,37 @@ function CartaoVistoOpcao({ visto }: { visto: NonNullable<OpcaoData["visto"]> })
         </span>
       </div>
       <p className="mt-1 text-base font-medium text-[color:var(--p-ink)]">{visto.titulo}</p>
-      <ul className="mt-2 space-y-1 text-sm text-[color:var(--p-ink)] opacity-90">
-        {visto.detalhes.map((d, i) => (
-          <li key={i} className="ml-4 list-disc">{d}</li>
+      {/* Só o tipo de visto fica à vista; o resto abre em "Saiba mais". */}
+      <details className="group mt-2">
+        <summary className="inline-flex min-h-[32px] cursor-pointer list-none items-center gap-1 text-sm font-medium text-[color:var(--p-ink)] underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+          <span className="group-open:hidden">Saiba mais</span>
+          <span className="hidden group-open:inline">Mostrar menos</span>
+        </summary>
+        <ul className="mt-2 space-y-1 text-sm text-[color:var(--p-ink)] opacity-90">
+          {visto.detalhes.map((d, i) => (
+            <li key={i} className="ml-4 list-disc">{d}</li>
+          ))}
+        </ul>
+        {visto.alertas.map((a, i) => (
+          <p key={i} className="mt-2 text-sm text-[color:var(--p-ink)]">
+            <span className="font-semibold">Atenção: </span>
+            {a}
+          </p>
         ))}
-      </ul>
-      {visto.alertas.map((a, i) => (
-        <p key={i} className="mt-2 text-sm text-[color:var(--p-ink)]">
-          <span className="font-semibold">Atenção: </span>
-          {a}
+        {visto.fonte ? (
+          <a
+            href={visto.fonte}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className="mt-2 inline-block text-sm text-[color:var(--p-ink)] underline print:no-underline"
+          >
+            Fonte oficial
+          </a>
+        ) : null}
+        <p className="mt-2 text-xs text-[color:var(--p-muted)]">
+          Informação orientativa, referência {VISTO_REFERENCIA}. As regras mudam: confirme com seu consultor e nos canais oficiais do país antes de comprar passagem.
         </p>
-      ))}
-      {visto.fonte ? (
-        <a
-          href={visto.fonte}
-          target="_blank"
-          rel="noopener noreferrer nofollow"
-          className="mt-2 inline-block text-sm text-[color:var(--p-nav)] underline print:no-underline"
-        >
-          Fonte oficial
-        </a>
-      ) : null}
-      <p className="mt-2 text-xs text-[color:var(--p-muted)]">
-        Informação orientativa, referência {VISTO_REFERENCIA}. As regras mudam: confirme com seu consultor e nos canais oficiais do país antes de comprar passagem.
-      </p>
+      </details>
     </div>
   );
 }
