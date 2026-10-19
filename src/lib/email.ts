@@ -8,6 +8,7 @@
 // (EmailTheme). Estrutura comum: moldura escura + cartao claro; so a paleta muda.
 import { createClient } from "@supabase/supabase-js";
 import { getTenantBrand, type EmailTheme } from "@/lib/tenant-brand";
+import { conteudoAvisoFimAluno } from "@/lib/conclusao-programa";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -400,6 +401,23 @@ export async function enviarAlertaFornecedorEmail(
       botaoUrl: dados.botaoUrl,
     })
   );
+}
+
+// ---- Aviso de FIM de intercâmbio ao ALUNO (convite ao /retorno) ------------
+// Enviado quando o programa é concluído: parabeniza o aluno e o convida à aba
+// Retorno (certificado, avaliação no Google, nota ao serviço, indicação). Sempre
+// em PT (alunos brasileiros). Tema por tenant (marca do titular).
+export async function enviarAvisoFimProgramaEmail(
+  destinatario: string,
+  dados: { nome: string; programa: string; portalUrl: string },
+  tenantSlug?: string | null,
+) {
+  const t = resolveTheme(tenantSlug);
+  const c = conteudoAvisoFimAluno({ nome: dados.nome, programa: dados.programa });
+  const corpo = `<p style="color:${t.ink};font-size:18px;margin:0 0 16px;">${escaparHtml(c.titulo)}</p>
+<p style="color:${t.ink};font-size:16px;margin:0 0 8px;">${escaparHtml(c.paragrafo)}</p>
+<table role="presentation"><tbody>${botaoRow(t, dados.portalUrl, c.botaoLabel)}</tbody></table>`;
+  return enviarViaResend(t, destinatario, "aviso_fim_programa", c.subject, layout(t, { corpo }));
 }
 
 // ---- Confirmacao de aceite do Termo de Adesao ------------------------------
