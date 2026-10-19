@@ -76,14 +76,14 @@ const NOMES: Record<string, string> = {
 };
 
 const A_CONFIRMAR = "Esta regra ainda não foi confirmada em fonte oficial: o consultor confirma o tipo de visto antes da contratação.";
-const ENQUADRAMENTO = "O enquadramento exato (e o patrocinador do visto) é definido pela organização do programa — o consultor confirma antes da contratação.";
+const ENQUADRAMENTO = "O enquadramento exato (e o patrocinador do visto) é definido pela organização do programa: o consultor confirma antes da contratação.";
 
 /** Faixa para o que a pesquisa nao confirmou: diz isso, em vez de chutar um visto. */
 function aConfirmar(cat: Exclude<CategoriaPrograma, "estudo">, extra: string[] = []): Faixa {
   const nome = cat === "estagio" ? "estágio" : cat === "voluntariado" ? "voluntariado" : "trabalho";
   return {
     situacao: "visto",
-    titulo: `Visto de ${nome} — tipo a confirmar`,
+    titulo: `Visto de ${nome}: tipo a confirmar`,
     detalhes: [`${nome[0].toUpperCase()}${nome.slice(1)} exige permissão própria, diferente do visto de estudo e da entrada como turista.`, ...extra],
     alertas: [A_CONFIRMAR],
   };
@@ -160,7 +160,7 @@ function estudo(pais: string, dias: number | null): Faixa | null {
       if (dias <= DIAS_6_MESES) {
         return {
           situacao: "autorizacao",
-          titulo: "ETA (autorização eletrônica) — Standard Visitor",
+          titulo: "ETA (autorização eletrônica) como Standard Visitor",
           detalhes: [
             "Estudo de até 6 meses em instituição credenciada, inclusive curso de inglês, cabe na ETA (£ 20). Não vale para academies nem escolas estatais.",
             "A ETA é obrigatória para brasileiros desde 8/1/2025 e dispensa o visto tradicional.",
@@ -197,7 +197,7 @@ function estudo(pais: string, dias: number | null): Faixa | null {
       }
       return {
         situacao: "autorizacao",
-        titulo: "Registro de imigração (IRP) — Stamp 2",
+        titulo: "Registro de imigração (IRP) e Stamp 2",
         detalhes: [
           "Acima de 90 dias o aluno se registra na imigração irlandesa após a chegada e recebe o Stamp 2 (taxa de cerca de € 300).",
           "Curso de inglês precisa constar na lista oficial ILEP: mínimo de 25 semanas e 15 horas semanais.",
@@ -206,7 +206,7 @@ function estudo(pais: string, dias: number | null): Faixa | null {
         fonte: "https://www.irishimmigration.ie/coming-to-study-in-ireland/what-are-my-study-options/a-third-level-course-or-a-language-course/",
       };
     case "MT":
-      return schengenEstudo(longo, dias, "National Long Stay Visa (D-Visa) — estudante", [
+      return schengenEstudo(longo, dias, "National Long Stay Visa (D-Visa) de estudante", [
         "Pedido por prestador externo autorizado, com agendamento no sistema de vistos da Identità.",
         "Cursos acima de 90 dias corridos exigem o D-Visa mesmo para quem tem isenção de turista.",
       ], [], "https://identita.gov.mt/central-visa-unit-student-visa-courses-exceeding-90-days/");
@@ -244,7 +244,7 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
     case "US:estagio":
       return {
         situacao: "visto",
-        titulo: "F-1 (visto de estudante) do curso de inglês combinado — estágio voluntário",
+        titulo: "F-1 (visto de estudante) do curso de inglês combinado, estágio voluntário",
         detalhes: [
           "A Rennert oferece o estágio (Business English in Action) como complemento do Business English 22 ou do Intensive English 22: o aluno precisa do visto F-1.",
           "Duração de 6 a 16 semanas incluindo o inglês: nas 2 primeiras semanas, aulas e oficinas de currículo e entrevista; depois, voluntariado de meio período por 4 a 14 semanas, não remunerado, com carta de recomendação ao final.",
@@ -275,7 +275,7 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
       if (longo) {
         return {
           situacao: "visto",
-          titulo: "Temporary Worker – Charity Worker (voluntariado acima de 30 dias)",
+          titulo: "Charity Worker, visto de trabalho temporário (voluntariado acima de 30 dias)",
           detalhes: [
             "A ETA (Standard Visitor) só cobre voluntariado de até 30 dias em instituição de caridade registrada. Acima disso, o governo prevê o visto Charity Worker, para trabalho voluntário não remunerado.",
             "Exige certificate of sponsorship emitido por organização licenciada, e o trabalho deve ser da própria organização patrocinadora. Taxa de £ 340 + taxa de saúde (cerca de £ 1.035 por ano) e comprovação de recursos.",
@@ -288,7 +288,7 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
       }
       return {
         situacao: "autorizacao",
-        titulo: "ETA — Standard Visitor (voluntariado de até 30 dias)",
+        titulo: "ETA como Standard Visitor (voluntariado de até 30 dias)",
         detalhes: [
           "Voluntariado de até 30 dias com instituição de caridade registrada cabe como visitante (ETA de £ 20). A Twin informa a mesma regra.",
         ],
@@ -299,7 +299,7 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
     case "IE:estagio":
       return {
         situacao: "visto",
-        titulo: "Employment Permit (modalidade de estágio) — a confirmar",
+        titulo: "Employment Permit (modalidade de estágio), a confirmar",
         detalhes: [
           "A isenção de visto de entrada não permite estagiar. Estágio exige permissão de trabalho pedida pelo empregador.",
           "O site da escola (Twin) não informa o visto para este estágio.",
