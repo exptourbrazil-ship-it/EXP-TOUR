@@ -956,6 +956,16 @@ function CartaoVistoOpcao({ visto }: { visto: NonNullable<OpcaoData["visto"]> })
           {a}
         </p>
       ))}
+      {visto.fonte ? (
+        <a
+          href={visto.fonte}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="mt-2 inline-block text-sm text-[color:var(--p-nav)] underline print:no-underline"
+        >
+          Fonte oficial
+        </a>
+      ) : null}
       <p className="mt-2 text-xs text-[color:var(--p-muted)]">
         Informação orientativa, referência {VISTO_REFERENCIA}. As regras mudam: confirme com seu consultor e nos canais oficiais do país antes de comprar passagem.
       </p>

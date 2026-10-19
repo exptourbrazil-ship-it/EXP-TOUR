@@ -1,12 +1,19 @@
 // Card de visto da cotacao: qual visto/autorizacao o brasileiro precisa para o
-// programa apresentado, por pais de destino e duracao do curso.
+// programa apresentado, por pais de destino, natureza do programa e duracao.
 //
-// Fonte: pagina "RELATORIO: VISTOS E ENTRADAS DE BRASILEIROS NO EXTERIOR —
-// 2025/2026" (Notion, referencia jun/2026), secao "Regime de visto" de cada
-// pais. Regra de negocio, nao calculo: puro e testavel. Quando a regra mudar,
-// atualize aqui e `VISTO_REFERENCIA`.
+// Fonte: levantamento de out/2026 em sites OFICIAIS de governo (gov.uk,
+// canada.ca/IRCC, immigration.govt.nz, homeaffairs.gov.au, j1visa.state.gov,
+// identita.gov.mt, auswaertiges-amt.de...), com o Mundo dos Vistos so como apoio.
+// Onde o governo bloqueou a leitura ou a regra nao foi confirmada, o card DIZ
+// que e a confirmar — nunca afirma um tipo de visto sem fonte.
+//
+// Registro completo (fontes, divergencias, lacunas): pagina do Notion
+// "RELATORIO: VISTOS E ENTRADAS DE BRASILEIROS NO EXTERIOR". Quem monitora as
+// mudancas: agente `monitor-vistos`. Ao mudar uma regra aqui, atualize os dois.
+//
+// Regra de negocio, nao calculo: puro e testavel.
 
-export const VISTO_REFERENCIA = "junho de 2026";
+export const VISTO_REFERENCIA = "outubro de 2026";
 
 export type SituacaoVisto = "isento" | "autorizacao" | "visto";
 
@@ -41,15 +48,17 @@ export type CartaoVisto = {
   paisNome: string;
   /** isento = sem visto; autorizacao = ETA/eTA; visto = visto/permissao consular. */
   situacao: SituacaoVisto;
-  /** Resposta curta ao cliente: "Student Visa", "Isento de visto"... */
+  /** Resposta curta ao cliente: o TIPO de visto ("Student Visa", "Visto J-1"...). */
   titulo: string;
   /** Pontos de apoio (custo, prazo, exigencias). */
   detalhes: string[];
-  /** Alertas (mudancas de regra, prazos longos). */
+  /** Alertas (mudancas de regra, regra a confirmar). */
   alertas: string[];
+  /** Pagina oficial (https) onde a regra foi lida; null quando nao ha. */
+  fonte: string | null;
 };
 
-type Faixa = { situacao: SituacaoVisto; titulo: string; detalhes: string[]; alertas?: string[] };
+type Faixa = { situacao: SituacaoVisto; titulo: string; detalhes: string[]; alertas?: string[]; fonte?: string };
 
 const NOMES: Record<string, string> = {
   US: "Estados Unidos",
@@ -65,192 +74,400 @@ const NOMES: Record<string, string> = {
   DE: "Alemanha",
 };
 
-/** Dias de estadia sem visto (turismo) para os paises que isentam brasileiros. */
-const DIAS_ISENCAO = 90;
+const A_CONFIRMAR = "Esta regra ainda não foi confirmada em fonte oficial: o consultor confirma o tipo de visto antes da contratação.";
+const ENQUADRAMENTO = "O enquadramento exato (e o patrocinador do visto) é definido pela organização do programa — o consultor confirma antes da contratação.";
 
-function schengenIsento(extra: string[] = []): Faixa {
-  return {
-    situacao: "isento",
-    titulo: "Sem visto: entrada como turista (até 90 dias)",
-    detalhes: ["Brasileiros entram sem visto no Espaço Schengen por até 90 dias a cada 180.", ...extra],
-  };
-}
-
-function schengenVistoD(titulo: string, extra: string[] = []): Faixa {
+/** Faixa para o que a pesquisa nao confirmou: diz isso, em vez de chutar um visto. */
+function aConfirmar(cat: Exclude<CategoriaPrograma, "estudo">, extra: string[] = []): Faixa {
+  const nome = cat === "estagio" ? "estágio" : cat === "voluntariado" ? "voluntariado" : "trabalho";
   return {
     situacao: "visto",
-    titulo,
-    detalhes: ["Estadia acima de 90 dias exige visto de longa duração, pedido nos consulados no Brasil.", ...extra],
+    titulo: `Visto de ${nome} — tipo a confirmar`,
+    detalhes: [`${nome[0].toUpperCase()}${nome.slice(1)} exige permissão própria, diferente do visto de estudo e da entrada como turista.`, ...extra],
+    alertas: [A_CONFIRMAR],
   };
 }
 
-/** Escolhe a faixa de visto pelo pais e pelos dias de curso (null = duracao desconhecida). */
-function faixaDoPais(pais: string, dias: number | null): Faixa | null {
-  const longo = dias !== null && dias > DIAS_ISENCAO;
+// --- Estudo ----------------------------------------------------------------
+
+const DIAS_6_MESES = 183;
+const DIAS_90 = 90;
+
+function schengenEstudo(longo: boolean, dias: number | null, longoTitulo: string, extraLongo: string[], extraCurto: string[] = [], fonte?: string): Faixa {
+  if (!longo || dias === null) {
+    return {
+      situacao: "isento",
+      titulo: "Sem visto: entrada como turista (até 90 dias)",
+      detalhes: ["Brasileiros entram no Espaço Schengen sem visto por até 90 dias a cada 180.", ...extraCurto],
+      alertas: ["Para estudar mais de 90 dias é preciso visto de longa duração. Se o consultor indicar estudo formal, confirme se a isenção se aplica ao seu curso."],
+      fonte,
+    };
+  }
+  return { situacao: "visto", titulo: longoTitulo, detalhes: ["Estadia acima de 90 dias exige visto de longa duração, pedido nos consulados no Brasil.", ...extraLongo], fonte };
+}
+
+function estudo(pais: string, dias: number | null): Faixa | null {
+  const longo = dias !== null && dias > DIAS_90;
   switch (pais) {
     case "US":
       return {
         situacao: "visto",
         titulo: "Visto F-1 (estudante)",
         detalhes: [
-          "Visto obrigatório para estudar nos EUA: F-1 ou M-1 para cursos acadêmicos e vocacionais.",
-          "Emitido nos consulados do Brasil (São Paulo, Rio de Janeiro, Recife, Brasília e Porto Alegre).",
+          "Curso acadêmico ou de idioma em escola certificada exige F-1 (M-1 para cursos vocacionais), com o formulário I-20 da escola.",
+          "Taxa SEVIS I-901 de US$ 350, paga antes da entrada.",
+          "Curso recreativo curto, sem créditos nem certificado, pode ser feito como turista (B-2).",
         ],
-        alertas: ["O tempo de espera por entrevista nos consulados do Brasil aumentou muito em 2025–2026. Peça o visto com bastante antecedência."],
+        alertas: ["O tempo de espera por entrevista nos consulados do Brasil é longo: peça o visto com antecedência."],
+        fonte: "https://studyinthestates.dhs.gov/students/prepare/students-and-the-form-i-20",
       };
     case "CA":
+      if (dias !== null && dias <= DIAS_6_MESES) {
+        return {
+          situacao: "visto",
+          titulo: "Sem study permit: TRV (visto de visitante) ou eTA",
+          detalhes: [
+            "Curso que não faz parte de programa mais longo e termina dentro do prazo de estadia (normalmente 6 meses) dispensa o study permit.",
+            "TRV: CAD 100 + biometria CAD 85. A eTA (CAD 7, só viagem aérea) vale apenas para quem teve TRV nos últimos 10 anos ou tem visto americano válido.",
+          ],
+          alertas: ["Em Quebec o curso também exige o CAQ."],
+          fonte: "https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/study-permit/study-permit-tool.html",
+        };
+      }
       return {
         situacao: "visto",
-        titulo: "Visto TRV + Study Permit",
+        titulo: "Study Permit (permissão de estudo) + TRV ou eTA",
         detalhes: [
-          "Brasileiros precisam de visto de residente temporário (TRV) e, para estudar, de study permit.",
-          "TRV: CAD 100 + biometria CAD 85. A eTA (CAD 7) só vale para quem tem visto americano válido ou visto canadense emitido nos últimos 10 anos.",
+          "Cursos acima de 6 meses exigem study permit: carta de aceite da escola, comprovação de fundos e, na maioria dos casos, atestado provincial (PAL/TAL).",
+          "Taxa do study permit: CAD 150. O IRCC emite também o TRV ou a eTA para a entrada.",
         ],
-        alertas: ["O Student Direct Stream (processamento rápido) acabou em 8/11/2024: o pedido segue o fluxo padrão, mais longo."],
+        alertas: ["O processamento rápido (Student Direct Stream) acabou em 8/11/2024: o pedido segue o fluxo padrão."],
+        fonte: "https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/study-permit/get-documents.html",
       };
     case "GB":
       if (dias === null) {
         return {
           situacao: "autorizacao",
-          titulo: "ETA ou Student Visa (conforme a duração)",
-          detalhes: ["Cursos de até 6 meses: ETA (£16, válida por 2 anos). Acima de 6 meses: Student Visa (cerca de £524)."],
+          titulo: "ETA (até 6 meses) ou Student Visa (acima disso)",
+          detalhes: ["Estudo de até 6 meses cabe na ETA (£ 20). Acima disso: Short-term study visa (inglês, 7 a 11 meses) ou Student Visa."],
+          fonte: "https://www.gov.uk/standard-visitor/visit-to-study",
         };
       }
-      if (dias <= 183) {
+      if (dias <= DIAS_6_MESES) {
         return {
           situacao: "autorizacao",
-          titulo: "ETA (autorização eletrônica)",
-          detalhes: ["Obrigatória para brasileiros desde 8/1/2025, inclusive para cursos de até 6 meses.", "Custo £16, validade de 2 anos com múltiplas entradas, pedido 100% digital."],
+          titulo: "ETA (autorização eletrônica) — Standard Visitor",
+          detalhes: [
+            "Estudo de até 6 meses em instituição credenciada, inclusive curso de inglês, cabe na ETA (£ 20). Não vale para academies nem escolas estatais.",
+            "A ETA é obrigatória para brasileiros desde 8/1/2025 e dispensa o visto tradicional.",
+          ],
+          fonte: "https://www.gov.uk/standard-visitor/permitted-activities",
+        };
+      }
+      if (dias <= 335) {
+        return {
+          situacao: "visto",
+          titulo: "Short-term study visa (inglês) ou Student Visa",
+          detalhes: [
+            "Curso de inglês de 6 a 11 meses: Short-term study visa (£ 228 + taxa de saúde), sem direito a trabalhar nem estender.",
+            "Qualquer outro curso acima de 6 meses: Student Visa (£ 558 + taxa de saúde), com escola licenciada e comprovação de recursos.",
+          ],
+          fonte: "https://www.gov.uk/study-visit-visa/what-you-can-and-cannot-do",
         };
       }
       return {
         situacao: "visto",
         titulo: "Student Visa",
-        detalhes: [
-          "Cursos acima de 6 meses exigem Student Visa (cerca de £524), pedido pela VFS Global no Brasil.",
-          "Para cursos de inglês de 7 a 11 meses existe também o Short-term Study Visa.",
-        ],
+        detalhes: ["Exige escola licenciada como patrocinadora e prova de recursos. Taxa de £ 558 fora do Reino Unido + taxa de saúde."],
+        fonte: "https://www.gov.uk/student-visa",
       };
     case "IE":
-      return longo
-        ? {
-            situacao: "visto",
-            titulo: "Visto de estudante",
-            detalhes: [
-              "Brasileiros não precisam de visto para visitas de até 90 dias. Cursos com matrícula formal exigem visto de estudante.",
-              "Comprovação financeira mínima: € 10.000 por ano de estudo (regra 2026).",
-            ],
-          }
-        : {
-            situacao: "isento",
-            titulo: "Sem visto: entrada como turista (até 90 dias)",
-            detalhes: ["Brasileiros entram na Irlanda sem visto para visitas de até 90 dias.", "Cursos com matrícula formal exigem visto de estudante."],
-          };
+      if (!longo) {
+        return {
+          situacao: "isento",
+          titulo: "Sem visto de entrada (permissão concedida na chegada)",
+          detalhes: ["Brasileiros não precisam de visto de entrada na Irlanda. A permissão é dada pela imigração na chegada, mediante as condições de entrada."],
+          alertas: ["Alguns cursos exigem registro de residência a partir de 12 semanas; o consultor confirma o limite do seu curso."],
+          fonte: "https://www.ireland.ie/en/brazil/saopaulo/services/new-to-brazil/",
+        };
+      }
+      return {
+        situacao: "autorizacao",
+        titulo: "Registro de imigração (IRP) — Stamp 2",
+        detalhes: [
+          "Acima de 90 dias o aluno se registra na imigração irlandesa após a chegada e recebe o Stamp 2 (taxa de cerca de € 300).",
+          "Curso de inglês precisa constar na lista oficial ILEP: mínimo de 25 semanas e 15 horas semanais.",
+        ],
+        alertas: ["Dados lidos de resultados de busca em sites do governo: o consultor confirma antes da contratação."],
+        fonte: "https://www.irishimmigration.ie/coming-to-study-in-ireland/what-are-my-study-options/a-third-level-course-or-a-language-course/",
+      };
     case "MT":
-      return longo
-        ? schengenVistoD("Visto Nacional Tipo D", ["Autoridade central: Identità (Central Visa Unit).", "Estudantes internacionais podem trabalhar legalmente após 90 dias contínuos de estadia (regra 2025)."])
-        : schengenIsento(["Para estudar mais de 90 dias é preciso o Visto Nacional Tipo D."]);
+      return schengenEstudo(longo, dias, "National Long Stay Visa (D-Visa) — estudante", [
+        "Pedido por prestador externo autorizado, com agendamento no sistema de vistos da Identità.",
+        "Cursos acima de 90 dias corridos exigem o D-Visa mesmo para quem tem isenção de turista.",
+      ], [], "https://identita.gov.mt/central-visa-unit-student-visa-courses-exceeding-90-days/");
     case "ES":
-      return longo
-        ? schengenVistoD("Visto Nacional Tipo D", ["Comprovação mínima de € 600 por mês (IPREM 2025).", "O processamento costuma levar de 8 a 12 semanas."])
-        : schengenIsento(["Para estudar mais de 90 dias é preciso o Visto Nacional Tipo D."]);
+      return schengenEstudo(longo, dias, "Visado de estudios (visto nacional de estudante)", [
+        "Pedido com no mínimo 2 meses de antecedência. Acima de 6 meses o visto é emitido com validade de 365 dias.",
+      ], ["O consulado da Espanha lista o visado de estancia para estudos; confirme se o seu curso dispensa."]);
     case "FR":
-      return longo
-        ? schengenVistoD("Visto de Longa Duração (VLS) / Nacional D", ["A candidatura passa pelo portal Campus France.", "Exige comprovação financeira rigorosa."])
-        : schengenIsento(["Para estudar mais de 90 dias é preciso o Visto de Longa Duração (VLS)."]);
+      return schengenEstudo(longo, dias, "VLS-TS «étudiant» (visto de longa duração de estudante)", [
+        "Estudo acima de 3 meses exige o VLS-TS, validado em até 3 meses após a chegada. Taxa de € 99 (€ 50 com Campus France, conforme o país).",
+      ], [], "https://www.france-visas.gouv.fr/en/etudiant");
     case "DE":
-      return longo
-        ? schengenVistoD("Visto Nacional Tipo D")
-        : schengenIsento(["Para estudar mais de 90 dias é preciso o Visto Nacional Tipo D."]);
+      return schengenEstudo(longo, dias, "Nationales Visum (visto nacional D) — estudo", [
+        "Taxa de € 75. Curso de idioma intensivo exige no mínimo 18 horas por semana.",
+        "Comprovação financeira de cerca de € 1.091 por mês (conta bloqueada ou declaração de compromisso).",
+      ], [], "https://www.auswaertiges-amt.de/en/visa-service/215870-215870");
     case "AU":
+      if (dias !== null && dias <= 84) {
+        return {
+          situacao: "visto",
+          titulo: "Visitor visa (subclass 600) — estudo curto",
+          detalhes: ["Estudo ou treinamento de até 3 meses é permitido no visto de visitante. Trabalho não é permitido."],
+          alertas: ["Quando o estudo é o motivo principal da viagem, o governo indica que o Student visa pode ser mais adequado: o consultor confirma o seu caso."],
+          fonte: "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/visitor-600",
+        };
+      }
       return {
         situacao: "visto",
-        titulo: "Student Visa (subclass 500)",
+        titulo: "Student visa (subclass 500)",
         detalhes: [
-          "Visto obrigatório para todas as categorias; para estudos formais é o Student Visa (subclass 500).",
-          "Exige o requisito Genuine Student, que substituiu o antigo GTE em 23/3/2024. O pedido é online, pelo ImmiAccount.",
+          "Exige o Confirmation of Enrolment (CoE) da escola, seguro saúde OSHC e o requisito Genuine Student.",
         ],
+        alertas: ["Desde 2/10/2026, quem não é isento deve pedir o visto de fora da Austrália e estar fora do país quando ele for concedido."],
+        fonte: "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/changes-to-student-visa-application-rules-500-590",
       };
     case "NZ":
+      if (dias !== null && dias <= 92) {
+        return {
+          situacao: "autorizacao",
+          titulo: "NZeTA (autorização eletrônica) ou Visitor Visa",
+          detalhes: [
+            "Brasileiros são isentos de visto: estudo de até 3 meses (inclusive inglês) cabe na NZeTA (a partir de NZD 17) ou no Visitor Visa (a partir de NZD 441).",
+          ],
+          fonte: "https://www.immigration.govt.nz/visit/what-you-need-to-visit-new-zealand/visa-waiver-countries-and-territories/",
+        };
+      }
       return {
         situacao: "visto",
-        titulo: "Student Visa",
-        detalhes: ["Brasileiros não são isentos: cursos formais exigem Student Visa.", "O pedido é online, pelo site da Immigration New Zealand."],
+        titulo: "Fee Paying Student Visa",
+        detalhes: [
+          "Estudo acima de 3 meses exige oferta de vaga de escola signatária do Code of Practice. Taxa a partir de NZD 850.",
+          "Fundos de NZD 1.667 por mês (cursos de menos de 1 ano) ou NZD 20.000 por ano.",
+        ],
+        fonte: "https://www.immigration.govt.nz/visas/fee-paying-student-visa/",
       };
     case "AE":
       return longo
-        ? { situacao: "visto", titulo: "Visto de estudante", detalhes: ["Estudo formal exige visto. A isenção vale só para visitas de até 90 dias."] }
-        : { situacao: "isento", titulo: "Sem visto: entrada como turista (até 90 dias)", detalhes: ["Brasileiros entram nos Emirados sem visto desde 2018, por até 90 dias.", "Estudo formal exige visto."] };
+        ? { situacao: "visto", titulo: "Visto de estudante — tipo a confirmar", detalhes: ["A isenção de 90 dias vale para visitas; estudo formal exige visto."], alertas: [A_CONFIRMAR] }
+        : {
+            situacao: "isento",
+            titulo: "Sem visto: entrada como turista (até 90 dias)",
+            detalhes: ["Brasileiros entram nos Emirados sem visto por até 90 dias em 12 meses, com passaporte válido por 6 meses ou mais e passagem de saída."],
+            alertas: ["Se o curso for estudo formal, o consultor confirma se a isenção se aplica."],
+            fonte: "https://www.mofa.gov.ae/en/missions/brasilia/contact-us/faqs",
+          };
     default:
       return null;
   }
 }
 
-const AVISO_ENQUADRAMENTO =
-  "O enquadramento exato (e o patrocinador do visto) é definido pela organização do programa — o consultor confirma antes da contratação.";
+// --- Estagio, voluntariado e trabalho ---------------------------------------
 
-/**
- * Estagio, voluntariado e trabalho NUNCA caem na isencao de turista nem no
- * visto de estudante: exigem permissao propria. Os tipos abaixo sao o
- * enquadramento usual por pais; confirmar por programa.
- */
-function faixaNaoEstudo(pais: string, cat: Exclude<CategoriaPrograma, "estudo">): Faixa | null {
-  const t: Record<string, Partial<Record<Exclude<CategoriaPrograma, "estudo">, [string, string[]]>>> = {
-    US: {
-      estagio: ["Visto J-1 (Intern/Trainee)", ["Exige patrocínio de uma organização designada pelo governo americano e o formulário DS-2019."]],
-      voluntariado: ["Visto J-1 ou B-1 (conforme o programa)", ["O tipo depende de a atividade ser patrocinada por organização designada."]],
-      trabalho: ["Visto J-1 (Exchange Visitor)", ["Work & Travel, Au Pair e similares são patrocinados por organizações designadas."]],
-    },
-    CA: {
-      estagio: ["Work Permit (permissão de trabalho)", ["Estágio no Canadá exige permissão de trabalho; o tipo (ex.: co-op ou específico do empregador) depende do programa."]],
-      voluntariado: ["Visto de visitante (TRV), voluntariado não remunerado", ["Vale para voluntariado curto e sem remuneração; atividades longas podem exigir permissão de trabalho."]],
-      trabalho: ["Work Permit (permissão de trabalho)", ["O tipo depende do programa e do empregador."]],
-    },
-    GB: {
-      estagio: ["Temporary Worker – Government Authorised Exchange", ["Exige certificado de patrocínio (CoS) de organização autorizada. Estágio não cabe na ETA nem no Student Visa."]],
-      voluntariado: ["Standard Visitor ou Temporary Worker – Charity Worker", ["Voluntariado curto para instituição de caridade cabe como visitante; atividades mais longas pedem visto de trabalho temporário."]],
-      trabalho: ["Visto de trabalho temporário (Temporary Worker)", ["O Youth Mobility Scheme não está disponível para brasileiros; o tipo depende do patrocinador."]],
-    },
-    IE: {
-      estagio: ["Autorização de estágio/trabalho (Employment Permit ou Stamp 1)", ["A isenção de visto de turista não permite estagiar. A permissão é pedida pela organização e/ou pelo aluno."]],
-      voluntariado: ["Visto/autorização de voluntariado (conforme duração)", ["Voluntariado curto e não remunerado costuma caber como visita; períodos longos exigem autorização própria."]],
-      trabalho: ["Employment Permit (permissão de trabalho)", ["O tipo depende do programa e do empregador."]],
-    },
-    MT: {
-      estagio: ["Autorização de estágio/trabalho (Single Permit) + Visto D", ["A isenção Schengen de turista (90 dias) não cobre estágio. O visto D é pedido nos consulados após aprovação da autorização."]],
-      voluntariado: ["Visto Nacional Tipo D (voluntariado) ou entrada como turista (curto)", ["Voluntariado de até 90 dias e sem remuneração pode caber como visita; acima disso exige visto D."]],
-      trabalho: ["Single Permit (autorização de trabalho) + Visto D", ["O empregador patrocina a autorização."]],
-    },
-    ES: {
-      estagio: ["Visto de estudos/prácticas (Visado Nacional D)", ["Estágio na Espanha exige autorização própria; a isenção Schengen de turista não cobre a atividade."]],
-      voluntariado: ["Visto Nacional Tipo D (voluntariado)", ["Atividades de voluntariado estruturado exigem visto nacional."]],
-      trabalho: ["Visto de trabalho (Visado Nacional D)", ["Exige oferta e autorização de trabalho do empregador."]],
-    },
-    FR: {
-      estagio: ["Visto de Longa Duração (VLS) – estágio (stage)", ["Exige convenção de estágio com instituição de ensino ou empregador."]],
-      voluntariado: ["Visto de Longa Duração (VLS) – voluntariado", ["Exige organização acolhedora cadastrada."]],
-      trabalho: ["Visto de trabalho (VLS-T)", ["Exige autorização de trabalho do empregador."]],
-    },
-    DE: {
-      estagio: ["Visto Nacional Tipo D – estágio (Praktikum)", ["Exige contrato de estágio e, em geral, autorização da agência federal de emprego."]],
-      voluntariado: ["Visto Nacional Tipo D – voluntariado", ["Exige organização acolhedora reconhecida."]],
-      trabalho: ["Visto de trabalho (Visto Nacional Tipo D)", ["Exige autorização de trabalho do empregador."]],
-    },
-    AU: {
-      estagio: ["Training Visa (subclass 407)", ["O estágio é patrocinado por organização aprovada. Alternativa: Work and Holiday (subclass 462), com cota de 500 vagas/ano para brasileiros."]],
-      voluntariado: ["Visitor Visa (subclass 600) ou Work and Holiday (subclass 462)", ["Voluntariado curto e não remunerado pode caber no Visitor; a cota do 462 é de 500 vagas/ano para brasileiros."]],
-      trabalho: ["Work and Holiday Visa (subclass 462)", ["Cota de 500 vagas por ano para brasileiros de 18 a 30 anos."]],
-    },
-    NZ: {
-      estagio: ["Work Visa (visto de trabalho)", ["Estágio exige permissão de trabalho; o tipo depende do programa."]],
-      voluntariado: ["Visitor Visa (voluntariado) ou Work Visa", ["Voluntariado curto e não remunerado pode caber no visto de visitante."]],
-      trabalho: ["Working Holiday Visa (acordo Brasil–NZ)", ["A cota foi esgotada em 2025; reabertura prevista para 2026."]],
-    },
-  };
-  const hit = t[pais]?.[cat];
-  const detalhes = hit ? hit[1] : ["Estágio, voluntariado e trabalho exigem permissão própria, diferente do visto de estudo."];
-  const titulo = hit ? hit[0] : "Visto específico do programa (não é o visto de estudante)";
-  return { situacao: "visto", titulo, detalhes, alertas: [AVISO_ENQUADRAMENTO] };
+type NaoEstudo = Exclude<CategoriaPrograma, "estudo">;
+
+function naoEstudo(pais: string, cat: NaoEstudo): Faixa {
+  switch (`${pais}:${cat}`) {
+    case "US:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Visto J-1 (Intern ou Trainee)",
+        detalhes: [
+          "Intern: aluno de curso pós-secundário ou formado há até 12 meses; duração máxima de 12 meses.",
+          "Trainee: diploma e 1 ano de experiência (ou 5 anos de experiência); máximo de 18 meses.",
+          "Exige patrocinador designado pelo governo e o formulário DS-7002.",
+        ],
+        alertas: [ENQUADRAMENTO],
+        fonte: "https://j1visa.state.gov/programs/intern/",
+      };
+    case "US:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Visto J-1 (Summer Work Travel ou Au Pair)",
+        detalhes: [
+          "Summer Work Travel: universitário em tempo integral, até 4 meses, só por patrocinador.",
+          "Au Pair: 18 a 26 anos, 12 meses (prorrogável), patrocinador obrigatório.",
+        ],
+        alertas: [ENQUADRAMENTO],
+        fonte: "https://j1visa.state.gov/programs/summer-work-travel/",
+      };
+    case "CA:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Work Permit (estágio conta como trabalho)",
+        detalhes: [
+          "O IRCC considera trabalho também a atividade não remunerada que seria experiência valiosa a um canadense. Taxa do work permit: CAD 155.",
+          "Aluno com study permit pode estagiar dentro do programa sem co-op permit (regra de 1/4/2026 para pós-secundário).",
+        ],
+        alertas: ["O Brasil não participa do IEC (Working Holiday/Co-op). Estágio avulso: o consultor confirma o tipo de permissão."],
+        fonte: "https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/intern.html",
+      };
+    case "CA:voluntariado":
+      return {
+        situacao: "visto",
+        titulo: "Visitante (TRV/eTA) para voluntariado curto e não remunerado",
+        detalhes: [
+          "Voluntariado normalmente não remunerado, em tempo parcial e incidental ao motivo da viagem não é considerado trabalho.",
+          "Projeto de voluntariado em tempo integral pode exigir work permit.",
+        ],
+        alertas: [A_CONFIRMAR],
+      };
+    case "CA:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Work Permit (com oferta de emprego)",
+        detalhes: ["Taxa de CAD 155. Visto ou eTA de visitante não permite trabalhar."],
+        alertas: ["O Brasil não está na lista de países do IEC (Working Holiday). " + ENQUADRAMENTO],
+        fonte: "https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/iec/eligibility.html",
+      };
+    case "GB:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Government Authorised Exchange (Temporary Work)",
+        detalhes: [
+          "Work experience e treinamento dentro de esquema aprovado, com patrocinador licenciado. Máximo de 12 ou 24 meses conforme o esquema.",
+          "Taxa de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
+        ],
+        alertas: ["Estágio pago por empresa fora de um esquema aprovado: a confirmar. " + ENQUADRAMENTO],
+        fonte: "https://www.gov.uk/government-authorised-exchange",
+      };
+    case "GB:voluntariado":
+      return {
+        situacao: "autorizacao",
+        titulo: "ETA — Standard Visitor (voluntariado de até 30 dias)",
+        detalhes: ["Voluntariado de até 30 dias com instituição de caridade registrada cabe como visitante (ETA de £ 20)."],
+        alertas: ["Voluntariado mais longo ou fora de caridade registrada exige outro visto: a confirmar com o consultor."],
+        fonte: "https://www.gov.uk/standard-visitor/volunteering",
+      };
+    case "GB:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Visto de trabalho com patrocinador (ex.: Skilled Worker)",
+        detalhes: ["O Youth Mobility Scheme não está disponível para brasileiros."],
+        alertas: [ENQUADRAMENTO],
+        fonte: "https://www.gov.uk/youth-mobility/eligibility",
+      };
+    case "IE:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Employment Permit (modalidade de estágio) — a confirmar",
+        detalhes: ["A isenção de visto de entrada não permite estagiar. Estágio exige permissão de trabalho pedida pelo empregador."],
+        alertas: [A_CONFIRMAR],
+        fonte: "https://www.citizensinformation.ie/en/moving-country/working-in-ireland/employment-permits/overview-employment-permits/",
+      };
+    case "IE:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Employment Permit (Stamp 1)",
+        detalhes: ["Trabalho na Irlanda exige permissão de trabalho patrocinada pelo empregador."],
+        alertas: [A_CONFIRMAR],
+        fonte: "https://www.citizensinformation.ie/en/moving-country/working-in-ireland/employment-permits/overview-employment-permits/",
+      };
+    case "ES:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Prácticas não laborais — visado de estancia (curta) ou de prácticas (longa)",
+        detalhes: ["Exige convênio assinado com empresa ou centro de formação reconhecido e seguro de responsabilidade civil da organização."],
+        alertas: [A_CONFIRMAR],
+        fonte: "https://www.exteriores.gob.es/Consulados/nador/es/Consulado/Documents/Visados/VIS/4.pdf",
+      };
+    case "ES:voluntariado":
+      return {
+        situacao: "visto",
+        titulo: "Visado de estancia com voluntariado",
+        detalhes: ["Exige convênio com a organização do programa, descrição das atividades e horário, meios de viagem, manutenção e alojamento."],
+        alertas: [A_CONFIRMAR],
+      };
+    case "DE:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Visto nacional de estágio (Praktikum)",
+        detalhes: [
+          "O visto já inclui a autorização de trabalho. Processo de até 12 semanas; taxa de € 75.",
+          "Estágio em empresa: mínimo de € 1.200 brutos (ou € 941 líquidos) por mês.",
+        ],
+        fonte: "https://www.make-it-in-germany.com/fileadmin/1_Rebrush_2022/a_Fachkraefte/PDF-Dateien/3_Visum_u_Aufenthalt/Visagrafik_EN/Visum_Praktikum_EN.pdf",
+      };
+    case "DE:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Visto nacional (Au Pair ou trabalho)",
+        detalhes: ["Au Pair é um visto nacional específico; as demais modalidades de trabalho exigem autorização do empregador."],
+        alertas: [A_CONFIRMAR],
+      };
+    case "FR:voluntariado":
+      return {
+        situacao: "visto",
+        titulo: "VLS-T «Volontaire» (Serviço Voluntário Europeu) ou outro, conforme o programa",
+        detalhes: ["O VLS-T de voluntário citado pelo governo francês vale para o Serviço Voluntário Europeu; outros voluntariados são tratados caso a caso."],
+        alertas: [A_CONFIRMAR],
+        fonte: "https://www.france-visas.gouv.fr/en/volontariat",
+      };
+    case "AU:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Training visa (subclass 407)",
+        detalhes: [
+          "Estágio ou treinamento ocupacional com patrocinador aprovado e nomeação do trainee.",
+          "Atividade temporária sem nomeação cabe no subclass 408; o patrocínio é exigido se o pedido for feito dentro da Austrália ou a estadia passar de 3 meses.",
+        ],
+        alertas: [ENQUADRAMENTO],
+        fonte: "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/training-407",
+      };
+    case "AU:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Work and Holiday visa (subclass 462)",
+        detalhes: [
+          "O Brasil usa o subclass 462 (não o 417): 18 a 30 anos, 12 meses de permanência, cota anual de 500 vagas.",
+        ],
+        alertas: ["A página oficial de cotas lista o Brasil como pausado: confirme a abertura antes de planejar."],
+        fonte: "https://immi.homeaffairs.gov.au/what-we-do/whm-program/status-of-country-caps",
+      };
+    case "NZ:estagio":
+      return {
+        situacao: "visto",
+        titulo: "Estágio do curso com Student Visa; outro estágio exige Work Visa",
+        detalhes: ["Estágio obrigatório que faz parte do curso é permitido no Student Visa e não conta nas 25 horas semanais de trabalho."],
+        alertas: ["Estágio fora de curso: tipo de visto a confirmar."],
+        fonte: "https://www.immigration.govt.nz/visas/fee-paying-student-visa/",
+      };
+    case "NZ:voluntariado":
+      return {
+        situacao: "visto",
+        titulo: "Visto de voluntariado — tipo a confirmar",
+        detalhes: [
+          "Quem já tem Student Visa pode fazer voluntariado se não houver ganho ou recompensa — hospedagem e alimentação em troca contam como recompensa.",
+          "Com NZeTA ou Visitor Visa não é permitido trabalhar.",
+        ],
+        alertas: [A_CONFIRMAR],
+        fonte: "https://www.immigration.govt.nz/study/once-you-have-a-student-visa/unpaid-work-while-studying/",
+      };
+    case "NZ:trabalho":
+      return {
+        situacao: "visto",
+        titulo: "Brazil Working Holiday Visa",
+        detalhes: [
+          "18 a 30 anos, até 12 meses, no máximo 3 meses por empregador. Taxa a partir de NZD 770; fundos de NZD 4.200.",
+          "Cota de 300 vagas por ano.",
+        ],
+        alertas: ["Fechado para 2026 (vagas esgotadas); reabre em 2027."],
+        fonte: "https://www.immigration.govt.nz/visas/brazil-working-holiday-visa/",
+      };
+    default:
+      return aConfirmar(cat);
+  }
 }
 
 function diasEntre(inicio: string | null, fim: string | null): number | null {
@@ -282,7 +499,8 @@ export function resolverVisto(args: {
     dias = Math.round(args.semanas * 7);
   }
   const categoria = args.categoria ?? "estudo";
-  const f = categoria === "estudo" ? faixaDoPais(pais, dias) : faixaNaoEstudo(pais, categoria);
+  const f = categoria === "estudo" ? estudo(pais, dias) : naoEstudo(pais, categoria);
   if (!f) return null;
-  return { categoria, pais, paisNome: NOMES[pais], situacao: f.situacao, titulo: f.titulo, detalhes: f.detalhes, alertas: f.alertas ?? [] };
+  const fonte = f.fonte && /^https:\/\//.test(f.fonte) ? f.fonte : null;
+  return { categoria, pais, paisNome: NOMES[pais], situacao: f.situacao, titulo: f.titulo, detalhes: f.detalhes, alertas: f.alertas ?? [], fonte };
 }
