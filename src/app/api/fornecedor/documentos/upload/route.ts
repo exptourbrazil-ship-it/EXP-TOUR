@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sessaoFornecedorAtual } from "@/lib/fornecedor-guard";
-import { TIPOS_DOCUMENTO } from "@/lib/documentos";
+import { TIPOS_DOCUMENTO, labelDoTipoDocumento } from "@/lib/documentos";
 import { validarArquivo, montarChaveStorage, sanitizarNomeExibicao } from "@/lib/upload-seguro";
 import { checarELimitar } from "@/lib/rate-limit";
+import { enviarAvisoInternoEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +98,23 @@ export async function POST(request: Request) {
   if (insertError || !documento) {
     console.error("[fornecedor/documentos/upload] insert falhou:", insertError?.message);
     return NextResponse.json({ error: "Falha ao registrar o documento." }, { status: 500 });
+  }
+
+  // Aviso interno ao admin quando a ESCOLA envia documento de CONCLUSAO
+  // (certificado ou relatorio academico): esses passam por aprovacao antes de
+  // chegar ao cliente (ver /retorno + download do cliente), entao a equipe
+  // precisa saber que ha algo para revisar. Best-effort: nao derruba o upload.
+  // Sem PII do aluno no texto (so o tipo e o id do contrato).
+  if (tipoDocumento === "certificado_conclusao" || tipoDocumento === "relatorio_academico") {
+    try {
+      await enviarAvisoInternoEmail(
+        "Escola enviou documento de conclusão — revisar e aprovar",
+        `A escola enviou um documento do tipo "${labelDoTipoDocumento(tipoDocumento)}" para o contrato ${contratoId}. ` +
+          "Revise no Caso 360 (aba Documentos) e APROVE para liberar ao cliente, ou rejeite.",
+      );
+    } catch {
+      // best-effort: a falha de e-mail nao deve derrubar o upload ja gravado.
+    }
   }
 
   return NextResponse.json({ ok: true, documento });

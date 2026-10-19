@@ -28,6 +28,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
     return NextResponse.redirect(signed.signedUrl);
   }
+  // Documento enviado pela ESCOLA (origem 'fornecedor', ex.: certificado de
+  // conclusao e relatorio academico): so fica visivel ao CLIENTE depois que o
+  // admin APROVA (status 'aprovado'). Enquanto 'recebido'/'rejeitado', 404 — nao
+  // revela sequer que o documento existe.
+  if (documento.origem === "fornecedor") {
+    if (documento.status !== "aprovado") {
+      return NextResponse.json({ error: "Documento nao encontrado" }, { status: 404 });
+    }
+    const { data: signed, error: signedError } = await supabase.storage
+      .from("documentos-fornecedor")
+      .createSignedUrl(documento.storage_path, 60, { download: documento.nome_arquivo || true });
+    if (signedError || !signed) {
+      return NextResponse.json({ error: "Falha ao gerar link do documento" }, { status: 500 });
+    }
+    return NextResponse.redirect(signed.signedUrl);
+  }
   try {
     const conteudo = await getZohoAttachmentContent(documento.zoho_module, documento.zoho_record_id, documento.zoho_attachment_id);
     return new NextResponse(conteudo.buffer, { headers: { "Content-Type": conteudo.contentType || "application/octet-stream", "Content-Disposition": `inline; filename="${documento.nome_arquivo}"` } });

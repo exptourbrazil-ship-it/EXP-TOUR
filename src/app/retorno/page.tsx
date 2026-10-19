@@ -33,13 +33,22 @@ export default async function RetornoPage() {
     .order("id", { ascending: false });
   const contrato = (contratos && contratos[0]) || null;
 
-  // Certificado(s) de conclusao publicados no cofre para este titular.
-  const { data: certificados } = await supabase
+  // Certificado de conclusao e relatorio academico do titular. Documentos
+  // enviados pela ESCOLA (origem 'fornecedor') so aparecem ao cliente DEPOIS de
+  // aprovados pelo admin; documentos de outras origens (admin/Zoho/titular)
+  // mantem o comportamento atual, sem regressao.
+  const { data: docsConclusao } = await supabase
     .from("documentos")
-    .select("id, nome_arquivo, created_at")
+    .select("id, nome_arquivo, created_at, tipo_documento, origem, status")
     .eq("titular_id", sessao.titularId)
-    .eq("tipo_documento", "certificado_conclusao")
+    .in("tipo_documento", ["certificado_conclusao", "relatorio_academico"])
     .order("created_at", { ascending: false });
+
+  const visivelAoCliente = (d: { origem: string | null; status: string | null }) =>
+    d.origem !== "fornecedor" || d.status === "aprovado";
+  const aprovados = (docsConclusao || []).filter(visivelAoCliente);
+  const certificados = aprovados.filter((d) => d.tipo_documento === "certificado_conclusao");
+  const reports = aprovados.filter((d) => d.tipo_documento === "relatorio_academico");
 
   // Avaliacao NPS ja registrada (para este titular + contrato), se houver.
   const filtroNps = supabase
@@ -57,6 +66,7 @@ export default async function RetornoPage() {
       nomeCompleto={titular ? titular.nome_completo : null}
       contrato={contrato}
       certificados={certificados || []}
+      reports={reports || []}
       npsExistente={npsExistente || null}
       googleReviewUrl={googleReviewUrl}
     />

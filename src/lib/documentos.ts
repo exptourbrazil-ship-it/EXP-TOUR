@@ -31,6 +31,7 @@ export const TIPOS_DOCUMENTO: {
   { valor: "documento_visto_escola", label: "Documento para Visto", categoria: "escola", palavrasChave: ["documento para visto", "document for visa"] },
   { valor: "seguro_saude", label: "Seguro Saude", categoria: "escola", palavrasChave: ["insurance", "seguro saude", "seguro-saude"] },
   { valor: "certificado_conclusao", label: "Certificado de Conclusao", categoria: "escola", palavrasChave: ["certificado", "certificate", "certificado de conclusao", "completion certificate", "certificate of completion", "certificate of attendance"] },
+  { valor: "relatorio_academico", label: "Relatório Acadêmico", categoria: "escola", palavrasChave: ["relatorio academico", "relatório acadêmico", "academic report", "final report", "progress report", "student report", "report card", "report"] },
   { valor: "contrato_prestacao_servicos", label: "Contrato de Prestacao de Servicos", categoria: "financeiro", palavrasChave: ["contrato de prestacao de servicos", "service agreement"] },
   // NET antes do GROSS e ambos com qualificador: "Net Invoice.pdf" contem o token
   // "invoice", entao se o gross tivesse a chave nua "invoice" e viesse primeiro,
