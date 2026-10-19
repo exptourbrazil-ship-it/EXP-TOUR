@@ -21,6 +21,7 @@ import {
 import type { PublicQuote } from "@/lib/quote-issue-service";
 import { getTenantBrand, type PdfTheme } from "@/lib/tenant-brand";
 import { valorExibidoDoItem } from "@/lib/valor-item";
+import { VISTO_REFERENCIA } from "@/lib/visto-destino";
 import { INTER_REGULAR_TTF, INTER_MEDIUM_TTF } from "@/lib/fonts/inter";
 
 // Registra a Inter (400/500) uma unica vez. As fontes vao embutidas como data
@@ -142,6 +143,8 @@ function makeStyles(t: PdfTheme) {
     escolaLocal: { fontSize: 8, color: t.faint },
     escolaDesc: { fontSize: 8, color: t.muted, marginTop: 3, lineHeight: 1.4 },
     chipsLinha: { fontSize: 8, color: t.muted, marginTop: 3 },
+    vistoTitulo: { color: t.ink, ...bold, fontSize: 10 },
+    vistoLinha: { fontSize: 8, color: t.muted, marginTop: 2, lineHeight: 1.4 },
     sumRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 3 },
     sumRot: { color: t.muted, flex: 1, paddingRight: 12 },
     sumTag: { fontSize: 7, color: t.faint },
@@ -220,6 +223,27 @@ function EscolaResumo({ esc, s }: { esc: NonNullable<Opcao["itens"][number]["det
   );
 }
 
+// Visto necessario para o programa. O PDF nao tem "Saiba mais": traz o tipo de
+// visto em destaque e, abaixo, o resumo em letra pequena.
+function VistoResumo({ v, s }: { v: NonNullable<Opcao["visto"]>; s: Styles }) {
+  const fonte = v.fonte ? v.fonte.replace(/^https:\/\//, "").split("/")[0] : null;
+  return (
+    <View wrap={false}>
+      <Text style={s.secTitle}>Visto · {v.paisNome}</Text>
+      <Text style={s.vistoTitulo}>{v.titulo}</Text>
+      {v.detalhes.map((d, i) => (
+        <Text key={i} style={s.vistoLinha}>{`• ${d}`}</Text>
+      ))}
+      {v.alertas.map((a, i) => (
+        <Text key={`a${i}`} style={s.vistoLinha}>{`Atenção: ${a}`}</Text>
+      ))}
+      <Text style={s.vistoLinha}>
+        {`Informação orientativa, referência ${VISTO_REFERENCIA}${fonte ? `. Fonte oficial: ${fonte}` : ""}. As regras mudam: confirme com seu consultor e nos canais oficiais do país antes de comprar passagem.`}
+      </Text>
+    </View>
+  );
+}
+
 function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles }) {
   const temDesconto = op.descontos > 0;
   const conv =
@@ -254,6 +278,8 @@ function OpcaoBloco({ op, fx, s }: { op: Opcao; fx: PublicQuote["fx"]; s: Styles
       {op.itens.map((it, i) => (
         <ItemLinha key={i} it={it} s={s} />
       ))}
+
+      {op.visto ? <VistoResumo v={op.visto} s={s} /> : null}
 
       {escola ? <EscolaResumo esc={escola} s={s} /> : null}
 
