@@ -10,6 +10,7 @@ import {
 } from "./SimuladorParcelas";
 import type { MesInicio } from "@/app/orcamento/shared";
 import { REDE_LABEL, type Rede } from "@/lib/redes-sociais";
+import { VISTO_REFERENCIA, CATEGORIA_ROTULO } from "@/lib/visto-destino";
 import { valorExibidoDoItem } from "@/lib/valor-item";
 import { montarQuadroHorarios } from "@/lib/grade-horarios";
 
@@ -922,6 +923,56 @@ function DetalhesItemBloco({ d }: { d: DetalhesItem }) {
 }
 
 // "Sobre a escola" — descrição (sanitizada), destaques, fotos/vídeo do campus.
+// Card de visto: qual visto/autorizacao o programa exige para brasileiros.
+// Estado sempre em texto + marca (nunca so cor).
+const VISTO_TOM: Record<NonNullable<OpcaoData["visto"]>["situacao"], { rotulo: string; classe: string }> = {
+  isento: { rotulo: "Sem visto", classe: "bg-[color:var(--p-accent-soft)] text-[color:var(--p-success)]" },
+  autorizacao: { rotulo: "Autorização eletrônica", classe: "bg-[color:var(--p-accent-soft)] text-[color:var(--p-accent-ink)]" },
+  visto: { rotulo: "Visto necessário", classe: "bg-[color:var(--p-accent-soft)] text-[color:var(--p-accent-ink)]" },
+};
+
+function CartaoVistoOpcao({ visto }: { visto: NonNullable<OpcaoData["visto"]> }) {
+  const tom = VISTO_TOM[visto.situacao];
+  return (
+    <div className="mt-5 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Visto · {visto.paisNome} · {CATEGORIA_ROTULO[visto.categoria]}</h3>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tom.classe}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+            {visto.situacao === "isento" ? <path d="M20 6 9 17l-5-5" /> : <path d="M9 12h6M9 16h6M9 8h3M6 3h9l4 4v14H6z" />}
+          </svg>
+          {tom.rotulo}
+        </span>
+      </div>
+      <p className="mt-1 text-base font-medium text-[color:var(--p-ink)]">{visto.titulo}</p>
+      <ul className="mt-2 space-y-1 text-sm text-[color:var(--p-ink)] opacity-90">
+        {visto.detalhes.map((d, i) => (
+          <li key={i} className="ml-4 list-disc">{d}</li>
+        ))}
+      </ul>
+      {visto.alertas.map((a, i) => (
+        <p key={i} className="mt-2 text-sm text-[color:var(--p-ink)]">
+          <span className="font-semibold">Atenção: </span>
+          {a}
+        </p>
+      ))}
+      {visto.fonte ? (
+        <a
+          href={visto.fonte}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="mt-2 inline-block text-sm text-[color:var(--p-nav)] underline print:no-underline"
+        >
+          Fonte oficial
+        </a>
+      ) : null}
+      <p className="mt-2 text-xs text-[color:var(--p-muted)]">
+        Informação orientativa, referência {VISTO_REFERENCIA}. As regras mudam: confirme com seu consultor e nos canais oficiais do país antes de comprar passagem.
+      </p>
+    </div>
+  );
+}
+
 function EscolaBloco({
   escola,
   contato,
@@ -1202,6 +1253,8 @@ function DetalheOpcao({
           </ul>
         </div>
       ))}
+
+      {op.visto ? <CartaoVistoOpcao visto={op.visto} /> : null}
 
       {/* Sobre a escola — uma vez por campus da opção (deduplicado). */}
       {(() => {
