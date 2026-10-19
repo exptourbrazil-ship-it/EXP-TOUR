@@ -8,6 +8,7 @@ import {
   categorizarNomeArquivo,
   labelDoTipoDocumento,
   TIPOS_DOCUMENTO,
+  fornecedorDocVisivelAoCliente,
 } from "./documentos.ts";
 
 test("ehTipoDocumentoValido: aceita tipo conhecido e rejeita desconhecido", () => {
@@ -41,6 +42,20 @@ test("carta de recusa: novo tipo é categorizável pelo nome do arquivo", () => 
   assert.equal(categorizarNomeArquivo("Visa Refusal Letter.pdf"), "carta_recusa_visto");
   assert.equal(categorizarNomeArquivo("carta de recusa - joao.pdf"), "carta_recusa_visto");
   assert.equal(labelDoTipoDocumento("carta_recusa_visto"), "Carta de Recusa de Visto");
+});
+
+test("fornecedorDocVisivelAoCliente: só certificado e relatório; NUNCA faturas", () => {
+  // Tipos liberados ao cliente após aprovação.
+  assert.equal(fornecedorDocVisivelAoCliente("certificado_conclusao"), true);
+  assert.equal(fornecedorDocVisivelAoCliente("relatorio_academico"), true);
+  // Faturas/recibos da escola (origem 'fornecedor') NUNCA vão ao cliente —
+  // expõem custo da escola / margem da agência.
+  assert.equal(fornecedorDocVisivelAoCliente("invoice_escola"), false);
+  assert.equal(fornecedorDocVisivelAoCliente("invoice_escola_net"), false);
+  assert.equal(fornecedorDocVisivelAoCliente("recibo_pagamento"), false);
+  // Documento de escola qualquer também fica de fora por padrão.
+  assert.equal(fornecedorDocVisivelAoCliente("carta_aceite"), false);
+  assert.equal(fornecedorDocVisivelAoCliente("lixo_inexistente"), false);
 });
 
 test("todo TIPOS_COM_VALIDADE referencia um tipo existente", () => {

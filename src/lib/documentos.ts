@@ -90,6 +90,20 @@ export function tipoTemVoo(valor: string): boolean {
 // marca "visto em mãos".
 export const TIPOS_VISTO = new Set<string>(["visto", "visto_2", "visto_eua"]);
 
+// Documentos de origem 'fornecedor' (enviados pela ESCOLA) que PODEM ficar
+// visíveis ao CLIENTE depois da aprovação do admin. Allowlist deliberada: a
+// escola também envia faturas (invoice_escola/_net, recibo) com origem
+// 'fornecedor' que NUNCA podem chegar ao cliente (expõem custo da escola /
+// margem da agência). Fonte única usada pelo download do cliente e pelo /retorno.
+export const TIPOS_FORNECEDOR_VISIVEIS_AO_CLIENTE = new Set<string>([
+  "certificado_conclusao",
+  "relatorio_academico",
+]);
+
+export function fornecedorDocVisivelAoCliente(tipo: string): boolean {
+  return TIPOS_FORNECEDOR_VISIVEIS_AO_CLIENTE.has(tipo);
+}
+
 export function ehTipoDocumentoValido(valor: string): boolean {
   return TIPOS_DOCUMENTO.some((t) => t.valor === valor);
 }
