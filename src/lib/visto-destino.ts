@@ -265,7 +265,7 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
           "Taxa do visto de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
         ],
         alertas: [
-          "A ETA e o visto de visitante não permitem estagiar. A página do programa não cita o visto: o consultor confirma com a Twin a rota para brasileiros. " + ENQUADRAMENTO,
+          "A ETA e o visto de visitante não permitem estagiar: o visto do estágio no Reino Unido é o Government Authorised Exchange (GAE).",
         ],
         fonte: "https://www.gov.uk/government-authorised-exchange",
       };

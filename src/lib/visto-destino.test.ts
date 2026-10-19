@@ -90,3 +90,9 @@ test("estagio Twin Londres: custo do certificado BUNAC aparece", () => {
   const v = resolverVisto({ categoria: "estagio", pais: "GB", semanas: 12 });
   assert.ok(v?.detalhes.some((d) => /BUNAC: £ 2\.500/.test(d)));
 });
+
+test("estagio no Reino Unido: GAE, sem pedir a confirmar o tipo", () => {
+  const v = resolverVisto({ categoria: "estagio", pais: "GB", semanas: 12 });
+  assert.match(v?.titulo ?? "", /Government Authorised Exchange/);
+  assert.ok(!v?.alertas.some((a) => /confirma/.test(a)));
+});
