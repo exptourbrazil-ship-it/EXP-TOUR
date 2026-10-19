@@ -20,6 +20,7 @@
     { "path": "/api/cron/internalizar-midia", "schedule": "0 3 * * *" },
     { "path": "/api/cron/resumo-semanal-fornecedor", "schedule": "0 11 * * 1" },
     { "path": "/api/cron/lembrar-faturas-comissao", "schedule": "30 12 * * *" },
-    { "path": "/api/cron/concluir-programas", "schedule": "0 2 * * *" }
+    { "path": "/api/cron/concluir-programas", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/lembrar-passaporte", "schedule": "30 8 * * *" }
   ]
 }
