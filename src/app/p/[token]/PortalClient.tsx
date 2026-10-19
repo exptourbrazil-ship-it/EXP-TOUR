@@ -10,7 +10,7 @@ import {
 } from "./SimuladorParcelas";
 import type { MesInicio } from "@/app/orcamento/shared";
 import { REDE_LABEL, type Rede } from "@/lib/redes-sociais";
-import { VISTO_REFERENCIA } from "@/lib/visto-destino";
+import { VISTO_REFERENCIA, CATEGORIA_ROTULO } from "@/lib/visto-destino";
 import { valorExibidoDoItem } from "@/lib/valor-item";
 import { montarQuadroHorarios } from "@/lib/grade-horarios";
 
@@ -936,7 +936,7 @@ function CartaoVistoOpcao({ visto }: { visto: NonNullable<OpcaoData["visto"]> })
   return (
     <div className="mt-5 rounded-xl border border-[color:var(--p-line)] bg-[color:var(--p-page)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Visto · {visto.paisNome}</h3>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--p-muted)]">Visto · {visto.paisNome} · {CATEGORIA_ROTULO[visto.categoria]}</h3>
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tom.classe}`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
             {visto.situacao === "isento" ? <path d="M20 6 9 17l-5-5" /> : <path d="M9 12h6M9 16h6M9 8h3M6 3h9l4 4v14H6z" />}

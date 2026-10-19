@@ -17,7 +17,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ehGrupoCurso, GRUPOS_CURSO } from "@/lib/grupo-item";
-import { resolverVisto, type CartaoVisto } from "@/lib/visto-destino";
+import { resolverVisto, categoriaDoPrograma, type CartaoVisto } from "@/lib/visto-destino";
 import { round2 } from "@/lib/pricing";
 import { fichaDoSnapshot, detalhesDoSnapshot, ehUrlHttp, sanitizarHtml, type FichaProduto, type DetalhesSnapshot, type ContentLocale } from "@/lib/produto-conteudo";
 import { converterParaBRL } from "@/lib/cambio";
@@ -1168,14 +1168,16 @@ export async function getPublicQuote(
 
 /** Visto do PROGRAMA da opcao: pais do campus do curso + duracao (datas ou semanas vendidas). */
 function vistoDaOpcao(
-  itens: Array<{ grupo: string; startDate: string | null; endDate: string | null; quantity: number; unit: string; detalhes: DetalhesSnapshot }>,
+  itens: Array<{ grupo: string; nome: string; startDate: string | null; endDate: string | null; quantity: number; unit: string; detalhes: DetalhesSnapshot }>,
   paisDoCampus: Map<string, string | null>,
 ): CartaoVisto | null {
   const prog = itens.find((it) => ehGrupoCurso(it.grupo) && it.detalhes?.escola?.campusId);
   if (!prog) return null;
   const pais = paisDoCampus.get(prog.detalhes.escola!.campusId as string) ?? null;
   const semanas = prog.unit === "week" ? Number(prog.quantity) : null;
-  return resolverVisto({ pais, inicio: prog.startDate, fim: prog.endDate, semanas });
+  const tipo = prog.detalhes.programa?.quickInfo.map((q) => q.valor).join(" ") ?? "";
+  const categoria = categoriaDoPrograma(prog.nome, tipo);
+  return resolverVisto({ categoria, pais, inicio: prog.startDate, fim: prog.endDate, semanas });
 }
 
 // ---------------------------------------------------------------------------
