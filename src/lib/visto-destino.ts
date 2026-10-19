@@ -119,7 +119,10 @@ function estudo(pais: string, dias: number | null): Faixa | null {
           "Taxa SEVIS I-901 de US$ 350, paga antes da entrada.",
           "Curso recreativo curto, sem créditos nem certificado, pode ser feito como turista (B-2).",
         ],
-        alertas: ["O tempo de espera por entrevista nos consulados do Brasil é longo: peça o visto com antecedência."],
+        alertas: [
+          "O tempo de espera por entrevista nos consulados do Brasil é longo: peça o visto com antecedência.",
+          "Algumas escolas indicam que cursos semi-intensivos podem ser feitos como turista (B-2). O governo restringe o B-2 a estudo recreativo sem créditos: o consultor confirma o enquadramento do seu curso.",
+        ],
         fonte: "https://studyinthestates.dhs.gov/students/prepare/students-and-the-form-i-20",
       };
     case "CA":
@@ -236,19 +239,20 @@ function estudo(pais: string, dias: number | null): Faixa | null {
 
 type NaoEstudo = Exclude<CategoriaPrograma, "estudo">;
 
-function naoEstudo(pais: string, cat: NaoEstudo): Faixa {
+function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
   switch (`${pais}:${cat}`) {
     case "US:estagio":
       return {
         situacao: "visto",
-        titulo: "Visto J-1 (Intern ou Trainee)",
+        titulo: "Visto F-1 do curso de inglês combinado (estágio voluntário, sem remuneração)",
         detalhes: [
-          "Intern: aluno de curso pós-secundário ou formado há até 12 meses; duração máxima de 12 meses.",
-          "Trainee: diploma e 1 ano de experiência (ou 5 anos de experiência); máximo de 18 meses.",
-          "Exige patrocinador designado pelo governo e o formulário DS-7002.",
+          "Segundo a escola (Rennert), o estágio é combinado com um curso de inglês elegível ao F-1: mínimo de 22 aulas por semana pela manhã e atividade à tarde ou no fim de semana a partir da 2ª semana.",
+          "A atividade é não remunerada e o certificado é de voluntariado. A escola emite o I-20; taxa SEVIS I-901 de US$ 350.",
         ],
-        alertas: [ENQUADRAMENTO],
-        fonte: "https://j1visa.state.gov/programs/intern/",
+        alertas: [
+          "A escola não cita J-1 nem CPT. Estágio remunerado nos EUA exigiria o J-1 (Intern/Trainee), com patrocinador designado. O consultor confirma o enquadramento antes da contratação.",
+        ],
+        fonte: "https://rennert.com/business-english-courses/business-english-in-action.html",
       };
     case "GB:estagio":
       return {
@@ -256,24 +260,49 @@ function naoEstudo(pais: string, cat: NaoEstudo): Faixa {
         titulo: "Government Authorised Exchange (Temporary Work)",
         detalhes: [
           "Work experience e treinamento dentro de esquema aprovado, com patrocinador licenciado. Máximo de 12 ou 24 meses conforme o esquema.",
-          "Taxa de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
+          "A Twin informa que candidatos de fora do Espaço Econômico Europeu participam por parceria com a BUNAC, patrocinadora do visto (nome antigo: Tier 5). Estágio de até 6 meses, mínimo de 25 horas por semana.",
+          "Custo do certificado de patrocínio da BUNAC: £ 2.500.",
+          "Taxa do visto de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
         ],
-        alertas: ["Estágio pago por empresa fora de um esquema aprovado: a confirmar. " + ENQUADRAMENTO],
+        alertas: [
+          "A ETA e o visto de visitante não permitem estagiar: o visto do estágio no Reino Unido é o Government Authorised Exchange (GAE).",
+        ],
         fonte: "https://www.gov.uk/government-authorised-exchange",
       };
-    case "GB:voluntariado":
+    case "GB:voluntariado": {
+      const longo = dias !== null && dias > 30;
+      if (longo) {
+        return {
+          situacao: "visto",
+          titulo: "Temporary Worker – Charity Worker (voluntariado acima de 30 dias)",
+          detalhes: [
+            "A ETA (Standard Visitor) só cobre voluntariado de até 30 dias em instituição de caridade registrada. Acima disso, o governo prevê o visto Charity Worker, para trabalho voluntário não remunerado.",
+            "Exige certificate of sponsorship emitido por organização licenciada, e o trabalho deve ser da própria organização patrocinadora. Taxa de £ 340 + taxa de saúde (cerca de £ 1.035 por ano) e comprovação de recursos.",
+          ],
+          alertas: [
+            "O programa passa de 30 dias: o consultor confirma com a Twin quem patrocina o visto, ou se o voluntariado será limitado a 30 dias para caber na ETA.",
+          ],
+          fonte: "https://www.gov.uk/temporary-worker-charity-worker-visa",
+        };
+      }
       return {
         situacao: "autorizacao",
         titulo: "ETA — Standard Visitor (voluntariado de até 30 dias)",
-        detalhes: ["Voluntariado de até 30 dias com instituição de caridade registrada cabe como visitante (ETA de £ 20)."],
-        alertas: ["Voluntariado mais longo ou fora de caridade registrada exige outro visto: a confirmar com o consultor."],
+        detalhes: [
+          "Voluntariado de até 30 dias com instituição de caridade registrada cabe como visitante (ETA de £ 20). A Twin informa a mesma regra.",
+        ],
+        alertas: ["O voluntariado precisa ser em instituição de caridade registrada (não em empresa). Se passar de 30 dias, é preciso outro visto: confirme com o consultor."],
         fonte: "https://www.gov.uk/standard-visitor/volunteering",
       };
+    }
     case "IE:estagio":
       return {
         situacao: "visto",
         titulo: "Employment Permit (modalidade de estágio) — a confirmar",
-        detalhes: ["A isenção de visto de entrada não permite estagiar. Estágio exige permissão de trabalho pedida pelo empregador."],
+        detalhes: [
+          "A isenção de visto de entrada não permite estagiar. Estágio exige permissão de trabalho pedida pelo empregador.",
+          "O site da escola (Twin) não informa o visto para este estágio.",
+        ],
         alertas: [A_CONFIRMAR],
         fonte: "https://www.citizensinformation.ie/en/moving-country/working-in-ireland/employment-permits/overview-employment-permits/",
       };
@@ -311,7 +340,7 @@ export function resolverVisto(args: {
     dias = Math.round(args.semanas * 7);
   }
   const categoria = args.categoria ?? "estudo";
-  const f = categoria === "estudo" ? estudo(pais, dias) : naoEstudo(pais, categoria);
+  const f = categoria === "estudo" ? estudo(pais, dias) : naoEstudo(pais, categoria, dias);
   if (!f) return null;
   const fonte = f.fonte && /^https:\/\//.test(f.fonte) ? f.fonte : null;
   return { categoria, pais, paisNome: NOMES[pais], situacao: f.situacao, titulo: f.titulo, detalhes: f.detalhes, alertas: f.alertas ?? [], fonte };
