@@ -5,6 +5,8 @@ import {
   adicionarDiasISO,
   elegivelParaConclusao,
   conteudoPedidoCertificado,
+  conteudoAvisoFimAluno,
+  avisoFimJanelaDias,
 } from "./conclusao-programa.ts";
 
 function cand(over: Partial<{ dataFimISO: string | null; estado: string | null; canceladoEm: string | null }> = {}) {
@@ -84,4 +86,34 @@ test("conteúdo do pedido: pt e en, sem vazar além do corpo", () => {
   assert.match(en.contexto, /certificate/i);
   assert.match(en.contexto, /report/i);
   assert.equal(en.botaoLabel, "Upload documents");
+});
+
+test("aviso de fim ao aluno: PT, 1º nome, programa e convite ao /retorno", () => {
+  const c = conteudoAvisoFimAluno({ nome: "Monik Alves Ramos", programa: "General English" });
+  assert.match(c.subject, /intercâmbio/i);
+  assert.equal(c.titulo, "Olá, Monik!"); // só o primeiro nome
+  assert.match(c.paragrafo, /General English/);
+  assert.match(c.paragrafo, /Retorno/);
+  assert.match(c.paragrafo, /Google/);
+  assert.equal(c.botaoLabel, "Acessar minha Área");
+
+  // Sem nome e sem programa: saudação genérica, sem "undefined".
+  const s = conteudoAvisoFimAluno({ nome: "", programa: "" });
+  assert.equal(s.titulo, "Olá!");
+  assert.doesNotMatch(s.paragrafo, /undefined/);
+  assert.match(s.paragrafo, /Seu programa chegou ao fim/);
+});
+
+test("avisoFimJanelaDias: default 3; respeita env válido; ignora inválido", () => {
+  const original = process.env.AVISO_FIM_JANELA_DIAS;
+  delete process.env.AVISO_FIM_JANELA_DIAS;
+  assert.equal(avisoFimJanelaDias(), 3);
+  process.env.AVISO_FIM_JANELA_DIAS = "7";
+  assert.equal(avisoFimJanelaDias(), 7);
+  process.env.AVISO_FIM_JANELA_DIAS = "-2";
+  assert.equal(avisoFimJanelaDias(), 3); // negativo -> default
+  process.env.AVISO_FIM_JANELA_DIAS = "abc";
+  assert.equal(avisoFimJanelaDias(), 3); // inválido -> default
+  if (original === undefined) delete process.env.AVISO_FIM_JANELA_DIAS;
+  else process.env.AVISO_FIM_JANELA_DIAS = original;
 });

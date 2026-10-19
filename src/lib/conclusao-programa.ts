@@ -99,3 +99,33 @@ export function conteudoPedidoCertificado(
     botaoLabel: "Upload documents",
   };
 }
+
+const AVISO_FIM_JANELA_PADRAO = 3;
+
+// Janela (em dias) após a conclusão em que o aluno ainda recebe o aviso de fim de
+// programa. Evita disparo RETROATIVO a ex-alunos antigos: só conclusões recentes
+// (dentro da janela) geram o convite ao /retorno. Parâmetro por instância (env).
+export function avisoFimJanelaDias(): number {
+  const env = Number(process.env.AVISO_FIM_JANELA_DIAS);
+  return Number.isFinite(env) && env >= 0 ? Math.round(env) : AVISO_FIM_JANELA_PADRAO;
+}
+
+// Conteúdo (PT) do e-mail ao ALUNO quando o intercâmbio termina, convidando-o à
+// aba /retorno (certificado, avaliação no Google, nota ao serviço, indicação).
+// Puro: só monta strings. `nome`/`programa` vão no corpo do e-mail (não em log).
+export function conteudoAvisoFimAluno(
+  d: { nome: string; programa: string },
+): { subject: string; titulo: string; paragrafo: string; botaoLabel: string } {
+  const primeiro = (d.nome || "").trim().split(/\s+/)[0] || "";
+  const prog = d.programa ? ` ${d.programa}` : "";
+  return {
+    subject: "Seu intercâmbio chegou ao fim 🎓",
+    titulo: primeiro ? `Olá, ${primeiro}!` : "Olá!",
+    paragrafo:
+      `Seu programa${prog} chegou ao fim — parabéns pela conquista! 🎉 ` +
+      "Na sua Área do Cliente, na aba Retorno, você fecha essa jornada: baixa o certificado de " +
+      "conclusão (assim que a escola enviar), deixa sua avaliação no Google sobre o atendimento e " +
+      "uma nota ao serviço, e ainda pode indicar um amigo.",
+    botaoLabel: "Acessar minha Área",
+  };
+}

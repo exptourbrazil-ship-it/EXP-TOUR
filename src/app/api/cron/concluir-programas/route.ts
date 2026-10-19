@@ -9,8 +9,13 @@ import {
   folgaConclusaoDias,
   conteudoPedidoCertificado,
   adicionarDiasISO,
+  avisoFimJanelaDias,
 } from "@/lib/conclusao-programa";
-import { enviarAlertaFornecedorEmail, enviarAvisoInternoEmail } from "@/lib/email";
+import {
+  enviarAlertaFornecedorEmail,
+  enviarAvisoInternoEmail,
+  enviarAvisoFimProgramaEmail,
+} from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,15 +58,59 @@ function ehConflitoUnicidade(err: { code?: string } | null): boolean {
   return err?.code === "23505";
 }
 
-// Promove o claim de `pendente` para `processado` (e-mail confirmado). Best-effort:
-// se falhar, o claim fica `pendente`; a conclusão terminal ainda evita reenvio no
-// caso comum, e só uma dupla falha (este update + a conclusão) levaria a um reenvio
-// na próxima varredura.
-async function marcarPedidoEnviado(supabase: SupabaseClient, chave: string): Promise<void> {
-  await supabase
-    .from("events")
-    .update({ status: "processado", processed_at: new Date().toISOString() })
-    .eq("idempotency_key", chave);
+// Promove o claim de `pendente` para `processado` (e-mail confirmado). É o que
+// impede um REENVIO na próxima varredura; por isso insiste (até 3 tentativas) num
+// blip transitório do banco, em vez de deixar o claim `pendente` (que reabriria o
+// envio depois de PENDENTE_OBSOLETO_MS). No 1º passo (escola) a conclusão terminal
+// já é um segundo backstop; no 2º (aluno) o contrato continua concluído e na janela,
+// então esta confirmação é o ÚNICO guarda contra duplicata — daí o retry. Retorna
+// true se marcou; false se, mesmo após as tentativas, não confirmou.
+async function marcarPedidoEnviado(supabase: SupabaseClient, chave: string): Promise<boolean> {
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const { error } = await supabase
+      .from("events")
+      .update({ status: "processado", processed_at: new Date().toISOString() })
+      .eq("idempotency_key", chave);
+    if (!error) return true;
+    console.error(`[concluir-programas] falha ao marcar pedido enviado (tentativa ${tentativa + 1}):`, error.message);
+  }
+  return false;
+}
+
+// Reivindica uma chave de e-mail e decide se ESTA execução deve (tentar) enviar —
+// mesmo padrão robusto do pedido à escola: claim ATÔMICO como `pendente` (o UNIQUE
+// serializa execuções concorrentes); em conflito (23505), decide por status/idade
+// (`processado` = já enviado; `pendente` antigo = execução que caiu, reenvia;
+// `pendente` recente = irmão concorrente, pula). Erro transitório -> "erro".
+async function reivindicarEnvio(
+  supabase: SupabaseClient,
+  chave: string,
+  source: string,
+  eventType: string,
+  externalId: string,
+  payload: Record<string, unknown>,
+): Promise<"enviar" | "pular" | "erro"> {
+  const { error: claimErro } = await supabase.from("events").insert({
+    source,
+    event_type: eventType,
+    idempotency_key: chave,
+    external_id: externalId,
+    payload,
+    status: "pendente",
+  });
+  if (!claimErro) return "enviar";
+  if (ehConflitoUnicidade(claimErro as { code?: string })) {
+    const { data: ex, error: exErro } = await supabase
+      .from("events")
+      .select("status, created_at")
+      .eq("idempotency_key", chave)
+      .maybeSingle();
+    if (exErro) return "erro";
+    if (ex?.status === "processado") return "pular";
+    const idadeMs = ex?.created_at ? Date.now() - new Date(ex.created_at).getTime() : Infinity;
+    return idadeMs >= PENDENTE_OBSOLETO_MS ? "enviar" : "pular";
+  }
+  return "erro";
 }
 
 export async function GET(request: Request) {
@@ -87,15 +136,25 @@ export async function GET(request: Request) {
 
   // Multi-tenant: só os contratos do tenant do deploy. Falha fechada.
   let contratoIds: string[];
+  let tenantSlug: string;
   try {
     const escopo = await resolverEscopoTenant(supabase);
+    tenantSlug = escopo.slug;
     contratoIds = await contratoIdsDoTenant(supabase, escopo);
   } catch (err) {
     console.error("[concluir-programas] falha ao resolver tenant:", err instanceof Error ? err.message : "erro");
     return NextResponse.json({ ok: false, erro: "Tenant nao resolvido" }, { status: 500 });
   }
 
-  const resultado = { candidatos: 0, concluidos: 0, emails_escola: 0, sem_contato: 0, erros: 0 };
+  const resultado = {
+    candidatos: 0,
+    concluidos: 0,
+    emails_escola: 0,
+    sem_contato: 0,
+    avisos_aluno: 0,
+    avisos_aluno_sem_email: 0,
+    erros: 0,
+  };
   if (contratoIds.length === 0) return NextResponse.json({ ok: true, ...resultado });
 
   type LinhaContrato = {
@@ -267,6 +326,111 @@ export async function GET(request: Request) {
     });
     if (tr.ok) resultado.concluidos++;
     else resultado.erros++;
+  }
+
+  // ============================================================================
+  // 2º PASSO: aviso de FIM de intercâmbio ao ALUNO (convite ao /retorno).
+  // Dispara para contratos concluídos por QUALQUER caminho (este cron OU o botão
+  // "Concluir" do admin), então varre os concluídos — não depende do loop acima.
+  // JANELA: só conclusões recentes (contrato_transicoes para='concluido' dentro de
+  // AVISO_FIM_JANELA_DIAS) — evita disparo retroativo a ex-alunos antigos.
+  // Idempotência: chave `fim_intercambio_aluno:<id>` (mesmo padrão robusto do
+  // pedido à escola). Sem e-mail do aluno -> conta e pula (sem erro, sem claim).
+  // ============================================================================
+  const janelaDias = avisoFimJanelaDias();
+  const corteISO = adicionarDiasISO(hoje, -janelaDias) ?? hoje;
+  const portalRetorno = `${base}/retorno`;
+
+  type LinhaConcluido = {
+    id: string;
+    titular_id: string | null;
+    estudante_nome: string | null;
+    estudante_email: string | null;
+    nome: string | null;
+  };
+  // Filtra JÁ NO SQL os contratos cuja conclusão (transição para 'concluido') caiu
+  // dentro da janela — evita varrer todos os concluídos históricos (custo O(janela),
+  // não O(concluídos-de-sempre)) e não escala com o acúmulo de ex-alunos. Escopo do
+  // tenant via contratoIds.
+  const idsRecentes = new Set<string>();
+  for (const lote of emLotes(contratoIds, 500)) {
+    const { data, error } = await supabase
+      .from("contrato_transicoes")
+      .select("contrato_id")
+      .in("contrato_id", lote)
+      .eq("para", "concluido")
+      .gte("created_at", corteISO);
+    if (error) {
+      console.error("[concluir-programas] falha ao ler transicoes de conclusao:", error.message);
+      break;
+    }
+    for (const r of (data ?? []) as { contrato_id: string }[]) idsRecentes.add(r.contrato_id);
+  }
+
+  const concluidos: LinhaConcluido[] = [];
+  for (const lote of emLotes([...idsRecentes], 500)) {
+    const { data, error } = await supabase
+      .from("contratos")
+      .select("id, titular_id, estudante_nome, estudante_email, nome")
+      .in("id", lote)
+      .is("cancelado_em", null)
+      .eq("estado", "concluido");
+    if (error) {
+      // Não derruba o 1º passo já concluído; retorna o que houver.
+      console.error("[concluir-programas] falha ao ler concluidos:", error.message);
+      break;
+    }
+    for (const c of (data ?? []) as LinhaConcluido[]) concluidos.push(c);
+  }
+
+  for (const c of concluidos) {
+    // Janela já aplicada no SQL acima (idsRecentes) — aqui só o envio.
+    // E-mail do aluno: estudante -> titular (fallback). Sem e-mail, não dá p/ enviar.
+    let email = (c.estudante_email || "").trim();
+    if (!email && c.titular_id) {
+      const { data: tit } = await supabase
+        .from("titulares")
+        .select("email")
+        .eq("id", c.titular_id)
+        .maybeSingle();
+      email = (((tit?.email as string) || "")).trim();
+    }
+    if (!email) {
+      resultado.avisos_aluno_sem_email++;
+      continue;
+    }
+
+    const chave = `fim_intercambio_aluno:${c.id}`;
+    const decisao = await reivindicarEnvio(
+      supabase,
+      chave,
+      "fim_intercambio",
+      "aviso_aluno",
+      c.id,
+      { contrato_id: c.id },
+    );
+    if (decisao === "erro") {
+      resultado.erros++;
+      continue;
+    }
+    if (decisao === "pular") continue;
+
+    try {
+      await enviarAvisoFimProgramaEmail(
+        email,
+        { nome: c.estudante_nome || "", programa: c.nome || "", portalUrl: portalRetorno },
+        tenantSlug,
+      );
+      resultado.avisos_aluno++;
+      // Confirma o claim. Se não confirmar (mesmo após retries), conta como erro
+      // para ficar visível — o claim segue 'pendente' e poderia reenviar na próxima
+      // varredura dentro da janela (duplicata rara, preferível a um envio perdido).
+      if (!(await marcarPedidoEnviado(supabase, chave))) resultado.erros++;
+    } catch {
+      // Não logar o erro cru (pode conter o e-mail). Fica em email_logs. O claim
+      // segue 'pendente' -> a próxima varredura reenvia (dentro da janela).
+      resultado.erros++;
+    }
   }
 
   return NextResponse.json({ ok: true, ...resultado });
