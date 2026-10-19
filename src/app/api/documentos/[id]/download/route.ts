@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { verificarSessao, SESSION_COOKIE } from "@/lib/session";
 import { getZohoAttachmentContent } from "@/lib/zoho";
+import { fornecedorDocVisivelAoCliente } from "@/lib/documentos";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,6 +24,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (documento.origem === "admin" || documento.origem === "titular") {
     const bucket = documento.origem === "admin" ? "documentos-admin" : "documentos-titular";
     const { data: signed, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(documento.storage_path, 60, { download: documento.nome_arquivo || true });
+    if (signedError || !signed) {
+      return NextResponse.json({ error: "Falha ao gerar link do documento" }, { status: 500 });
+    }
+    return NextResponse.redirect(signed.signedUrl);
+  }
+  // Documento enviado pela ESCOLA (origem 'fornecedor', ex.: certificado de
+  // conclusao e relatorio academico): so fica visivel ao CLIENTE depois que o
+  // admin APROVA (status 'aprovado') E apenas para os tipos destinados ao
+  // cliente (allowlist). A escola tambem envia faturas (invoice/recibo) com
+  // origem 'fornecedor' que NUNCA podem chegar ao cliente, mesmo aprovadas —
+  // 'aprovado' aqui e o status generico de validacao interna, nao "liberar ao
+  // cliente". Enquanto 'recebido'/'rejeitado', ou tipo fora da allowlist, 404 —
+  // nao revela sequer que o documento existe.
+  if (documento.origem === "fornecedor") {
+    if (documento.status !== "aprovado" || !fornecedorDocVisivelAoCliente(documento.tipo_documento)) {
+      return NextResponse.json({ error: "Documento nao encontrado" }, { status: 404 });
+    }
+    const { data: signed, error: signedError } = await supabase.storage
+      .from("documentos-fornecedor")
+      .createSignedUrl(documento.storage_path, 60, { download: documento.nome_arquivo || true });
     if (signedError || !signed) {
       return NextResponse.json({ error: "Falha ao gerar link do documento" }, { status: 500 });
     }

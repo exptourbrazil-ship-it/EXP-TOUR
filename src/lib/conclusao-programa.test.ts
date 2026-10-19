@@ -77,7 +77,7 @@ test("conteúdo do pedido: pt e en, sem vazar além do corpo", () => {
   const pt = conteudoPedidoCertificado("pt", { estudante: "Gabriel", programa: "General English", dataFimBR: "01/06/2026" });
   assert.match(pt.subject, /Gabriel/);
   assert.match(pt.contexto, /certificado/i);
-  assert.match(pt.contexto, /report/i);
+  assert.match(pt.contexto, /relat[óo]rio/i);
   assert.equal(pt.botaoLabel, "Enviar documentos");
 
   const en = conteudoPedidoCertificado("en", { estudante: "Gabriel", programa: "", dataFimBR: "06/01/2026" });

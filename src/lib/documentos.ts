@@ -31,6 +31,7 @@ export const TIPOS_DOCUMENTO: {
   { valor: "documento_visto_escola", label: "Documento para Visto", categoria: "escola", palavrasChave: ["documento para visto", "document for visa"] },
   { valor: "seguro_saude", label: "Seguro Saude", categoria: "escola", palavrasChave: ["insurance", "seguro saude", "seguro-saude"] },
   { valor: "certificado_conclusao", label: "Certificado de Conclusao", categoria: "escola", palavrasChave: ["certificado", "certificate", "certificado de conclusao", "completion certificate", "certificate of completion", "certificate of attendance"] },
+  { valor: "relatorio_academico", label: "Relatório Acadêmico", categoria: "escola", palavrasChave: ["relatorio academico", "relatório acadêmico", "academic report", "final report", "progress report", "student report", "report card", "report"] },
   { valor: "contrato_prestacao_servicos", label: "Contrato de Prestacao de Servicos", categoria: "financeiro", palavrasChave: ["contrato de prestacao de servicos", "service agreement"] },
   // NET antes do GROSS e ambos com qualificador: "Net Invoice.pdf" contem o token
   // "invoice", entao se o gross tivesse a chave nua "invoice" e viesse primeiro,
@@ -88,6 +89,20 @@ export function tipoTemVoo(valor: string): boolean {
 // compra do bilhete posterior ao visto). Qualquer um deles no acervo do titular
 // marca "visto em mãos".
 export const TIPOS_VISTO = new Set<string>(["visto", "visto_2", "visto_eua"]);
+
+// Documentos de origem 'fornecedor' (enviados pela ESCOLA) que PODEM ficar
+// visíveis ao CLIENTE depois da aprovação do admin. Allowlist deliberada: a
+// escola também envia faturas (invoice_escola/_net, recibo) com origem
+// 'fornecedor' que NUNCA podem chegar ao cliente (expõem custo da escola /
+// margem da agência). Fonte única usada pelo download do cliente e pelo /retorno.
+export const TIPOS_FORNECEDOR_VISIVEIS_AO_CLIENTE = new Set<string>([
+  "certificado_conclusao",
+  "relatorio_academico",
+]);
+
+export function fornecedorDocVisivelAoCliente(tipo: string): boolean {
+  return TIPOS_FORNECEDOR_VISIVEIS_AO_CLIENTE.has(tipo);
+}
 
 export function ehTipoDocumentoValido(valor: string): boolean {
   return TIPOS_DOCUMENTO.some((t) => t.valor === valor);

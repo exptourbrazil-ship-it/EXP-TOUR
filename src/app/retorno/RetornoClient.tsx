@@ -29,6 +29,7 @@ type RetornoClientProps = {
   nomeCompleto: string | null
   contrato: Contrato | null
   certificados: Certificado[]
+  reports: Certificado[]
   npsExistente: NpsExistente | null
   googleReviewUrl: string | null
 }
@@ -78,6 +79,7 @@ export default function RetornoClient(props: RetornoClientProps) {
 
   const linkIndicacao = montarLinkIndicacaoWhatsApp(nomeExibicao, props.contrato ? props.contrato.estudante_sexo : null)
   const temCertificado = props.certificados.length > 0
+  const temReport = props.reports.length > 0
   const sexo = props.contrato ? props.contrato.estudante_sexo : null
   const bemVindo = sexo === "F" ? "Bem-vinda" : sexo === "M" ? "Bem-vindo" : "Bem-vindo(a)"
 
@@ -121,6 +123,32 @@ export default function RetornoClient(props: RetornoClientProps) {
             </p>
           )}
         </section>
+
+        {/* Relatorio academico (enviado pela escola, aprovado pelo admin) */}
+        {temReport ? (
+          <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-brand-golddark">
+              Relatório acadêmico
+            </p>
+            <div className="mt-3 space-y-3">
+              <p className="text-sm text-neutral-500">
+                O relatório final enviado pela sua escola está disponível para download.
+              </p>
+              {props.reports.map((r) => (
+                <a
+                  key={r.id}
+                  href={"/api/documentos/" + r.id + "/download"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 text-sm text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  <span className="truncate">{r.nome_arquivo || "Relatório Acadêmico"}</span>
+                  <span className="ml-3 shrink-0 text-brand-golddark">Baixar &darr;</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {/* Avaliacao NPS */}
         <section className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
