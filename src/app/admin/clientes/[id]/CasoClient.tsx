@@ -406,7 +406,7 @@ export default function CasoClient({
       </nav>
 
       <section>
-        {aba === "jornada" ? <AbaJornada caso={caso} /> : null}
+        {aba === "jornada" ? <AbaJornada caso={caso} permissoes={permissoes} /> : null}
         {aba === "financeiro" ? <AbaFinanceiro caso={caso} podeEditarParcelas={permissoes.gerirFinanceiro} /> : null}
         {aba === "documentos" ? <AbaDocumentos caso={caso} permissoes={permissoes} /> : null}
         {aba === "comunicacao" ? <AbaComunicacao caso={caso} /> : null}
@@ -419,7 +419,7 @@ export default function CasoClient({
 
 // ---- Abas -------------------------------------------------------------------
 
-function AbaJornada({ caso }: { caso: Caso }) {
+function AbaJornada({ caso, permissoes }: { caso: Caso; permissoes: PermissoesCaso }) {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
@@ -469,6 +469,9 @@ function AbaJornada({ caso }: { caso: Caso }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-brand">{contrato?.nome || "Contrato"}</span>
                     <BadgeEstadoContrato estado={e.estado} rotulo={e.rotulo} />
+                    {permissoes.gerirCaso && e.estado !== "concluido" && e.estado !== "cancelado" ? (
+                      <ConcluirContrato contratoId={e.contrato_id} />
+                    ) : null}
                   </div>
                   {historico.length > 0 ? (
                     <ol className="mt-3 space-y-1.5 border-l border-neutral-200 pl-3">
@@ -499,6 +502,53 @@ function AbaJornada({ caso }: { caso: Caso }) {
           fica em Ações (gerirCaso). */}
       {caso.confirmacoes.length > 0 ? <ConfirmacoesResumo confirmacoes={caso.confirmacoes} /> : null}
     </div>
+  );
+}
+
+// Botão "Concluir": encerra a jornada do contrato com sucesso (estado terminal
+// "concluido"), via a rota da máquina de estados. A transição Retorno → Concluído
+// é válida com casos.gerir; antes do Retorno a própria rota exige override
+// (Gestor). Registra a transição no ledger e na auditoria (motivo obrigatório).
+function ConcluirContrato({ contratoId }: { contratoId: string }) {
+  const router = useRouter();
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function concluir() {
+    if (!window.confirm("Marcar este contrato como CONCLUÍDO? A jornada é encerrada com sucesso.")) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/admin/contratos/${contratoId}/estado`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ para: "concluido", motivo: "Programa concluído (botão Concluir)" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) {
+        setErro(j?.erro || "Falha ao concluir.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setErro("Falha de rede ao concluir.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        onClick={concluir}
+        disabled={salvando}
+        className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+      >
+        {salvando ? "Concluindo…" : "✓ Concluir"}
+      </button>
+      {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
+    </span>
   );
 }
 
