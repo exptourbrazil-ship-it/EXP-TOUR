@@ -89,11 +89,24 @@ test("voluntariado no Reino Unido: ETA ate 30 dias; acima disso, a confirmar", (
 
 test("estagio Twin Londres: custo do certificado BUNAC aparece", () => {
   const v = resolverVisto({ categoria: "estagio", pais: "GB", semanas: 12 });
-  assert.ok(v?.detalhes.some((d) => /BUNAC: £ 2\.500/.test(d)));
+  assert.ok(v?.detalhes.some((d) => /£ 2\.500/.test(d)));
 });
 
 test("estagio no Reino Unido: GAE, sem pedir a confirmar o tipo", () => {
   const v = resolverVisto({ categoria: "estagio", pais: "GB", semanas: 12 });
   assert.match(v?.titulo ?? "", /Government Authorised Exchange/);
   assert.ok(!v?.alertas.some((a) => /confirma/.test(a)));
+});
+
+test("estagio na Irlanda: Stamp 2 do curso de ingles nao cobre; exige ensino superior", () => {
+  const v = resolverVisto({ categoria: "estagio", pais: "IE", semanas: 8 });
+  assert.match(v?.titulo ?? "", /ensino superior/);
+  assert.match(v?.titulo ?? "", /Stamp 2/);
+  assert.equal(v?.situacao, "visto");
+});
+
+test("estagio Twin Londres: taxa de placement, CAS pela BUNAC e prazo de 4 semanas", () => {
+  const v = resolverVisto({ categoria: "estagio", pais: "GB", semanas: 12 });
+  assert.ok(v?.detalhes.some((d) => /£ 1\.000/.test(d) && /BUNAC/.test(d)));
+  assert.ok(v?.detalhes.some((d) => /4 semanas/.test(d)));
 });
