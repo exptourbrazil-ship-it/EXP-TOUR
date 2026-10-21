@@ -262,8 +262,8 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
         detalhes: [
           "Work experience e treinamento dentro de esquema aprovado, com patrocinador licenciado. Máximo de 12 ou 24 meses conforme o esquema.",
           "A Twin informa que candidatos de fora do Espaço Econômico Europeu participam por parceria com a BUNAC, patrocinadora do visto (nome antigo: Tier 5). Estágio de até 6 meses, mínimo de 25 horas por semana.",
-          "Custo do certificado de patrocínio da BUNAC: £ 2.500.",
-          "Taxa do visto de £ 340 + taxa de saúde. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
+          "A Twin cobra £ 1.000 de taxa de placement. A BUNAC cuida da assessoria de visto e do certificado de patrocínio (CAS), que custa £ 2.500.",
+          "O processo leva em média 4 semanas, do pagamento até o CAS. Visto (£ 340), taxa de saúde e seguro médico são pagos pelo aluno à parte. Exige £ 1.270 em conta por 28 dias, salvo exceção.",
         ],
         alertas: [
           "A ETA e o visto de visitante não permitem estagiar: o visto do estágio no Reino Unido é o Government Authorised Exchange (GAE).",
@@ -299,12 +299,12 @@ function naoEstudo(pais: string, cat: NaoEstudo, dias: number | null): Faixa {
     case "IE:estagio":
       return {
         situacao: "visto",
-        titulo: "Employment Permit (modalidade de estágio), a confirmar",
+        titulo: "Estágio exige matrícula em ensino superior (o Stamp 2 do curso de inglês não cobre)",
         detalhes: [
-          "A isenção de visto de entrada não permite estagiar. Estágio exige permissão de trabalho pedida pelo empregador.",
-          "O site da escola (Twin) não informa o visto para este estágio.",
+          "A isenção de visto de entrada não permite estagiar, e o Stamp 2 de um curso de inglês também não. Segundo a Twin, para o Dublin Internship o aluno precisa estar matriculado em curso de ensino superior.",
+          "Estágio exige permissão de trabalho. O tipo exato de permissão para o aluno de ensino superior ainda será confirmado com a Twin.",
         ],
-        alertas: [A_CONFIRMAR],
+        alertas: ["Brasileiros que fazem só curso de inglês na Irlanda não podem estagiar: o consultor confirma a elegibilidade antes da contratação."],
         fonte: "https://www.citizensinformation.ie/en/moving-country/working-in-ireland/employment-permits/overview-employment-permits/",
       };
     default:
