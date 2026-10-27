@@ -11,6 +11,9 @@ function tipoConhecido(valor: string | null | undefined): boolean {
 
 const STATUS_OPCOES = ["pendente", "aprovado", "rejeitado"];
 
+// Limite do envio pela tela (a Vercel recusa corpos acima de ~4,5 MB).
+const TAMANHO_MAX_UPLOAD_ADMIN = 4 * 1024 * 1024;
+
 // Tela admin de documentos: enviar um documento em nome do cliente e
 // aprovar/rejeitar os documentos enviados pelo titular. A autenticacao e a
 // sessao de admin (cookie) com a capacidade `documentos.analisar` — as rotas
@@ -35,6 +38,12 @@ export default function DocumentosAdminClient() {
       setResultado("Selecione um arquivo.");
       return;
     }
+    // A Vercel recusa corpo acima de ~4,5 MB antes de a rota rodar, e a resposta
+    // nem e JSON: o aviso tem de vir daqui, com a causa real.
+    if (arquivo.size > TAMANHO_MAX_UPLOAD_ADMIN) {
+      setResultado(`Erro: o arquivo tem ${(arquivo.size / 1048576).toFixed(1)} MB e o limite é 4 MB. Reduza o tamanho (comprima o PDF ou a foto) e envie de novo.`);
+      return;
+    }
     setCarregando(true);
     setResultado(null);
     try {
@@ -43,11 +52,22 @@ export default function DocumentosAdminClient() {
       formData.append("tipoDocumento", tipoDocumento);
       formData.append("arquivo", arquivo);
       const res = await fetch("/api/admin/documentos", { method: "POST", body: formData });
-      const json = await res.json();
+      let json: { ok?: boolean; error?: string; zoho?: { espelhado: boolean; motivo?: string } } = {};
+      try {
+        json = await res.json();
+      } catch {
+        json = {};
+      }
       if (!res.ok) {
-        setResultado(`Erro: ${json.error || "falha desconhecida"}`);
+        setResultado(
+          res.status === 413
+            ? "Erro: o arquivo é grande demais para o envio (limite de 4 MB)."
+            : `Erro: ${json.error || `falha no envio (código ${res.status})`}`,
+        );
+      } else if (json.zoho && !json.zoho.espelhado) {
+        setResultado(`Documento enviado e salvo no portal.\nA cópia no Zoho CRM NÃO foi criada: ${json.zoho.motivo || "motivo desconhecido"}.`);
       } else {
-        setResultado("Documento enviado com sucesso!");
+        setResultado("Documento enviado com sucesso e copiado para o Zoho CRM.");
       }
     } catch (err: any) {
       setResultado(`Erro: ${err.message}`);
@@ -183,9 +203,10 @@ export default function DocumentosAdminClient() {
         </label>
 
         <label className="text-sm font-medium text-brand">
-          Arquivo
+          Arquivo (PDF, JPG, PNG ou WEBP, até 4 MB)
           <input
             type="file"
+            accept="application/pdf,image/jpeg,image/png,image/webp"
             onChange={(e) => setArquivo(e.target.files?.[0] || null)}
             required
             className="mt-1 block w-full text-sm"
