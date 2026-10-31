@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Pagina protegida: exige sessao de admin (login em /admin/login). Antes esta
 // tela pedia uma senha digitada (Bearer); agora usa a mesma sessao das demais
 // telas admin. No topo, a fila de aprovacao (documentos pendentes de todos os
-// titulares); abaixo, as ferramentas de enviar/buscar por CPF.
+// titulares); abaixo, as ferramentas de enviar/buscar por NOME do cliente.
 export default async function AdminDocumentosPage() {
   await exigirCapacidade("documentos.analisar", "/admin/documentos");
   return (

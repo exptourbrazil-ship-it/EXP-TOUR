@@ -22,6 +22,7 @@ import { STATUS_VISTO, labelStatusVisto } from "@/lib/visto";
 import { labelStatusDisputaMP } from "@/lib/mp-disputa";
 import {
   CATEGORIAS_DOCUMENTO,
+  TIPOS_DOCUMENTO,
   MOTIVOS_REJEICAO_DOCUMENTO,
   labelDoTipoDocumento,
   categoriaDoTipoDocumento,
@@ -1122,6 +1123,8 @@ function AbaDocumentos({ caso, permissoes }: { caso: Caso; permissoes: Permissoe
 
   return (
     <div className="space-y-5">
+      {permissoes.analisarDocumentos ? <EnviarDocumentoCaso titularId={caso.titular.id} /> : null}
+
       {/* Consentimentos (LGPD 15/16) — read-only. Prova em consentimentos/events. */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
         <h2 className="mb-3 font-serif text-xl text-brand">Consentimentos (LGPD)</h2>
@@ -1170,6 +1173,117 @@ function AbaDocumentos({ caso, permissoes }: { caso: Caso; permissoes: Permissoe
         );
       })}
     </div>
+  );
+}
+
+// Limite do envio pela tela (a Vercel recusa corpos acima de ~4,5 MB).
+const TAMANHO_MAX_UPLOAD_CASO = 4 * 1024 * 1024;
+
+// Envia um documento em nome do titular DESTE caso, sem sair da pagina nem
+// digitar CPF. Usa a mesma rota da tela /admin/documentos (titularId no lugar do
+// CPF); a rota revalida capacidade e escopo de tenant.
+function EnviarDocumentoCaso({ titularId }: { titularId: string }) {
+  const router = useRouter();
+  const [tipo, setTipo] = useState(TIPOS_DOCUMENTO[0].valor);
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!arquivo) {
+      setMsg({ ok: false, texto: "Selecione um arquivo." });
+      return;
+    }
+    if (arquivo.size > TAMANHO_MAX_UPLOAD_CASO) {
+      setMsg({ ok: false, texto: `O arquivo tem ${(arquivo.size / 1048576).toFixed(1)} MB e o limite é 4 MB. Comprima o PDF ou a foto e envie de novo.` });
+      return;
+    }
+    setEnviando(true);
+    setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("titularId", titularId);
+      fd.append("tipoDocumento", tipo);
+      fd.append("arquivo", arquivo);
+      const res = await fetch("/api/admin/documentos", { method: "POST", body: fd });
+      let json: { error?: string; zoho?: { espelhado: boolean; motivo?: string } } = {};
+      try {
+        json = await res.json();
+      } catch {
+        json = {};
+      }
+      if (!res.ok) {
+        setMsg({
+          ok: false,
+          texto: res.status === 413 ? "O arquivo é grande demais para o envio (limite de 4 MB)." : json.error || `Falha no envio (código ${res.status}).`,
+        });
+        return;
+      }
+      setMsg({
+        ok: true,
+        texto:
+          json.zoho && !json.zoho.espelhado
+            ? `Documento salvo no portal. A cópia no Zoho CRM NÃO foi criada: ${json.zoho.motivo || "motivo desconhecido"}.`
+            : "Documento enviado e copiado para o Zoho CRM.",
+      });
+      setArquivo(null);
+      form.reset();
+      router.refresh();
+    } catch {
+      setMsg({ ok: false, texto: "Falha de conexão no envio. Tente de novo." });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <form onSubmit={enviar} className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 font-serif text-xl text-brand">Enviar documento</h2>
+      <p className="mb-3 text-sm text-neutral-500">Adiciona um documento neste cliente (PDF, JPG, PNG ou WEBP, até 4 MB).</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="mb-1 block text-neutral-700">Tipo de documento</span>
+          <select
+            id="caso-doc-tipo"
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          >
+            {TIPOS_DOCUMENTO.map((t) => (
+              <option key={t.valor} value={t.valor}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-neutral-700">Arquivo</span>
+          <input
+            id="caso-doc-arquivo"
+            type="file"
+            accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+            onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={enviando}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {enviando ? "Enviando..." : "Enviar documento"}
+        </button>
+        {msg ? (
+          <p role="status" className={"text-sm " + (msg.ok ? "text-emerald-700" : "text-red-700")}>
+            {msg.texto}
+          </p>
+        ) : null}
+      </div>
+    </form>
   );
 }
 

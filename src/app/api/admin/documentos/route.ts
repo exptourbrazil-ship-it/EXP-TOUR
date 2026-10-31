@@ -20,12 +20,17 @@ export async function POST(request: Request) {
   }
 
   const formData = await request.formData();
-  const cpf = String(formData.get("cpf") || "").replace(/\D/g, "");
+  const cpfInformado = String(formData.get("cpf") || "").replace(/\D/g, "");
+  // Envio a partir do Caso 360: o titular ja e conhecido pelo id (sem digitar CPF).
+  const titularIdInformado = String(formData.get("titularId") || "");
   const tipoDocumento = String(formData.get("tipoDocumento") || "");
   const arquivo = formData.get("arquivo") as File | null;
 
-  if (!cpf) {
+  if (!cpfInformado && !titularIdInformado) {
     return NextResponse.json({ ok: false, error: "Informe o CPF do titular." }, { status: 400 });
+  }
+  if (titularIdInformado && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(titularIdInformado)) {
+    return NextResponse.json({ ok: false, error: "Titular invalido." }, { status: 400 });
   }
   if (!ehTipoDocumentoValido(tipoDocumento)) {
     return NextResponse.json({ ok: false, error: "Tipo de documento invalido." }, { status: 400 });
@@ -39,10 +44,18 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY as string,
   );
 
-  const { data: titular, error: titularError } = await supabase.from("titulares").select("id").eq("cpf", cpf).single();
+  const consultaTitular = supabase.from("titulares").select("id, cpf");
+  const { data: titular, error: titularError } = await (titularIdInformado
+    ? consultaTitular.eq("id", titularIdInformado)
+    : consultaTitular.eq("cpf", cpfInformado)
+  ).single();
   if (titularError || !titular) {
-    return NextResponse.json({ ok: false, error: "Titular nao encontrado para este CPF" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: titularIdInformado ? "Titular nao encontrado" : "Titular nao encontrado para este CPF" },
+      { status: 404 },
+    );
   }
+  const cpf = String(titular.cpf || cpfInformado);
   const barrado = await barrarTitularForaDoEscopo(supabase, titular.id);
   if (barrado) return barrado;
 

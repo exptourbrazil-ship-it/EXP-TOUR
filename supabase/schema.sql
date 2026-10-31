@@ -1095,6 +1095,21 @@ alter table if exists documentos drop constraint if exists documentos_origem_che
 alter table if exists documentos add constraint documentos_origem_check
   check (origem in ('zoho','admin','titular','sistema','fornecedor'));
 
+-- CHECK de documentos.tipo_documento: deve acompanhar TIPOS_DOCUMENTO em
+-- src/lib/documentos.ts. Estava defasado (faltavam certificado_conclusao,
+-- relatorio_academico, carta_aceite, carta_recusa_visto, invoice_escola_net e
+-- visto_eua) e o upload do admin falhava ao salvar o registro.
+alter table if exists documentos drop constraint if exists documentos_tipo_documento_check;
+alter table if exists documentos add constraint documentos_tipo_documento_check
+  check (tipo_documento in (
+    'documento_identidade','passaporte','visto','visto_2','visto_eua','certidao_vacinacao',
+    'passagem_aerea','eta','autorizacao_viagem_domestico','autorizacao_viagem_internacional',
+    'atestado_medico','carta_matricula','carta_aceite','carta_recusa_visto','coe',
+    'carta_acomodacao','carta_transfer','documento_visto_escola','seguro_saude',
+    'contrato_prestacao_servicos','invoice_escola','invoice_escola_net','recibo_pagamento',
+    'certificado_conclusao','relatorio_academico','outro'
+  ));
+
 -- ============================================================================
 -- Documentos compartilhados com o fornecedor (Portal do Parceiro)
 -- ============================================================================
