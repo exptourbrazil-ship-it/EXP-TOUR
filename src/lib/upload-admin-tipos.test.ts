@@ -29,3 +29,11 @@ test("o CHECK de tipo_documento no schema cobre toda a taxonomia", () => {
   const bloco = sql.slice(ini, sql.indexOf(");", ini));
   for (const t of TIPOS_DOCUMENTO) assert.ok(bloco.includes("'" + t.valor + "'"), t.valor);
 });
+
+test("o envio no Caso 360 usa titularId e a rota segue barrando por escopo de tenant", () => {
+  const rota = readFileSync(new URL("../app/api/admin/documentos/route.ts", import.meta.url), "utf8");
+  assert.match(rota, /titularId/);
+  assert.match(rota, /barrarTitularForaDoEscopo/);
+  const caso = readFileSync(new URL("../app/admin/clientes/[id]/CasoClient.tsx", import.meta.url), "utf8");
+  assert.match(caso, /EnviarDocumentoCaso titularId=\{caso\.titular\.id\}/);
+});
