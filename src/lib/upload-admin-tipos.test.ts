@@ -19,3 +19,13 @@ test("a rota admin usa a taxonomia, nao uma lista fixa", () => {
   assert.doesNotMatch(src, /TIPOS_VALIDOS/);
   assert.doesNotMatch(src, /criado_por:\s*"rodrigo@/);
 });
+
+// Regressao: o CHECK do banco ficou defasado e o insert do admin falhava para
+// certificado_conclusao e outros. O schema de referencia deve listar todos.
+test("o CHECK de tipo_documento no schema cobre toda a taxonomia", () => {
+  const sql = readFileSync(new URL("../../supabase/schema.sql", import.meta.url), "utf8");
+  const ini = sql.lastIndexOf("add constraint documentos_tipo_documento_check");
+  assert.ok(ini >= 0);
+  const bloco = sql.slice(ini, sql.indexOf(");", ini));
+  for (const t of TIPOS_DOCUMENTO) assert.ok(bloco.includes("'" + t.valor + "'"), t.valor);
+});
