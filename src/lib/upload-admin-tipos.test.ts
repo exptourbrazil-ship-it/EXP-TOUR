@@ -37,3 +37,13 @@ test("o envio no Caso 360 usa titularId e a rota segue barrando por escopo de te
   const caso = readFileSync(new URL("../app/admin/clientes/[id]/CasoClient.tsx", import.meta.url), "utf8");
   assert.match(caso, /EnviarDocumentoCaso titularId=\{caso\.titular\.id\}/);
 });
+
+test("/admin/documentos escolhe o cliente por nome (sem campo de CPF) e a busca respeita o escopo", () => {
+  const tela = readFileSync(new URL("../app/admin/documentos/DocumentosAdminClient.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(tela, /CPF do titular/);
+  assert.match(tela, /SeletorCliente/);
+  const busca = readFileSync(new URL("../app/api/admin/documentos/titulares/route.ts", import.meta.url), "utf8");
+  assert.match(busca, /documentos\.analisar/);
+  assert.match(busca, /escopoTenantAdmin/);
+  assert.match(busca, /prepararBuscaNome/);
+});

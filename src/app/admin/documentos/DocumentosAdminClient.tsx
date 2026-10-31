@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TIPOS_DOCUMENTO, CATEGORIAS_DOCUMENTO, tipoTemValidade, tipoTemCobertura, tipoTemVoo, ehTipoDocumentoValido } from "@/lib/documentos";
 
 // Um tipo é "conhecido" quando está no catálogo (evita exibir o 1º tipo como se
@@ -14,19 +14,138 @@ const STATUS_OPCOES = ["pendente", "aprovado", "rejeitado"];
 // Limite do envio pela tela (a Vercel recusa corpos acima de ~4,5 MB).
 const TAMANHO_MAX_UPLOAD_ADMIN = 4 * 1024 * 1024;
 
+type TitularBusca = { id: string; nome_completo: string; email: string | null; cpf_final: string | null };
+
+// Escolha do cliente POR NOME (antes era por CPF). Busca no servidor a partir de
+// 3 letras; mostra o final do CPF so para distinguir homonimos.
+function SeletorCliente({
+  idBase,
+  rotulo,
+  selecionado,
+  onSelecionar,
+}: {
+  idBase: string;
+  rotulo: string;
+  selecionado: TitularBusca | null;
+  onSelecionar: (t: TitularBusca | null) => void;
+}) {
+  const [termo, setTermo] = useState("");
+  const [opcoes, setOpcoes] = useState<TitularBusca[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selecionado) return;
+    const q = termo.trim();
+    if (q.length < 3) {
+      setOpcoes([]);
+      setErro(null);
+      return;
+    }
+    let cancelado = false;
+    const t = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const res = await fetch(`/api/admin/documentos/titulares?q=${encodeURIComponent(q)}`);
+        const json = await res.json().catch(() => ({}));
+        if (cancelado) return;
+        if (!res.ok) {
+          setOpcoes([]);
+          setErro(json.error || "Falha ao buscar clientes");
+        } else {
+          setOpcoes(json.titulares || []);
+          setErro(null);
+        }
+      } catch {
+        if (!cancelado) setErro("Falha de conexão na busca.");
+      } finally {
+        if (!cancelado) setBuscando(false);
+      }
+    }, 300);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+  }, [termo, selecionado]);
+
+  const inputClasse = "mt-1 block w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm";
+
+  if (selecionado) {
+    return (
+      <div className="text-sm font-medium text-brand">
+        {rotulo}
+        <div className="mt-1 flex items-center justify-between gap-3 rounded-xl border border-neutral-300 px-3 py-2">
+          <span className="min-w-0 truncate">
+            {selecionado.nome_completo}
+            {selecionado.cpf_final ? <span className="ml-2 text-xs text-neutral-500">CPF final {selecionado.cpf_final}</span> : null}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              onSelecionar(null);
+              setTermo("");
+            }}
+            className="shrink-0 text-xs font-medium text-brand underline"
+          >
+            Trocar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-sm font-medium text-brand">
+      <label htmlFor={idBase}>{rotulo}</label>
+      <input
+        id={idBase}
+        type="text"
+        value={termo}
+        onChange={(e) => setTermo(e.target.value)}
+        placeholder="Digite o nome do cliente (mínimo 3 letras)"
+        autoComplete="off"
+        className={inputClasse}
+      />
+      {buscando ? <p className="mt-1 text-xs font-normal text-neutral-500">Buscando...</p> : null}
+      {erro ? <p className="mt-1 text-xs font-normal text-red-700">{erro}</p> : null}
+      {!buscando && !erro && termo.trim().length >= 3 && opcoes.length === 0 ? (
+        <p className="mt-1 text-xs font-normal text-neutral-500">Nenhum cliente encontrado com esse nome.</p>
+      ) : null}
+      {opcoes.length > 0 ? (
+        <ul className="mt-1 divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white font-normal">
+          {opcoes.map((o) => (
+            <li key={o.id}>
+              <button
+                type="button"
+                onClick={() => onSelecionar(o)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-brand-cream/60"
+              >
+                <span className="min-w-0 truncate text-brand">{o.nome_completo}</span>
+                <span className="shrink-0 text-xs text-neutral-500">
+                  {o.cpf_final ? `CPF final ${o.cpf_final}` : o.email || ""}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 // Tela admin de documentos: enviar um documento em nome do cliente e
 // aprovar/rejeitar os documentos enviados pelo titular. A autenticacao e a
 // sessao de admin (cookie) com a capacidade `documentos.analisar` — as rotas
 // /api/admin/documentos* exigem ESSA sessao e nada mais: nao ha senha digitada
 // aqui nem atalho por segredo de ambiente.
 export default function DocumentosAdminClient() {
-  const [cpf, setCpf] = useState("");
+  const [clienteEnvio, setClienteEnvio] = useState<TitularBusca | null>(null);
   const [tipoDocumento, setTipoDocumento] = useState(TIPOS_DOCUMENTO[0].valor);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [resultado, setResultado] = useState<string | null>(null);
 
-  const [cpfBusca, setCpfBusca] = useState("");
+  const [clienteBusca, setClienteBusca] = useState<TitularBusca | null>(null);
   const [documentos, setDocumentos] = useState<any[]>([]);
   const [buscando, setBuscando] = useState(false);
   const [erroBusca, setErroBusca] = useState<string | null>(null);
@@ -34,6 +153,10 @@ export default function DocumentosAdminClient() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!clienteEnvio) {
+      setResultado("Escolha o cliente pelo nome.");
+      return;
+    }
     if (!arquivo) {
       setResultado("Selecione um arquivo.");
       return;
@@ -48,7 +171,7 @@ export default function DocumentosAdminClient() {
     setResultado(null);
     try {
       const formData = new FormData();
-      formData.append("cpf", cpf);
+      formData.append("titularId", clienteEnvio.id);
       formData.append("tipoDocumento", tipoDocumento);
       formData.append("arquivo", arquivo);
       const res = await fetch("/api/admin/documentos", { method: "POST", body: formData });
@@ -69,6 +192,8 @@ export default function DocumentosAdminClient() {
       } else {
         setResultado("Documento enviado com sucesso e copiado para o Zoho CRM.");
       }
+      // Se a lista de baixo mostra o mesmo cliente, atualiza para o novo arquivo aparecer.
+      if (res.ok && clienteBusca && clienteBusca.id === clienteEnvio.id) void carregarDocumentos(clienteBusca.id);
     } catch (err: any) {
       setResultado(`Erro: ${err.message}`);
     } finally {
@@ -76,13 +201,12 @@ export default function DocumentosAdminClient() {
     }
   }
 
-  async function buscarDocumentos(e: React.FormEvent) {
-    e.preventDefault();
+  async function carregarDocumentos(titularId: string) {
     setBuscando(true);
     setErroBusca(null);
     setDocumentos([]);
     try {
-      const res = await fetch(`/api/admin/documentos/listar?cpf=${encodeURIComponent(cpfBusca)}`);
+      const res = await fetch(`/api/admin/documentos/listar?titularId=${encodeURIComponent(titularId)}`);
       const json = await res.json();
       if (!res.ok) {
         setErroBusca(json.error || "falha desconhecida");
@@ -95,6 +219,15 @@ export default function DocumentosAdminClient() {
       setBuscando(false);
     }
   }
+
+  // Escolher o cliente já traz os documentos dele (sem botão Buscar).
+  useEffect(() => {
+    if (clienteBusca) void carregarDocumentos(clienteBusca.id);
+    else {
+      setDocumentos([]);
+      setErroBusca(null);
+    }
+  }, [clienteBusca]);
 
   async function alterarStatus(id: string, status: string) {
     setAtualizandoId(id);
@@ -172,16 +305,7 @@ export default function DocumentosAdminClient() {
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-        <label className="text-sm font-medium text-brand">
-          CPF do titular (somente números)
-          <input
-            type="text"
-            value={cpf}
-            onChange={(e) => setCpf(e.target.value)}
-            required
-            className={inputClasse}
-          />
-        </label>
+        <SeletorCliente idBase="cliente-envio" rotulo="Cliente" selecionado={clienteEnvio} onSelecionar={setClienteEnvio} />
 
         <label className="text-sm font-medium text-brand">
           Tipo de documento
@@ -229,28 +353,19 @@ export default function DocumentosAdminClient() {
 
       <h2 className="font-serif text-2xl text-brand">Aprovar ou rejeitar documentos</h2>
       <p className="mt-2 text-sm text-neutral-600">
-        Busque os documentos enviados pelo titular (CPF) e altere o status de cada um.
+        Escolha o cliente pelo nome para ver os documentos dele, abrir o arquivo e alterar o status de cada um.
       </p>
 
-      <form onSubmit={buscarDocumentos} className="mt-4 flex gap-2">
-        <input
-          type="text"
-          value={cpfBusca}
-          onChange={(e) => setCpfBusca(e.target.value)}
-          placeholder="CPF do titular (somente números)"
-          required
-          className="flex-1 rounded-xl border border-neutral-300 px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={buscando}
-          className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand-cream/60 disabled:opacity-60"
-        >
-          {buscando ? "Buscando..." : "Buscar"}
-        </button>
-      </form>
+      <div className="mt-4">
+        <SeletorCliente idBase="cliente-busca" rotulo="Cliente" selecionado={clienteBusca} onSelecionar={setClienteBusca} />
+        {buscando ? <p className="mt-2 text-sm text-neutral-500">Carregando documentos...</p> : null}
+      </div>
 
       {erroBusca ? <p className="mt-3 text-sm text-red-700">{erroBusca}</p> : null}
+
+      {clienteBusca && !buscando && !erroBusca && documentos.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-500">Este cliente ainda não tem documentos.</p>
+      ) : null}
 
       {documentos.length > 0 ? (
         <div className="mt-4 flex flex-col gap-2">

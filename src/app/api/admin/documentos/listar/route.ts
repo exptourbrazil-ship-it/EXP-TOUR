@@ -7,7 +7,7 @@ import { barrarTitularForaDoEscopo } from "@/lib/admin-tenant";
 
 export const runtime = "nodejs";
 
-// Lista os documentos de um titular (por CPF) para a tela de admin
+// Lista os documentos de um titular (por id ou CPF) para a tela de admin
 // aprovar/rejeitar documentos enviados pelo cliente.
 export async function GET(request: Request) {
   if (!(await checarCapacidadeAdmin("documentos.analisar"))) {
@@ -16,20 +16,30 @@ export async function GET(request: Request) {
 
 const { searchParams } = new URL(request.url);
   const cpfRaw = searchParams.get("cpf") || "";
-  const cpf = cpfRaw.replace(/\D/g, "");
+  const cpfInformado = cpfRaw.replace(/\D/g, "");
+  // A tela escolhe o cliente pelo NOME e manda o id; o CPF segue aceito.
+  const titularIdInformado = searchParams.get("titularId") || "";
 
-if (!cpf) {
-  return NextResponse.json({ ok: false, error: "Informe cpf" }, { status: 400 });
+if (!cpfInformado && !titularIdInformado) {
+  return NextResponse.json({ ok: false, error: "Informe o cliente" }, { status: 400 });
+}
+if (titularIdInformado && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(titularIdInformado)) {
+  return NextResponse.json({ ok: false, error: "Titular invalido" }, { status: 400 });
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-const { data: titular, error: titularError } = await supabase.from("titulares").select("id").eq("cpf", cpf).single();
+const consultaTitular = supabase.from("titulares").select("id, cpf");
+  const { data: titular, error: titularError } = await (titularIdInformado
+    ? consultaTitular.eq("id", titularIdInformado)
+    : consultaTitular.eq("cpf", cpfInformado)
+  ).single();
   if (titularError || !titular) {
-    return NextResponse.json({ ok: false, error: "Titular nao encontrado para este CPF" }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Titular nao encontrado" }, { status: 404 });
   }
+  const cpf = String(titular.cpf || cpfInformado);
 
 // Isolamento por tenant: titular de outro tenant -> 404 (mesma resposta de inexistente).
 const barrado = await barrarTitularForaDoEscopo(supabase, titular.id);
